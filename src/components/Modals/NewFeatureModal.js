@@ -3,6 +3,8 @@
    Modal de criação e configuração inicial de nova feição vetorial
    ========================================================================== */
 
+import { normalizeFeature } from '../../services/MockData.js';
+
 export class NewFeatureModal {
   constructor(options = {}) {
     this.layers = options.layers || [];
@@ -112,19 +114,35 @@ export class NewFeatureModal {
         const description = descInput?.value?.trim() || '';
 
         if (this.pendingFeature) {
-          const completedFeature = {
+          const targetL = this.layers.find(l => l.id === layerId) || this.layers[0] || { color: '#00E08A' };
+          const color = targetL.color || '#00E08A';
+
+          const completedFeature = normalizeFeature({
             ...this.pendingFeature,
             id: 'feat-' + Date.now(),
             name,
             layerId,
             category,
+            color,
             description,
+            style: {
+              fillColor: color,
+              fillOpacity: this.pendingFeature.type === 'LineString' ? 1 : 0.35,
+              strokeColor: color,
+              strokeWidth: 2.5,
+              strokeDashArray: '',
+              markerIcon: 'pin',
+              markerSize: 24,
+              markerRotation: 0,
+              showLabel: false,
+              labelField: 'name'
+            },
             properties: {
               ...(this.pendingFeature.properties || {})
             },
             createdBy: 'Você',
             createdAt: new Date().toISOString()
-          };
+          });
 
           this.onSave(completedFeature);
 

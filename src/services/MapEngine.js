@@ -476,8 +476,22 @@ export class MapEngine {
     // Renderiza cada feição
     features.forEach(feat => {
       const layerConfig = layerMap.get(feat.layerId) || { color: '#00E08A', opacity: 1, visible: true };
-      const color = feat.color || layerConfig.color || '#00E08A';
-      const opacity = layerConfig.opacity !== undefined ? layerConfig.opacity : 1;
+      const defaultColor = feat.color || layerConfig.color || '#00E08A';
+      
+      // Estilo Paramétrico Unificado (Retrocompatível com fallback)
+      const style = {
+        fillColor: feat.style?.fillColor || defaultColor,
+        fillOpacity: feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : (layerConfig.opacity !== undefined ? 0.35 * layerConfig.opacity : 0.35),
+        strokeColor: feat.style?.strokeColor || defaultColor,
+        strokeWidth: feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : 2.5,
+        strokeDashArray: feat.style?.strokeDashArray || null,
+        markerIcon: feat.style?.markerIcon || 'pin',
+        markerSize: feat.style?.markerSize !== undefined ? Number(feat.style.markerSize) : 24,
+        markerRotation: feat.style?.markerRotation !== undefined ? Number(feat.style.markerRotation) : 0,
+        showLabel: feat.style?.showLabel === true,
+        labelField: feat.style?.labelField || 'name'
+      };
+
       let leafLayer = null;
 
       // Normalização robusta de coordenadas (suporta tanto [lat, lng] quanto {lat, lng} serializados)
@@ -497,54 +511,74 @@ export class MapEngine {
       }
 
       if (feat.type === 'Point' && coords) {
+        const iconHtml = this.getMarkerSVG(
+          style.markerIcon,
+          style.fillColor,
+          style.markerSize,
+          style.markerRotation
+        );
+
         const icon = L.divIcon({
           className: 'cm-custom-marker-icon',
-          html: `
-            <div style="
-              width: 24px;
-              height: 24px;
-              background: ${color};
-              border: 2px solid #ffffff;
-              border-radius: 50%;
-              box-shadow: 0 0 10px ${color}88, 0 2px 6px rgba(0,0,0,0.6);
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              transform: translate(-12px, -12px);
-              transition: transform 0.2s;
-            ">
-              <div style="width: 6px; height: 6px; background: #000; border-radius: 50%;"></div>
-            </div>
-          `
+          html: iconHtml,
+          iconSize: [style.markerSize, style.markerSize],
+          iconAnchor: [style.markerSize / 2, style.markerSize / 2]
         });
 
         leafLayer = L.marker(coords, { icon });
       } else if (feat.type === 'LineString' && coords && coords.length >= 2) {
         leafLayer = L.polyline(coords, {
-          color,
-          weight: 3.5,
-          opacity
+          color: style.strokeColor,
+          weight: style.strokeWidth,
+          dashArray: style.strokeDashArray || undefined,
+          opacity: 1
         });
       } else if (feat.type === 'Polygon' && coords && coords.length >= 3) {
         leafLayer = L.polygon(coords, {
-          color,
-          weight: 2.5,
-          fillColor: color,
-          fillOpacity: 0.35 * opacity,
-          opacity
+          color: style.strokeColor,
+          weight: style.strokeWidth,
+          dashArray: style.strokeDashArray || undefined,
+          fillColor: style.fillColor,
+          fillOpacity: style.fillOpacity,
+          opacity: 1
         });
       } else if (feat.type === 'Circle' && coords) {
         leafLayer = L.circle(coords, {
           radius: feat.radius || 500,
-          color,
-          weight: 2.5,
-          fillColor: color,
-          fillOpacity: 0.3 * opacity,
-          opacity
+          color: style.strokeColor,
+          weight: style.strokeWidth,
+          dashArray: style.strokeDashArray || undefined,
+          fillColor: style.fillColor,
+          fillOpacity: style.fillOpacity,
+          opacity: 1
         });
       }
 
       if (leafLayer) {
+        // Vincula Rótulo Dinâmico no Mapa se habilitado
+        if (style.showLabel) {
+          let labelText = feat.name || 'Feição';
+          if (style.labelField === 'category') {
+            labelText = feat.category || feat.type;
+          } else if (style.labelField === 'area' && feat.type === 'Polygon') {
+            const a = this.calculatePolygonArea(coords);
+            labelText = `${(a / 10000).toFixed(2)} ha`;
+          } else if (style.labelField === 'extensao' && feat.type === 'LineString') {
+            const l = this.calculatePolylineLength(coords);
+            labelText = l > 1000 ? `${(l / 1000).toFixed(2)} km` : `${l.toFixed(0)} m`;
+          }
+
+          leafLayer.bindTooltip(
+            `<span class="cm-map-feature-label">${this.escapeHtml(labelText)}</span>`,
+            {
+              permanent: true,
+              direction: 'center',
+              className: 'cm-map-label-tooltip',
+              interactive: false
+            }
+          );
+        }
+
         // Vincula Popup Customizado
         const popupHtml = this.createFeaturePopupHtml({ ...feat, coordinates: coords });
         leafLayer.bindPopup(popupHtml, { maxWidth: 280 });
@@ -563,6 +597,45 @@ export class MapEngine {
         this.renderedFeatures.set(feat.id, leafLayer);
       }
     });
+  }
+
+  getMarkerSVG(iconName, color, size = 24, rotation = 0) {
+    let glyph = '';
+    if (iconName === 'tower') {
+      glyph = `<path d="M12 2L6 22h12L12 2zM9 14h6M8 18h8M12 2v20" stroke="#ffffff" stroke-width="1.6" fill="none"/>`;
+    } else if (iconName === 'tree') {
+      glyph = `<path d="M12 2L5 12h4l-3 6h12l-3-6h4L12 2z" fill="#ffffff" fill-opacity="0.95"/><path d="M12 18v4" stroke="#ffffff" stroke-width="2"/>`;
+    } else if (iconName === 'warning') {
+      glyph = `<path d="M12 3L2 20h20L12 3z" stroke="#ffffff" stroke-width="1.8" fill="#ffffff" fill-opacity="0.25"/><path d="M12 9v5M12 17h.01" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>`;
+    } else if (iconName === 'water') {
+      glyph = `<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" fill="#ffffff" fill-opacity="0.9"/>`;
+    } else if (iconName === 'boundary') {
+      glyph = `<rect x="5" y="5" width="14" height="14" rx="2" stroke="#ffffff" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="3" fill="#ffffff"/>`;
+    } else {
+      // Padrão 'pin'
+      glyph = `<path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#ffffff" fill-opacity="0.95"/><circle cx="12" cy="9" r="2.5" fill="${color}"/>`;
+    }
+
+    const half = size / 2;
+    return `
+      <div style="
+        width: ${size}px;
+        height: ${size}px;
+        background: ${color};
+        border: 2px solid #ffffff;
+        border-radius: 50%;
+        transform: rotate(${rotation}deg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 12px ${color}99, 0 3px 8px rgba(0,0,0,0.6);
+        cursor: pointer;
+      ">
+        <svg viewBox="0 0 24 24" style="width: ${Math.round(size * 0.65)}px; height: ${Math.round(size * 0.65)}px;" fill="none">
+          ${glyph}
+        </svg>
+      </div>
+    `;
   }
 
   escapeHtml(str) {

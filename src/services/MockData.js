@@ -11,6 +11,29 @@ export const DEFAULT_LAYERS = [
   { id: 'layer-anotacoes', name: 'Anotações & Alertas', color: '#ec4899', visible: true, opacity: 1, locked: false }
 ];
 
+export function normalizeFeature(feat) {
+  if (!feat) return feat;
+  const defaultColor = feat.color || '#00E08A';
+  return {
+    ...feat,
+    style: {
+      fillColor: feat.style?.fillColor || defaultColor,
+      fillOpacity: feat.style?.fillOpacity !== undefined ? feat.style.fillOpacity : (feat.type === 'LineString' ? 1 : 0.35),
+      strokeColor: feat.style?.strokeColor || defaultColor,
+      strokeWidth: feat.style?.strokeWidth !== undefined ? feat.style.strokeWidth : 2.5,
+      strokeDashArray: feat.style?.strokeDashArray || '',
+      markerIcon: feat.style?.markerIcon || 'pin',
+      markerSize: feat.style?.markerSize || 24,
+      markerRotation: feat.style?.markerRotation || 0,
+      showLabel: feat.style?.showLabel || false,
+      labelField: feat.style?.labelField || 'name',
+      ...(feat.style || {})
+    },
+    customAttributes: Array.isArray(feat.customAttributes) ? feat.customAttributes : [],
+    history: Array.isArray(feat.history) ? feat.history.slice(0, 8) : []
+  };
+}
+
 export const DEFAULT_FEATURES = [
   // Marcos Geodésicos
   {
@@ -22,6 +45,17 @@ export const DEFAULT_FEATURES = [
     category: 'Marco IBGE',
     color: '#00E08A',
     description: 'Marco de referência altimétrica e georreferenciamento de precisão centimétrica.',
+    style: {
+      fillColor: '#00E08A',
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWidth: 2,
+      markerIcon: 'boundary',
+      markerSize: 26,
+      markerRotation: 0,
+      showLabel: true,
+      labelField: 'name'
+    },
     properties: {
       altitude: '1.172,45 m',
       metodo: 'GNSS RTK Dupla Frequência',

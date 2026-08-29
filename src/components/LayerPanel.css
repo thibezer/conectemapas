@@ -280,3 +280,103 @@
   background: rgba(255, 255, 255, 0.02);
   border-radius: 0 4px 4px 0;
 }
+
+/* --- Simbologia & Controles Paramétricos --- */
+.cm-symbology-card {
+  background: var(--cm-surface, #141417);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-symbology-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cm-text, #e1e1e6);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 4px;
+}
+
+.cm-param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.cm-param-label {
+  color: var(--cm-text-muted, #888899);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+.cm-color-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-color-picker {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.2));
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.cm-color-picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.cm-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 3px;
+}
+
+.cm-param-slider {
+  flex: 1;
+  height: 4px;
+  accent-color: var(--cm-primary, #00E08A);
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.cm-param-badge {
+  font-family: var(--cm-fonte-mono, monospace);
+  font-size: 10px;
+  color: var(--cm-text, #e1e1e6);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 4px;
+  border-radius: 3px;
+  min-width: 32px;
+  text-align: right;
+}
+
+.cm-native-select {
+  background: var(--cm-surface-elevated, #1a1a1e);
+  color: var(--cm-text, #e1e1e6);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+
+.cm-native-select:focus {
+  border-color: var(--cm-primary, #00E08A);
+}
+

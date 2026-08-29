@@ -10,7 +10,7 @@ import { UIToast, UIBus } from 'ui-components-kit';
 
 // 2. Importação dos Serviços e Componentes
 import { StorageService } from './services/StorageService.js';
-import { DEFAULT_LAYERS, DEFAULT_FEATURES } from './services/MockData.js';
+import { DEFAULT_LAYERS, DEFAULT_FEATURES, normalizeFeature } from './services/MockData.js';
 import { GeoFormats } from './services/GeoFormats.js';
 import { CollaborationHub } from './services/CollaborationHub.js';
 import { MapEngine } from './services/MapEngine.js';
@@ -72,7 +72,7 @@ class ConecteMapasApp {
     if (saved) {
       if (saved.name) this.projectName = saved.name;
       if (Array.isArray(saved.layers)) this.layers = saved.layers;
-      if (Array.isArray(saved.features)) this.features = saved.features;
+      if (Array.isArray(saved.features)) this.features = saved.features.map(normalizeFeature);
       if (Array.isArray(saved.auditLog)) this.auditLog = saved.auditLog;
       if (saved.basemap) this.currentBasemap = saved.basemap;
     } else {
@@ -452,21 +452,35 @@ class ConecteMapasApp {
       defaultCat = 'Raio de Cobertura';
     }
 
-    const targetLayer = this.layers.find(l => l.visible) || this.layers[0] || { id: 'layer-default' };
+    const targetLayer = this.layers.find(l => l.visible) || this.layers[0] || { id: 'layer-default', color: '#00E08A' };
+    const layerColor = targetLayer.color || '#00E08A';
 
-    const newFeature = {
+    const newFeature = normalizeFeature({
       ...rawFeature,
       id: 'feat-' + Date.now(),
       name: defaultName,
       layerId: targetLayer.id,
       category: defaultCat,
+      color: layerColor,
       description: '',
+      style: {
+        fillColor: layerColor,
+        fillOpacity: rawFeature.type === 'LineString' ? 1 : 0.35,
+        strokeColor: layerColor,
+        strokeWidth: 2.5,
+        strokeDashArray: '',
+        markerIcon: 'pin',
+        markerSize: 24,
+        markerRotation: 0,
+        showLabel: false,
+        labelField: 'name'
+      },
       properties: {
         ...(rawFeature.properties || {})
       },
       createdBy: 'Você',
       createdAt: new Date().toISOString()
-    };
+    });
 
     // 1. Salva imediatamente no histórico, estado em memória e banco de dados local
     this.pushHistory(`Criação de "${newFeature.name}"`);
