@@ -272,6 +272,14 @@ class ConecteMapasApp {
       onFeatureUpdate: (updatedFeature) => {
         this.updateFeature(updatedFeature);
       },
+      onStartVertexEdit: (feature) => {
+        this.mapEngine.startVertexEditing(feature, (updated) => {
+          this.updateFeature(updated);
+        });
+      },
+      onStopVertexEdit: () => {
+        this.mapEngine.stopVertexEditing();
+      },
       onSendMessage: (text) => {
         const msg = this.collabHub.sendChatMessage(text);
         this.layerPanel.addChatMessage(msg);
@@ -508,6 +516,18 @@ class ConecteMapasApp {
   updateFeature(updatedFeature) {
     const idx = this.features.findIndex(f => f.id === updatedFeature.id);
     if (idx >= 0) {
+      // Recalcula métricas se houver coordenadas atualizadas
+      if (updatedFeature.type === 'Polygon' && Array.isArray(updatedFeature.coordinates) && this.mapEngine) {
+        const areaM2 = this.mapEngine.calculatePolygonArea(updatedFeature.coordinates);
+        updatedFeature.properties = updatedFeature.properties || {};
+        updatedFeature.properties['Área (ha)'] = (areaM2 / 10000).toFixed(2) + ' ha';
+        updatedFeature.properties['Área (m²)'] = areaM2.toFixed(1) + ' m²';
+      } else if (updatedFeature.type === 'LineString' && Array.isArray(updatedFeature.coordinates) && this.mapEngine) {
+        const lengthM = this.mapEngine.calculatePolylineLength(updatedFeature.coordinates);
+        updatedFeature.properties = updatedFeature.properties || {};
+        updatedFeature.properties['Extensão'] = lengthM > 1000 ? (lengthM / 1000).toFixed(2) + ' km' : lengthM.toFixed(1) + ' m';
+      }
+
       this.pushHistory(`Edição de "${updatedFeature.name}"`);
       this.features[idx] = updatedFeature;
       this.refreshMapAndTable();
@@ -521,7 +541,7 @@ class ConecteMapasApp {
         tipo: 'sucesso',
         titulo: 'Alterações Salvas',
         mensagem: `Feição "${updatedFeature.name}" atualizada.`,
-        duracao: 2500
+        duracao: 2000
       });
     }
   }

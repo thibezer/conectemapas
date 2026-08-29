@@ -5,6 +5,8 @@
    ========================================================================== */
 
 import './LayerPanel.css';
+import { GeoFormats } from '../services/GeoFormats.js';
+import { UIToast } from 'ui-components-kit';
 
 export class LayerPanel {
   /**
@@ -18,6 +20,7 @@ export class LayerPanel {
     this.auditLog = options.auditLog || [];
     this.chatMessages = options.chatMessages || [];
     this.container = null;
+    this.isVertexEditing = false;
 
     this.onLayerToggle = options.onLayerToggle || (() => {});
     this.onBasemapChange = options.onBasemapChange || (() => {});
@@ -25,6 +28,8 @@ export class LayerPanel {
     this.onDeleteFeature = options.onDeleteFeature || (() => {});
     this.onFeatureUpdate = options.onFeatureUpdate || (() => {});
     this.onSendMessage = options.onSendMessage || (() => {});
+    this.onStartVertexEdit = options.onStartVertexEdit || (() => {});
+    this.onStopVertexEdit = options.onStopVertexEdit || (() => {});
   }
 
   /**
@@ -183,6 +188,10 @@ export class LayerPanel {
       labelField: feat.style?.labelField || 'name'
     };
 
+    const coordinates = Array.isArray(feat.coordinates) ? feat.coordinates : [];
+    const hasVertices = (isPoly || isLine) && coordinates.length > 0;
+    const segments = hasVertices ? this.calculateFeatureSegments(coordinates, isPoly) : [];
+
     return `
       <div class="cm-inspector-box">
         <!-- Topo da Feição: Badge + ID -->
@@ -291,6 +300,64 @@ export class LayerPanel {
           </div>
         </div>
 
+        <!-- Seção: Geometria, Vértices e Azimutes -->
+        <div class="cm-symbology-card">
+          <div class="cm-symbology-title" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>📐 Geometria & Vértices (${hasVertices ? coordinates.length : 1} nós)</span>
+            <ui-botao-primario 
+              inline 
+              id="btn-toggle-vertex-edit" 
+              variante="${this.isVertexEditing ? 'primary' : 'secundario'}" 
+              style="height: 22px; font-size: 10px; padding: 0 6px;">
+              ${this.isVertexEditing ? '✔ Concluir Edição' : '✏️ Editar no Mapa'}
+            </ui-botao-primario>
+          </div>
+
+          ${hasVertices ? `
+            <!-- Tabela de Vértices Editáveis -->
+            <details class="cm-vertex-details" open>
+              <summary class="cm-vertex-summary">📍 Coordenadas dos Vértices (${coordinates.length})</summary>
+              <div class="cm-vertex-list-scroll">
+                ${coordinates.map((pt, idx) => `
+                  <div class="cm-vertex-row" data-vertex-idx="${idx}">
+                    <span class="cm-vertex-badge">V${idx + 1}</span>
+                    <input type="number" step="0.00001" class="cm-vertex-input" data-v-lat="${idx}" value="${Number(pt[0]).toFixed(5)}" title="Latitude" />
+                    <input type="number" step="0.00001" class="cm-vertex-input" data-v-lng="${idx}" value="${Number(pt[1]).toFixed(5)}" title="Longitude" />
+                    <button class="cm-vertex-del-btn" data-v-del="${idx}" title="Excluir Vértice">×</button>
+                  </div>
+                `).join('')}
+              </div>
+            </details>
+
+            <!-- Métricas de Segmento (Azimutes e Distâncias) -->
+            <details class="cm-vertex-details">
+              <summary class="cm-vertex-summary">🧭 Azimutes & Distâncias das Arestas</summary>
+              <div class="cm-vertex-list-scroll" style="max-height: 110px;">
+                ${segments.map(seg => `
+                  <div class="cm-segment-row">
+                    <span style="color: var(--cm-primary); font-weight: 600;">V${seg.from} ➔ V${seg.to}</span>
+                    <span>Az: <strong>${seg.azimuth.toFixed(1)}°</strong></span>
+                    <span style="color: var(--cm-text-muted);">${seg.distance > 1000 ? (seg.distance/1000).toFixed(2) + ' km' : seg.distance.toFixed(1) + ' m'}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </details>
+          ` : ''}
+
+          <!-- Botões de Cópia Rápida de Geometria Isolada -->
+          <div style="display: flex; gap: 4px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
+            <ui-botao-primario inline id="btn-copy-wkt" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar Geometria em Formato WKT">
+              📋 WKT
+            </ui-botao-primario>
+            <ui-botao-primario inline id="btn-copy-geojson" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar Geometria em Formato GeoJSON">
+              📋 GeoJSON
+            </ui-botao-primario>
+            <ui-botao-primario inline id="btn-copy-coord-csv" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar Vértices em Formato CSV">
+              📋 CSV Nós
+            </ui-botao-primario>
+          </div>
+        </div>
+
         <!-- Seção: Atributos Técnicos -->
         <div style="background: var(--cm-surface); border: 1px solid var(--cm-border); padding: 8px; border-radius: 6px; font-size: 11px;">
           <div style="font-weight: 600; margin-bottom: 4px; color: var(--cm-text);">Atributos Técnicos</div>
@@ -313,6 +380,53 @@ export class LayerPanel {
         </div>
       </div>
     `;
+  }
+
+  calculateDistance(p1, p2) {
+    if (!p1 || !p2) return 0;
+    const R = 6371000;
+    const dLat = (p2[0] - p1[0]) * Math.PI / 180;
+    const dLon = (p2[1] - p1[1]) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(p1[0] * Math.PI / 180) * Math.cos(p2[0] * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  }
+
+  calculateBearing(p1, p2) {
+    if (!p1 || !p2) return 0;
+    const lat1 = p1[0] * Math.PI / 180;
+    const lat2 = p2[0] * Math.PI / 180;
+    const dLon = (p2[1] - p1[1]) * Math.PI / 180;
+
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    let brng = Math.atan2(y, x) * 180 / Math.PI;
+    return (brng + 360) % 360;
+  }
+
+  calculateFeatureSegments(coordinates, isClosed = false) {
+    if (!Array.isArray(coordinates) || coordinates.length < 2) return [];
+    const segments = [];
+    const count = isClosed ? coordinates.length : coordinates.length - 1;
+
+    for (let i = 0; i < count; i++) {
+      const p1 = coordinates[i];
+      const p2 = coordinates[(i + 1) % coordinates.length];
+      if (!p1 || !p2) continue;
+
+      const dist = this.calculateDistance(p1, p2);
+      const az = this.calculateBearing(p1, p2);
+      segments.push({
+        from: i + 1,
+        to: (i + 1) % coordinates.length === 0 ? 1 : i + 2,
+        distance: dist,
+        azimuth: az
+      });
+    }
+    return segments;
   }
 
   renderCollabTab() {
@@ -553,6 +667,128 @@ export class LayerPanel {
 
         this.selectedFeature = updated;
         this.onFeatureUpdate(updated);
+      });
+    }
+
+    // Botão de Ativar / Desativar Modo de Edição de Vértices no Mapa
+    const btnToggleVertex = document.getElementById('btn-toggle-vertex-edit');
+    if (btnToggleVertex && this.selectedFeature) {
+      btnToggleVertex.addEventListener('click', () => {
+        this.isVertexEditing = !this.isVertexEditing;
+        if (this.isVertexEditing) {
+          this.onStartVertexEdit(this.selectedFeature);
+        } else {
+          this.onStopVertexEdit();
+        }
+        this.updateContent();
+      });
+    }
+
+    // Inputs de Latitude dos Vértices
+    document.querySelectorAll('[data-v-lat]').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(input.getAttribute('data-v-lat'), 10);
+        const newLat = parseFloat(e.target.value);
+        if (!isNaN(newLat) && this.selectedFeature && Array.isArray(this.selectedFeature.coordinates)) {
+          const coords = [...this.selectedFeature.coordinates];
+          if (coords[idx]) {
+            coords[idx] = [newLat, coords[idx][1]];
+            const updated = { ...this.selectedFeature, coordinates: coords };
+            this.selectedFeature = updated;
+            this.onFeatureUpdate(updated);
+            this.updateContent();
+          }
+        }
+      });
+    });
+
+    // Inputs de Longitude dos Vértices
+    document.querySelectorAll('[data-v-lng]').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(input.getAttribute('data-v-lng'), 10);
+        const newLng = parseFloat(e.target.value);
+        if (!isNaN(newLng) && this.selectedFeature && Array.isArray(this.selectedFeature.coordinates)) {
+          const coords = [...this.selectedFeature.coordinates];
+          if (coords[idx]) {
+            coords[idx] = [coords[idx][0], newLng];
+            const updated = { ...this.selectedFeature, coordinates: coords };
+            this.selectedFeature = updated;
+            this.onFeatureUpdate(updated);
+            this.updateContent();
+          }
+        }
+      });
+    });
+
+    // Exclusão de Vértice Individual
+    document.querySelectorAll('[data-v-del]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-v-del'), 10);
+        if (this.selectedFeature && Array.isArray(this.selectedFeature.coordinates)) {
+          const minNodes = this.selectedFeature.type === 'Polygon' ? 3 : 2;
+          if (this.selectedFeature.coordinates.length <= minNodes) {
+            UIToast.notificar({
+              tipo: 'alerta',
+              titulo: 'Limite Mínimo',
+              mensagem: `A geometria não pode ter menos de ${minNodes} vértices.`,
+              duracao: 2500
+            });
+            return;
+          }
+          const coords = [...this.selectedFeature.coordinates];
+          coords.splice(idx, 1);
+          const updated = { ...this.selectedFeature, coordinates: coords };
+          this.selectedFeature = updated;
+          this.onFeatureUpdate(updated);
+          this.updateContent();
+        }
+      });
+    });
+
+    // Botões de Cópia Rápida
+    const btnCopyWKT = document.getElementById('btn-copy-wkt');
+    if (btnCopyWKT && this.selectedFeature) {
+      btnCopyWKT.addEventListener('click', () => {
+        const wkt = GeoFormats.toWKT(this.selectedFeature);
+        navigator.clipboard.writeText(wkt).then(() => {
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'WKT Copiado',
+            mensagem: 'Geometria no padrão Well-Known Text copiada!',
+            duracao: 2500
+          });
+        });
+      });
+    }
+
+    const btnCopyGeoJSON = document.getElementById('btn-copy-geojson');
+    if (btnCopyGeoJSON && this.selectedFeature) {
+      btnCopyGeoJSON.addEventListener('click', () => {
+        const geo = GeoFormats.toGeoJSON([this.selectedFeature]);
+        navigator.clipboard.writeText(geo).then(() => {
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'GeoJSON Copiado',
+            mensagem: 'Feature GeoJSON copiada com sucesso!',
+            duracao: 2500
+          });
+        });
+      });
+    }
+
+    const btnCopyCSV = document.getElementById('btn-copy-coord-csv');
+    if (btnCopyCSV && this.selectedFeature) {
+      btnCopyCSV.addEventListener('click', () => {
+        const csv = GeoFormats.toCoordinateCSV(this.selectedFeature);
+        navigator.clipboard.writeText(csv).then(() => {
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'CSV de Vértices Copiado',
+            mensagem: 'Tabela de coordenadas dos nós copiada!',
+            duracao: 2500
+          });
+        });
       });
     }
 
