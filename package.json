@@ -1,0 +1,30 @@
+{
+  "name": "conectemapas",
+  "version": "1.0.0",
+  "description": "ConecteMapas - Plataforma Colaborativa de Mapeamento com Componentes-UI",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "gis",
+    "mapas",
+    "colaborativo",
+    "leaflet",
+    "web-components",
+    "componentes-ui"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "lucide": "^1.34.0",
+    "ui-components-kit": "github:thibezer/Componentes-UI"
+  },
+  "devDependencies": {
+    "vite": "^8.2.2"
+  }
+}

@@ -1,0 +1,67 @@
+/* ==========================================================================
+   ConecteMapas - ShareModal Styles (SRP Encapsulated)
+   Modal de compartilhamento de sala e permissões com proporções compactas
+   ========================================================================== */
+
+.cm-share-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cm-share-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 224, 138, 0.08);
+  border: 1px solid rgba(0, 224, 138, 0.25);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  color: var(--cm-text, #e1e1e6);
+  line-height: 1.35;
+}
+
+.cm-share-banner-icon {
+  color: var(--cm-primary, #00E08A);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.cm-share-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cm-share-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-share-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-share-input-row ui-campo-texto {
+  flex: 1;
+}
+
+.cm-share-copy-btn {
+  height: 34px !important;
+  font-size: 11.5px !important;
+  padding: 0 12px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0;
+}
+
+.cm-share-divider {
+  height: 1px;
+  background: var(--cm-border, rgba(255, 255, 255, 0.08));
+  margin: 2px 0;
+}

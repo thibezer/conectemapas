@@ -1,0 +1,88 @@
+/* ==========================================================================
+   ConecteMapas - DrawingToolbar Styles (SRP Encapsulated)
+   Barra lateral flutuante compacta de ferramentas vetoriais e medição
+   ========================================================================== */
+
+.cm-drawing-toolbar {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--cm-glass-bg, rgba(17, 17, 20, 0.94));
+  backdrop-filter: var(--cm-glass-blur, blur(14px));
+  -webkit-backdrop-filter: var(--cm-glass-blur, blur(14px));
+  padding: 4px;
+  border-radius: var(--ui-raio-borda, 8px);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  box-shadow: var(--cm-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.5));
+  transition: transform 0.2s ease;
+}
+
+.cm-tool-divider {
+  height: 1px;
+  background: var(--cm-border, rgba(255, 255, 255, 0.08));
+  margin: 3px 2px;
+}
+
+.cm-tool-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--cm-text-muted, #888899);
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  outline: none;
+}
+
+.cm-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--cm-text, #e1e1e6);
+  border-color: rgba(255, 255, 255, 0.12);
+  transform: scale(1.04);
+}
+
+.cm-tool-btn.active {
+  background: var(--cm-primary, #00E08A);
+  color: #000000;
+  border-color: var(--cm-primary, #00E08A);
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(0, 224, 138, 0.35);
+}
+
+.cm-tool-btn.active svg {
+  stroke: #000000;
+}
+
+.cm-tool-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  stroke: currentColor;
+  transition: stroke 0.15s ease;
+}
+
+/* Indicador de atalho no canto do botão */
+.cm-tool-shortcut {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 8px;
+  font-family: var(--cm-fonte-mono, monospace);
+  color: rgba(255, 255, 255, 0.35);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.cm-tool-btn.active .cm-tool-shortcut {
+  color: rgba(0, 0, 0, 0.5);
+  font-weight: 700;
+}

@@ -1,0 +1,153 @@
+/* ==========================================================================
+   ConecteMapas - HeaderBar Component Styles (SRP Encapsulated)
+   Barra superior compacta de alta densidade (40px) para ambiente GIS
+   ========================================================================== */
+
+.cm-header {
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  background: var(--cm-glass-bg, rgba(17, 17, 20, 0.95));
+  backdrop-filter: var(--cm-glass-blur, blur(12px));
+  -webkit-backdrop-filter: var(--cm-glass-blur, blur(12px));
+  border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  z-index: 1000;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* --- Lado Esquerdo: Logo, Título e Status --- */
+.cm-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cm-logo {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--cm-text, #e1e1e6);
+  letter-spacing: -0.2px;
+  text-decoration: none;
+  padding-right: 6px;
+  border-right: 1px solid var(--cm-border, rgba(255, 255, 255, 0.12));
+}
+
+.cm-logo svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.cm-logo span {
+  background: linear-gradient(135deg, #ffffff 40%, var(--cm-primary, #00E08A) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+}
+
+.cm-project-title-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 8px;
+  height: 28px;
+  border-radius: var(--ui-raio-borda, 6px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.15s ease;
+}
+
+.cm-project-title-wrapper:hover,
+.cm-project-title-wrapper:focus-within {
+  border-color: var(--cm-border, rgba(255, 255, 255, 0.25));
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.cm-project-title-input {
+  background: transparent;
+  border: none;
+  color: var(--cm-text, #e1e1e6);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  outline: none;
+  width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: width 0.2s ease;
+}
+
+.cm-project-title-input:focus {
+  width: 260px;
+}
+
+.cm-sync-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* --- Centro: Lista de Colaboradores (Avatares) --- */
+.cm-header-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-collaborators-list {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cm-collaborators-list ui-avatar {
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  transition: transform 0.15s ease;
+}
+
+.cm-collaborators-list ui-avatar:hover {
+  transform: translateY(-2px) scale(1.1);
+  z-index: 10;
+}
+
+/* --- Lado Direito: Botões de Ação --- */
+.cm-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Estilização dos Botões da Barra Superior para altura compacta e sem quebras */
+.cm-header-btn {
+  height: 28px !important;
+  font-size: 12px !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer;
+}
+
+.cm-header-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.cm-header-right ui-botao-primario {
+  height: 28px;
+  display: inline-block;
+}

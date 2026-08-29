@@ -1,0 +1,282 @@
+/* ==========================================================================
+   ConecteMapas - LayerPanel Styles (SRP Encapsulated)
+   Painel lateral compacto de alta densidade para gestão de camadas e inspeção
+   ========================================================================== */
+
+.cm-sidebar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  bottom: 46px;
+  width: 310px;
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  background: var(--cm-glass-bg, rgba(17, 17, 20, 0.94));
+  backdrop-filter: var(--cm-glass-blur, blur(14px));
+  -webkit-backdrop-filter: var(--cm-glass-blur, blur(14px));
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--ui-raio-borda, 8px);
+  box-shadow: var(--cm-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.5));
+  overflow: hidden;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+.cm-sidebar.collapsed {
+  transform: translateX(calc(100% + 20px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --- Cabeçalho de Abas Superior --- */
+.cm-sidebar-header {
+  height: 34px;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px;
+  border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.cm-sidebar-tabs {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  padding: 2px;
+}
+
+.cm-sidebar-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--cm-text-muted, #888899);
+  height: 26px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.cm-sidebar-tab-btn:hover {
+  color: var(--cm-text, #e1e1e6);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cm-sidebar-tab-btn.active {
+  color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.12);
+  font-weight: 600;
+}
+
+/* --- Corpo do Painel --- */
+.cm-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --- Seções e Títulos --- */
+.cm-sidebar-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.cm-sidebar-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-add-layer-btn {
+  height: 22px !important;
+  font-size: 10.5px !important;
+  padding: 0 8px !important;
+  border-radius: 4px !important;
+  white-space: nowrap !important;
+}
+
+/* --- Lista de Camadas (Compact Cards) --- */
+.cm-layers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cm-layer-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  height: 36px;
+  background: var(--cm-surface, #141417);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.cm-layer-item:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--cm-surface-elevated, #1a1a1e);
+}
+
+.cm-layer-item-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.cm-layer-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.cm-layer-info {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cm-layer-name {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--cm-text, #e1e1e6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-layer-count {
+  font-size: 10px;
+  color: var(--cm-text-muted, #888899);
+  font-family: var(--cm-fonte-mono, monospace);
+  line-height: 1;
+}
+
+.cm-layer-item-right {
+  display: flex;
+  align-items: center;
+  transform: scale(0.85);
+  transform-origin: right center;
+  flex-shrink: 0;
+}
+
+/* --- Grid de Mapas Base (Compact Cards) --- */
+.cm-basemap-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.cm-basemap-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 6px;
+  background: var(--cm-surface, #141417);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.cm-basemap-card:hover {
+  border-color: var(--cm-primary, #00E08A);
+  background: var(--cm-surface-elevated, #1a1a1e);
+}
+
+.cm-basemap-card.active {
+  border-color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.1);
+  color: var(--cm-primary, #00E08A);
+  font-weight: 600;
+}
+
+.cm-basemap-card img {
+  width: 100%;
+  height: 38px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.cm-basemap-card span {
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* --- Inspetor de Propriedades --- */
+.cm-inspector-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- Chat & Auditoria --- */
+.cm-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+}
+
+.cm-chat-bubble {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--cm-surface, #141417);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  font-size: 11.5px;
+}
+
+.cm-chat-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-chat-user {
+  font-weight: 600;
+  color: var(--cm-primary, #00E08A);
+}
+
+.cm-audit-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10.5px;
+  font-family: var(--cm-fonte-mono, monospace);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.cm-audit-item {
+  display: flex;
+  gap: 5px;
+  padding: 3px 6px;
+  border-left: 2px solid var(--cm-primary, #00E08A);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0 4px 4px 0;
+}

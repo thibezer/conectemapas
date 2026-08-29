@@ -1,0 +1,370 @@
+/* ==========================================================================
+   ConecteMapas - LayerPanel Component (SRP Module)
+   Responsabilidade Única: Painel lateral para Gestão de Camadas Vetoriais,
+   seleção de Mapa Base (TileLayer), Inspetor de Feições e Chat/Auditoria.
+   ========================================================================== */
+
+import './LayerPanel.css';
+
+export class LayerPanel {
+  /**
+   * @param {Object} options
+   */
+  constructor(options = {}) {
+    this.layers = options.layers || [];
+    this.activeTab = options.initialTab || 'layers'; // 'layers' | 'inspector' | 'collab'
+    this.currentBasemap = options.currentBasemap || 'satelite';
+    this.selectedFeature = options.selectedFeature || null;
+    this.auditLog = options.auditLog || [];
+    this.chatMessages = options.chatMessages || [];
+    this.container = null;
+
+    this.onLayerToggle = options.onLayerToggle || (() => {});
+    this.onBasemapChange = options.onBasemapChange || (() => {});
+    this.onAddLayer = options.onAddLayer || (() => {});
+    this.onDeleteFeature = options.onDeleteFeature || (() => {});
+    this.onFeatureUpdate = options.onFeatureUpdate || (() => {});
+    this.onSendMessage = options.onSendMessage || (() => {});
+  }
+
+  /**
+   * Renderiza a barra lateral
+   * @param {HTMLElement} container
+   */
+  render(container) {
+    this.container = container;
+    this.container.innerHTML = `
+      <aside class="cm-sidebar" id="cm-sidebar-panel" aria-label="Painel de Camadas e Ferramentas">
+        <!-- Cabeçalho de Abas Superior Compacto -->
+        <div class="cm-sidebar-header">
+          <div class="cm-sidebar-tabs">
+            <button class="cm-sidebar-tab-btn ${this.activeTab === 'layers' ? 'active' : ''}" data-tab="layers">
+              🗂️ Camadas
+            </button>
+            <button class="cm-sidebar-tab-btn ${this.activeTab === 'inspector' ? 'active' : ''}" data-tab="inspector">
+              🔍 Inspeção
+            </button>
+            <button class="cm-sidebar-tab-btn ${this.activeTab === 'collab' ? 'active' : ''}" data-tab="collab">
+              💬 Equipe & Log
+            </button>
+          </div>
+        </div>
+
+        <!-- Conteúdo da Aba Ativa -->
+        <div class="cm-sidebar-body" id="cm-sidebar-tab-content">
+          ${this.renderTabContent()}
+        </div>
+      </aside>
+    `;
+
+    this.bindEvents();
+  }
+
+  renderTabContent() {
+    if (this.activeTab === 'layers') {
+      return this.renderLayersTab();
+    } else if (this.activeTab === 'inspector') {
+      return this.renderInspectorTab();
+    } else if (this.activeTab === 'collab') {
+      return this.renderCollabTab();
+    }
+    return '';
+  }
+
+  renderLayersTab() {
+    return `
+      <!-- Seção: Camadas Vetoriais -->
+      <div class="cm-sidebar-section-header">
+        <span class="cm-sidebar-section-title">Camadas Vetoriais</span>
+        <ui-botao-primario inline id="btn-add-layer" variante="secundario" class="cm-add-layer-btn" title="Adicionar nova camada vetorial">
+          + Nova Camada
+        </ui-botao-primario>
+      </div>
+
+      <div class="cm-layers-list">
+        ${this.layers.map(layer => {
+          const safeName = this.escapeHtml(layer.name || 'Camada');
+          const safeId = this.escapeHtml(layer.id || '');
+          const safeColor = this.escapeHtml(layer.color || '#00E08A');
+          return `
+          <div class="cm-layer-item" data-layer-id="${safeId}">
+            <div class="cm-layer-item-left">
+              <div class="cm-layer-color-dot" style="background: ${safeColor}; color: ${safeColor};"></div>
+              <div class="cm-layer-info">
+                <div class="cm-layer-name" title="${safeName}">${safeName}</div>
+                <div class="cm-layer-count">${Number(layer.featureCount) || 0} feições</div>
+              </div>
+            </div>
+            <div class="cm-layer-item-right">
+              <ui-switch ${layer.visible ? 'checked' : ''} data-switch-layer="${safeId}" title="Alternar visibilidade da camada"></ui-switch>
+            </div>
+          </div>
+        `;
+        }).join('')}
+      </div>
+
+      <!-- Seção: Mapa Base -->
+      <div class="cm-sidebar-section-header" style="margin-top: 6px;">
+        <span class="cm-sidebar-section-title">Mapa Base</span>
+      </div>
+
+      <div class="cm-basemap-grid">
+        <div class="cm-basemap-card ${this.currentBasemap === 'google_satelite' ? 'active' : ''}" data-basemap="google_satelite" title="Google Maps Satélite / Híbrido">
+          <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=160&auto=format&fit=crop&q=80" alt="Google Satélite" />
+          <span>🛰️ Google Satélite</span>
+        </div>
+
+        <div class="cm-basemap-card ${this.currentBasemap === 'satelite' ? 'active' : ''}" data-basemap="satelite" title="Satélite de Alta Resolução Esri">
+          <img src="https://images.unsplash.com/photo-1508873696983-2df5293cb32b?w=160&auto=format&fit=crop&q=80" alt="Esri Satélite" />
+          <span>🛰️ Esri Satélite</span>
+        </div>
+
+        <div class="cm-basemap-card ${this.currentBasemap === 'osm' ? 'active' : ''}" data-basemap="osm" title="Mapa Urbano OpenStreetMap">
+          <img src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?w=160&auto=format&fit=crop&q=80" alt="OSM" />
+          <span>🗺️ OpenStreet</span>
+        </div>
+
+        <div class="cm-basemap-card ${this.currentBasemap === 'topografia' ? 'active' : ''}" data-basemap="topografia" title="Mapa de Curvas de Nível e Relevo">
+          <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&auto=format&fit=crop&q=80" alt="Topografia" />
+          <span>⛰️ Topografia</span>
+        </div>
+
+        <div class="cm-basemap-card ${this.currentBasemap === 'dark' ? 'active' : ''}" data-basemap="dark" title="Mapa Escuro Esri Dark Canvas">
+          <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=160&auto=format&fit=crop&q=80" alt="Dark" />
+          <span>🌑 Dark Canvas</span>
+        </div>
+      </div>
+    `;
+  }
+
+  escapeHtml(str) {
+    if (typeof str !== 'string') return str == null ? '' : String(str);
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  renderInspectorTab() {
+    if (!this.selectedFeature) {
+      return `
+        <div style="text-align: center; padding: 24px 10px; color: var(--cm-text-muted);">
+          <div style="font-size: 24px; margin-bottom: 8px;">📍</div>
+          <div style="font-weight: 500; font-size: 12px; color: var(--cm-text);">Nenhum elemento selecionado</div>
+          <div style="font-size: 11px; margin-top: 4px;">Clique em uma feição no mapa ou na tabela para editar propriedades.</div>
+        </div>
+      `;
+    }
+
+    const feat = this.selectedFeature;
+    const safeName = this.escapeHtml(feat.name || '');
+    const safeDesc = this.escapeHtml(feat.description || '');
+    const safeCategory = this.escapeHtml(feat.category || feat.type || 'Geral');
+    const safeId = this.escapeHtml(feat.id || '');
+
+    return `
+      <div class="cm-inspector-box">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <ui-badge variante="primario">${safeCategory}</ui-badge>
+          <span style="font-size: 10px; color: var(--cm-text-muted); font-family: var(--cm-fonte-mono);">${safeId}</span>
+        </div>
+
+        <ui-campo-texto id="inspector-feat-name" label="Nome do Elemento" value="${safeName}" obrigatorio></ui-campo-texto>
+
+        <ui-campo-texto id="inspector-feat-desc" label="Descrição / Observações" value="${safeDesc}"></ui-campo-texto>
+
+        <div style="background: var(--cm-surface); border: 1px solid var(--cm-border); padding: 8px; border-radius: 6px; font-size: 11px;">
+          <div style="font-weight: 600; margin-bottom: 4px; color: var(--cm-text);">Atributos Técnicos</div>
+          ${Object.entries(feat.properties || {}).map(([k, v]) => `
+            <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,0.05); font-family: var(--cm-fonte-mono); font-size: 10.5px;">
+              <span style="color: var(--cm-text-muted);">${this.escapeHtml(k)}:</span>
+              <span style="color: var(--cm-text);">${this.escapeHtml(v)}</span>
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="display: flex; gap: 6px; margin-top: 4px;">
+          <ui-botao-primario inline id="btn-save-inspector" variante="primary" style="height: 30px; flex: 1;">
+            Salvar
+          </ui-botao-primario>
+          <ui-botao-primario inline id="btn-delete-inspector" variante="destrutivo" title="Excluir Elemento" style="height: 30px; padding: 0 10px;">
+            🗑️
+          </ui-botao-primario>
+        </div>
+      </div>
+    `;
+  }
+
+  renderCollabTab() {
+    return `
+      <div style="display: flex; flex-direction: column; gap: 10px; height: 100%;">
+        <div>
+          <span class="cm-sidebar-section-title" style="display: block; margin-bottom: 4px;">Trilha de Auditoria</span>
+          <div class="cm-audit-log-list">
+            ${this.auditLog.length ? this.auditLog.map(entry => `
+              <div class="cm-audit-item">
+                <span style="color: var(--cm-primary); font-weight: 600;">${this.escapeHtml(entry.user)}:</span>
+                <span style="color: var(--cm-text);">${this.escapeHtml(entry.action)}</span>
+                <span style="color: var(--cm-text-muted); margin-left: auto;">${this.escapeHtml(entry.timestamp)}</span>
+              </div>
+            `).join('') : '<div style="color: var(--cm-text-muted); font-size: 10.5px;">Nenhuma alteração registrada.</div>'}
+          </div>
+        </div>
+
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          <span class="cm-sidebar-section-title" style="display: block; margin-bottom: 4px;">Chat da Equipe</span>
+          
+          <div class="cm-chat-messages" id="cm-chat-messages-box">
+            ${this.chatMessages.length ? this.chatMessages.map(msg => {
+              const safeUser = this.escapeHtml(msg.user?.name || 'Operador');
+              const safeColor = this.escapeHtml(msg.user?.color || 'var(--cm-primary)');
+              const safeText = this.escapeHtml(msg.text || '');
+              const safeTime = this.escapeHtml(msg.timestamp || '');
+              return `
+              <div class="cm-chat-bubble">
+                <div class="cm-chat-meta">
+                  <span class="cm-chat-user" style="color: ${safeColor}">${safeUser}</span>
+                  <span>${safeTime}</span>
+                </div>
+                <div style="color: var(--cm-text); margin-top: 2px;">${safeText}</div>
+              </div>
+            `;
+            }).join('') : '<div style="color: var(--cm-text-muted); font-size: 10.5px;">Nenhuma mensagem na sala.</div>'}
+          </div>
+
+          <form id="cm-chat-form" style="display: flex; gap: 6px; margin-top: 6px; align-items: center;">
+            <ui-campo-texto id="cm-chat-input" placeholder="Mensagem da equipe..." style="flex: 1; --ui-campo-altura: 30px; --ui-altura-minima: 30px;"></ui-campo-texto>
+            <ui-botao-primario inline type="submit" variante="primary" style="height: 30px; padding: 0 12px; font-size: 11.5px;">
+              Enviar
+            </ui-botao-primario>
+          </form>
+        </div>
+      </div>
+    `;
+  }
+
+  setSelectedFeature(feat) {
+    this.selectedFeature = feat;
+    if (feat) {
+      this.activeTab = 'inspector';
+    }
+    this.updateContent();
+  }
+
+  updateLayers(layers) {
+    this.layers = layers;
+    if (this.activeTab === 'layers') this.updateContent();
+  }
+
+  updateAuditLog(log) {
+    this.auditLog = log;
+    if (this.activeTab === 'collab') this.updateContent();
+  }
+
+  addChatMessage(msg) {
+    this.chatMessages.push(msg);
+    if (this.activeTab === 'collab') {
+      this.updateContent();
+      const box = document.getElementById('cm-chat-messages-box');
+      if (box) box.scrollTop = box.scrollHeight;
+    }
+  }
+
+  updateContent() {
+    const body = document.getElementById('cm-sidebar-tab-content');
+    if (body) {
+      body.innerHTML = this.renderTabContent();
+      this.bindTabEvents();
+    }
+
+    document.querySelectorAll('.cm-sidebar-tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-tab') === this.activeTab);
+    });
+  }
+
+  bindEvents() {
+    if (!this.container) return;
+
+    this.container.querySelectorAll('.cm-sidebar-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.activeTab = btn.getAttribute('data-tab');
+        this.updateContent();
+      });
+    });
+
+    this.bindTabEvents();
+  }
+
+  bindTabEvents() {
+    // Switches de camada
+    document.querySelectorAll('[data-switch-layer]').forEach(sw => {
+      sw.addEventListener('ui-change', (e) => {
+        const layerId = sw.getAttribute('data-switch-layer');
+        this.onLayerToggle(layerId, e.detail ? e.detail.checked : sw.checked);
+      });
+      sw.addEventListener('change', () => {
+        const layerId = sw.getAttribute('data-switch-layer');
+        this.onLayerToggle(layerId, sw.checked);
+      });
+    });
+
+    // Botão nova camada
+    const btnAddLayer = document.getElementById('btn-add-layer');
+    if (btnAddLayer) {
+      btnAddLayer.addEventListener('click', () => this.onAddLayer());
+    }
+
+    // Mapas base
+    document.querySelectorAll('[data-basemap]').forEach(card => {
+      card.addEventListener('click', () => {
+        const base = card.getAttribute('data-basemap');
+        this.currentBasemap = base;
+        this.onBasemapChange(base);
+        this.updateContent();
+      });
+    });
+
+    // Inspetor Salvar/Excluir
+    const btnSave = document.getElementById('btn-save-inspector');
+    if (btnSave && this.selectedFeature) {
+      btnSave.addEventListener('click', () => {
+        const nameInput = document.getElementById('inspector-feat-name');
+        const descInput = document.getElementById('inspector-feat-desc');
+        const newName = nameInput ? nameInput.value.trim() : '';
+        const newDesc = descInput ? descInput.value.trim() : '';
+
+        const updated = {
+          ...this.selectedFeature,
+          name: newName || this.selectedFeature.name,
+          description: newDesc
+        };
+        this.selectedFeature = updated;
+        this.onFeatureUpdate(updated);
+      });
+    }
+
+    const btnDelete = document.getElementById('btn-delete-inspector');
+    if (btnDelete && this.selectedFeature) {
+      btnDelete.addEventListener('click', () => {
+        this.onDeleteFeature(this.selectedFeature.id);
+        this.setSelectedFeature(null);
+      });
+    }
+
+    // Chat Form
+    const chatForm = document.getElementById('cm-chat-form');
+    if (chatForm) {
+      chatForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('cm-chat-input');
+        const text = input?.value?.trim();
+        if (text) {
+          this.onSendMessage(text);
+          if (input) input.value = '';
+        }
+      });
+    }
+  }
+}

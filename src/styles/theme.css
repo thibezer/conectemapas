@@ -1,0 +1,97 @@
+/* ==========================================================================
+   ConecteMapas - Design System Tokens & Theme Extensions
+   Baseado no ecossistema thibezer/Componentes-UI
+   ========================================================================== */
+
+@import "ui-components-kit/style.css";
+@import "leaflet/dist/leaflet.css";
+
+/* Fontes Modernas de Alta Legibilidade */
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  /* Alinhamento estrito com os tokens Componentes-UI */
+  --cm-fonte: var(--ui-fonte-base, 'Inter', system-ui, sans-serif);
+  --cm-fonte-mono: var(--ui-fonte-codigo, 'Fira Code', monospace);
+  
+  /* Cores Globais */
+  --cm-bg: var(--ui-cor-fundo, #0b0b0d);
+  --cm-surface: var(--ui-cor-superficie, #141417);
+  --cm-surface-elevated: var(--ui-cor-fundo-elevado, #1a1a1e);
+  --cm-card: var(--ui-cor-fundo-card, #18181c);
+  --cm-border: var(--ui-cor-borda, rgba(255, 255, 255, 0.12));
+  --cm-border-hover: rgba(255, 255, 255, 0.22);
+  --cm-primary: var(--ui-cor-primaria, #00E08A);
+  --cm-primary-hover: #00c97b;
+  --cm-primary-glow: rgba(0, 224, 138, 0.25);
+  --cm-accent: #00b4d8;
+  --cm-text: var(--ui-cor-texto, #e1e1e6);
+  --cm-text-muted: var(--ui-cor-texto-secundario, #888899);
+  --cm-text-dim: #626270;
+  --cm-danger: var(--ui-cor-texto-erro, #ff5555);
+  --cm-warning: var(--ui-cor-texto-alerta, #ffb86c);
+  --cm-success: var(--ui-cor-texto-sucesso, #00E08A);
+  
+  /* Glassmorphism & Sombras */
+  --cm-glass-bg: rgba(20, 20, 23, 0.85);
+  --cm-glass-blur: blur(12px);
+  --cm-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --cm-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --cm-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
+  /* Ergonomia e Altura de Campos (Inputs, Dropdowns e Formulários) */
+  --ui-campo-altura: 34px;
+  --ui-altura-campo: 34px;
+  --ui-altura-minima: 34px;
+  --ui-touch-target-min: 36px;
+  --ui-raio-borda: 6px;
+  
+  /* Transições suaves */
+  --cm-trans-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --cm-trans-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Customização e Normalização dos Campos de Texto e Seleção */
+ui-campo-texto, 
+ui-lista-flutuante, 
+ui-select {
+  --ui-campo-altura: 34px;
+  --ui-altura-campo: 34px;
+  --ui-altura-minima: 34px;
+  display: block;
+}
+
+/* Reset Global */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--cm-bg);
+  color: var(--cm-text);
+  font-family: var(--cm-fonte);
+  font-size: var(--ui-tamanho-corpo, 14px);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Scrollbars personalizadas Dark Mode */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--cm-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cm-primary);
+}

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ConecteMapas - Plataforma Colaborativa de Mapeamento GIS</title>
+    <meta name="description" content="Criação, desenho vetorial, medições precisas e colaboração em tempo real para mapas e levantamentos topográficos." />
+    
+    <!-- Design Tokens e Estilos -->
+    <link rel="stylesheet" href="./src/styles/theme.css" />
+    <link rel="stylesheet" href="./src/styles/app.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Barra Superior (Header) -->
+      <div id="header-mount"></div>
+
+      <!-- Área de Trabalho Principal -->
+      <main class="cm-workspace">
+        <!-- Barra de Ferramentas Vetoriais Flutuante (Esquerda) -->
+        <div id="drawing-toolbar-mount"></div>
+
+        <!-- Visualizador do Mapa (Leaflet) -->
+        <div id="map-viewport"></div>
+
+        <!-- HUD de Coordenadas e Escala -->
+        <div class="cm-map-hud" id="cm-map-hud">
+          <span id="hud-latlng">Lat: -15.79420 | Lng: -47.88220</span>
+          <span>|</span>
+          <span id="hud-zoom">Zoom: 14</span>
+          <span>|</span>
+          <span id="hud-features-count">6 Feições</span>
+        </div>
+
+        <!-- Painel Lateral de Camadas / Inspeção / Chat (Direita) -->
+        <div id="layer-panel-mount"></div>
+
+        <!-- Tabela de Atributos Retrátil (Inferior) -->
+        <div id="attribute-table-mount"></div>
+      </main>
+
+      <!-- Containers de Modais -->
+      <div id="modals-mount">
+        <div id="share-modal-mount"></div>
+        <div id="import-export-modal-mount"></div>
+        <div id="templates-modal-mount"></div>
+        <div id="new-feature-modal-mount"></div>
+      </div>
+    </div>
+
+    <!-- Script Principal -->
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
