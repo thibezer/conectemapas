@@ -210,17 +210,19 @@ export class LayerPanel {
     };
 
     const coordinates = Array.isArray(feat.coordinates) ? feat.coordinates : [];
-    const hasVertices = (isPoly || isLine) && coordinates.length > 0;
-    const segments = hasVertices ? this.calculateFeatureSegments(coordinates, isPoly) : [];
+    const isMultiGeom = Array.isArray(coordinates[0]) && Array.isArray(coordinates[0][0]);
+    const flattenedPoints = isMultiGeom ? coordinates.flat() : coordinates;
+    const hasVertices = (isPoly || isLine) && flattenedPoints.length > 0;
+    const segments = hasVertices && !isMultiGeom ? this.calculateFeatureSegments(coordinates, isPoly) : [];
 
     // Conversões de Área e Extensão
     let areaM2 = 0;
     let lengthM = 0;
-    if (isPoly && coordinates.length >= 3) {
+    if (isPoly && (coordinates.length >= 3 || (isMultiGeom && flattenedPoints.length >= 3))) {
       areaM2 = this.calculatePolygonArea(coordinates);
     } else if (isCircle) {
       areaM2 = Math.PI * (feat.radius || 0) * (feat.radius || 0);
-    } else if (isLine && coordinates.length >= 2) {
+    } else if (isLine && (coordinates.length >= 2 || (isMultiGeom && flattenedPoints.length >= 2))) {
       lengthM = this.calculatePolylineLength(coordinates);
     }
 
@@ -231,10 +233,10 @@ export class LayerPanel {
     let refCoord = [0, 0];
     if (isPoint || isCircle) {
       refCoord = coordinates;
-    } else if (coordinates.length > 0) {
+    } else if (flattenedPoints.length > 0) {
       refCoord = [
-        coordinates.reduce((acc, c) => acc + c[0], 0) / coordinates.length,
-        coordinates.reduce((acc, c) => acc + c[1], 0) / coordinates.length
+        flattenedPoints.reduce((acc, c) => acc + c[0], 0) / flattenedPoints.length,
+        flattenedPoints.reduce((acc, c) => acc + c[1], 0) / flattenedPoints.length
       ];
     }
     const dmsLat = SpatialAlgorithms.ddToDms(refCoord[0], true);
@@ -626,6 +628,14 @@ export class LayerPanel {
   }
 
   calculatePolylineLength(coordinates) {
+    if (!Array.isArray(coordinates) || coordinates.length === 0) return 0;
+    if (Array.isArray(coordinates[0]) && Array.isArray(coordinates[0][0])) {
+      return coordinates.reduce((sum, line) => sum + this.calculateSinglePolylineLength(line), 0);
+    }
+    return this.calculateSinglePolylineLength(coordinates);
+  }
+
+  calculateSinglePolylineLength(coordinates) {
     let total = 0;
     for (let i = 0; i < coordinates.length - 1; i++) {
       total += this.calculateDistance(coordinates[i], coordinates[i + 1]);
@@ -634,7 +644,15 @@ export class LayerPanel {
   }
 
   calculatePolygonArea(coords) {
-    if (coords.length < 3) return 0;
+    if (!Array.isArray(coords) || coords.length === 0) return 0;
+    if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+      return coords.reduce((sum, ring) => sum + this.calculateSinglePolygonArea(ring), 0);
+    }
+    return this.calculateSinglePolygonArea(coords);
+  }
+
+  calculateSinglePolygonArea(coords) {
+    if (!Array.isArray(coords) || coords.length < 3) return 0;
     const R = 6378137;
     let total = 0;
     const len = coords.length;

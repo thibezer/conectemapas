@@ -466,14 +466,21 @@ export class ShapefileParser {
           allPoints.push([y, x]);
         }
 
-        // Se houver múltiplas partes, pega a principal ou primeira
-        const mainLine = parts.length > 1 
-          ? allPoints.slice(parts[0], parts[1]) 
-          : allPoints;
+        // Extrai todas as linhas/segmentos da PolyLine
+        const lines = [];
+        for (let p = 0; p < numParts; p++) {
+          const start = parts[p];
+          const end = (p + 1 < numParts) ? parts[p + 1] : allPoints.length;
+          const line = allPoints.slice(start, end);
+          if (line.length >= 2) {
+            lines.push(line);
+          }
+        }
 
         geometries.push({
           type: 'PolyLine',
-          coordinates: mainLine
+          isMulti: lines.length > 1,
+          coordinates: lines.length > 1 ? lines : (lines[0] || allPoints)
         });
       }
       // Polygon (5), PolygonZ (15), PolygonM (25)
@@ -494,14 +501,21 @@ export class ShapefileParser {
           allPoints.push([y, x]);
         }
 
-        // Anel externo principal
-        const exteriorRing = parts.length > 1
-          ? allPoints.slice(parts[0], parts[1])
-          : allPoints;
+        // Extrai TODOS os anéis (Continente + Todas as Ilhas e Furos)
+        const rings = [];
+        for (let p = 0; p < numParts; p++) {
+          const start = parts[p];
+          const end = (p + 1 < numParts) ? parts[p + 1] : allPoints.length;
+          const ring = allPoints.slice(start, end);
+          if (ring.length >= 3) {
+            rings.push(ring);
+          }
+        }
 
         geometries.push({
           type: 'Polygon',
-          coordinates: exteriorRing
+          isMulti: rings.length > 1,
+          coordinates: rings.length > 1 ? rings : (rings[0] || allPoints)
         });
       }
       // MultiPoint (8), MultiPointZ (18), MultiPointM (28)
@@ -553,6 +567,10 @@ export class ShapefileParser {
     if (geomType === 'Point') {
       return reprojectPoint(coords);
     } else if (Array.isArray(coords)) {
+      // Se for multi-anel [ [ [lat,lng], ... ], [ [lat,lng], ... ] ]
+      if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+        return coords.map(ring => ring.map(pt => reprojectPoint(pt)));
+      }
       return coords.map(pt => reprojectPoint(pt));
     }
     return coords;
@@ -593,8 +611,16 @@ export class ShapefileParser {
 
     // Calcula Bounding Box geral
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const getFlattenedPoints = (f) => {
+      if (f.type === 'Point') return [f.coordinates];
+      if (Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0])) {
+        return f.coordinates.flat();
+      }
+      return f.coordinates || [];
+    };
+
     validFeatures.forEach(f => {
-      const pts = f.type === 'Point' ? [f.coordinates] : f.coordinates;
+      const pts = getFlattenedPoints(f);
       pts.forEach(p => {
         const lat = p[0], lng = p[1];
         if (lng < minX) minX = lng;
@@ -629,16 +655,26 @@ export class ShapefileParser {
       } else {
         const isPoly = f.type === 'Polygon';
         shapeType = isPoly ? 5 : 3;
-        const numPoints = f.coordinates.length;
-        const numParts = 1;
 
+        const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
+        const partsList = isMulti ? f.coordinates : [f.coordinates];
+        const numParts = partsList.length;
+        const allPoints = [];
+        const partOffsets = [];
+
+        partsList.forEach(part => {
+          partOffsets.push(allPoints.length);
+          part.forEach(pt => allPoints.push(pt));
+        });
+
+        const numPoints = allPoints.length;
         recordByteLen = 44 + numParts * 4 + numPoints * 16;
         const buf = new ArrayBuffer(recordByteLen);
         recordView = new DataView(buf);
 
         // Bounding Box do registro
         let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
-        f.coordinates.forEach(p => {
+        allPoints.forEach(p => {
           if (p[1] < rMinX) rMinX = p[1];
           if (p[1] > rMaxX) rMaxX = p[1];
           if (p[0] < rMinY) rMinY = p[0];
@@ -652,10 +688,13 @@ export class ShapefileParser {
         recordView.setFloat64(28, rMaxY, true);
         recordView.setInt32(36, numParts, true);
         recordView.setInt32(40, numPoints, true);
-        recordView.setInt32(44, 0, true); // Part 0 start offset
 
-        const ptsStart = 48;
-        f.coordinates.forEach((p, pIdx) => {
+        partOffsets.forEach((off, pIdx) => {
+          recordView.setInt32(44 + pIdx * 4, off, true);
+        });
+
+        const ptsStart = 44 + numParts * 4;
+        allPoints.forEach((p, pIdx) => {
           recordView.setFloat64(ptsStart + pIdx * 16, p[1], true); // X (lng)
           recordView.setFloat64(ptsStart + pIdx * 16 + 8, p[0], true); // Y (lat)
         });

@@ -497,7 +497,7 @@ export class MapEngine {
 
       let leafLayer = null;
 
-      // Normalização robusta de coordenadas (suporta tanto [lat, lng] quanto {lat, lng} serializados)
+      // Normalização robusta de coordenadas (suporta [lat, lng], {lat, lng} e multi-anéis)
       let coords = feat.coordinates;
       if (feat.type === 'Point') {
         if (coords && coords.lat !== undefined) {
@@ -505,7 +505,11 @@ export class MapEngine {
         }
       } else if (feat.type === 'Polygon' || feat.type === 'LineString') {
         if (Array.isArray(coords)) {
-          coords = coords.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt);
+          if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+            coords = coords.map(ring => ring.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt));
+          } else {
+            coords = coords.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt);
+          }
         }
       } else if (feat.type === 'Circle') {
         if (coords && coords.lat !== undefined) {
@@ -529,14 +533,14 @@ export class MapEngine {
         });
 
         leafLayer = L.marker(coords, { icon });
-      } else if (feat.type === 'LineString' && coords && coords.length >= 2) {
+      } else if (feat.type === 'LineString' && coords && coords.length > 0) {
         leafLayer = L.polyline(coords, {
           color: style.strokeColor,
           weight: style.strokeWidth,
           dashArray: style.strokeDashArray || undefined,
           opacity: 1
         });
-      } else if (feat.type === 'Polygon' && coords && coords.length >= 3) {
+      } else if (feat.type === 'Polygon' && coords && coords.length > 0) {
         leafLayer = L.polygon(coords, {
           color: style.strokeColor,
           weight: style.strokeWidth,
@@ -753,6 +757,14 @@ export class MapEngine {
   }
 
   calculatePolylineLength(coordinates) {
+    if (!Array.isArray(coordinates) || coordinates.length === 0) return 0;
+    if (Array.isArray(coordinates[0]) && Array.isArray(coordinates[0][0])) {
+      return coordinates.reduce((sum, line) => sum + this.calculateSinglePolylineLength(line), 0);
+    }
+    return this.calculateSinglePolylineLength(coordinates);
+  }
+
+  calculateSinglePolylineLength(coordinates) {
     let total = 0;
     for (let i = 0; i < coordinates.length - 1; i++) {
       total += this.calculateDistance(coordinates[i], coordinates[i+1]);
@@ -761,7 +773,15 @@ export class MapEngine {
   }
 
   calculatePolygonArea(coords) {
-    if (coords.length < 3) return 0;
+    if (!Array.isArray(coords) || coords.length === 0) return 0;
+    if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+      return coords.reduce((sum, ring) => sum + this.calculateSinglePolygonArea(ring), 0);
+    }
+    return this.calculateSinglePolygonArea(coords);
+  }
+
+  calculateSinglePolygonArea(coords) {
+    if (!Array.isArray(coords) || coords.length < 3) return 0;
     const R = 6378137;
     let total = 0;
     const len = coords.length;

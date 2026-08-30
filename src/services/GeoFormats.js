@@ -53,23 +53,45 @@ export class GeoFormats {
             coordinates: [f.coordinates[1], f.coordinates[0]]
           };
         } else if (f.type === 'LineString') {
-          geometry = {
-            type: 'LineString',
-            coordinates: f.coordinates.map(c => [c[1], c[0]])
-          };
-        } else if (f.type === 'Polygon') {
-          // Garante anel fechado
-          const ring = f.coordinates.map(c => [c[1], c[0]]);
-          if (
-            ring.length > 0 &&
-            (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])
-          ) {
-            ring.push([ring[0][0], ring[0][1]]);
+          const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
+          if (isMulti) {
+            geometry = {
+              type: 'MultiLineString',
+              coordinates: f.coordinates.map(line => line.map(c => [c[1], c[0]]))
+            };
+          } else {
+            geometry = {
+              type: 'LineString',
+              coordinates: f.coordinates.map(c => [c[1], c[0]])
+            };
           }
-          geometry = {
-            type: 'Polygon',
-            coordinates: [ring]
-          };
+        } else if (f.type === 'Polygon') {
+          const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
+          if (isMulti) {
+            geometry = {
+              type: 'MultiPolygon',
+              coordinates: f.coordinates.map(ring => {
+                const r = ring.map(c => [c[1], c[0]]);
+                if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
+                  r.push([r[0][0], r[0][1]]);
+                }
+                return [r];
+              })
+            };
+          } else {
+            // Garante anel fechado
+            const ring = f.coordinates.map(c => [c[1], c[0]]);
+            if (
+              ring.length > 0 &&
+              (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])
+            ) {
+              ring.push([ring[0][0], ring[0][1]]);
+            }
+            geometry = {
+              type: 'Polygon',
+              coordinates: [ring]
+            };
+          }
         } else if (f.type === 'Circle') {
           // Círculos são convertidos em ponto com atributo de raio
           geometry = {
@@ -109,11 +131,29 @@ export class GeoFormats {
       if (f.type === 'Point' || f.type === 'Circle') {
         geomKML = `<Point><coordinates>${f.coordinates[1]},${f.coordinates[0]},0</coordinates></Point>`;
       } else if (f.type === 'LineString') {
-        const coordsStr = f.coordinates.map(c => `${c[1]},${c[0]},0`).join(' ');
-        geomKML = `<LineString><tessellate>1</tessellate><coordinates>${coordsStr}</coordinates></LineString>`;
+        const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
+        if (isMulti) {
+          const lines = f.coordinates.map(line => {
+            const coordsStr = line.map(c => `${c[1]},${c[0]},0`).join(' ');
+            return `<LineString><tessellate>1</tessellate><coordinates>${coordsStr}</coordinates></LineString>`;
+          }).join('');
+          geomKML = `<MultiGeometry>${lines}</MultiGeometry>`;
+        } else {
+          const coordsStr = f.coordinates.map(c => `${c[1]},${c[0]},0`).join(' ');
+          geomKML = `<LineString><tessellate>1</tessellate><coordinates>${coordsStr}</coordinates></LineString>`;
+        }
       } else if (f.type === 'Polygon') {
-        const coordsStr = f.coordinates.map(c => `${c[1]},${c[0]},0`).join(' ');
-        geomKML = `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coordsStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+        const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
+        if (isMulti) {
+          const polys = f.coordinates.map(ring => {
+            const coordsStr = ring.map(c => `${c[1]},${c[0]},0`).join(' ');
+            return `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coordsStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+          }).join('');
+          geomKML = `<MultiGeometry>${polys}</MultiGeometry>`;
+        } else {
+          const coordsStr = f.coordinates.map(c => `${c[1]},${c[0]},0`).join(' ');
+          geomKML = `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coordsStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+        }
       }
 
       return `
@@ -295,8 +335,40 @@ ${wpts}${trks}</gpx>`;
           createdBy: props.createdBy || 'Importado',
           createdAt: props.createdAt || new Date().toISOString()
         });
+      } else if (geomType === 'MultiLineString') {
+        const coords = feat.geometry.coordinates.map(line => line.map(c => [c[1], c[0]]));
+        features.push({
+          id,
+          name,
+          layerId,
+          type: 'LineString',
+          coordinates: coords,
+          category,
+          color,
+          description: props.description || '',
+          properties: { ...props },
+          createdBy: props.createdBy || 'Importado',
+          createdAt: props.createdAt || new Date().toISOString()
+        });
       } else if (geomType === 'Polygon') {
-        const coords = feat.geometry.coordinates[0].map(c => [c[1], c[0]]);
+        const coords = feat.geometry.coordinates.length > 1
+          ? feat.geometry.coordinates.map(ring => ring.map(c => [c[1], c[0]]))
+          : feat.geometry.coordinates[0].map(c => [c[1], c[0]]);
+        features.push({
+          id,
+          name,
+          layerId,
+          type: 'Polygon',
+          coordinates: coords,
+          category,
+          color,
+          description: props.description || '',
+          properties: { ...props },
+          createdBy: props.createdBy || 'Importado',
+          createdAt: props.createdAt || new Date().toISOString()
+        });
+      } else if (geomType === 'MultiPolygon') {
+        const coords = feat.geometry.coordinates.map(poly => poly[0].map(c => [c[1], c[0]]));
         features.push({
           id,
           name,
