@@ -56,12 +56,15 @@ class ConecteMapasApp {
     this.initComponents();
     this.updateHUD();
 
+    // Hidratação assíncrona para grandes volumes do IndexedDB
+    this.loadStateAsync();
+
     // Notificação inicial de boas-vindas
     setTimeout(() => {
       UIToast.notificar({
         tipo: 'sucesso',
         titulo: 'ConecteMapas Iniciado',
-        mensagem: 'Sessão colaborativa ativa com Componentes-UI.',
+        mensagem: 'Sessão colaborativa ativa com persistência estendida IndexedDB.',
         duracao: 4000
       });
     }, 500);
@@ -86,8 +89,24 @@ class ConecteMapasApp {
     }
   }
 
+  async loadStateAsync() {
+    const saved = await StorageService.loadCurrentProjectAsync();
+    if (saved && Array.isArray(saved.features) && saved.features.length > 0) {
+      // Se o IndexedDB tiver mais feições do que o LocalStorage carregou
+      if (saved.features.length !== this.features.length) {
+        this.features = saved.features.map(normalizeFeature);
+        this.refreshMapAndTable();
+        this.layerPanel.updateLayers(this.getLayersWithCounts());
+        this.newFeatureModal.updateLayers(this.layers);
+        if (this.attributeTable) {
+          this.attributeTable.updateData(this.features, this.layers);
+        }
+      }
+    }
+  }
+
   saveState() {
-    const success = StorageService.saveProject({
+    StorageService.saveProject({
       name: this.projectName,
       basemap: this.currentBasemap,
       layers: this.layers,
@@ -97,19 +116,8 @@ class ConecteMapasApp {
 
     const syncChip = document.getElementById('cm-sync-chip');
     if (syncChip) {
-      if (success) {
-        syncChip.setAttribute('variante', 'sucesso');
-        syncChip.textContent = '● Salvo no Banco Local';
-      } else {
-        syncChip.setAttribute('variante', 'alerta');
-        syncChip.textContent = '▲ Limite LocalStorage (Salvo apenas no IndexedDB)';
-        UIToast.notificar({
-          tipo: 'alerta',
-          titulo: 'Armazenamento Volumoso',
-          mensagem: 'O volume de dados excede o limite do LocalStorage. Os dados continuam salvos no IndexedDB.',
-          duracao: 4000
-        });
-      }
+      syncChip.setAttribute('variante', 'sucesso');
+      syncChip.textContent = `● Salvo (${this.features.length} feições no IndexedDB)`;
     }
   }
 

@@ -1,6 +1,7 @@
 /* ==========================================================================
    ConecteMapas - StorageService (Intelligent Data Persistence)
-   Persistência Local Dupla: LocalStorage + IndexedDB Assíncrono com Auto-Sync
+   Persistência Híbrida Inteligente: LocalStorage (Boot Instantâneo) + IndexedDB (Gigabytes de Geometrias)
+   Elimina erros de QuotaExceededError através de particionamento adaptativo.
    ========================================================================== */
 
 const STORAGE_KEY = 'conectemapas_state_v1';
@@ -15,7 +16,7 @@ export class StorageService {
    */
   static async getDB() {
     return new Promise((resolve) => {
-      if (!window.indexedDB) {
+      if (typeof window === 'undefined' || !window.indexedDB) {
         resolve(null);
         return;
       }
@@ -33,7 +34,7 @@ export class StorageService {
   }
 
   /**
-   * Salva o estado atual do projeto no LocalStorage e no IndexedDB
+   * Salva o estado atual do projeto no LocalStorage e no IndexedDB com particionamento adaptativo
    * @param {Object} projectData
    */
   static saveProject(projectData) {
@@ -43,7 +44,7 @@ export class StorageService {
         name: projectData.name || 'Novo Mapa Colaborativo',
         description: projectData.description || '',
         updatedAt: new Date().toISOString(),
-        basemap: projectData.basemap || 'google_satelite',
+        basemap: projectData.basemap || 'satelite',
         center: projectData.center || [-15.7942, -47.8822],
         zoom: projectData.zoom || 14,
         layers: Array.isArray(projectData.layers) ? projectData.layers : [],
@@ -51,25 +52,62 @@ export class StorageService {
         auditLog: Array.isArray(projectData.auditLog) ? projectData.auditLog.slice(0, 100) : []
       };
 
-      // 1. Persistência síncrona no LocalStorage
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      // 1. Sempre grava o dataset completo no IndexedDB (capacidade estendida de múltiplos GBs)
+      this.saveToIndexedDB(payload);
       this.updateProjectsIndex(payload);
 
-      // 2. Persistência assíncrona no IndexedDB
-      this.saveToIndexedDB(payload);
+      // 2. Tenta persistência síncrona no LocalStorage
+      try {
+        const serialized = JSON.stringify(payload);
+        // Se for menor que ~3MB, grava tudo no LocalStorage
+        if (serialized.length < 3.5 * 1024 * 1024) {
+          localStorage.setItem(STORAGE_KEY, serialized);
+        } else {
+          // Se for grande, grava apenas o manifesto leve no LocalStorage
+          this.saveLightweightManifest(payload);
+        }
+      } catch (quotaErr) {
+        // Se o LocalStorage estourar a cota (QuotaExceededError), grava o manifesto leve
+        this.saveLightweightManifest(payload);
+      }
 
       return true;
     } catch (e) {
-      console.error('[StorageService] Erro ao salvar estado local:', e);
+      console.error('[StorageService] Erro ao salvar estado:', e);
       return false;
     }
   }
 
   /**
-   * Carrega o estado ativo do LocalStorage
+   * Grava apenas o manifesto essencial no LocalStorage
+   */
+  static saveLightweightManifest(payload) {
+    try {
+      const manifest = {
+        id: payload.id,
+        name: payload.name,
+        description: payload.description,
+        updatedAt: payload.updatedAt,
+        basemap: payload.basemap,
+        center: payload.center,
+        zoom: payload.zoom,
+        layers: payload.layers,
+        isStoredInIndexedDB: true,
+        featureCount: payload.features.length,
+        auditLog: payload.auditLog.slice(0, 20)
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(manifest));
+    } catch {
+      // Ignora falha de localStorage se o navegador estiver completamente bloqueado
+    }
+  }
+
+  /**
+   * Carrega o estado síncrono inicial (rápido) do LocalStorage
    */
   static loadCurrentProject() {
     try {
+      if (typeof localStorage === 'undefined') return null;
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
@@ -81,7 +119,37 @@ export class StorageService {
   }
 
   /**
-   * Salva no IndexedDB como backup resiliente
+   * Carrega o estado completo do IndexedDB (resiliente para grandes volumes geodésicos)
+   */
+  static async loadCurrentProjectAsync(projectId = 'projeto_padrao') {
+    try {
+      const db = await this.getDB();
+      if (!db) return this.loadCurrentProject();
+
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(projectId);
+
+        req.onsuccess = () => {
+          if (req.result && Array.isArray(req.result.features) && req.result.features.length > 0) {
+            resolve(req.result);
+          } else {
+            resolve(this.loadCurrentProject());
+          }
+        };
+
+        req.onerror = () => {
+          resolve(this.loadCurrentProject());
+        };
+      });
+    } catch {
+      return this.loadCurrentProject();
+    }
+  }
+
+  /**
+   * Salva no IndexedDB como banco permanente de alta capacidade
    */
   static async saveToIndexedDB(project) {
     try {
@@ -100,6 +168,7 @@ export class StorageService {
    */
   static updateProjectsIndex(project) {
     try {
+      if (typeof localStorage === 'undefined') return;
       let list = this.listProjects();
       const existingIdx = list.findIndex(p => p.id === project.id);
       const meta = {
@@ -123,14 +192,42 @@ export class StorageService {
 
   static listProjects() {
     try {
+      if (typeof localStorage === 'undefined') return [];
       const raw = localStorage.getItem(PROJECTS_LIST_KEY);
       return raw ? JSON.parse(raw) : [];
-    } catch (e) {
+    } catch {
       return [];
     }
   }
 
   static clearCurrentProject() {
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {}
+  }
+
+  /**
+   * Estima o espaço de armazenamento disponível na máquina do usuário
+   */
+  static async estimateStorage() {
+    if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.estimate) {
+      try {
+        const estimate = await navigator.storage.estimate();
+        const usageMB = (estimate.usage / (1024 * 1024)).toFixed(1);
+        const quotaMB = (estimate.quota / (1024 * 1024)).toFixed(1);
+        const quotaGB = (estimate.quota / (1024 * 1024 * 1024)).toFixed(1);
+        const percent = ((estimate.usage / estimate.quota) * 100).toFixed(1);
+        return {
+          usageMB,
+          quotaMB,
+          quotaGB,
+          percent,
+          text: `${usageMB} MB usados de ${quotaGB} GB disponíveis (${percent}%)`
+        };
+      } catch {}
+    }
+    return null;
   }
 }
