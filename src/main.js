@@ -252,9 +252,10 @@ class ConecteMapasApp {
     });
     this.drawingToolbar.render(document.getElementById('drawing-toolbar-mount'));
 
-    // 3. Layer & Inspector & Collab Panel
+    // 3. Layer & Inspector & Collab Panel (Árvore Hierárquica Estilo Illustrator/Photoshop/QGIS)
     this.layerPanel = new LayerPanel({
       layers: this.getLayersWithCounts(),
+      features: this.features,
       currentBasemap: this.currentBasemap,
       auditLog: this.auditLog,
       chatMessages: this.chatMessages,
@@ -264,6 +265,75 @@ class ConecteMapasApp {
           layer.visible = isVisible;
           this.mapEngine.renderFeatures(this.features, this.layers);
           this.saveState();
+        }
+      },
+      onLayerReorder: (newLayers) => {
+        this.layers = [...newLayers];
+        this.mapEngine.renderFeatures(this.features, this.layers);
+        this.saveState();
+        UIToast.notificar({
+          tipo: 'informativo',
+          titulo: 'Sobreposição Atualizada',
+          mensagem: 'Ordem das camadas e Z-Index reordenados.',
+          duracao: 1800
+        });
+      },
+      onLayerOpacityChange: (layerId, opacity) => {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.opacity = opacity;
+          this.mapEngine.renderFeatures(this.features, this.layers);
+          this.saveState();
+        }
+      },
+      onLayerRename: (layerId, newName) => {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.name = newName;
+          this.saveState();
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Camada Renomeada',
+            mensagem: `Nome alterado para "${newName}".`,
+            duracao: 2000
+          });
+        }
+      },
+      onLayerColorChange: (layerId, newColor) => {
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.color = newColor;
+          this.mapEngine.renderFeatures(this.features, this.layers);
+          this.saveState();
+        }
+      },
+      onLayerDelete: (layerId) => {
+        this.deleteLayer(layerId);
+      },
+      onFeatureToggle: (featureId, isVisible) => {
+        const feat = this.features.find(f => f.id === featureId);
+        if (feat) {
+          feat.visible = isVisible;
+          this.mapEngine.renderFeatures(this.features, this.layers);
+          this.saveState();
+        }
+      },
+      onFeatureSelect: (feature) => {
+        if (this.attributeTable) {
+          this.attributeTable.selectFeature(feature.id);
+        }
+      },
+      onFeatureLockToggle: (featureId, isLocked) => {
+        const feat = this.features.find(f => f.id === featureId);
+        if (feat) {
+          feat.locked = isLocked;
+          this.saveState();
+          UIToast.notificar({
+            tipo: isLocked ? 'alerta' : 'sucesso',
+            titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
+            mensagem: isLocked ? `"${feat.name}" protegida contra edições.` : `"${feat.name}" liberada para edição.`,
+            duracao: 1800
+          });
         }
       },
       onBasemapChange: (basemapName) => {
@@ -312,11 +382,12 @@ class ConecteMapasApp {
 
     // 4. Attribute Table
     this.attributeTable = new AttributeTable({
-      features: this.features,
       layers: this.layers,
-      onRowClick: (feat) => {
-        this.mapEngine.zoomToFeature(feat.id);
-        if (this.layerPanel) {
+      features: this.features,
+      onSelect: (featureId) => {
+        const feat = this.features.find(f => f.id === featureId);
+        if (feat) {
+          this.mapEngine.zoomToFeature(featureId);
           this.layerPanel.setSelectedFeature(feat);
         }
       },
@@ -810,13 +881,42 @@ class ConecteMapasApp {
     }
   }
 
+  deleteLayer(layerId) {
+    if (this.layers.length <= 1) {
+      UIToast.notificar({ tipo: 'alerta', titulo: 'Aviso', mensagem: 'O projeto deve conter pelo menos uma camada ativa.' });
+      return;
+    }
+    const layer = this.layers.find(l => l.id === layerId);
+    const layerName = layer ? layer.name : layerId;
+    const remainingLayer = this.layers.find(l => l.id !== layerId);
+
+    // Realoca as feições para a primeira camada restante
+    this.features.forEach(f => {
+      if (f.layerId === layerId) {
+        f.layerId = remainingLayer.id;
+      }
+    });
+
+    this.layers = this.layers.filter(l => l.id !== layerId);
+    this.refreshMapAndTable();
+    if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
+    this.saveState();
+
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: 'Camada Excluída',
+      mensagem: `Camada "${layerName}" removida. Feições movidas para "${remainingLayer.name}".`,
+      duracao: 3000
+    });
+  }
+
   refreshMapAndTable() {
     this.mapEngine.renderFeatures(this.features, this.layers);
     if (this.attributeTable) {
       this.attributeTable.updateData(this.features, this.layers);
     }
     if (this.layerPanel) {
-      this.layerPanel.updateLayers(this.getLayersWithCounts());
+      this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
     }
     this.updateHUD();
   }

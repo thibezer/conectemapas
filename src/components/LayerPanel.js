@@ -15,6 +15,7 @@ export class LayerPanel {
    */
   constructor(options = {}) {
     this.layers = options.layers || [];
+    this.features = options.features || [];
     this.activeTab = options.initialTab || 'layers'; // 'layers' | 'inspector' | 'collab'
     this.currentBasemap = options.currentBasemap || 'satelite';
     this.selectedFeature = options.selectedFeature || null;
@@ -24,7 +25,20 @@ export class LayerPanel {
     this.isVertexEditing = false;
     this.isFloating = false;
 
+    // Estado da Árvore de Camadas (tipo Illustrator / Photoshop)
+    this.expandedLayers = new Set(this.layers.map(l => l.id)); // Inicialmente expandidas
+    this.activeSettingsLayerId = null;
+
     this.onLayerToggle = options.onLayerToggle || (() => {});
+    this.onLayerReorder = options.onLayerReorder || (() => {});
+    this.onLayerOpacityChange = options.onLayerOpacityChange || (() => {});
+    this.onLayerRename = options.onLayerRename || (() => {});
+    this.onLayerColorChange = options.onLayerColorChange || (() => {});
+    this.onLayerDelete = options.onLayerDelete || (() => {});
+    this.onFeatureToggle = options.onFeatureToggle || (() => {});
+    this.onFeatureSelect = options.onFeatureSelect || (() => {});
+    this.onFeatureLockToggle = options.onFeatureLockToggle || (() => {});
+
     this.onBasemapChange = options.onBasemapChange || (() => {});
     this.onAddLayer = options.onAddLayer || (() => {});
     this.onDeleteFeature = options.onDeleteFeature || (() => {});
@@ -48,7 +62,7 @@ export class LayerPanel {
         <div class="cm-sidebar-header">
           <div class="cm-sidebar-tabs">
             <button class="cm-sidebar-tab-btn ${this.activeTab === 'layers' ? 'active' : ''}" data-tab="layers">
-              🗂️ Camadas
+              🗂️ Camadas & Árvore
             </button>
             <button class="cm-sidebar-tab-btn ${this.activeTab === 'inspector' ? 'active' : ''}" data-tab="inspector">
               🔍 Inspeção
@@ -81,39 +95,180 @@ export class LayerPanel {
   }
 
   renderLayersTab() {
+    const allExpanded = this.layers.every(l => this.expandedLayers.has(l.id));
+    const allVisible = this.layers.every(l => l.visible !== false);
+
     return `
-      <!-- Seção: Camadas Vetoriais -->
-      <div class="cm-sidebar-section-header">
-        <span class="cm-sidebar-section-title">Camadas Vetoriais</span>
-        <ui-botao-primario inline id="btn-add-layer" variante="secundario" class="cm-add-layer-btn" title="Adicionar nova camada vetorial">
-          + Nova Camada
-        </ui-botao-primario>
+      <!-- Toolbar Superior da Árvore de Camadas (Estilo Illustrator / Photoshop / QGIS) -->
+      <div class="cm-tree-toolbar">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span class="cm-sidebar-section-title" style="margin: 0;">Árvore de Camadas</span>
+          <span class="cm-summary-pill" style="font-size: 9.5px;">${this.layers.length} grupos</span>
+        </div>
+        <div class="cm-tree-actions">
+          <button id="btn-toggle-all-vis" class="cm-tree-action-btn" title="${allVisible ? 'Ocultar Todas as Camadas' : 'Exibir Todas as Camadas'}">
+            ${allVisible ? '👁️' : '👁️‍🗨️'}
+          </button>
+          <button id="btn-toggle-all-expand" class="cm-tree-action-btn" title="${allExpanded ? 'Recolher Todos os Grupos' : 'Expandir Todos os Grupos'}">
+            ${allExpanded ? '📁' : '📂'}
+          </button>
+          <ui-botao-primario inline id="btn-add-layer" variante="secundario" class="cm-add-layer-btn" title="Criar nova camada/pasta">
+            + Nova
+          </ui-botao-primario>
+        </div>
       </div>
 
-      <div class="cm-layers-list">
-        ${this.layers.map(layer => {
+      <!-- Árvore de Camadas Hierárquica -->
+      <div class="cm-layers-tree" id="cm-layers-tree-container">
+        ${this.layers.map((layer, index) => {
           const safeName = this.escapeHtml(layer.name || 'Camada');
           const safeId = this.escapeHtml(layer.id || '');
           const safeColor = this.escapeHtml(layer.color || '#00E08A');
+          const isVisible = layer.visible !== false;
+          const isLocked = layer.locked === true;
+          const isExpanded = this.expandedLayers.has(layer.id);
+          const showSettings = this.activeSettingsLayerId === layer.id;
+          const opacityPct = Math.round((layer.opacity !== undefined ? layer.opacity : 1) * 100);
+
+          // Feições filhas desta camada
+          const layerFeatures = this.features.filter(f => f.layerId === layer.id);
+
           return `
-          <div class="cm-layer-item" data-layer-id="${safeId}">
-            <div class="cm-layer-item-left">
-              <div class="cm-layer-color-dot" style="background: ${safeColor}; color: ${safeColor};"></div>
-              <div class="cm-layer-info">
-                <div class="cm-layer-name" title="${safeName}">${safeName}</div>
-                <div class="cm-layer-count">${Number(layer.featureCount) || 0} feições</div>
+          <div class="cm-tree-layer-group ${!isVisible ? 'layer-hidden' : ''}" data-layer-id="${safeId}">
+            <!-- Linha da Pasta / Grupo da Camada -->
+            <div class="cm-tree-layer-header ${isExpanded ? 'is-expanded' : ''}">
+              <div class="cm-tree-layer-left">
+                <!-- Chevron Expansor -->
+                <button class="cm-tree-chevron-btn ${isExpanded ? 'open' : ''}" data-layer-expand="${safeId}" title="Expandir/Recolher feições">
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+
+                <!-- Ícone de Pasta e Cor da Camada -->
+                <div class="cm-layer-color-dot" style="background: ${safeColor}; color: ${safeColor};"></div>
+                <span class="cm-tree-folder-icon">${isExpanded ? '📂' : '📁'}</span>
+                
+                <span class="cm-tree-layer-title" title="${safeName}">${safeName}</span>
+                <span class="cm-tree-count-pill">${layerFeatures.length}</span>
+              </div>
+
+              <!-- Toolbar de Ações Rápidas da Camada -->
+              <div class="cm-tree-layer-right">
+                <!-- Reordenação / Z-Index (Subir / Descer) -->
+                <button class="cm-layer-order-btn" data-layer-up="${index}" title="Trazer para Cima (Z-Index +1)" ${index === 0 ? 'disabled' : ''}>▲</button>
+                <button class="cm-layer-order-btn" data-layer-down="${index}" title="Mover para Baixo (Z-Index -1)" ${index === this.layers.length - 1 ? 'disabled' : ''}>▼</button>
+
+                <!-- Bloqueio da Camada -->
+                <button class="cm-layer-tool-icon ${isLocked ? 'active-lock' : ''}" data-layer-lock="${safeId}" title="${isLocked ? 'Desbloquear Camada' : 'Bloquear Camada'}">
+                  ${isLocked ? '🔒' : '🔓'}
+                </button>
+
+                <!-- Interruptor / Olho de Visibilidade da Camada -->
+                <button class="cm-layer-eye-btn ${isVisible ? 'eye-visible' : 'eye-hidden'}" data-layer-eye="${safeId}" title="${isVisible ? 'Ocultar Camada no Mapa' : 'Exibir Camada no Mapa'}">
+                  ${isVisible ? '👁️' : '🚫'}
+                </button>
+
+                <!-- Menu de Configurações da Camada -->
+                <button class="cm-layer-tool-icon" data-layer-settings="${safeId}" title="Configurações da Camada">
+                  ⚙️
+                </button>
               </div>
             </div>
-            <div class="cm-layer-item-right">
-              <ui-switch ${layer.visible ? 'checked' : ''} data-switch-layer="${safeId}" title="Alternar visibilidade da camada"></ui-switch>
-            </div>
+
+            <!-- Painel de Configurações da Camada (Opacidade, Cor, Exclusão) -->
+            ${showSettings ? `
+              <div class="cm-layer-settings-box">
+                <div class="cm-layer-settings-row">
+                  <span class="cm-settings-label">Opacidade:</span>
+                  <input type="range" class="cm-native-range" min="0.1" max="1" step="0.05" value="${layer.opacity ?? 1}" data-layer-opacity-slider="${safeId}" style="flex: 1;" />
+                  <span class="cm-summary-pill" id="badge-op-${safeId}">${opacityPct}%</span>
+                </div>
+                <div class="cm-layer-settings-row">
+                  <span class="cm-settings-label">Cor da Camada:</span>
+                  <input type="color" class="cm-color-picker-input" value="${safeColor}" data-layer-color-picker="${safeId}" />
+                  <input type="text" class="cm-settings-text-input" value="${safeName}" data-layer-rename-input="${safeId}" placeholder="Nome da camada" style="flex: 1;" />
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                  <button class="cm-settings-btn btn-apply-layer-name" data-save-layer-name="${safeId}">✔ Salvar Nome</button>
+                  ${this.layers.length > 1 ? `
+                    <button class="cm-settings-btn btn-danger-layer" data-delete-layer="${safeId}">🗑️ Excluir Camada</button>
+                  ` : ''}
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- Filhos: Feições Vetoriais da Camada -->
+            ${isExpanded ? `
+              <div class="cm-tree-children-list">
+                ${layerFeatures.map(feat => {
+                  const featName = this.escapeHtml(feat.name || 'Feição');
+                  const featId = this.escapeHtml(feat.id || '');
+                  const featColor = this.escapeHtml(feat.style?.fillColor || feat.color || safeColor);
+                  const isFeatVisible = feat.visible !== false;
+                  const isFeatLocked = feat.locked === true;
+                  const isSelected = this.selectedFeature && this.selectedFeature.id === feat.id;
+
+                  // Ícone de Geometria
+                  let geomIcon = '⬡';
+                  if (feat.type === 'Point') geomIcon = '📍';
+                  else if (feat.type === 'LineString') geomIcon = '〰️';
+                  else if (feat.type === 'Circle') geomIcon = '⭕';
+
+                  // Métrica Rápida
+                  let metricStr = '';
+                  if (feat.type === 'Polygon') {
+                    const a = this.calculatePolygonArea(feat.coordinates);
+                    metricStr = `${(a / 10000).toFixed(1)} ha`;
+                  } else if (feat.type === 'LineString') {
+                    const l = this.calculatePolylineLength(feat.coordinates);
+                    metricStr = l > 1000 ? `${(l / 1000).toFixed(1)} km` : `${l.toFixed(0)} m`;
+                  } else if (feat.type === 'Circle') {
+                    metricStr = `${feat.radius || 50}m`;
+                  }
+
+                  return `
+                    <div class="cm-tree-feature-node ${isSelected ? 'selected' : ''} ${!isFeatVisible ? 'feat-hidden' : ''}" data-feature-row="${featId}">
+                      <div class="cm-tree-feature-left" data-select-feature="${featId}">
+                        <span class="cm-geom-type-icon" style="color: ${featColor};">${geomIcon}</span>
+                        <span class="cm-tree-feature-title" title="${featName}">${featName}</span>
+                        ${metricStr ? `<span class="cm-tree-metric-badge">${metricStr}</span>` : ''}
+                      </div>
+
+                      <div class="cm-tree-feature-right">
+                        <!-- Trava da Feição -->
+                        <button class="cm-feat-tool-btn ${isFeatLocked ? 'locked' : ''}" data-feat-lock="${featId}" title="${isFeatLocked ? 'Desbloquear Feição' : 'Bloquear Feição'}">
+                          ${isFeatLocked ? '🔒' : '🔓'}
+                        </button>
+
+                        <!-- Visibilidade Individual -->
+                        <button class="cm-feat-eye-btn ${isFeatVisible ? 'visible' : 'hidden'}" data-feat-eye="${featId}" title="${isFeatVisible ? 'Ocultar feição' : 'Exibir feição'}">
+                          ${isFeatVisible ? '👁️' : '🚫'}
+                        </button>
+
+                        <!-- Enquadrar / Foco -->
+                        <button class="cm-feat-tool-btn" data-feat-fit="${featId}" title="Enquadrar no mapa">
+                          🎯
+                        </button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+
+                ${layerFeatures.length === 0 ? `
+                  <div class="cm-tree-empty-notice">
+                    <span>Nenhuma feição nesta camada</span>
+                  </div>
+                ` : ''}
+              </div>
+            ` : ''}
           </div>
         `;
         }).join('')}
       </div>
 
       <!-- Seção: Mapa Base -->
-      <div class="cm-sidebar-section-header" style="margin-top: 6px;">
+      <div class="cm-sidebar-section-header" style="margin-top: 10px;">
         <span class="cm-sidebar-section-title">Mapa Base</span>
       </div>
 
@@ -136,8 +291,6 @@ export class LayerPanel {
         <div class="cm-basemap-card ${this.currentBasemap === 'topografia' ? 'active' : ''}" data-basemap="topografia" title="Mapa de Curvas de Nível e Relevo">
           <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&auto=format&fit=crop&q=80" alt="Topografia" />
           <span>⛰️ Topografia</span>
-        </div>
-
         <div class="cm-basemap-card ${this.currentBasemap === 'dark' ? 'active' : ''}" data-basemap="dark" title="Mapa Escuro Esri Dark Canvas">
           <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=160&auto=format&fit=crop&q=80" alt="Dark" />
           <span>🌑 Dark Canvas</span>
@@ -777,8 +930,14 @@ export class LayerPanel {
     this.updateContent();
   }
 
-  updateLayers(layers) {
+  updateLayers(layers, features = null) {
     this.layers = layers;
+    if (features) this.features = features;
+    if (this.activeTab === 'layers') this.updateContent();
+  }
+
+  updateFeatures(features) {
+    this.features = features;
     if (this.activeTab === 'layers') this.updateContent();
   }
 
@@ -822,25 +981,240 @@ export class LayerPanel {
   }
 
   bindTabEvents() {
-    // Switches de camada
-    document.querySelectorAll('[data-switch-layer]').forEach(sw => {
-      sw.addEventListener('ui-change', (e) => {
-        const layerId = sw.getAttribute('data-switch-layer');
-        this.onLayerToggle(layerId, e.detail ? e.detail.checked : sw.checked);
+    // 1. Ações da Toolbar Superior da Árvore
+    const btnToggleAllVis = document.getElementById('btn-toggle-all-vis');
+    if (btnToggleAllVis) {
+      btnToggleAllVis.addEventListener('click', () => {
+        const someVisible = this.layers.some(l => l.visible !== false);
+        const newVis = !someVisible;
+        this.layers.forEach(l => {
+          l.visible = newVis;
+          this.onLayerToggle(l.id, newVis);
+        });
+        this.updateContent();
       });
-      sw.addEventListener('change', () => {
-        const layerId = sw.getAttribute('data-switch-layer');
-        this.onLayerToggle(layerId, sw.checked);
-      });
-    });
+    }
 
-    // Botão nova camada
+    const btnToggleAllExpand = document.getElementById('btn-toggle-all-expand');
+    if (btnToggleAllExpand) {
+      btnToggleAllExpand.addEventListener('click', () => {
+        const allExpanded = this.layers.every(l => this.expandedLayers.has(l.id));
+        if (allExpanded) {
+          this.expandedLayers.clear();
+        } else {
+          this.expandedLayers = new Set(this.layers.map(l => l.id));
+        }
+        this.updateContent();
+      });
+    }
+
+    // Botão Nova Camada
     const btnAddLayer = document.getElementById('btn-add-layer');
     if (btnAddLayer) {
       btnAddLayer.addEventListener('click', () => this.onAddLayer());
     }
 
-    // Mapas base
+    // 2. Ações de Cada Grupo/Camada da Árvore
+    // Expandir/Recolher pasta da camada
+    document.querySelectorAll('[data-layer-expand]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const layerId = btn.getAttribute('data-layer-expand');
+        if (this.expandedLayers.has(layerId)) {
+          this.expandedLayers.delete(layerId);
+        } else {
+          this.expandedLayers.add(layerId);
+        }
+        this.updateContent();
+      });
+    });
+
+    // Eye / Visibilidade da Camada Inteira
+    document.querySelectorAll('[data-layer-eye]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const layerId = btn.getAttribute('data-layer-eye');
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+          const isVisible = layer.visible !== false;
+          layer.visible = !isVisible;
+          this.onLayerToggle(layerId, layer.visible);
+          this.updateContent();
+        }
+      });
+    });
+
+    // Trava / Bloqueio da Camada
+    document.querySelectorAll('[data-layer-lock]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const layerId = btn.getAttribute('data-layer-lock');
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.locked = !layer.locked;
+          this.features.forEach(f => {
+            if (f.layerId === layerId) f.locked = layer.locked;
+          });
+          this.updateContent();
+        }
+      });
+    });
+
+    // Reordenação / Z-Index da Camada (Subir ▲)
+    document.querySelectorAll('[data-layer-up]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-layer-up'), 10);
+        if (idx > 0) {
+          const temp = this.layers[idx];
+          this.layers[idx] = this.layers[idx - 1];
+          this.layers[idx - 1] = temp;
+          this.onLayerReorder(this.layers);
+          this.updateContent();
+        }
+      });
+    });
+
+    // Reordenação / Z-Index da Camada (Descer ▼)
+    document.querySelectorAll('[data-layer-down]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-layer-down'), 10);
+        if (idx < this.layers.length - 1) {
+          const temp = this.layers[idx];
+          this.layers[idx] = this.layers[idx + 1];
+          this.layers[idx + 1] = temp;
+          this.onLayerReorder(this.layers);
+          this.updateContent();
+        }
+      });
+    });
+
+    // Configurações / Opacidade da Camada
+    document.querySelectorAll('[data-layer-settings]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const layerId = btn.getAttribute('data-layer-settings');
+        this.activeSettingsLayerId = this.activeSettingsLayerId === layerId ? null : layerId;
+        this.updateContent();
+      });
+    });
+
+    // Slider de Opacidade da Camada
+    document.querySelectorAll('[data-layer-opacity-slider]').forEach(slider => {
+      slider.addEventListener('input', (e) => {
+        const layerId = slider.getAttribute('data-layer-opacity-slider');
+        const val = parseFloat(e.target.value);
+        const badge = document.getElementById(`badge-op-${layerId}`);
+        if (badge) badge.textContent = `${Math.round(val * 100)}%`;
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.opacity = val;
+          this.onLayerOpacityChange(layerId, val);
+        }
+      });
+    });
+
+    // Color Picker da Camada
+    document.querySelectorAll('[data-layer-color-picker]').forEach(picker => {
+      picker.addEventListener('change', (e) => {
+        const layerId = picker.getAttribute('data-layer-color-picker');
+        const color = e.target.value;
+        const layer = this.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.color = color;
+          this.onLayerColorChange(layerId, color);
+          this.updateContent();
+        }
+      });
+    });
+
+    // Renomear Camada
+    document.querySelectorAll('.btn-apply-layer-name').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const layerId = btn.getAttribute('data-save-layer-name');
+        const input = document.querySelector(`[data-layer-rename-input="${layerId}"]`);
+        const newName = input?.value?.trim();
+        if (newName) {
+          const layer = this.layers.find(l => l.id === layerId);
+          if (layer) {
+            layer.name = newName;
+            this.onLayerRename(layerId, newName);
+            this.activeSettingsLayerId = null;
+            this.updateContent();
+          }
+        }
+      });
+    });
+
+    // Excluir Camada
+    document.querySelectorAll('[data-delete-layer]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const layerId = btn.getAttribute('data-delete-layer');
+        if (this.layers.length <= 1) {
+          UIToast.notificar({ tipo: 'alerta', titulo: 'Aviso', mensagem: 'O mapa deve ter ao menos 1 camada ativa.' });
+          return;
+        }
+        this.onLayerDelete(layerId);
+        this.layers = this.layers.filter(l => l.id !== layerId);
+        this.activeSettingsLayerId = null;
+        this.updateContent();
+      });
+    });
+
+    // 3. Ações de Feições Filhas (Tree Children)
+    // Selecionar feição
+    document.querySelectorAll('[data-select-feature]').forEach(node => {
+      node.addEventListener('click', (e) => {
+        const featId = node.getAttribute('data-select-feature');
+        const feat = this.features.find(f => f.id === featId);
+        if (feat) {
+          this.setSelectedFeature(feat);
+          this.onFeatureSelect(feat);
+          this.onFitFeature(feat.id);
+        }
+      });
+    });
+
+    // Visibilidade individual da feição (Eye)
+    document.querySelectorAll('[data-feat-eye]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const featId = btn.getAttribute('data-feat-eye');
+        const feat = this.features.find(f => f.id === featId);
+        if (feat) {
+          const isVisible = feat.visible !== false;
+          feat.visible = !isVisible;
+          this.onFeatureToggle(featId, feat.visible);
+          this.updateContent();
+        }
+      });
+    });
+
+    // Trava individual da feição (Lock)
+    document.querySelectorAll('[data-feat-lock]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const featId = btn.getAttribute('data-feat-lock');
+        const feat = this.features.find(f => f.id === featId);
+        if (feat) {
+          feat.locked = !feat.locked;
+          this.onFeatureLockToggle(featId, feat.locked);
+          this.updateContent();
+        }
+      });
+    });
+
+    // Foco / Enquadrar feição
+    document.querySelectorAll('[data-feat-fit]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const featId = btn.getAttribute('data-feat-fit');
+        this.onFitFeature(featId);
+      });
+    });
+
+    // 4. Mapas base
     document.querySelectorAll('[data-basemap]').forEach(card => {
       card.addEventListener('click', () => {
         const base = card.getAttribute('data-basemap');

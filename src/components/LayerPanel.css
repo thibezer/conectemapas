@@ -111,35 +111,110 @@
   white-space: nowrap !important;
 }
 
-/* --- Lista de Camadas (Compact Cards) --- */
-.cm-layers-list {
+/* --- Toolbar Superior da Árvore de Camadas --- */
+.cm-tree-toolbar {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 2px 6px 2px;
+  border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
 }
 
-.cm-layer-item {
+.cm-tree-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 5px 8px;
-  height: 36px;
-  background: var(--cm-surface, #141417);
-  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
+  gap: 4px;
+}
+
+.cm-tree-action-btn {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  border-radius: 4px;
+  color: var(--cm-text, #e1e1e6);
+  font-size: 11px;
+  height: 22px;
+  padding: 0 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.15s ease;
 }
 
-.cm-layer-item:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: var(--cm-surface-elevated, #1a1a1e);
+.cm-tree-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
-.cm-layer-item-left {
+/* --- Árvore de Camadas (Tree View) --- */
+.cm-layers-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cm-tree-layer-group {
+  display: flex;
+  flex-direction: column;
+  background: var(--cm-surface, #141417);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  overflow: hidden;
+  transition: all 0.15s ease;
+}
+
+.cm-tree-layer-group:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.cm-tree-layer-group.layer-hidden {
+  opacity: 0.55;
+}
+
+/* Linha da Pasta / Grupo da Camada */
+.cm-tree-layer-header {
   display: flex;
   align-items: center;
-  gap: 7px;
+  justify-content: space-between;
+  padding: 6px 8px;
+  min-height: 34px;
+  background: rgba(255, 255, 255, 0.02);
+  user-select: none;
+}
+
+.cm-tree-layer-header.is-expanded {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cm-tree-layer-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   overflow: hidden;
+  flex: 1;
+}
+
+.cm-tree-chevron-btn {
+  background: transparent;
+  border: none;
+  color: var(--cm-text-muted, #888899);
+  padding: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: transform 0.2s ease, color 0.15s ease;
+}
+
+.cm-tree-chevron-btn:hover {
+  color: var(--cm-text, #fff);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cm-tree-chevron-btn.open svg {
+  transform: rotate(90deg);
 }
 
 .cm-layer-color-dot {
@@ -150,34 +225,296 @@
   box-shadow: 0 0 6px currentColor;
 }
 
-.cm-layer-info {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.cm-tree-folder-icon {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.85;
 }
 
-.cm-layer-name {
+.cm-tree-layer-title {
   font-size: 11.5px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--cm-text, #e1e1e6);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.cm-layer-count {
-  font-size: 10px;
-  color: var(--cm-text-muted, #888899);
+.cm-tree-count-pill {
+  font-size: 9.5px;
   font-family: var(--cm-fonte-mono, monospace);
-  line-height: 1;
+  color: var(--cm-text-muted, #888899);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 10px;
+  line-height: 1.2;
 }
 
-.cm-layer-item-right {
+/* Toolbar de Ações da Camada */
+.cm-tree-layer-right {
   display: flex;
   align-items: center;
-  transform: scale(0.85);
-  transform-origin: right center;
+  gap: 3px;
   flex-shrink: 0;
+}
+
+.cm-layer-order-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--cm-text-muted, #888899);
+  font-size: 9px;
+  width: 18px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.cm-layer-order-btn:hover:not(:disabled) {
+  color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.1);
+  border-color: rgba(0, 224, 138, 0.3);
+}
+
+.cm-layer-order-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.cm-layer-tool-icon {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.cm-layer-tool-icon:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cm-layer-eye-btn {
+  background: rgba(0, 224, 138, 0.1);
+  border: 1px solid rgba(0, 224, 138, 0.25);
+  font-size: 11.5px;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.cm-layer-eye-btn.eye-hidden {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  opacity: 0.6;
+  filter: grayscale(1);
+}
+
+.cm-layer-eye-btn:hover {
+  transform: scale(1.08);
+  border-color: var(--cm-primary, #00E08A);
+}
+
+/* Painel de Configurações da Camada */
+.cm-layer-settings-box {
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cm-layer-settings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-settings-label {
+  font-size: 10px;
+  color: var(--cm-text-muted, #888899);
+  min-width: 75px;
+}
+
+.cm-settings-text-input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  padding: 3px 6px;
+}
+
+.cm-settings-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--cm-text, #fff);
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.cm-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cm-settings-btn.btn-danger-layer {
+  color: #f87171;
+  border-color: rgba(248, 113, 113, 0.3);
+  background: rgba(248, 113, 113, 0.08);
+}
+
+.cm-settings-btn.btn-danger-layer:hover {
+  background: rgba(248, 113, 113, 0.2);
+}
+
+/* Filhos: Lista de Feições da Camada */
+.cm-tree-children-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 6px 4px 18px;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
+  margin-left: 10px;
+  gap: 3px;
+}
+
+.cm-tree-feature-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid transparent;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.cm-tree-feature-node:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.cm-tree-feature-node.selected {
+  background: rgba(0, 224, 138, 0.1);
+  border-color: rgba(0, 224, 138, 0.35);
+}
+
+.cm-tree-feature-node.feat-hidden {
+  opacity: 0.45;
+}
+
+.cm-tree-feature-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  flex: 1;
+  cursor: pointer;
+}
+
+.cm-geom-type-icon {
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.cm-tree-feature-title {
+  font-size: 11px;
+  color: var(--cm-text, #e1e1e6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-tree-metric-badge {
+  font-size: 9px;
+  font-family: var(--cm-fonte-mono, monospace);
+  color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.cm-tree-feature-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.cm-feat-tool-btn {
+  background: transparent;
+  border: none;
+  font-size: 10.5px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.cm-feat-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cm-feat-tool-btn.locked {
+  color: #f59e0b;
+}
+
+.cm-feat-eye-btn {
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.cm-feat-eye-btn.hidden {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.cm-feat-eye-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: scale(1.1);
+}
+
+.cm-tree-empty-notice {
+  font-size: 10px;
+  color: var(--cm-text-muted, #888899);
+  font-style: italic;
+  padding: 4px 6px;
 }
 
 /* --- Grid de Mapas Base (Compact Cards) --- */

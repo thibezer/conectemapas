@@ -478,6 +478,8 @@ export class MapEngine {
 
     // Renderiza cada feição
     features.forEach(feat => {
+      if (feat.visible === false) return; // Suporte a ocultar feição individualmente
+
       const layerConfig = layerMap.get(feat.layerId) || { color: '#00E08A', opacity: 1, visible: true };
       const defaultColor = feat.color || layerConfig.color || '#00E08A';
       
@@ -602,6 +604,15 @@ export class MapEngine {
         }
 
         this.renderedFeatures.set(feat.id, leafLayer);
+      }
+    });
+
+    // Aplica a ordem de sobreposição (Z-Index): a primeira camada da lista fica visualmente por cima no mapa
+    const reversedLayers = [...layers].reverse();
+    reversedLayers.forEach(layer => {
+      const group = this.featureLayers.get(layer.id);
+      if (group && layer.visible !== false && this.map.hasLayer(group)) {
+        group.bringToFront();
       }
     });
   }
