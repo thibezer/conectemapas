@@ -156,6 +156,22 @@ export class LayerPanel {
       .replace(/'/g, '&#039;');
   }
 
+  renderAccordionHeader(title, summaryPill = '') {
+    return `
+      <summary>
+        <div class="cm-accordion-summary-left">
+          <svg class="cm-accordion-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+          <span>${title}</span>
+        </div>
+        <div class="cm-accordion-summary-right">
+          ${summaryPill ? `<span class="cm-summary-pill">${summaryPill}</span>` : ''}
+        </div>
+      </summary>
+    `;
+  }
+
   renderInspectorTab() {
     if (!this.selectedFeature) {
       return `
@@ -226,47 +242,57 @@ export class LayerPanel {
 
     const customAttrs = Array.isArray(feat.customAttributes) ? feat.customAttributes : [];
     const historyList = Array.isArray(feat.history) ? feat.history : [];
+    const layerName = this.layers.find(l => l.id === feat.layerId)?.name || 'Padrão';
+    let dimSummary = 'Ponto';
+    if (isPoly) dimSummary = `${areaConversions.ha} ha`;
+    else if (isLine) dimSummary = `${lengthConversions.km} km`;
+    else if (isCircle) dimSummary = `R: ${feat.radius || 50}m`;
 
     return `
       <div class="cm-inspector-box">
-        <!-- Topo da Feição: Header com Trava, Janela Flutuante e Enquadrar -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <ui-badge variante="primario">${safeCategory}</ui-badge>
-            ${isLocked ? `<span class="cm-locked-badge">🔒 Bloqueado</span>` : ''}
+        <!-- Topo da Feição: Header Card com Toolbar Integrada (Workbench B2B) -->
+        <div class="cm-inspector-header-card">
+          <div class="cm-inspector-header-top">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <ui-badge variante="primario">${safeCategory}</ui-badge>
+              ${isLocked ? `<span class="cm-locked-badge">🔒 Bloqueado</span>` : `<span class="cm-summary-pill" style="color: var(--cm-primary); font-weight: 600;">${dimSummary}</span>`}
+            </div>
+            <div class="cm-inspector-quick-toolbar">
+              <button 
+                id="btn-toggle-lock" 
+                class="cm-quick-tool-btn ${isLocked ? 'active-lock' : ''}" 
+                title="${isLocked ? 'Desbloquear Feição' : 'Bloquear Feição contra Edições'}">
+                ${isLocked ? '🔒 Bloqueado' : '🔓 Livre'}
+              </button>
+              <button 
+                id="btn-toggle-float" 
+                class="cm-quick-tool-btn" 
+                title="Destacar Inspetor em Janela Flutuante (Workbench)">
+                🪟
+              </button>
+              <button 
+                id="btn-fit-feature" 
+                class="cm-quick-tool-btn" 
+                title="Enquadrar no Mapa (Fit Bounds)">
+                🎯
+              </button>
+              <button 
+                id="btn-delete-inspector" 
+                class="cm-quick-tool-btn btn-danger" 
+                title="Excluir Feição (com Desfazer)">
+                🗑️
+              </button>
+            </div>
           </div>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button 
-              id="btn-toggle-lock" 
-              class="cm-native-select" 
-              style="padding: 2px 6px; font-size: 11px;" 
-              title="${isLocked ? 'Desbloquear Feição' : 'Bloquear Feição contra Edições'}">
-              ${isLocked ? '🔒' : '🔓'}
-            </button>
-            <button 
-              id="btn-toggle-float" 
-              class="cm-native-select" 
-              style="padding: 2px 6px; font-size: 11px;" 
-              title="Destacar Inspetor em Janela Flutuante (Workbench)">
-              🪟
-            </button>
-            <button 
-              id="btn-fit-feature" 
-              class="cm-native-select" 
-              style="padding: 2px 6px; font-size: 11px;" 
-              title="Enquadrar no Mapa (Fit Bounds)">
-              🎯
-            </button>
+          <div style="font-size: 10px; color: var(--cm-text-muted); font-family: var(--cm-fonte-mono); display: flex; justify-content: space-between;">
+            <span>ID: ${safeId}</span>
+            <span>Camada: ${this.escapeHtml(layerName)}</span>
           </div>
-        </div>
-
-        <div style="font-size: 10px; color: var(--cm-text-muted); font-family: var(--cm-fonte-mono); margin-bottom: 4px;">
-          ID: ${safeId}
         </div>
 
         <!-- 1. ACORDEÃO: 📌 IDENTIFICAÇÃO & CAMADA -->
         <details class="cm-inspector-accordion" open>
-          <summary><span>📌 Identificação & Camada</span><span>▾</span></summary>
+          ${this.renderAccordionHeader('📌 Identificação & Camada', this.escapeHtml(layerName))}
           <div class="cm-accordion-content">
             <ui-campo-texto id="inspector-feat-name" label="Nome do Elemento" value="${safeName}" ${isLocked ? 'desabilitado' : ''} obrigatorio></ui-campo-texto>
             <ui-campo-texto id="inspector-feat-desc" label="Descrição / Observações" value="${safeDesc}" ${isLocked ? 'desabilitado' : ''}></ui-campo-texto>
@@ -284,7 +310,7 @@ export class LayerPanel {
 
         <!-- 2. ACORDEÃO: 🎨 APARÊNCIA & SIMBOLOGIA -->
         <details class="cm-inspector-accordion" open>
-          <summary><span>🎨 Aparência & Simbologia</span><span>▾</span></summary>
+          ${this.renderAccordionHeader('🎨 Aparência & Simbologia', isPoint ? `${style.markerIcon} • ${style.markerSize}px` : `<span style="background:${style.fillColor}; width:8px; height:8px; border-radius:2px; display:inline-block; vertical-align:middle; margin-right:3px;"></span>${Math.round(style.fillOpacity * 100)}% • ${style.strokeWidth}px`)}
           <div class="cm-accordion-content">
             ${(isPoly || isCircle) ? `
               <div class="cm-param-row">
@@ -379,7 +405,7 @@ export class LayerPanel {
 
         <!-- 3. ACORDEÃO: 📐 VÉRTICES & AZIMUTES -->
         <details class="cm-inspector-accordion">
-          <summary><span>📐 Geometria & Vértices (${hasVertices ? coordinates.length : 1} nós)</span><span>▾</span></summary>
+          ${this.renderAccordionHeader('📐 Geometria & Vértices', `${hasVertices ? coordinates.length : 1} nós`)}
           <div class="cm-accordion-content">
             <div style="display: flex; justify-content: flex-end;">
               <ui-botao-primario 
@@ -434,77 +460,83 @@ export class LayerPanel {
 
         <!-- 4. ACORDEÃO: 🛠️ MICRO-FERRAMENTAS ESPACIAIS (CAD/GIS) -->
         <details class="cm-inspector-accordion">
-          <summary><span>🛠️ Micro-ferramentas Espaciais</span><span>▾</span></summary>
+          ${this.renderAccordionHeader('🛠️ Micro-ferramentas Espaciais', 'Buffer • DP • Clone')}
           <div class="cm-accordion-content">
             <!-- Ferramenta: Buffer Paramétrico -->
             <div class="cm-spatial-tool-card">
               <div class="cm-spatial-tool-header">
-                <span>⚡ Buffer / Zona de Amortecimento</span>
+                <span>🔄 Zona de Amortecimento (Buffer)</span>
               </div>
               <div style="display: flex; gap: 6px; align-items: center;">
-                <input type="number" id="buffer-radius-input" class="cm-custom-attr-input" min="1" max="10000" step="5" value="50" style="width: 70px;" />
+                <input 
+                  type="number" 
+                  id="buffer-radius-input" 
+                  class="cm-native-select" 
+                  style="width: 80px; height: 26px; padding: 0 6px;" 
+                  value="50" 
+                  min="1" 
+                  max="10000" 
+                  step="5"
+                  title="Raio do Buffer em metros" />
                 <span style="font-size: 10.5px; color: var(--cm-text-muted);">metros</span>
-                <ui-botao-primario inline id="btn-generate-buffer" variante="secundario" style="height: 24px; font-size: 10px; margin-left: auto;">
+                <ui-botao-primario inline id="btn-generate-buffer" variante="secundario" style="flex: 1; height: 26px; font-size: 10.5px;">
                   Criar Buffer
                 </ui-botao-primario>
               </div>
             </div>
 
             <!-- Ferramenta: Simplificação Douglas-Peucker -->
-            ${hasVertices ? `
+            ${(isPoly || isLine) ? `
               <div class="cm-spatial-tool-card">
                 <div class="cm-spatial-tool-header">
-                  <span>📉 Simplificação Douglas-Peucker</span>
+                  <span>📉 Simplificar Nós (Douglas-Peucker)</span>
+                  <span id="dp-tolerance-val" style="color: var(--cm-primary); font-family: var(--cm-fonte-mono);">5m</span>
                 </div>
                 <div style="display: flex; gap: 6px; align-items: center;">
-                  <span style="font-size: 10px; color: var(--cm-text-muted);">Tolerância:</span>
                   <input type="range" id="dp-tolerance-slider" class="cm-param-slider" min="1" max="50" step="1" value="5" />
-                  <span id="dp-tolerance-val" class="cm-param-badge">5m</span>
-                  <ui-botao-primario inline id="btn-simplify-dp" variante="secundario" style="height: 24px; font-size: 10px;" ${isLocked ? 'desabilitado' : ''}>
+                  <ui-botao-primario inline id="btn-simplify-dp" variante="secundario" style="height: 26px; font-size: 10.5px; padding: 0 8px;" ${isLocked ? 'desabilitado' : ''}>
                     Simplificar
                   </ui-botao-primario>
                 </div>
               </div>
             ` : ''}
 
-            <!-- Ferramenta: Duplicação com Offset -->
-            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 2px;">
-              <span style="font-size: 10.5px; color: var(--cm-text-muted);">Clonar feição (+30m offset):</span>
-              <ui-botao-primario inline id="btn-duplicate-feat" variante="secundario" style="height: 24px; font-size: 10px;">
-                📑 Duplicar
+            <!-- Ferramenta: Duplicar Feição -->
+            <div style="display: flex; justify-content: flex-end;">
+              <ui-botao-primario inline id="btn-duplicate-feat" variante="secundario" style="height: 24px; font-size: 10.5px; width: 100%;">
+                📑 Duplicar Feição (+30m offset)
               </ui-botao-primario>
             </div>
           </div>
         </details>
 
-        <!-- 5. ACORDEÃO: 📋 ATRIBUTOS CUSTOMIZADOS (CHAVE / VALOR) -->
+        <!-- 5. ACORDEÃO: 📋 ATRIBUTOS PERSONALIZADOS -->
         <details class="cm-inspector-accordion">
-          <summary><span>📋 Atributos Personalizados (${customAttrs.length})</span><span>▾</span></summary>
+          ${this.renderAccordionHeader('📋 Atributos Personalizados', `${customAttrs.length} campos`)}
           <div class="cm-accordion-content">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 10px; color: var(--cm-text-muted);">Pares Chave / Valor</span>
+              <button id="btn-add-custom-attr" class="cm-native-select" style="padding: 1px 6px; font-size: 10px;" ${isLocked ? 'disabled' : ''}>
+                + Adicionar
+              </button>
+            </div>
+
             <div id="cm-custom-attr-list" style="display: flex; flex-direction: column; gap: 4px;">
               ${customAttrs.map((attr, idx) => `
                 <div class="cm-custom-attr-row" data-attr-idx="${idx}">
-                  <input type="text" class="cm-custom-attr-input attr-key" placeholder="Chave (Ex: Matrícula)" value="${this.escapeHtml(attr.key || '')}" ${isLocked ? 'disabled' : ''} />
-                  <input type="text" class="cm-custom-attr-input attr-val" placeholder="Valor" value="${this.escapeHtml(attr.value || '')}" ${isLocked ? 'disabled' : ''} />
-                  ${!isLocked ? `<button class="cm-vertex-del-btn btn-del-attr" data-attr-del="${idx}">🗑️</button>` : ''}
+                  <input type="text" class="cm-custom-attr-input attr-key" placeholder="Campo" value="${this.escapeHtml(attr.key)}" ${isLocked ? 'disabled' : ''} />
+                  <input type="text" class="cm-custom-attr-input attr-val" placeholder="Valor" value="${this.escapeHtml(attr.value)}" ${isLocked ? 'disabled' : ''} />
+                  ${!isLocked ? `<button class="cm-vertex-del-btn btn-del-attr" data-attr-del="${idx}">×</button>` : ''}
                 </div>
               `).join('')}
-              ${customAttrs.length === 0 ? `<div style="font-size: 10.5px; color: var(--cm-text-muted);">Nenhum atributo personalizado.</div>` : ''}
+              ${customAttrs.length === 0 ? `<div style="font-size: 10px; color: var(--cm-text-muted); font-style: italic;">Nenhum atributo adicional cadastrado.</div>` : ''}
             </div>
-
-            ${!isLocked ? `
-              <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
-                <ui-botao-primario inline id="btn-add-custom-attr" variante="secundario" style="height: 22px; font-size: 10px;">
-                  + Adicionar Campo
-                </ui-botao-primario>
-              </div>
-            ` : ''}
           </div>
         </details>
 
         <!-- 6. ACORDEÃO: 🔄 CONVERSOR TOPOGRÁFICO & GEODÉSICO -->
         <details class="cm-inspector-accordion">
-          <summary><span>🔄 Conversor de Unidades & Coordenadas</span><span>▾</span></summary>
+          ${this.renderAccordionHeader('🔄 Conversor de Unidades', isPoly ? `${areaConversions.ha} ha` : (isLine ? `${lengthConversions.km} km` : 'DMS'))}
           <div class="cm-accordion-content">
             ${(isPoly || isCircle) ? `
               <div style="font-size: 10px; font-weight: 600; color: var(--cm-text);">Área Equivalente:</div>
@@ -566,7 +598,7 @@ export class LayerPanel {
 
         <!-- 7. ACORDEÃO: 🕒 HISTÓRICO LOCAL DO ELEMENTO -->
         <details class="cm-inspector-accordion">
-          <summary><span>🕒 Histórico de Modificações (${historyList.length})</span><span>▾</span></summary>
+          ${this.renderAccordionHeader('🕒 Histórico de Modificações', `${historyList.length} eventos`)}
           <div class="cm-accordion-content">
             <div class="cm-audit-log-list" style="max-height: 100px;">
               ${historyList.length > 0 ? historyList.map(h => `
@@ -583,13 +615,10 @@ export class LayerPanel {
           </div>
         </details>
 
-        <!-- Botões de Ação Inferiores -->
-        <div style="display: flex; gap: 6px; margin-top: 8px;">
+        <!-- Sticky Action Footer (B2B Workbench) -->
+        <div class="cm-inspector-sticky-footer">
           <ui-botao-primario inline id="btn-save-inspector" variante="primary" style="height: 30px; flex: 1;" ${isLocked ? 'desabilitado' : ''}>
-            Salvar Alterações
-          </ui-botao-primario>
-          <ui-botao-primario inline id="btn-delete-inspector" variante="destrutivo" title="Excluir Elemento" style="height: 30px; padding: 0 10px;" ${isLocked ? 'desabilitado' : ''}>
-            🗑️
+            Salvar Alterações <kbd class="cm-save-shortcut-kbd">Ctrl+S</kbd>
           </ui-botao-primario>
         </div>
       </div>

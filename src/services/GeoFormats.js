@@ -3,6 +3,8 @@
    Importação e Exportação: GeoJSON, KML, GPX, CSV e JSON do Projeto
    ========================================================================== */
 
+import { ShapefileParser } from './ShapefileParser.js';
+
 export class GeoFormats {
   /**
    * Sanitiza strings para evitar injeção XSS
@@ -15,6 +17,20 @@ export class GeoFormats {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Converte para pacote ESRI Shapefile compactado (.ZIP com .shp, .dbf, .prj, .shx, .cpg)
+   */
+  static async toShapefileZip(features, projectName = 'conectemapas_export') {
+    return ShapefileParser.exportToShapefileZip(features, projectName);
+  }
+
+  /**
+   * Parser unificado e inteligente para Shapefile (ZIP ou 5 arquivos avulsos)
+   */
+  static async parseShapefile(input) {
+    return ShapefileParser.parse(input);
   }
 
   /**
@@ -175,10 +191,37 @@ ${wpts}${trks}</gpx>`;
   }
 
   /**
-   * Parser robusto de arquivos importados
+   * Parser robusto de arquivos importados (Texto, Shapefile, ZIP, KML, GeoJSON, CSV)
    */
-  static parseUploadedFile(content, fileName = '') {
+  static async parseUploadedFile(contentOrFile, fileName = '') {
+    // 1. Arquivos binários ou múltiplos arquivos Shapefile
+    const isBlob = typeof Blob !== 'undefined' && contentOrFile instanceof Blob;
+    const isFile = typeof File !== 'undefined' && contentOrFile instanceof File;
+    const isFileList = typeof FileList !== 'undefined' && contentOrFile instanceof FileList;
+
+    if (isFile || isFileList || isBlob || Array.isArray(contentOrFile)) {
+      const name = (fileName || (isFile ? contentOrFile.name : '')).toLowerCase();
+      if (
+        name.endsWith('.zip') ||
+        name.endsWith('.shp') ||
+        name.endsWith('.dbf') ||
+        isFileList ||
+        Array.isArray(contentOrFile)
+      ) {
+        return this.parseShapefile(contentOrFile);
+      }
+    }
+
     const lowerName = fileName.toLowerCase();
+
+    // 2. Se for Shapefile ZIP / SHP
+    if (lowerName.endsWith('.zip') || lowerName.endsWith('.shp') || lowerName.endsWith('.dbf')) {
+      return this.parseShapefile(contentOrFile);
+    }
+
+    const content = typeof contentOrFile === 'string' 
+      ? contentOrFile 
+      : new TextDecoder('utf-8').decode(contentOrFile);
 
     // GeoJSON ou JSON
     if (lowerName.endsWith('.geojson') || lowerName.endsWith('.json') || content.trim().startsWith('{')) {
@@ -206,7 +249,7 @@ ${wpts}${trks}</gpx>`;
       return this.parseCSV(content);
     }
 
-    throw new Error('Formato de arquivo não reconhecido. Suportamos GeoJSON, KML, GPX e CSV.');
+    throw new Error('Formato de arquivo não reconhecido. Suportamos Shapefile (.zip/.shp/.dbf/.prj/.shx/.cpg), GeoJSON, KML e CSV.');
   }
 
   static parseGeoJSON(geojson) {

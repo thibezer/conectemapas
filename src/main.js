@@ -445,15 +445,54 @@ class ConecteMapasApp {
       // Save: Ctrl+S / Cmd+S
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        this.saveState();
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Projeto Salvo (Ctrl+S)',
-          mensagem: `${this.features.length} feições gravadas no banco de dados local.`,
-          duracao: 2500
-        });
+        // Se o botão salvar do inspetor estiver presente, aciona o clique para salvar os campos do formulário
+        const btnSave = document.getElementById('btn-save-inspector');
+        if (btnSave) {
+          btnSave.click();
+        } else {
+          this.saveState();
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Projeto Salvo (Ctrl+S)',
+            mensagem: `${this.features.length} feições gravadas no banco de dados local.`,
+            duracao: 2500
+          });
+        }
+      }
+      // Navegação Master-Detail Workbench (J / K / Setas)
+      else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === 'j' || e.key === 'ArrowDown') {
+          e.preventDefault();
+          this.navigateFeature(1);
+        } else if (e.key === 'k' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          this.navigateFeature(-1);
+        } else if (e.key === 'Delete') {
+          if (this.layerPanel && this.layerPanel.selectedFeature) {
+            e.preventDefault();
+            this.deleteFeature(this.layerPanel.selectedFeature.id);
+          }
+        }
       }
     });
+  }
+
+  navigateFeature(direction = 1) {
+    if (!this.features || this.features.length === 0) return;
+    const currentId = this.layerPanel?.selectedFeature?.id;
+    let currentIdx = this.features.findIndex(f => f.id === currentId);
+    if (currentIdx === -1) {
+      currentIdx = direction > 0 ? -1 : this.features.length;
+    }
+    let nextIdx = currentIdx + direction;
+    if (nextIdx < 0) nextIdx = this.features.length - 1;
+    if (nextIdx >= this.features.length) nextIdx = 0;
+
+    const nextFeature = this.features[nextIdx];
+    if (nextFeature) {
+      this.layerPanel.setSelectedFeature(nextFeature);
+      this.mapEngine.zoomToFeature(nextFeature.id);
+    }
   }
 
   handleDrawingCompleted(rawFeature) {
@@ -576,8 +615,8 @@ class ConecteMapasApp {
     UIToast.notificar({
       tipo: 'alerta',
       titulo: 'Feição Excluída',
-      mensagem: `"${name}" foi removida do mapa.`,
-      duracao: 3000
+      mensagem: `"${name}" removida. Pressione Ctrl+Z para desfazer.`,
+      duracao: 3500
     });
   }
 
@@ -628,55 +667,93 @@ class ConecteMapasApp {
     });
   }
 
-  handleExport(format) {
-    let content = '';
-    let mimeType = 'text/plain';
-    let fileName = `${this.projectName.toLowerCase().replace(/\s+/g, '_')}.${format}`;
+  async handleExport(format) {
+    try {
+      let content = '';
+      let mimeType = 'text/plain';
+      let fileName = `${this.projectName.toLowerCase().replace(/\s+/g, '_')}.${format}`;
+      let blob = null;
 
-    if (format === 'geojson') {
-      content = GeoFormats.toGeoJSON(this.features, this.projectName);
-      mimeType = 'application/geo+json';
-    } else if (format === 'kml') {
-      content = GeoFormats.toKML(this.features, this.projectName);
-      mimeType = 'application/vnd.google-earth.kml+xml';
-    } else if (format === 'gpx') {
-      content = GeoFormats.toGPX(this.features, this.projectName);
-      mimeType = 'application/gpx+xml';
-    } else if (format === 'csv') {
-      content = GeoFormats.toCSV(this.features);
-      mimeType = 'text/csv';
+      if (format === 'shapefile' || format === 'shp') {
+        blob = await GeoFormats.toShapefileZip(this.features, this.projectName.toLowerCase().replace(/\s+/g, '_'));
+        fileName = `${this.projectName.toLowerCase().replace(/\s+/g, '_')}_shapefile.zip`;
+      } else if (format === 'geojson') {
+        content = GeoFormats.toGeoJSON(this.features, this.projectName);
+        mimeType = 'application/geo+json';
+        blob = new Blob([content], { type: mimeType });
+      } else if (format === 'kml') {
+        content = GeoFormats.toKML(this.features, this.projectName);
+        mimeType = 'application/vnd.google-earth.kml+xml';
+        blob = new Blob([content], { type: mimeType });
+      } else if (format === 'gpx') {
+        content = GeoFormats.toGPX(this.features, this.projectName);
+        mimeType = 'application/gpx+xml';
+        blob = new Blob([content], { type: mimeType });
+      } else if (format === 'csv') {
+        content = GeoFormats.toCSV(this.features);
+        mimeType = 'text/csv';
+        blob = new Blob([content], { type: mimeType });
+      }
+
+      if (!blob) return;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      UIToast.notificar({
+        tipo: 'sucesso',
+        titulo: 'Exportação Concluída',
+        mensagem: `Arquivo ${fileName} baixado com sucesso!`,
+        duracao: 4000
+      });
+    } catch (err) {
+      UIToast.notificar({
+        tipo: 'erro',
+        titulo: 'Falha na Exportação',
+        mensagem: err.message,
+        duracao: 4000
+      });
     }
-
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Exportação Concluída',
-      mensagem: `Arquivo ${fileName} baixado com sucesso!`,
-      duracao: 4000
-    });
   }
 
-  handleImport(content, fileName) {
+  async handleImport(content, fileName) {
     try {
-      const parsed = GeoFormats.parseUploadedFile(content, fileName);
+      UIToast.notificar({
+        tipo: 'info',
+        titulo: 'Processando Arquivo',
+        mensagem: `Lendo geometrias e atributos de "${fileName}"...`,
+        duracao: 2500
+      });
+
+      const parsed = await GeoFormats.parseUploadedFile(content, fileName);
       if (parsed.features && parsed.features.length > 0) {
-        this.features.push(...parsed.features);
+        const normalized = parsed.features.map(f => normalizeFeature(f));
+        this.pushHistory(`Importação de ${normalized.length} feições (${fileName})`);
+        this.features.push(...normalized);
         this.refreshMapAndTable();
         this.saveState();
+
+        let metaMsg = `${normalized.length} feições importadas com sucesso.`;
+        if (parsed.metadata) {
+          const m = parsed.metadata;
+          metaMsg = `${normalized.length} feições do Shapefile "${m.baseName}" importadas. Projeção: ${m.projection} | Codificação: ${m.encoding.toUpperCase()}`;
+        }
 
         UIToast.notificar({
           tipo: 'sucesso',
           titulo: 'Importação Concluída',
-          mensagem: `${parsed.features.length} feições importadas com sucesso de "${fileName}".`,
-          duracao: 4000
+          mensagem: metaMsg,
+          duracao: 5000
         });
+
+        // Zoom automático nas feições importadas
+        if (normalized.length > 0 && normalized[0].id) {
+          this.mapEngine.zoomToFeature(normalized[0].id);
+        }
 
         // Fecha modal
         const modal = document.getElementById('modal-import-export');
@@ -690,10 +767,11 @@ class ConecteMapasApp {
         });
       }
     } catch (e) {
+      console.error('Erro na importação:', e);
       UIToast.notificar({
         tipo: 'erro',
         titulo: 'Falha na Importação',
-        mensagem: e.message,
+        mensagem: e.message || 'Não foi possível ler o arquivo fornecido.',
         duracao: 5000
       });
     }
