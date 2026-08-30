@@ -336,6 +336,32 @@ class ConecteMapasApp {
           });
         }
       },
+      onBulkUpdate: (updatedFeatures) => {
+        this.pushHistory(`Modificação coletiva (${updatedFeatures.length} itens)`);
+        const updateMap = new Map(updatedFeatures.map(f => [f.id, f]));
+        this.features = this.features.map(f => updateMap.get(f.id) || f);
+        this.refreshMapAndTable();
+        this.saveState();
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Modificação Coletiva',
+          mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`,
+          duracao: 2500
+        });
+      },
+      onBulkDelete: (featureIds) => {
+        const idSet = new Set(featureIds);
+        this.pushHistory(`Exclusão coletiva (${featureIds.length} itens)`);
+        this.features = this.features.filter(f => !idSet.has(f.id));
+        this.refreshMapAndTable();
+        this.saveState();
+        UIToast.notificar({
+          tipo: 'alerta',
+          titulo: 'Exclusão Coletiva',
+          mensagem: `${featureIds.length} feições removidas. Pressione Ctrl+Z para desfazer.`,
+          duracao: 3000
+        });
+      },
       onBasemapChange: (basemapName) => {
         this.currentBasemap = basemapName;
         this.mapEngine.setBaseLayer(basemapName);

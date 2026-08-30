@@ -194,375 +194,387 @@
   transform: translateY(-1px);
 }
 
-/* --- Árvore de Camadas (Tree View) --- */
-.cm-layers-tree {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+/* ==========================================================================
+   Árvore de Camadas — Padrão Adobe Illustrator (Linhas de 24px & Multi-seleção)
+   ========================================================================== */
 
-.cm-tree-layer-group {
-  display: flex;
-  flex-direction: column;
-  background: var(--cm-surface, #141417);
-  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
-  border-radius: 6px;
-  overflow: hidden;
-  transition: all 0.15s ease;
-}
-
-.cm-tree-layer-group:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.cm-tree-layer-group.layer-hidden {
-  opacity: 0.55;
-}
-
-/* Linha da Pasta / Grupo da Camada */
-.cm-tree-layer-header {
+/* Barra de Ação Coletiva (Bulk Actions Bar) */
+.cm-ai-bulk-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
-  min-height: 34px;
-  background: rgba(255, 255, 255, 0.02);
-  user-select: none;
+  padding: 4px 8px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  border-radius: 5px;
+  margin-bottom: 6px;
+  gap: 6px;
+  animation: cmFadeSlideDown 0.15s ease-out;
 }
 
-.cm-tree-layer-header.is-expanded {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  background: rgba(255, 255, 255, 0.04);
+@keyframes cmFadeSlideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.cm-tree-layer-left {
+.cm-ai-bulk-info {
   display: flex;
   align-items: center;
   gap: 6px;
   overflow: hidden;
-  flex: 1;
 }
 
-.cm-tree-chevron-btn {
-  background: transparent;
-  border: none;
-  color: var(--cm-text-muted, #888899);
-  padding: 2px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 3px;
-  transition: transform 0.2s ease, color 0.15s ease;
-}
-
-.cm-tree-chevron-btn:hover {
-  color: var(--cm-text, #fff);
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.cm-tree-chevron-btn.open svg {
-  transform: rotate(90deg);
-}
-
-.cm-layer-color-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  box-shadow: 0 0 6px currentColor;
-}
-
-.cm-tree-folder-icon {
-  font-size: 13px;
-  line-height: 1;
-  opacity: 0.85;
-}
-
-.cm-tree-layer-title {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--cm-text, #e1e1e6);
+.cm-ai-bulk-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: #60a5fa;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.cm-tree-count-pill {
+.cm-ai-bulk-badge {
   font-size: 9.5px;
   font-family: var(--cm-fonte-mono, monospace);
-  color: var(--cm-text-muted, #888899);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
   padding: 1px 5px;
-  border-radius: 10px;
-  line-height: 1.2;
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
-/* Toolbar de Ações da Camada */
-.cm-tree-layer-right {
+.cm-ai-bulk-tools {
   display: flex;
   align-items: center;
   gap: 3px;
   flex-shrink: 0;
 }
 
-.cm-layer-order-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--cm-text-muted, #888899);
-  font-size: 9px;
-  width: 18px;
-  height: 20px;
-  padding: 0;
-  cursor: pointer;
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s;
-}
-
-.cm-layer-order-btn:hover:not(:disabled) {
-  color: var(--cm-primary, #00E08A);
-  background: rgba(0, 224, 138, 0.1);
-  border-color: rgba(0, 224, 138, 0.3);
-}
-
-.cm-layer-order-btn:disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
-}
-
-.cm-layer-tool-icon {
-  background: transparent;
-  border: none;
+.cm-ai-bulk-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e1e1e6;
   font-size: 11px;
   width: 22px;
   height: 22px;
   padding: 0;
-  cursor: pointer;
   border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s;
-}
-
-.cm-layer-tool-icon:hover {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.cm-layer-eye-btn {
-  background: rgba(0, 224, 138, 0.1);
-  border: 1px solid rgba(0, 224, 138, 0.25);
-  font-size: 11.5px;
-  width: 24px;
-  height: 22px;
-  padding: 0;
   cursor: pointer;
-  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: all 0.12s;
 }
 
-.cm-layer-eye-btn.eye-hidden {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
-  opacity: 0.6;
-  filter: grayscale(1);
-}
-
-.cm-layer-eye-btn:hover {
-  transform: scale(1.08);
-  border-color: var(--cm-primary, #00E08A);
-}
-
-/* Painel de Configurações da Camada */
-.cm-layer-settings-box {
-  padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.cm-layer-settings-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.cm-settings-label {
-  font-size: 10px;
-  color: var(--cm-text-muted, #888899);
-  min-width: 75px;
-}
-
-.cm-settings-text-input {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.15));
-  border-radius: 4px;
+.cm-ai-bulk-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
   color: #fff;
-  font-size: 11px;
-  padding: 3px 6px;
 }
 
-.cm-settings-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--cm-text, #fff);
-  font-size: 10px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.cm-settings-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.cm-settings-btn.btn-danger-layer {
+.cm-ai-bulk-btn.btn-danger:hover {
+  background: rgba(239, 68, 68, 0.25);
   color: #f87171;
-  border-color: rgba(248, 113, 113, 0.3);
-  background: rgba(248, 113, 113, 0.08);
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
-.cm-settings-btn.btn-danger-layer:hover {
-  background: rgba(248, 113, 113, 0.2);
-}
-
-/* Filhos: Lista de Feições da Camada */
-.cm-tree-children-list {
-  display: flex;
-  flex-direction: column;
-  padding: 4px 6px 4px 18px;
-  border-left: 2px solid rgba(255, 255, 255, 0.08);
-  margin-left: 10px;
-  gap: 3px;
-}
-
-.cm-tree-feature-node {
+.cm-ai-bulk-color-wrapper {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 4px 6px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid transparent;
-  transition: all 0.12s ease;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.cm-ai-bulk-color {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  margin: -4px;
+}
+
+.cm-ai-bulk-select {
+  background: #18181b;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #e1e1e6;
+  font-size: 10px;
+  height: 22px;
+  border-radius: 3px;
+  padding: 0 4px;
+  max-width: 80px;
+}
+
+/* --- Container da Tabela Estilo Adobe Illustrator --- */
+.cm-ai-layer-tree {
+  display: flex;
+  flex-direction: column;
+  background: #18181c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.cm-ai-layer-group {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cm-ai-layer-group.ai-dimmed {
+  opacity: 0.5;
+}
+
+/* Linha da Tabela (24px de Altura Padrão Illustrator) */
+.cm-ai-row {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  min-height: 24px;
+  max-height: 24px;
+  padding: 0 4px;
+  background: #1a1a1e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   user-select: none;
+  cursor: default;
+  transition: background 0.1s ease;
 }
 
-.cm-tree-feature-node:hover {
+.cm-ai-row:hover {
   background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
 }
 
-.cm-tree-feature-node.selected {
-  background: rgba(0, 224, 138, 0.1);
-  border-color: rgba(0, 224, 138, 0.35);
+.cm-ai-row.ai-selected {
+  background: rgba(59, 130, 246, 0.28) !important;
+  color: #ffffff;
 }
 
-.cm-tree-feature-node.feat-hidden {
+.cm-ai-row.ai-dimmed {
   opacity: 0.45;
 }
 
-.cm-tree-feature-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  flex: 1;
-  cursor: pointer;
+.cm-ai-layer-row {
+  background: #1e1e24;
+  font-weight: 600;
 }
 
-.cm-geom-type-icon {
-  font-size: 11px;
-  flex-shrink: 0;
+.cm-ai-feat-row {
+  background: #161619;
+  font-weight: 400;
 }
 
-.cm-tree-feature-title {
-  font-size: 11px;
-  color: var(--cm-text, #e1e1e6);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cm-tree-metric-badge {
-  font-size: 9px;
-  font-family: var(--cm-fonte-mono, monospace);
-  color: var(--cm-primary, #00E08A);
-  background: rgba(0, 224, 138, 0.08);
-  padding: 1px 4px;
-  border-radius: 3px;
-  white-space: nowrap;
-}
-
-.cm-tree-feature-right {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.cm-feat-tool-btn {
-  background: transparent;
-  border: none;
-  font-size: 10.5px;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  cursor: pointer;
-  border-radius: 3px;
+/* Colunas Alinhadas Fixas */
+.cm-ai-col {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  flex-shrink: 0;
+  height: 24px;
 }
 
-.cm-feat-tool-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+/* Col 1: Olho */
+.cm-ai-col-eye {
+  width: 20px;
+  cursor: pointer;
+  color: #888899;
+  font-size: 11px;
 }
 
-.cm-feat-tool-btn.locked {
+.cm-ai-col-eye:hover {
+  color: var(--cm-primary, #00E08A);
+}
+
+.cm-ai-hidden-dot {
+  font-size: 16px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* Col 2: Cadeado */
+.cm-ai-col-lock {
+  width: 18px;
+  cursor: pointer;
+  color: #888899;
+  font-size: 10.5px;
+}
+
+.cm-ai-col-lock:hover {
   color: #f59e0b;
 }
 
-.cm-feat-eye-btn {
-  background: transparent;
-  border: none;
-  font-size: 11px;
-  width: 20px;
+/* Col 3: Faixa de Cor Vertical */
+.cm-ai-col-colorbar {
+  width: 3px;
   height: 20px;
-  padding: 0;
+  margin: 0 4px 0 2px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+/* Col 4: Chevron Expansor */
+.cm-ai-col-chevron {
+  width: 14px;
   cursor: pointer;
-  border-radius: 3px;
+  color: #888899;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
 }
 
-.cm-feat-eye-btn.hidden {
-  opacity: 0.4;
-  filter: grayscale(1);
+.cm-ai-col-chevron:hover {
+  color: #fff;
 }
 
-.cm-feat-eye-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: scale(1.1);
+.cm-ai-chevron-svg {
+  transition: transform 0.15s ease;
 }
 
-.cm-tree-empty-notice {
+.cm-ai-chevron-svg.open {
+  transform: rotate(90deg);
+}
+
+/* Col 4 (Sub-ramo): Indentação */
+.cm-ai-col-branch {
+  width: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.2);
   font-size: 10px;
+  font-family: monospace;
+}
+
+/* Col 5: Miniatura / Thumbnail */
+.cm-ai-col-thumb {
+  width: 18px;
+  margin-right: 5px;
+}
+
+.cm-ai-thumb-box {
+  width: 15px;
+  height: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  background: #111114;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Col 6: Nome */
+.cm-ai-col-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #e1e1e6;
+  padding-right: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cm-ai-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-ai-subcount {
+  font-size: 9.5px;
   color: var(--cm-text-muted, #888899);
+  font-family: var(--cm-fonte-mono, monospace);
+}
+
+/* Col 7: Ações Rápidas (Aparecem no hover) */
+.cm-ai-col-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+
+.cm-ai-row:hover .cm-ai-col-actions {
+  opacity: 1;
+}
+
+.cm-ai-micro-btn {
+  background: transparent;
+  border: none;
+  color: #888899;
+  font-size: 9px;
+  width: 16px;
+  height: 18px;
+  padding: 0;
+  border-radius: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cm-ai-micro-btn:hover:not(:disabled) {
+  color: var(--cm-primary, #00E08A);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cm-ai-micro-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+/* Col 8: Alvo de Seleção (Illustrator Target Circle ○ / ●) */
+.cm-ai-col-target {
+  width: 22px;
+  cursor: pointer;
+}
+
+.cm-ai-target-circle {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+  transition: all 0.1s ease;
+}
+
+.cm-ai-col-target:hover .cm-ai-target-circle {
+  border-color: #38bdf8;
+  transform: scale(1.15);
+}
+
+.cm-ai-target-circle.selected {
+  border: 2px solid #38bdf8;
+  background: #38bdf8;
+  box-shadow: inset 0 0 0 2px #18181b;
+}
+
+.cm-ai-target-circle.partial {
+  border: 2px solid #38bdf8;
+  background: rgba(56, 189, 248, 0.35);
+}
+
+/* Sub-árvore de Feições */
+.cm-ai-sub-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.cm-ai-empty-row {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  padding-left: 45px;
+  font-size: 10px;
+  color: #666677;
   font-style: italic;
-  padding: 4px 6px;
+  background: #141416;
 }
 
 /* --- Grid de Mapas Base (Compact Cards) --- */

@@ -29,6 +29,9 @@ export class LayerPanel {
     this.expandedLayers = new Set(this.layers.map(l => l.id)); // Inicialmente expandidas
     this.activeSettingsLayerId = null;
 
+    // Multi-seleção de feições para Ações Coletivas (Estilo Illustrator Target Circles)
+    this.selectedFeatureIds = new Set();
+
     this.onLayerToggle = options.onLayerToggle || (() => {});
     this.onLayerReorder = options.onLayerReorder || (() => {});
     this.onLayerOpacityChange = options.onLayerOpacityChange || (() => {});
@@ -38,6 +41,8 @@ export class LayerPanel {
     this.onFeatureToggle = options.onFeatureToggle || (() => {});
     this.onFeatureSelect = options.onFeatureSelect || (() => {});
     this.onFeatureLockToggle = options.onFeatureLockToggle || (() => {});
+    this.onBulkUpdate = options.onBulkUpdate || (() => {});
+    this.onBulkDelete = options.onBulkDelete || (() => {});
 
     this.onBasemapChange = options.onBasemapChange || (() => {});
     this.onAddLayer = options.onAddLayer || (() => {});
@@ -98,8 +103,25 @@ export class LayerPanel {
     const allExpanded = this.layers.every(l => this.expandedLayers.has(l.id));
     const allVisible = this.layers.every(l => l.visible !== false);
 
+    const selectedFeaturesList = this.features.filter(f => this.selectedFeatureIds.has(f.id));
+    const hasSelection = selectedFeaturesList.length > 0;
+
+    // Métricas calculadas dos selecionados
+    let bulkMetricStr = '';
+    const polySelected = selectedFeaturesList.filter(f => f.type === 'Polygon');
+    if (polySelected.length > 0) {
+      const sumAreaM2 = polySelected.reduce((acc, f) => acc + (this.calculatePolygonArea(f.coordinates) || 0), 0);
+      bulkMetricStr = `${(sumAreaM2 / 10000).toFixed(1)} ha`;
+    } else {
+      const lineSelected = selectedFeaturesList.filter(f => f.type === 'LineString');
+      if (lineSelected.length > 0) {
+        const sumLenM = lineSelected.reduce((acc, f) => acc + (this.calculatePolylineLength(f.coordinates) || 0), 0);
+        bulkMetricStr = sumLenM > 1000 ? `${(sumLenM / 1000).toFixed(1)} km` : `${sumLenM.toFixed(0)} m`;
+      }
+    }
+
     return `
-      <!-- Toolbar Superior da Árvore de Camadas (Estilo Illustrator / Photoshop / QGIS) -->
+      <!-- Toolbar Superior da Árvore de Camadas (Estilo Illustrator) -->
       <div class="cm-tree-toolbar">
         <div class="cm-tree-title-group">
           <span class="cm-tree-section-title">CAMADAS</span>
@@ -118,8 +140,31 @@ export class LayerPanel {
         </div>
       </div>
 
-      <!-- Árvore de Camadas Hierárquica -->
-      <div class="cm-layers-tree" id="cm-layers-tree-container">
+      <!-- Barra de Ação Coletiva / Multi-seleção (Estilo Illustrator) -->
+      ${hasSelection ? `
+        <div class="cm-ai-bulk-bar">
+          <div class="cm-ai-bulk-info">
+            <span class="cm-ai-bulk-count">● ${selectedFeaturesList.length} sel.</span>
+            ${bulkMetricStr ? `<span class="cm-ai-bulk-badge">${bulkMetricStr}</span>` : ''}
+          </div>
+          <div class="cm-ai-bulk-tools">
+            <button class="cm-ai-bulk-btn" id="btn-bulk-vis" title="Alternar visibilidade coletiva">👁️</button>
+            <button class="cm-ai-bulk-btn" id="btn-bulk-lock" title="Alternar bloqueio coletivo">🔒</button>
+            <div class="cm-ai-bulk-color-wrapper" title="Alterar cor de todos os selecionados">
+              <input type="color" id="input-bulk-color" value="#00E08A" class="cm-ai-bulk-color" />
+            </div>
+            <select id="select-bulk-move-layer" class="cm-ai-bulk-select" title="Mover feições selecionadas para outra camada">
+              <option value="" disabled selected>Mover...</option>
+              ${this.layers.map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
+            </select>
+            <button class="cm-ai-bulk-btn btn-danger" id="btn-bulk-del" title="Excluir selecionados">🗑️</button>
+            <button class="cm-ai-bulk-btn" id="btn-bulk-clear" title="Limpar seleção">✕</button>
+          </div>
+        </div>
+      ` : ''}
+
+      <!-- Tabela Hierárquica Estilo Adobe Illustrator (Linhas de 24px) -->
+      <div class="cm-ai-layer-tree" id="cm-ai-layer-tree-mount">
         ${this.layers.map((layer, index) => {
           const safeName = this.escapeHtml(layer.name || 'Camada');
           const safeId = this.escapeHtml(layer.id || '');
@@ -127,62 +172,71 @@ export class LayerPanel {
           const isVisible = layer.visible !== false;
           const isLocked = layer.locked === true;
           const isExpanded = this.expandedLayers.has(layer.id);
-          const showSettings = this.activeSettingsLayerId === layer.id;
-          const opacityPct = Math.round((layer.opacity !== undefined ? layer.opacity : 1) * 100);
 
-          // Feições filhas desta camada
           const layerFeatures = this.features.filter(f => f.layerId === layer.id);
+          const layerSelectedCount = layerFeatures.filter(f => this.selectedFeatureIds.has(f.id)).length;
+          const isLayerFullySelected = layerFeatures.length > 0 && layerSelectedCount === layerFeatures.length;
+          const isLayerPartiallySelected = layerSelectedCount > 0 && !isLayerFullySelected;
 
           return `
-          <div class="cm-tree-layer-group ${!isVisible ? 'layer-hidden' : ''}" data-layer-id="${safeId}">
-            <!-- Linha da Pasta / Grupo da Camada -->
-            <div class="cm-tree-layer-header ${isExpanded ? 'is-expanded' : ''}">
-              <div class="cm-tree-layer-left">
-                <!-- Chevron Expansor -->
-                <button class="cm-tree-chevron-btn ${isExpanded ? 'open' : ''}" data-layer-expand="${safeId}" title="Expandir/Recolher feições">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="9 18 15 12 9 6"></polyline>
-                  </svg>
-                </button>
-
-                <!-- Ícone de Pasta e Cor da Camada -->
-                <div class="cm-layer-color-dot" style="background: ${safeColor}; color: ${safeColor};"></div>
-                <span class="cm-tree-folder-icon">${isExpanded ? '📂' : '📁'}</span>
-                
-                <span class="cm-tree-layer-title" title="${safeName}">${safeName}</span>
-                <span class="cm-tree-count-pill">${layerFeatures.length}</span>
+          <div class="cm-ai-layer-group ${!isVisible ? 'ai-dimmed' : ''}" data-layer-id="${safeId}">
+            <!-- Linha da Camada Pai (Altura estrita 24px) -->
+            <div class="cm-ai-row cm-ai-layer-row ${isLayerFullySelected ? 'ai-selected' : ''}">
+              <!-- Col 1: Olho / Visibilidade -->
+              <div class="cm-ai-col cm-ai-col-eye" data-layer-eye="${safeId}" title="${isVisible ? 'Ocultar Camada' : 'Exibir Camada'}">
+                ${isVisible ? `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>` : `<span class="cm-ai-hidden-dot">·</span>`}
               </div>
 
-              <!-- Toolbar de Ações Rápidas da Camada -->
-              <div class="cm-tree-layer-right">
-                <!-- Reordenação / Z-Index (Subir / Descer) -->
-                <button class="cm-layer-order-btn" data-layer-up="${index}" title="Trazer para Cima (Z-Index +1)" ${index === 0 ? 'disabled' : ''}>▲</button>
-                <button class="cm-layer-order-btn" data-layer-down="${index}" title="Mover para Baixo (Z-Index -1)" ${index === this.layers.length - 1 ? 'disabled' : ''}>▼</button>
+              <!-- Col 2: Cadeado / Trava -->
+              <div class="cm-ai-col cm-ai-col-lock" data-layer-lock="${safeId}" title="${isLocked ? 'Desbloquear Camada' : 'Bloquear Camada'}">
+                ${isLocked ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
+              </div>
 
-                <!-- Bloqueio da Camada -->
-                <button class="cm-layer-tool-icon ${isLocked ? 'active-lock' : ''}" data-layer-lock="${safeId}" title="${isLocked ? 'Desbloquear Camada' : 'Bloquear Camada'}">
-                  ${isLocked ? '🔒' : '🔓'}
-                </button>
+              <!-- Col 3: Faixa de Cor Vertical da Camada -->
+              <div class="cm-ai-col-colorbar" style="background: ${safeColor};"></div>
 
-                <!-- Interruptor / Olho de Visibilidade da Camada -->
-                <button class="cm-layer-eye-btn ${isVisible ? 'eye-visible' : 'eye-hidden'}" data-layer-eye="${safeId}" title="${isVisible ? 'Ocultar Camada no Mapa' : 'Exibir Camada no Mapa'}">
-                  ${isVisible ? '👁️' : '🚫'}
-                </button>
+              <!-- Col 4: Chevron Expansor -->
+              <div class="cm-ai-col cm-ai-col-chevron" data-layer-expand="${safeId}" title="Expandir/Recolher sub-elementos">
+                <svg class="cm-ai-chevron-svg ${isExpanded ? 'open' : ''}" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </div>
 
-                <!-- Menu de Configurações da Camada -->
-                <button class="cm-layer-tool-icon" data-layer-settings="${safeId}" title="Configurações da Camada">
-                  ⚙️
-                </button>
+              <!-- Col 5: Miniatura do Grupo / Camada -->
+              <div class="cm-ai-col cm-ai-col-thumb">
+                <div class="cm-ai-thumb-box" style="border-color: ${safeColor};">
+                  <svg viewBox="0 0 16 16" width="10" height="10">
+                    <rect x="2" y="2" width="12" height="12" rx="1.5" fill="${safeColor}" fill-opacity="0.3" stroke="${safeColor}" stroke-width="1.2"/>
+                  </svg>
+                </div>
+              </div>
+
+              <!-- Col 6: Nome da Camada -->
+              <div class="cm-ai-col cm-ai-col-name" data-layer-name-click="${safeId}" title="${safeName}">
+                <span class="cm-ai-name-text">${safeName}</span>
+                <span class="cm-ai-subcount">(${layerFeatures.length})</span>
+              </div>
+
+              <!-- Col 7: Ações Rápidas (Reordenação & Config) -->
+              <div class="cm-ai-col cm-ai-col-actions">
+                <button class="cm-ai-micro-btn" data-layer-up="${index}" title="Trazer para cima" ${index === 0 ? 'disabled' : ''}>▲</button>
+                <button class="cm-ai-micro-btn" data-layer-down="${index}" title="Mover para baixo" ${index === this.layers.length - 1 ? 'disabled' : ''}>▼</button>
+                <button class="cm-ai-micro-btn" data-layer-settings="${safeId}" title="Opacidade & Cor">⚙️</button>
+              </div>
+
+              <!-- Col 8: Alvo de Seleção (Illustrator Target Circle) -->
+              <div class="cm-ai-col cm-ai-col-target" data-layer-target="${safeId}" title="Selecionar todos os itens da camada">
+                <div class="cm-ai-target-circle ${isLayerFullySelected ? 'selected' : (isLayerPartiallySelected ? 'partial' : '')}"></div>
               </div>
             </div>
 
-            <!-- Painel de Configurações da Camada (Opacidade, Cor, Exclusão) -->
-            ${showSettings ? `
+            <!-- Painel de Configurações da Camada se aberto -->
+            ${this.activeSettingsLayerId === safeId ? `
               <div class="cm-layer-settings-box">
                 <div class="cm-layer-settings-row">
                   <span class="cm-settings-label">Opacidade:</span>
                   <input type="range" class="cm-native-range" min="0.1" max="1" step="0.05" value="${layer.opacity ?? 1}" data-layer-opacity-slider="${safeId}" style="flex: 1;" />
-                  <span class="cm-summary-pill" id="badge-op-${safeId}">${opacityPct}%</span>
+                  <span class="cm-summary-pill" id="badge-op-${safeId}">${Math.round((layer.opacity ?? 1) * 100)}%</span>
                 </div>
                 <div class="cm-layer-settings-row">
                   <span class="cm-settings-label">Cor da Camada:</span>
@@ -198,66 +252,77 @@ export class LayerPanel {
               </div>
             ` : ''}
 
-            <!-- Filhos: Feições Vetoriais da Camada -->
+            <!-- Sub-linhas: Feições Filhas (Altura estrita 24px cada) -->
             ${isExpanded ? `
-              <div class="cm-tree-children-list">
+              <div class="cm-ai-sub-tree">
                 ${layerFeatures.map(feat => {
                   const featName = this.escapeHtml(feat.name || 'Feição');
                   const featId = this.escapeHtml(feat.id || '');
                   const featColor = this.escapeHtml(feat.style?.fillColor || feat.color || safeColor);
                   const isFeatVisible = feat.visible !== false;
                   const isFeatLocked = feat.locked === true;
-                  const isSelected = this.selectedFeature && this.selectedFeature.id === feat.id;
+                  const isFeatSelected = this.selectedFeatureIds.has(feat.id);
 
-                  // Ícone de Geometria
-                  let geomIcon = '⬡';
-                  if (feat.type === 'Point') geomIcon = '📍';
-                  else if (feat.type === 'LineString') geomIcon = '〰️';
-                  else if (feat.type === 'Circle') geomIcon = '⭕';
-
-                  // Métrica Rápida
-                  let metricStr = '';
+                  // Miniatura SVG de acordo com a geometria
+                  let thumbSvg = '';
                   if (feat.type === 'Polygon') {
-                    const a = this.calculatePolygonArea(feat.coordinates);
-                    metricStr = `${(a / 10000).toFixed(1)} ha`;
+                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="${featColor}" fill-opacity="0.4" stroke="${featColor}" stroke-width="1.2"/></svg>`;
                   } else if (feat.type === 'LineString') {
-                    const l = this.calculatePolylineLength(feat.coordinates);
-                    metricStr = l > 1000 ? `${(l / 1000).toFixed(1)} km` : `${l.toFixed(0)} m`;
-                  } else if (feat.type === 'Circle') {
-                    metricStr = `${feat.radius || 50}m`;
+                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><path d="M2,14 Q8,2 14,8" fill="none" stroke="${featColor}" stroke-width="2"/></svg>`;
+                  } else if (feat.type === 'Point') {
+                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><circle cx="8" cy="8" r="4.5" fill="${featColor}" stroke="#ffffff" stroke-width="1.2"/></svg>`;
+                  } else {
+                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><circle cx="8" cy="8" r="5.5" fill="${featColor}" fill-opacity="0.3" stroke="${featColor}" stroke-width="1.2"/></svg>`;
                   }
 
                   return `
-                    <div class="cm-tree-feature-node ${isSelected ? 'selected' : ''} ${!isFeatVisible ? 'feat-hidden' : ''}" data-feature-row="${featId}">
-                      <div class="cm-tree-feature-left" data-select-feature="${featId}">
-                        <span class="cm-geom-type-icon" style="color: ${featColor};">${geomIcon}</span>
-                        <span class="cm-tree-feature-title" title="${featName}">${featName}</span>
-                        ${metricStr ? `<span class="cm-tree-metric-badge">${metricStr}</span>` : ''}
+                    <div class="cm-ai-row cm-ai-feat-row ${isFeatSelected ? 'ai-selected' : ''} ${!isFeatVisible ? 'ai-dimmed' : ''}" data-feat-row="${featId}">
+                      <!-- Col 1: Olho -->
+                      <div class="cm-ai-col cm-ai-col-eye" data-feat-eye="${featId}" title="${isFeatVisible ? 'Ocultar' : 'Exibir'}">
+                        ${isFeatVisible ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>` : `<span class="cm-ai-hidden-dot">·</span>`}
                       </div>
 
-                      <div class="cm-tree-feature-right">
-                        <!-- Trava da Feição -->
-                        <button class="cm-feat-tool-btn ${isFeatLocked ? 'locked' : ''}" data-feat-lock="${featId}" title="${isFeatLocked ? 'Desbloquear Feição' : 'Bloquear Feição'}">
-                          ${isFeatLocked ? '🔒' : '🔓'}
-                        </button>
+                      <!-- Col 2: Cadeado -->
+                      <div class="cm-ai-col cm-ai-col-lock" data-feat-lock="${featId}" title="${isFeatLocked ? 'Desbloquear' : 'Bloquear'}">
+                        ${isFeatLocked ? `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
+                      </div>
 
-                        <!-- Visibilidade Individual -->
-                        <button class="cm-feat-eye-btn ${isFeatVisible ? 'visible' : 'hidden'}" data-feat-eye="${featId}" title="${isFeatVisible ? 'Ocultar feição' : 'Exibir feição'}">
-                          ${isFeatVisible ? '👁️' : '🚫'}
-                        </button>
+                      <!-- Col 3: Faixa de Cor -->
+                      <div class="cm-ai-col-colorbar" style="background: ${featColor};"></div>
 
-                        <!-- Enquadrar / Foco -->
-                        <button class="cm-feat-tool-btn" data-feat-fit="${featId}" title="Enquadrar no mapa">
-                          🎯
-                        </button>
+                      <!-- Col 4: Indentação de Sub-ramo -->
+                      <div class="cm-ai-col cm-ai-col-branch">
+                        <span class="cm-ai-branch-line">└</span>
+                      </div>
+
+                      <!-- Col 5: Miniatura Vetorial -->
+                      <div class="cm-ai-col cm-ai-col-thumb">
+                        <div class="cm-ai-thumb-box" style="border-color: rgba(255,255,255,0.15);">
+                          ${thumbSvg}
+                        </div>
+                      </div>
+
+                      <!-- Col 6: Nome da Feição -->
+                      <div class="cm-ai-col cm-ai-col-name" data-feat-select="${featId}" title="${featName}">
+                        <span class="cm-ai-name-text">${featName}</span>
+                      </div>
+
+                      <!-- Col 7: Botão de Foco / Alvo -->
+                      <div class="cm-ai-col cm-ai-col-actions">
+                        <button class="cm-ai-micro-btn" data-feat-fit="${featId}" title="Enquadrar no mapa">🎯</button>
+                      </div>
+
+                      <!-- Col 8: Círculo de Seleção (Target Circle) -->
+                      <div class="cm-ai-col cm-ai-col-target" data-feat-target="${featId}" title="Selecionar feição">
+                        <div class="cm-ai-target-circle ${isFeatSelected ? 'selected' : ''}"></div>
                       </div>
                     </div>
                   `;
                 }).join('')}
 
                 ${layerFeatures.length === 0 ? `
-                  <div class="cm-tree-empty-notice">
-                    <span>Nenhuma feição nesta camada</span>
+                  <div class="cm-ai-empty-row">
+                    <span>Nenhum elemento neste grupo</span>
                   </div>
                 ` : ''}
               </div>
@@ -291,6 +356,8 @@ export class LayerPanel {
         <div class="cm-basemap-card ${this.currentBasemap === 'topografia' ? 'active' : ''}" data-basemap="topografia" title="Mapa de Curvas de Nível e Relevo">
           <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&auto=format&fit=crop&q=80" alt="Topografia" />
           <span>⛰️ Topografia</span>
+        </div>
+
         <div class="cm-basemap-card ${this.currentBasemap === 'dark' ? 'active' : ''}" data-basemap="dark" title="Mapa Escuro Esri Dark Canvas">
           <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=160&auto=format&fit=crop&q=80" alt="Dark" />
           <span>🌑 Dark Canvas</span>
@@ -1014,8 +1081,100 @@ export class LayerPanel {
       btnAddLayer.addEventListener('click', () => this.onAddLayer());
     }
 
-    // 2. Ações de Cada Grupo/Camada da Árvore
-    // Expandir/Recolher pasta da camada
+    // 2. Ações da Barra Coletiva (Bulk Actions Bar - Estilo Illustrator)
+    const btnBulkVis = document.getElementById('btn-bulk-vis');
+    if (btnBulkVis) {
+      btnBulkVis.addEventListener('click', () => {
+        const selFeats = this.features.filter(f => this.selectedFeatureIds.has(f.id));
+        if (selFeats.length === 0) return;
+        const someVisible = selFeats.some(f => f.visible !== false);
+        const newVis = !someVisible;
+        selFeats.forEach(f => {
+          f.visible = newVis;
+          this.onFeatureToggle(f.id, newVis);
+        });
+        this.updateContent();
+      });
+    }
+
+    const btnBulkLock = document.getElementById('btn-bulk-lock');
+    if (btnBulkLock) {
+      btnBulkLock.addEventListener('click', () => {
+        const selFeats = this.features.filter(f => this.selectedFeatureIds.has(f.id));
+        if (selFeats.length === 0) return;
+        const someLocked = selFeats.some(f => f.locked === true);
+        const newLock = !someLocked;
+        selFeats.forEach(f => {
+          f.locked = newLock;
+          this.onFeatureLockToggle(f.id, newLock);
+        });
+        this.updateContent();
+      });
+    }
+
+    const inputBulkColor = document.getElementById('input-bulk-color');
+    if (inputBulkColor) {
+      inputBulkColor.addEventListener('change', (e) => {
+        const newColor = e.target.value;
+        const updated = [];
+        this.features.forEach(f => {
+          if (this.selectedFeatureIds.has(f.id)) {
+            f.color = newColor;
+            f.style = {
+              ...(f.style || {}),
+              fillColor: newColor,
+              strokeColor: newColor
+            };
+            updated.push(f);
+          }
+        });
+        if (updated.length > 0) {
+          this.onBulkUpdate(updated);
+          this.updateContent();
+        }
+      });
+    }
+
+    const selectBulkMove = document.getElementById('select-bulk-move-layer');
+    if (selectBulkMove) {
+      selectBulkMove.addEventListener('change', (e) => {
+        const targetLayerId = e.target.value;
+        if (!targetLayerId) return;
+        const updated = [];
+        this.features.forEach(f => {
+          if (this.selectedFeatureIds.has(f.id)) {
+            f.layerId = targetLayerId;
+            updated.push(f);
+          }
+        });
+        if (updated.length > 0) {
+          this.onBulkUpdate(updated);
+          this.updateContent();
+        }
+      });
+    }
+
+    const btnBulkDel = document.getElementById('btn-bulk-del');
+    if (btnBulkDel) {
+      btnBulkDel.addEventListener('click', () => {
+        const ids = Array.from(this.selectedFeatureIds);
+        if (ids.length === 0) return;
+        this.onBulkDelete(ids);
+        this.selectedFeatureIds.clear();
+        this.updateContent();
+      });
+    }
+
+    const btnBulkClear = document.getElementById('btn-bulk-clear');
+    if (btnBulkClear) {
+      btnBulkClear.addEventListener('click', () => {
+        this.selectedFeatureIds.clear();
+        this.updateContent();
+      });
+    }
+
+    // 3. Ações da Camada Pai
+    // Expandir/Recolher
     document.querySelectorAll('[data-layer-expand]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1029,7 +1188,7 @@ export class LayerPanel {
       });
     });
 
-    // Eye / Visibilidade da Camada Inteira
+    // Eye / Visibilidade da Camada
     document.querySelectorAll('[data-layer-eye]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1057,6 +1216,22 @@ export class LayerPanel {
           });
           this.updateContent();
         }
+      });
+    });
+
+    // Alvo de Seleção da Camada Inteira (Illustrator Target Circle)
+    document.querySelectorAll('[data-layer-target]').forEach(target => {
+      target.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const layerId = target.getAttribute('data-layer-target');
+        const layerFeats = this.features.filter(f => f.layerId === layerId);
+        const allSelected = layerFeats.length > 0 && layerFeats.every(f => this.selectedFeatureIds.has(f.id));
+        if (allSelected) {
+          layerFeats.forEach(f => this.selectedFeatureIds.delete(f.id));
+        } else {
+          layerFeats.forEach(f => this.selectedFeatureIds.add(f.id));
+        }
+        this.updateContent();
       });
     });
 
@@ -1162,17 +1337,31 @@ export class LayerPanel {
       });
     });
 
-    // 3. Ações de Feições Filhas (Tree Children)
-    // Selecionar feição
-    document.querySelectorAll('[data-select-feature]').forEach(node => {
+    // 4. Ações de Feições Filhas (Tree Children)
+    // Selecionar feição / Abrir inspeção
+    document.querySelectorAll('[data-feat-select]').forEach(node => {
       node.addEventListener('click', (e) => {
-        const featId = node.getAttribute('data-select-feature');
+        const featId = node.getAttribute('data-feat-select');
         const feat = this.features.find(f => f.id === featId);
         if (feat) {
           this.setSelectedFeature(feat);
           this.onFeatureSelect(feat);
           this.onFitFeature(feat.id);
         }
+      });
+    });
+
+    // Alvo de Seleção Individual da Feição (Illustrator Target Circle)
+    document.querySelectorAll('[data-feat-target]').forEach(target => {
+      target.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const featId = target.getAttribute('data-feat-target');
+        if (this.selectedFeatureIds.has(featId)) {
+          this.selectedFeatureIds.delete(featId);
+        } else {
+          this.selectedFeatureIds.add(featId);
+        }
+        this.updateContent();
       });
     });
 
@@ -1214,7 +1403,7 @@ export class LayerPanel {
       });
     });
 
-    // 4. Mapas base
+    // 5. Mapas base
     document.querySelectorAll('[data-basemap]').forEach(card => {
       card.addEventListener('click', () => {
         const base = card.getAttribute('data-basemap');
