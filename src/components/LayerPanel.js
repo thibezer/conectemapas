@@ -29,8 +29,9 @@ export class LayerPanel {
     this.expandedLayers = new Set(this.layers.map(l => l.id)); // Inicialmente expandidas
     this.activeSettingsLayerId = null;
 
-    // Multi-seleção de feições para Ações Coletivas (Estilo Illustrator Target Circles)
+    // Multi-seleção de feições para Ações Coletivas (Estilo Illustrator Target Circles & Shift)
     this.selectedFeatureIds = new Set();
+    this.lastClickedFeatureId = null;
 
     this.onLayerToggle = options.onLayerToggle || (() => {});
     this.onLayerReorder = options.onLayerReorder || (() => {});
@@ -53,6 +54,56 @@ export class LayerPanel {
     this.onSendMessage = options.onSendMessage || (() => {});
     this.onStartVertexEdit = options.onStartVertexEdit || (() => {});
     this.onStopVertexEdit = options.onStopVertexEdit || (() => {});
+  }
+
+  /**
+   * Obtém a lista linear de IDs de feições visíveis na árvore
+   */
+  getVisibleTreeItemIds() {
+    const ids = [];
+    this.layers.forEach(layer => {
+      if (this.expandedLayers.has(layer.id)) {
+        const layerFeats = this.features.filter(f => f.layerId === layer.id);
+        layerFeats.forEach(f => ids.push(f.id));
+      }
+    });
+    return ids;
+  }
+
+  /**
+   * Gerencia seleção simples, Ctrl (toggle) e Shift (range contínuo)
+   */
+  handleItemSelection(itemId, isShift = false, isCtrl = false) {
+    const allIds = this.getVisibleTreeItemIds();
+
+    if (isShift && this.lastClickedFeatureId && allIds.includes(this.lastClickedFeatureId) && allIds.includes(itemId)) {
+      const idxA = allIds.indexOf(this.lastClickedFeatureId);
+      const idxB = allIds.indexOf(itemId);
+      const start = Math.min(idxA, idxB);
+      const end = Math.max(idxA, idxB);
+
+      if (!isCtrl) {
+        this.selectedFeatureIds.clear();
+      }
+      for (let i = start; i <= end; i++) {
+        this.selectedFeatureIds.add(allIds[i]);
+      }
+    } else if (isCtrl) {
+      if (this.selectedFeatureIds.has(itemId)) {
+        this.selectedFeatureIds.delete(itemId);
+      } else {
+        this.selectedFeatureIds.add(itemId);
+      }
+      this.lastClickedFeatureId = itemId;
+    } else {
+      if (this.selectedFeatureIds.has(itemId) && this.selectedFeatureIds.size === 1) {
+        this.selectedFeatureIds.delete(itemId);
+      } else {
+        this.selectedFeatureIds.clear();
+        this.selectedFeatureIds.add(itemId);
+      }
+      this.lastClickedFeatureId = itemId;
+    }
   }
 
   /**
@@ -106,7 +157,7 @@ export class LayerPanel {
     const selectedFeaturesList = this.features.filter(f => this.selectedFeatureIds.has(f.id));
     const hasSelection = selectedFeaturesList.length > 0;
 
-    // Métricas calculadas dos selecionados
+    // Métricas somadas para o rodapé
     let bulkMetricStr = '';
     const polySelected = selectedFeaturesList.filter(f => f.type === 'Polygon');
     if (polySelected.length > 0) {
@@ -140,196 +191,225 @@ export class LayerPanel {
         </div>
       </div>
 
-      <!-- Barra de Ação Coletiva / Multi-seleção (Estilo Illustrator) -->
-      ${hasSelection ? `
-        <div class="cm-ai-bulk-bar">
-          <div class="cm-ai-bulk-info">
-            <span class="cm-ai-bulk-count">● ${selectedFeaturesList.length} sel.</span>
-            ${bulkMetricStr ? `<span class="cm-ai-bulk-badge">${bulkMetricStr}</span>` : ''}
-          </div>
-          <div class="cm-ai-bulk-tools">
-            <button class="cm-ai-bulk-btn" id="btn-bulk-vis" title="Alternar visibilidade coletiva">👁️</button>
-            <button class="cm-ai-bulk-btn" id="btn-bulk-lock" title="Alternar bloqueio coletivo">🔒</button>
-            <div class="cm-ai-bulk-color-wrapper" title="Alterar cor de todos os selecionados">
-              <input type="color" id="input-bulk-color" value="#00E08A" class="cm-ai-bulk-color" />
-            </div>
-            <select id="select-bulk-move-layer" class="cm-ai-bulk-select" title="Mover feições selecionadas para outra camada">
-              <option value="" disabled selected>Mover...</option>
-              ${this.layers.map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
-            </select>
-            <button class="cm-ai-bulk-btn btn-danger" id="btn-bulk-del" title="Excluir selecionados">🗑️</button>
-            <button class="cm-ai-bulk-btn" id="btn-bulk-clear" title="Limpar seleção">✕</button>
-          </div>
-        </div>
-      ` : ''}
+      <!-- Estrutura Unificada da Árvore + Rodapé Illustrator -->
+      <div class="cm-ai-panel-box">
+        <!-- Tabela Hierárquica Estilo Adobe Illustrator (Linhas de 24px) -->
+        <div class="cm-ai-layer-tree" id="cm-ai-layer-tree-mount">
+          ${this.layers.map((layer, index) => {
+            const safeName = this.escapeHtml(layer.name || 'Camada');
+            const safeId = this.escapeHtml(layer.id || '');
+            const safeColor = this.escapeHtml(layer.color || '#00E08A');
+            const isVisible = layer.visible !== false;
+            const isLocked = layer.locked === true;
+            const isExpanded = this.expandedLayers.has(layer.id);
 
-      <!-- Tabela Hierárquica Estilo Adobe Illustrator (Linhas de 24px) -->
-      <div class="cm-ai-layer-tree" id="cm-ai-layer-tree-mount">
-        ${this.layers.map((layer, index) => {
-          const safeName = this.escapeHtml(layer.name || 'Camada');
-          const safeId = this.escapeHtml(layer.id || '');
-          const safeColor = this.escapeHtml(layer.color || '#00E08A');
-          const isVisible = layer.visible !== false;
-          const isLocked = layer.locked === true;
-          const isExpanded = this.expandedLayers.has(layer.id);
+            const layerFeatures = this.features.filter(f => f.layerId === layer.id);
+            const layerSelectedCount = layerFeatures.filter(f => this.selectedFeatureIds.has(f.id)).length;
+            const isLayerFullySelected = layerFeatures.length > 0 && layerSelectedCount === layerFeatures.length;
+            const isLayerPartiallySelected = layerSelectedCount > 0 && !isLayerFullySelected;
 
-          const layerFeatures = this.features.filter(f => f.layerId === layer.id);
-          const layerSelectedCount = layerFeatures.filter(f => this.selectedFeatureIds.has(f.id)).length;
-          const isLayerFullySelected = layerFeatures.length > 0 && layerSelectedCount === layerFeatures.length;
-          const isLayerPartiallySelected = layerSelectedCount > 0 && !isLayerFullySelected;
+            return `
+            <div class="cm-ai-layer-group ${!isVisible ? 'ai-dimmed' : ''}" data-layer-id="${safeId}">
+              <!-- Linha da Camada Pai (Altura estrita 24px) -->
+              <div class="cm-ai-row cm-ai-layer-row ${isLayerFullySelected ? 'ai-selected' : ''}">
+                <!-- Col 1: Olho / Visibilidade -->
+                <div class="cm-ai-col cm-ai-col-eye" data-layer-eye="${safeId}" title="${isVisible ? 'Ocultar Camada' : 'Exibir Camada'}">
+                  ${isVisible ? `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>` : `<span class="cm-ai-hidden-dot">·</span>`}
+                </div>
 
-          return `
-          <div class="cm-ai-layer-group ${!isVisible ? 'ai-dimmed' : ''}" data-layer-id="${safeId}">
-            <!-- Linha da Camada Pai (Altura estrita 24px) -->
-            <div class="cm-ai-row cm-ai-layer-row ${isLayerFullySelected ? 'ai-selected' : ''}">
-              <!-- Col 1: Olho / Visibilidade -->
-              <div class="cm-ai-col cm-ai-col-eye" data-layer-eye="${safeId}" title="${isVisible ? 'Ocultar Camada' : 'Exibir Camada'}">
-                ${isVisible ? `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>` : `<span class="cm-ai-hidden-dot">·</span>`}
-              </div>
+                <!-- Col 2: Cadeado / Trava -->
+                <div class="cm-ai-col cm-ai-col-lock" data-layer-lock="${safeId}" title="${isLocked ? 'Desbloquear Camada' : 'Bloquear Camada'}">
+                  ${isLocked ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
+                </div>
 
-              <!-- Col 2: Cadeado / Trava -->
-              <div class="cm-ai-col cm-ai-col-lock" data-layer-lock="${safeId}" title="${isLocked ? 'Desbloquear Camada' : 'Bloquear Camada'}">
-                ${isLocked ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
-              </div>
+                <!-- Col 3: Faixa de Cor Vertical da Camada -->
+                <div class="cm-ai-col-colorbar" style="background: ${safeColor};"></div>
 
-              <!-- Col 3: Faixa de Cor Vertical da Camada -->
-              <div class="cm-ai-col-colorbar" style="background: ${safeColor};"></div>
-
-              <!-- Col 4: Chevron Expansor -->
-              <div class="cm-ai-col cm-ai-col-chevron" data-layer-expand="${safeId}" title="Expandir/Recolher sub-elementos">
-                <svg class="cm-ai-chevron-svg ${isExpanded ? 'open' : ''}" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-              </div>
-
-              <!-- Col 5: Miniatura do Grupo / Camada -->
-              <div class="cm-ai-col cm-ai-col-thumb">
-                <div class="cm-ai-thumb-box" style="border-color: ${safeColor};">
-                  <svg viewBox="0 0 16 16" width="10" height="10">
-                    <rect x="2" y="2" width="12" height="12" rx="1.5" fill="${safeColor}" fill-opacity="0.3" stroke="${safeColor}" stroke-width="1.2"/>
+                <!-- Col 4: Chevron Expansor -->
+                <div class="cm-ai-col cm-ai-col-chevron" data-layer-expand="${safeId}" title="Expandir/Recolher sub-elementos">
+                  <svg class="cm-ai-chevron-svg ${isExpanded ? 'open' : ''}" viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="9 18 15 12 9 6"></polyline>
                   </svg>
                 </div>
-              </div>
 
-              <!-- Col 6: Nome da Camada -->
-              <div class="cm-ai-col cm-ai-col-name" data-layer-name-click="${safeId}" title="${safeName}">
-                <span class="cm-ai-name-text">${safeName}</span>
-                <span class="cm-ai-subcount">(${layerFeatures.length})</span>
-              </div>
-
-              <!-- Col 7: Ações Rápidas (Reordenação & Config) -->
-              <div class="cm-ai-col cm-ai-col-actions">
-                <button class="cm-ai-micro-btn" data-layer-up="${index}" title="Trazer para cima" ${index === 0 ? 'disabled' : ''}>▲</button>
-                <button class="cm-ai-micro-btn" data-layer-down="${index}" title="Mover para baixo" ${index === this.layers.length - 1 ? 'disabled' : ''}>▼</button>
-                <button class="cm-ai-micro-btn" data-layer-settings="${safeId}" title="Opacidade & Cor">⚙️</button>
-              </div>
-
-              <!-- Col 8: Alvo de Seleção (Illustrator Target Circle) -->
-              <div class="cm-ai-col cm-ai-col-target" data-layer-target="${safeId}" title="Selecionar todos os itens da camada">
-                <div class="cm-ai-target-circle ${isLayerFullySelected ? 'selected' : (isLayerPartiallySelected ? 'partial' : '')}"></div>
-              </div>
-            </div>
-
-            <!-- Painel de Configurações da Camada se aberto -->
-            ${this.activeSettingsLayerId === safeId ? `
-              <div class="cm-layer-settings-box">
-                <div class="cm-layer-settings-row">
-                  <span class="cm-settings-label">Opacidade:</span>
-                  <input type="range" class="cm-native-range" min="0.1" max="1" step="0.05" value="${layer.opacity ?? 1}" data-layer-opacity-slider="${safeId}" style="flex: 1;" />
-                  <span class="cm-summary-pill" id="badge-op-${safeId}">${Math.round((layer.opacity ?? 1) * 100)}%</span>
+                <!-- Col 5: Miniatura do Grupo / Camada -->
+                <div class="cm-ai-col cm-ai-col-thumb">
+                  <div class="cm-ai-thumb-box" style="border-color: ${safeColor};">
+                    <svg viewBox="0 0 16 16" width="10" height="10">
+                      <rect x="2" y="2" width="12" height="12" rx="1.5" fill="${safeColor}" fill-opacity="0.3" stroke="${safeColor}" stroke-width="1.2"/>
+                    </svg>
+                  </div>
                 </div>
-                <div class="cm-layer-settings-row">
-                  <span class="cm-settings-label">Cor da Camada:</span>
-                  <input type="color" class="cm-color-picker-input" value="${safeColor}" data-layer-color-picker="${safeId}" />
-                  <input type="text" class="cm-settings-text-input" value="${safeName}" data-layer-rename-input="${safeId}" placeholder="Nome da camada" style="flex: 1;" />
+
+                <!-- Col 6: Nome da Camada -->
+                <div class="cm-ai-col cm-ai-col-name" data-layer-name-click="${safeId}" title="${safeName}">
+                  <span class="cm-ai-name-text">${safeName}</span>
+                  <span class="cm-ai-subcount">(${layerFeatures.length})</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-                  <button class="cm-settings-btn btn-apply-layer-name" data-save-layer-name="${safeId}">✔ Salvar Nome</button>
-                  ${this.layers.length > 1 ? `
-                    <button class="cm-settings-btn btn-danger-layer" data-delete-layer="${safeId}">🗑️ Excluir Camada</button>
-                  ` : ''}
+
+                <!-- Col 7: Ações Rápidas (Reordenação & Config) -->
+                <div class="cm-ai-col cm-ai-col-actions">
+                  <button class="cm-ai-micro-btn" data-layer-up="${index}" title="Trazer para cima" ${index === 0 ? 'disabled' : ''}>▲</button>
+                  <button class="cm-ai-micro-btn" data-layer-down="${index}" title="Mover para baixo" ${index === this.layers.length - 1 ? 'disabled' : ''}>▼</button>
+                  <button class="cm-ai-micro-btn" data-layer-settings="${safeId}" title="Opacidade & Cor">⚙️</button>
+                </div>
+
+                <!-- Col 8: Alvo de Seleção (Illustrator Target Circle) -->
+                <div class="cm-ai-col cm-ai-col-target" data-layer-target="${safeId}" title="Selecionar todos os itens da camada (Shift para seleção múltipla)">
+                  <div class="cm-ai-target-circle ${isLayerFullySelected ? 'selected' : (isLayerPartiallySelected ? 'partial' : '')}"></div>
                 </div>
               </div>
-            ` : ''}
 
-            <!-- Sub-linhas: Feições Filhas (Altura estrita 24px cada) -->
-            ${isExpanded ? `
-              <div class="cm-ai-sub-tree">
-                ${layerFeatures.map(feat => {
-                  const featName = this.escapeHtml(feat.name || 'Feição');
-                  const featId = this.escapeHtml(feat.id || '');
-                  const featColor = this.escapeHtml(feat.style?.fillColor || feat.color || safeColor);
-                  const isFeatVisible = feat.visible !== false;
-                  const isFeatLocked = feat.locked === true;
-                  const isFeatSelected = this.selectedFeatureIds.has(feat.id);
+              <!-- Painel de Configurações da Camada se aberto -->
+              ${this.activeSettingsLayerId === safeId ? `
+                <div class="cm-layer-settings-box">
+                  <div class="cm-layer-settings-row">
+                    <span class="cm-settings-label">Opacidade:</span>
+                    <input type="range" class="cm-native-range" min="0.1" max="1" step="0.05" value="${layer.opacity ?? 1}" data-layer-opacity-slider="${safeId}" style="flex: 1;" />
+                    <span class="cm-summary-pill" id="badge-op-${safeId}">${Math.round((layer.opacity ?? 1) * 100)}%</span>
+                  </div>
+                  <div class="cm-layer-settings-row">
+                    <span class="cm-settings-label">Cor da Camada:</span>
+                    <input type="color" class="cm-color-picker-input" value="${safeColor}" data-layer-color-picker="${safeId}" />
+                    <input type="text" class="cm-settings-text-input" value="${safeName}" data-layer-rename-input="${safeId}" placeholder="Nome da camada" style="flex: 1;" />
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                    <button class="cm-settings-btn btn-apply-layer-name" data-save-layer-name="${safeId}">✔ Salvar Nome</button>
+                    ${this.layers.length > 1 ? `
+                      <button class="cm-settings-btn btn-danger-layer" data-delete-layer="${safeId}">🗑️ Excluir Camada</button>
+                    ` : ''}
+                  </div>
+                </div>
+              ` : ''}
 
-                  // Miniatura SVG de acordo com a geometria
-                  let thumbSvg = '';
-                  if (feat.type === 'Polygon') {
-                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="${featColor}" fill-opacity="0.4" stroke="${featColor}" stroke-width="1.2"/></svg>`;
-                  } else if (feat.type === 'LineString') {
-                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><path d="M2,14 Q8,2 14,8" fill="none" stroke="${featColor}" stroke-width="2"/></svg>`;
-                  } else if (feat.type === 'Point') {
-                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><circle cx="8" cy="8" r="4.5" fill="${featColor}" stroke="#ffffff" stroke-width="1.2"/></svg>`;
-                  } else {
-                    thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><circle cx="8" cy="8" r="5.5" fill="${featColor}" fill-opacity="0.3" stroke="${featColor}" stroke-width="1.2"/></svg>`;
-                  }
+              <!-- Sub-linhas: Feições Filhas (Altura estrita 24px cada) -->
+              ${isExpanded ? `
+                <div class="cm-ai-sub-tree">
+                  ${layerFeatures.map(feat => {
+                    const featName = this.escapeHtml(feat.name || 'Feição');
+                    const featId = this.escapeHtml(feat.id || '');
+                    const featColor = this.escapeHtml(feat.style?.fillColor || feat.color || safeColor);
+                    const isFeatVisible = feat.visible !== false;
+                    const isFeatLocked = feat.locked === true;
+                    const isFeatSelected = this.selectedFeatureIds.has(feat.id);
 
-                  return `
-                    <div class="cm-ai-row cm-ai-feat-row ${isFeatSelected ? 'ai-selected' : ''} ${!isFeatVisible ? 'ai-dimmed' : ''}" data-feat-row="${featId}">
-                      <!-- Col 1: Olho -->
-                      <div class="cm-ai-col cm-ai-col-eye" data-feat-eye="${featId}" title="${isFeatVisible ? 'Ocultar' : 'Exibir'}">
-                        ${isFeatVisible ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>` : `<span class="cm-ai-hidden-dot">·</span>`}
-                      </div>
+                    // Miniatura SVG de acordo com a geometria
+                    let thumbSvg = '';
+                    if (feat.type === 'Polygon') {
+                      thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><polygon points="8,1 15,6 12,15 4,15 1,6" fill="${featColor}" fill-opacity="0.4" stroke="${featColor}" stroke-width="1.2"/></svg>`;
+                    } else if (feat.type === 'LineString') {
+                      thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><path d="M2,14 Q8,2 14,8" fill="none" stroke="${featColor}" stroke-width="2"/></svg>`;
+                    } else if (feat.type === 'Point') {
+                      thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><circle cx="8" cy="8" r="4.5" fill="${featColor}" stroke="#ffffff" stroke-width="1.2"/></svg>`;
+                    } else {
+                      thumbSvg = `<svg viewBox="0 0 16 16" width="10" height="10"><circle cx="8" cy="8" r="5.5" fill="${featColor}" fill-opacity="0.3" stroke="${featColor}" stroke-width="1.2"/></svg>`;
+                    }
 
-                      <!-- Col 2: Cadeado -->
-                      <div class="cm-ai-col cm-ai-col-lock" data-feat-lock="${featId}" title="${isFeatLocked ? 'Desbloquear' : 'Bloquear'}">
-                        ${isFeatLocked ? `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
-                      </div>
+                    return `
+                      <div class="cm-ai-row cm-ai-feat-row ${isFeatSelected ? 'ai-selected' : ''} ${!isFeatVisible ? 'ai-dimmed' : ''}" data-feat-row="${featId}">
+                        <!-- Col 1: Olho -->
+                        <div class="cm-ai-col cm-ai-col-eye" data-feat-eye="${featId}" title="${isFeatVisible ? 'Ocultar' : 'Exibir'}">
+                          ${isFeatVisible ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>` : `<span class="cm-ai-hidden-dot">·</span>`}
+                        </div>
 
-                      <!-- Col 3: Faixa de Cor -->
-                      <div class="cm-ai-col-colorbar" style="background: ${featColor};"></div>
+                        <!-- Col 2: Cadeado -->
+                        <div class="cm-ai-col cm-ai-col-lock" data-feat-lock="${featId}" title="${isFeatLocked ? 'Desbloquear' : 'Bloquear'}">
+                          ${isFeatLocked ? `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
+                        </div>
 
-                      <!-- Col 4: Indentação de Sub-ramo -->
-                      <div class="cm-ai-col cm-ai-col-branch">
-                        <span class="cm-ai-branch-line">└</span>
-                      </div>
+                        <!-- Col 3: Faixa de Cor -->
+                        <div class="cm-ai-col-colorbar" style="background: ${featColor};"></div>
 
-                      <!-- Col 5: Miniatura Vetorial -->
-                      <div class="cm-ai-col cm-ai-col-thumb">
-                        <div class="cm-ai-thumb-box" style="border-color: rgba(255,255,255,0.15);">
-                          ${thumbSvg}
+                        <!-- Col 4: Indentação de Sub-ramo -->
+                        <div class="cm-ai-col cm-ai-col-branch">
+                          <span class="cm-ai-branch-line">└</span>
+                        </div>
+
+                        <!-- Col 5: Miniatura Vetorial -->
+                        <div class="cm-ai-col cm-ai-col-thumb">
+                          <div class="cm-ai-thumb-box" style="border-color: rgba(255,255,255,0.15);">
+                            ${thumbSvg}
+                          </div>
+                        </div>
+
+                        <!-- Col 6: Nome da Feição -->
+                        <div class="cm-ai-col cm-ai-col-name" data-feat-select="${featId}" title="${featName}">
+                          <span class="cm-ai-name-text">${featName}</span>
+                        </div>
+
+                        <!-- Col 7: Botão de Foco / Alvo -->
+                        <div class="cm-ai-col cm-ai-col-actions">
+                          <button class="cm-ai-micro-btn" data-feat-fit="${featId}" title="Enquadrar no mapa">🎯</button>
+                        </div>
+
+                        <!-- Col 8: Círculo de Seleção (Target Circle) -->
+                        <div class="cm-ai-col cm-ai-col-target" data-feat-target="${featId}" title="Selecionar feição (Segure Shift para selecionar intervalo)">
+                          <div class="cm-ai-target-circle ${isFeatSelected ? 'selected' : ''}"></div>
                         </div>
                       </div>
+                    `;
+                  }).join('')}
 
-                      <!-- Col 6: Nome da Feição -->
-                      <div class="cm-ai-col cm-ai-col-name" data-feat-select="${featId}" title="${featName}">
-                        <span class="cm-ai-name-text">${featName}</span>
-                      </div>
-
-                      <!-- Col 7: Botão de Foco / Alvo -->
-                      <div class="cm-ai-col cm-ai-col-actions">
-                        <button class="cm-ai-micro-btn" data-feat-fit="${featId}" title="Enquadrar no mapa">🎯</button>
-                      </div>
-
-                      <!-- Col 8: Círculo de Seleção (Target Circle) -->
-                      <div class="cm-ai-col cm-ai-col-target" data-feat-target="${featId}" title="Selecionar feição">
-                        <div class="cm-ai-target-circle ${isFeatSelected ? 'selected' : ''}"></div>
-                      </div>
+                  ${layerFeatures.length === 0 ? `
+                    <div class="cm-ai-empty-row">
+                      <span>Nenhum elemento neste grupo</span>
                     </div>
-                  `;
-                }).join('')}
+                  ` : ''}
+                </div>
+              ` : ''}
+            </div>
+          `;
+          }).join('')}
+        </div>
 
-                ${layerFeatures.length === 0 ? `
-                  <div class="cm-ai-empty-row">
-                    <span>Nenhum elemento neste grupo</span>
-                  </div>
-                ` : ''}
-              </div>
+        <!-- Rodapé Estilo Adobe Illustrator (20px de Altura, Fixo Abaixo da Árvore) -->
+        <div class="cm-ai-tree-footer">
+          <div class="cm-ai-footer-left">
+            <span class="cm-ai-footer-label">${hasSelection ? `${selectedFeaturesList.length} Selecionado${selectedFeaturesList.length > 1 ? 's' : ''}` : `${this.layers.length} Camadas`}</span>
+            ${bulkMetricStr ? `<span class="cm-ai-footer-metric">• ${bulkMetricStr}</span>` : ''}
+          </div>
+          <div class="cm-ai-footer-right">
+            <!-- Alternar Visibilidade Coletiva -->
+            <button class="cm-ai-footer-btn ${!hasSelection ? 'disabled' : ''}" id="btn-footer-vis" title="Alternar visibilidade coletiva" ${!hasSelection ? 'disabled' : ''}>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+
+            <!-- Alternar Trava Coletiva -->
+            <button class="cm-ai-footer-btn ${!hasSelection ? 'disabled' : ''}" id="btn-footer-lock" title="Alternar bloqueio coletivo" ${!hasSelection ? 'disabled' : ''}>
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </button>
+
+            <!-- Seletor de Cor Coletivo Swatch -->
+            <div class="cm-ai-footer-color-wrapper ${!hasSelection ? 'disabled' : ''}" title="Alterar cor dos selecionados">
+              <input type="color" id="input-footer-color" value="#00E08A" class="cm-ai-footer-color" ${!hasSelection ? 'disabled' : ''} />
+            </div>
+
+            <!-- Mover para Camada -->
+            <div class="cm-ai-footer-move-wrapper ${!hasSelection ? 'disabled' : ''}" title="Mover selecionados para outra camada">
+              <select id="select-footer-move-layer" class="cm-ai-footer-select" ${!hasSelection ? 'disabled' : ''}>
+                <option value="" disabled selected>📁</option>
+                ${this.layers.map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
+              </select>
+            </div>
+
+            <!-- Criar Nova Camada [+] (Ícone Illustrator) -->
+            <button class="cm-ai-footer-btn" id="btn-footer-new-layer" title="Criar Nova Camada">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+            </button>
+
+            <!-- Excluir Selecionados [🗑️] (Ícone Illustrator) -->
+            <button class="cm-ai-footer-btn ${!hasSelection ? 'disabled' : ''}" id="btn-footer-del" title="Excluir selecionados" ${!hasSelection ? 'disabled' : ''}>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+
+            ${hasSelection ? `
+              <!-- Limpar Seleção [✕] -->
+              <button class="cm-ai-footer-btn" id="btn-footer-clear" title="Limpar seleção">
+                ✕
+              </button>
             ` : ''}
           </div>
-        `;
-        }).join('')}
+        </div>
       </div>
 
       <!-- Seção: Mapa Base -->
@@ -1075,16 +1155,16 @@ export class LayerPanel {
       });
     }
 
-    // Botão Nova Camada
+    // Botão Nova Camada Superior
     const btnAddLayer = document.getElementById('btn-add-layer');
     if (btnAddLayer) {
       btnAddLayer.addEventListener('click', () => this.onAddLayer());
     }
 
-    // 2. Ações da Barra Coletiva (Bulk Actions Bar - Estilo Illustrator)
-    const btnBulkVis = document.getElementById('btn-bulk-vis');
-    if (btnBulkVis) {
-      btnBulkVis.addEventListener('click', () => {
+    // 2. Ações do Rodapé Fixo Illustrator (cm-ai-tree-footer)
+    const btnFooterVis = document.getElementById('btn-footer-vis');
+    if (btnFooterVis) {
+      btnFooterVis.addEventListener('click', () => {
         const selFeats = this.features.filter(f => this.selectedFeatureIds.has(f.id));
         if (selFeats.length === 0) return;
         const someVisible = selFeats.some(f => f.visible !== false);
@@ -1097,9 +1177,9 @@ export class LayerPanel {
       });
     }
 
-    const btnBulkLock = document.getElementById('btn-bulk-lock');
-    if (btnBulkLock) {
-      btnBulkLock.addEventListener('click', () => {
+    const btnFooterLock = document.getElementById('btn-footer-lock');
+    if (btnFooterLock) {
+      btnFooterLock.addEventListener('click', () => {
         const selFeats = this.features.filter(f => this.selectedFeatureIds.has(f.id));
         if (selFeats.length === 0) return;
         const someLocked = selFeats.some(f => f.locked === true);
@@ -1112,9 +1192,9 @@ export class LayerPanel {
       });
     }
 
-    const inputBulkColor = document.getElementById('input-bulk-color');
-    if (inputBulkColor) {
-      inputBulkColor.addEventListener('change', (e) => {
+    const inputFooterColor = document.getElementById('input-footer-color');
+    if (inputFooterColor) {
+      inputFooterColor.addEventListener('change', (e) => {
         const newColor = e.target.value;
         const updated = [];
         this.features.forEach(f => {
@@ -1135,9 +1215,9 @@ export class LayerPanel {
       });
     }
 
-    const selectBulkMove = document.getElementById('select-bulk-move-layer');
-    if (selectBulkMove) {
-      selectBulkMove.addEventListener('change', (e) => {
+    const selectFooterMove = document.getElementById('select-footer-move-layer');
+    if (selectFooterMove) {
+      selectFooterMove.addEventListener('change', (e) => {
         const targetLayerId = e.target.value;
         if (!targetLayerId) return;
         const updated = [];
@@ -1154,9 +1234,14 @@ export class LayerPanel {
       });
     }
 
-    const btnBulkDel = document.getElementById('btn-bulk-del');
-    if (btnBulkDel) {
-      btnBulkDel.addEventListener('click', () => {
+    const btnFooterNewLayer = document.getElementById('btn-footer-new-layer');
+    if (btnFooterNewLayer) {
+      btnFooterNewLayer.addEventListener('click', () => this.onAddLayer());
+    }
+
+    const btnFooterDel = document.getElementById('btn-footer-del');
+    if (btnFooterDel) {
+      btnFooterDel.addEventListener('click', () => {
         const ids = Array.from(this.selectedFeatureIds);
         if (ids.length === 0) return;
         this.onBulkDelete(ids);
@@ -1165,9 +1250,9 @@ export class LayerPanel {
       });
     }
 
-    const btnBulkClear = document.getElementById('btn-bulk-clear');
-    if (btnBulkClear) {
-      btnBulkClear.addEventListener('click', () => {
+    const btnFooterClear = document.getElementById('btn-footer-clear');
+    if (btnFooterClear) {
+      btnFooterClear.addEventListener('click', () => {
         this.selectedFeatureIds.clear();
         this.updateContent();
       });
@@ -1219,17 +1304,28 @@ export class LayerPanel {
       });
     });
 
-    // Alvo de Seleção da Camada Inteira (Illustrator Target Circle)
+    // Alvo de Seleção da Camada Inteira (Illustrator Target Circle com suporte a Shift)
     document.querySelectorAll('[data-layer-target]').forEach(target => {
       target.addEventListener('click', (e) => {
         e.stopPropagation();
         const layerId = target.getAttribute('data-layer-target');
         const layerFeats = this.features.filter(f => f.layerId === layerId);
-        const allSelected = layerFeats.length > 0 && layerFeats.every(f => this.selectedFeatureIds.has(f.id));
-        if (allSelected) {
-          layerFeats.forEach(f => this.selectedFeatureIds.delete(f.id));
+        if (layerFeats.length === 0) return;
+
+        const isShift = e.shiftKey;
+        const isCtrl = e.ctrlKey || e.metaKey;
+
+        if (isShift && this.lastClickedFeatureId) {
+          this.handleItemSelection(layerFeats[0].id, true, isCtrl);
         } else {
-          layerFeats.forEach(f => this.selectedFeatureIds.add(f.id));
+          const allSelected = layerFeats.every(f => this.selectedFeatureIds.has(f.id));
+          if (allSelected) {
+            layerFeats.forEach(f => this.selectedFeatureIds.delete(f.id));
+          } else {
+            if (!isCtrl) this.selectedFeatureIds.clear();
+            layerFeats.forEach(f => this.selectedFeatureIds.add(f.id));
+          }
+          this.lastClickedFeatureId = layerFeats[layerFeats.length - 1].id;
         }
         this.updateContent();
       });
@@ -1342,25 +1438,31 @@ export class LayerPanel {
     document.querySelectorAll('[data-feat-select]').forEach(node => {
       node.addEventListener('click', (e) => {
         const featId = node.getAttribute('data-feat-select');
-        const feat = this.features.find(f => f.id === featId);
-        if (feat) {
-          this.setSelectedFeature(feat);
-          this.onFeatureSelect(feat);
-          this.onFitFeature(feat.id);
+        const isShift = e.shiftKey;
+        const isCtrl = e.ctrlKey || e.metaKey;
+
+        if (isShift || isCtrl) {
+          this.handleItemSelection(featId, isShift, isCtrl);
+          this.updateContent();
+        } else {
+          const feat = this.features.find(f => f.id === featId);
+          if (feat) {
+            this.setSelectedFeature(feat);
+            this.onFeatureSelect(feat);
+            this.onFitFeature(feat.id);
+          }
         }
       });
     });
 
-    // Alvo de Seleção Individual da Feição (Illustrator Target Circle)
+    // Alvo de Seleção Individual da Feição (Illustrator Target Circle com suporte a Shift)
     document.querySelectorAll('[data-feat-target]').forEach(target => {
       target.addEventListener('click', (e) => {
         e.stopPropagation();
         const featId = target.getAttribute('data-feat-target');
-        if (this.selectedFeatureIds.has(featId)) {
-          this.selectedFeatureIds.delete(featId);
-        } else {
-          this.selectedFeatureIds.add(featId);
-        }
+        const isShift = e.shiftKey;
+        const isCtrl = e.ctrlKey || e.metaKey;
+        this.handleItemSelection(featId, isShift, isCtrl);
         this.updateContent();
       });
     });
