@@ -1,0 +1,52 @@
+/* ==========================================================================
+   ConecteMapas - FloatingWindow Styles
+   Responsabilidade Única: Estilos da janela flutuante arrastável (Workbench)
+   ========================================================================== */
+
+.cm-floating-window {
+  position: fixed;
+  top: 60px;
+  right: 60px;
+  width: 350px;
+  max-height: 84vh;
+  background: rgba(18, 20, 26, 0.96);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(0, 224, 138, 0.35);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75);
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  resize: vertical;
+}
+
+.cm-floating-header {
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: move;
+  user-select: none;
+}
+
+.cm-floating-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--cm-text, #e1e1e6);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-floating-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}

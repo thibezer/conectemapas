@@ -1,0 +1,260 @@
+/* ==========================================================================
+   ConecteMapas - PrintComposer Styles
+   Responsabilidade Única: Layout geral do modal, prancheta de papel e itens
+   ========================================================================== */
+
+@import './PrintRulers.css';
+@import './PrintToolbar.css';
+
+.cm-print-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.cm-print-modal-overlay.hidden {
+  display: none;
+}
+
+.cm-print-main-workspace {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Prancheta / Folha de Papel (Sheet) */
+.cm-print-paper-sheet {
+  background: #ffffff;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.1);
+  position: relative;
+  overflow: hidden;
+  transition: width 0.15s ease, height 0.15s ease;
+  transform-origin: center center;
+}
+
+/* Itens Cartográficos Posicionados */
+.cm-print-item {
+  position: absolute;
+  cursor: move;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.cm-print-item.selected {
+  outline: 1.5px solid #38bdf8;
+  box-shadow: 0 0 0 1px #0284c7;
+}
+
+.cm-print-item.locked {
+  cursor: default;
+}
+
+/* Alças de Redimensionamento (Resize Handles) */
+.cm-resize-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #ffffff;
+  border: 1.5px solid #0284c7;
+  border-radius: 1px;
+  z-index: 100;
+}
+
+.cm-resize-handle.nw { top: -4px; left: -4px; cursor: nwse-resize; }
+.cm-resize-handle.ne { top: -4px; right: -4px; cursor: nesw-resize; }
+.cm-resize-handle.se { bottom: -4px; right: -4px; cursor: nwse-resize; }
+.cm-resize-handle.sw { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.cm-resize-handle.n { top: -4px; left: calc(50% - 4px); cursor: ns-resize; }
+.cm-resize-handle.s { bottom: -4px; left: calc(50% - 4px); cursor: ns-resize; }
+.cm-resize-handle.w { top: calc(50% - 4px); left: -4px; cursor: ew-resize; }
+.cm-resize-handle.e { top: calc(50% - 4px); right: -4px; cursor: ew-resize; }
+
+/* Contêineres de Elementos Internos */
+.cm-item-map-frame {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: #e5e5e5;
+}
+
+.cm-item-map-canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Grade de Coordenadas (Graticule Grid) */
+.cm-item-grid-border {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  border: 1px solid #000;
+}
+
+.cm-grid-label-n, .cm-grid-label-s, .cm-grid-label-e, .cm-grid-label-w {
+  position: absolute;
+  font-family: monospace;
+  font-size: 7px;
+  font-weight: 700;
+  color: #111;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 0 2px;
+}
+
+.cm-grid-label-n { top: 2px; }
+.cm-grid-label-s { bottom: 2px; }
+.cm-grid-label-w { left: 2px; transform: rotate(-90deg); transform-origin: left center; }
+.cm-grid-label-e { right: 2px; transform: rotate(90deg); transform-origin: right center; }
+
+/* Selo Técnico / Carimbo Cartográfico (ABNT / NBR 13133) */
+.cm-item-title-block {
+  width: 100%;
+  height: 100%;
+  background: #ffffff;
+  border: 1.5px solid #000;
+  display: flex;
+  flex-direction: column;
+  color: #000;
+  font-family: Arial, sans-serif;
+  overflow: hidden;
+}
+
+.cm-title-block-header {
+  background: #000;
+  color: #fff;
+  font-size: 8px;
+  font-weight: bold;
+  padding: 3px 5px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cm-title-block-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid #000;
+  font-size: 7.5px;
+}
+
+.cm-title-block-cell {
+  padding: 2px 4px;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+  display: flex;
+  flex-direction: column;
+}
+
+.cm-title-block-cell:nth-child(2n) {
+  border-right: none;
+}
+
+.cm-title-block-cell.full-width {
+  grid-column: span 2;
+  border-right: none;
+}
+
+.cm-cell-label {
+  font-size: 6px;
+  color: #555;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+.cm-cell-val {
+  font-weight: bold;
+  color: #000;
+  margin-top: 1px;
+}
+
+/* Barra de Escala Gráfica */
+.cm-item-scale-bar {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, sans-serif;
+  color: #000;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 2px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.cm-scale-bar-ruler {
+  display: flex;
+  width: 90%;
+  height: 6px;
+  border: 1px solid #000;
+  margin-top: 2px;
+}
+
+.cm-scale-bar-seg {
+  flex: 1;
+  height: 100%;
+}
+
+.cm-scale-bar-seg:nth-child(odd) { background: #000; }
+.cm-scale-bar-seg:nth-child(even) { background: #fff; }
+
+.cm-scale-bar-labels {
+  display: flex;
+  justify-content: space-between;
+  width: 90%;
+  font-size: 7px;
+  font-weight: bold;
+  margin-top: 2px;
+}
+
+/* Legenda Temática */
+.cm-item-legend {
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #000;
+  padding: 5px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #000;
+  font-family: Arial, sans-serif;
+  overflow-y: auto;
+}
+
+.cm-legend-title {
+  font-size: 9px;
+  font-weight: bold;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.cm-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 7.5px;
+}
+
+.cm-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 1px;
+  flex-shrink: 0;
+}

@@ -1,0 +1,52 @@
+/* ==========================================================================
+   ConecteMapas - CollabAudit Styles
+   Responsabilidade Única: Estilos da aba de equipe, chat e trilha de auditoria
+   ========================================================================== */
+
+.cm-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+}
+
+.cm-chat-bubble {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--cm-surface, #141417);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  font-size: 11.5px;
+}
+
+.cm-chat-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-chat-user {
+  font-weight: 600;
+  color: var(--cm-primary, #00E08A);
+}
+
+.cm-audit-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10.5px;
+  font-family: var(--cm-fonte-mono, monospace);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.cm-audit-item {
+  display: flex;
+  gap: 5px;
+  padding: 3px 6px;
+  border-left: 2px solid var(--cm-primary, #00E08A);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0 4px 4px 0;
+}

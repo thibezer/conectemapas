@@ -3,15 +3,12 @@
    Plataforma Colaborativa de Mapeamento com thibezer/Componentes-UI
    ========================================================================== */
 
-// 1. Importação da biblioteca oficial de Web Components
 import 'ui-components-kit/style.css';
 import 'ui-components-kit';
-import { UIToast, UIBus } from 'ui-components-kit';
+import { UIToast } from 'ui-components-kit';
 
-// 2. Importação dos Serviços e Componentes
 import { StorageService } from './services/StorageService.js';
 import { DEFAULT_LAYERS, DEFAULT_FEATURES, normalizeFeature } from './services/MockData.js';
-import { GeoFormats } from './services/GeoFormats.js';
 import { CollaborationHub } from './services/CollaborationHub.js';
 import { MapEngine } from './services/MapEngine.js';
 
@@ -24,6 +21,11 @@ import { ShareModal } from './components/Modals/ShareModal.js';
 import { ImportExportModal } from './components/Modals/ImportExportModal.js';
 import { ProjectTemplatesModal } from './components/Modals/ProjectTemplatesModal.js';
 import { NewFeatureModal } from './components/Modals/NewFeatureModal.js';
+import { PrintComposerModal } from './components/PrintComposer/PrintComposerModal.js';
+
+import { ProjectActionsController } from './controllers/ProjectActionsController.js';
+import { ShortcutsController } from './controllers/ShortcutsController.js';
+import { FeatureSyncController } from './controllers/FeatureSyncController.js';
 
 class ConecteMapasApp {
   constructor() {
@@ -41,8 +43,8 @@ class ConecteMapasApp {
     this.layerPanel = null;
     this.attributeTable = null;
     this.newFeatureModal = null;
+    this.printComposerModal = null;
 
-    // Histórico de Ações para Undo / Redo
     this.historyUndo = [];
     this.historyRedo = [];
 
@@ -55,11 +57,8 @@ class ConecteMapasApp {
     this.initMap();
     this.initComponents();
     this.updateHUD();
-
-    // Hidratação assíncrona para grandes volumes do IndexedDB
     this.loadStateAsync();
 
-    // Notificação inicial de boas-vindas
     setTimeout(() => {
       UIToast.notificar({
         tipo: 'sucesso',
@@ -79,7 +78,6 @@ class ConecteMapasApp {
       if (Array.isArray(saved.auditLog)) this.auditLog = saved.auditLog;
       if (saved.basemap) this.currentBasemap = saved.basemap;
     } else {
-      // Registra entrada inicial
       this.auditLog.push({
         id: 'aud_init',
         action: 'Projeto inicializado',
@@ -92,7 +90,6 @@ class ConecteMapasApp {
   async loadStateAsync() {
     const saved = await StorageService.loadCurrentProjectAsync();
     if (saved && Array.isArray(saved.features) && saved.features.length > 0) {
-      // Se o IndexedDB tiver mais feições do que o LocalStorage carregou
       if (saved.features.length !== this.features.length) {
         this.features = saved.features.map(normalizeFeature);
         this.refreshMapAndTable();
@@ -123,53 +120,14 @@ class ConecteMapasApp {
 
   initCollaboration() {
     this.collabHub = new CollaborationHub(null, (type, data) => {
-      this.handleCollabEvent(type, data);
+      FeatureSyncController.handleCollabEvent(this, type, data);
     });
-  }
-
-  handleCollabEvent(type, data) {
-    if (type === 'cursor:move') {
-      if (this.mapEngine) {
-        this.mapEngine.updateRemoteCursor(data.user, data.latlng);
-      }
-    } else if (type === 'feature:created') {
-      this.features.push(data.feature);
-      this.refreshMapAndTable();
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Nova Feição Criada',
-        mensagem: `${data.user.name} adicionou "${data.feature.name}".`,
-        duracao: 3500
-      });
-    } else if (type === 'feature:updated') {
-      const idx = this.features.findIndex(f => f.id === data.feature.id);
-      if (idx >= 0) {
-        this.features[idx] = data.feature;
-        this.refreshMapAndTable();
-      }
-    } else if (type === 'feature:deleted') {
-      this.features = this.features.filter(f => f.id !== data.featureId);
-      this.refreshMapAndTable();
-    } else if (type === 'chat:message') {
-      if (this.layerPanel) {
-        this.layerPanel.addChatMessage(data.message);
-      }
-    } else if (type === 'audit:log') {
-      this.auditLog.unshift(data.entry);
-      if (this.layerPanel) {
-        this.layerPanel.updateAuditLog(this.auditLog);
-      }
-    } else if (type === 'user:joined' || type === 'user:presence') {
-      if (this.headerBar) {
-        this.headerBar.updateCollaborators(this.collabHub.getActiveCollaboratorsList());
-      }
-    }
   }
 
   initMap() {
     this.mapEngine = new MapEngine('map-viewport', {
       onFeatureCreated: (rawFeature) => {
-        this.handleDrawingCompleted(rawFeature);
+        FeatureSyncController.handleDrawingCompleted(this, rawFeature);
       },
       onFeatureSelected: (feature) => {
         if (this.layerPanel) {
@@ -199,60 +157,42 @@ class ConecteMapasApp {
   }
 
   initComponents() {
-    // 1. Header Bar
     this.headerBar = new HeaderBar({
       projectName: this.projectName,
       collaborators: this.collabHub.getActiveCollaboratorsList(),
       onProjectNameChange: (newName) => {
         this.projectName = newName;
         this.saveState();
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Projeto Renomeado',
-          mensagem: `Nome atualizado para "${newName}".`,
-          duracao: 2500
-        });
+        UIToast.notificar({ tipo: 'sucesso', titulo: 'Projeto Renomeado', mensagem: `Nome atualizado para "${newName}".`, duracao: 2500 });
       },
       onSaveProject: () => {
         this.saveState();
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Projeto Salvo',
-          mensagem: `${this.features.length} feições gravadas no banco local com sucesso.`,
-          duracao: 3000
-        });
+        UIToast.notificar({ tipo: 'sucesso', titulo: 'Projeto Salvo', mensagem: `${this.features.length} feições gravadas no banco local com sucesso.`, duracao: 3000 });
+      },
+      onOpenPrintComposer: () => {
+        if (this.printComposerModal) {
+          this.printComposerModal.open(this.projectName, this.layers, this.features, this.currentBasemap);
+        }
       }
     });
     this.headerBar.render(document.getElementById('header-mount'));
 
-    // 2. Drawing Toolbar
     this.drawingToolbar = new DrawingToolbar({
       onToolChange: (tool) => {
         this.mapEngine.setTool(tool);
-        UIToast.notificar({
-          tipo: 'informativo',
-          titulo: 'Ferramenta Ativa',
-          mensagem: `Modo: ${this.getToolName(tool)}`,
-          duracao: 1500
-        });
+        UIToast.notificar({ tipo: 'informativo', titulo: 'Ferramenta Ativa', mensagem: `Modo: ${this.getToolName(tool)}`, duracao: 1500 });
       },
       onAction: (action) => {
         if (action === 'locate') {
-          this.locateUser();
+          ProjectActionsController.locateUser(this);
         } else if (action === 'fit') {
           this.mapEngine.fitAllFeatures();
-          UIToast.notificar({
-            tipo: 'informativo',
-            titulo: 'Vista Enquadrada',
-            mensagem: 'Todas as feições foram centralizadas.',
-            duracao: 2000
-          });
+          UIToast.notificar({ tipo: 'informativo', titulo: 'Vista Enquadrada', mensagem: 'Todas as feições foram centralizadas.', duracao: 2000 });
         }
       }
     });
     this.drawingToolbar.render(document.getElementById('drawing-toolbar-mount'));
 
-    // 3. Layer & Inspector & Collab Panel (Árvore Hierárquica Estilo Illustrator/Photoshop/QGIS)
     this.layerPanel = new LayerPanel({
       layers: this.getLayersWithCounts(),
       features: this.features,
@@ -271,12 +211,7 @@ class ConecteMapasApp {
         this.layers = [...newLayers];
         this.mapEngine.renderFeatures(this.features, this.layers);
         this.saveState();
-        UIToast.notificar({
-          tipo: 'informativo',
-          titulo: 'Sobreposição Atualizada',
-          mensagem: 'Ordem das camadas e Z-Index reordenados.',
-          duracao: 1800
-        });
+        UIToast.notificar({ tipo: 'informativo', titulo: 'Sobreposição Atualizada', mensagem: 'Ordem das camadas e Z-Index reordenados.', duracao: 1800 });
       },
       onLayerOpacityChange: (layerId, opacity) => {
         const layer = this.layers.find(l => l.id === layerId);
@@ -291,12 +226,7 @@ class ConecteMapasApp {
         if (layer) {
           layer.name = newName;
           this.saveState();
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Camada Renomeada',
-            mensagem: `Nome alterado para "${newName}".`,
-            duracao: 2000
-          });
+          UIToast.notificar({ tipo: 'sucesso', titulo: 'Camada Renomeada', mensagem: `Nome alterado para "${newName}".`, duracao: 2000 });
         }
       },
       onLayerColorChange: (layerId, newColor) => {
@@ -307,9 +237,8 @@ class ConecteMapasApp {
           this.saveState();
         }
       },
-      onLayerDelete: (layerId) => {
-        this.deleteLayer(layerId);
-      },
+      onLayerDelete: (layerId) => ProjectActionsController.deleteLayer(this, layerId),
+      onLayerFit: (layerId) => this.mapEngine.fitLayer(layerId),
       onFeatureToggle: (featureId, isVisible) => {
         const feat = this.features.find(f => f.id === featureId);
         if (feat) {
@@ -319,21 +248,14 @@ class ConecteMapasApp {
         }
       },
       onFeatureSelect: (feature) => {
-        if (this.attributeTable) {
-          this.attributeTable.selectFeature(feature.id);
-        }
+        if (this.attributeTable) this.attributeTable.selectFeature(feature.id);
       },
       onFeatureLockToggle: (featureId, isLocked) => {
         const feat = this.features.find(f => f.id === featureId);
         if (feat) {
           feat.locked = isLocked;
           this.saveState();
-          UIToast.notificar({
-            tipo: isLocked ? 'alerta' : 'sucesso',
-            titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
-            mensagem: isLocked ? `"${feat.name}" protegida contra edições.` : `"${feat.name}" liberada para edição.`,
-            duracao: 1800
-          });
+          UIToast.notificar({ tipo: isLocked ? 'alerta' : 'sucesso', titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada', mensagem: isLocked ? `"${feat.name}" protegida contra edições.` : `"${feat.name}" liberada para edição.`, duracao: 1800 });
         }
       },
       onBulkUpdate: (updatedFeatures) => {
@@ -342,12 +264,7 @@ class ConecteMapasApp {
         this.features = this.features.map(f => updateMap.get(f.id) || f);
         this.refreshMapAndTable();
         this.saveState();
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Modificação Coletiva',
-          mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`,
-          duracao: 2500
-        });
+        UIToast.notificar({ tipo: 'sucesso', titulo: 'Modificação Coletiva', mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`, duracao: 2500 });
       },
       onBulkDelete: (featureIds) => {
         const idSet = new Set(featureIds);
@@ -355,27 +272,16 @@ class ConecteMapasApp {
         this.features = this.features.filter(f => !idSet.has(f.id));
         this.refreshMapAndTable();
         this.saveState();
-        UIToast.notificar({
-          tipo: 'alerta',
-          titulo: 'Exclusão Coletiva',
-          mensagem: `${featureIds.length} feições removidas. Pressione Ctrl+Z para desfazer.`,
-          duracao: 3000
-        });
+        UIToast.notificar({ tipo: 'alerta', titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas. Pressione Ctrl+Z para desfazer.`, duracao: 3000 });
       },
       onBasemapChange: (basemapName) => {
         this.currentBasemap = basemapName;
         this.mapEngine.setBaseLayer(basemapName);
         this.saveState();
       },
-      onAddLayer: () => {
-        this.addNewLayer();
-      },
-      onDeleteFeature: (featureId) => {
-        this.deleteFeature(featureId);
-      },
-      onFeatureUpdate: (updatedFeature) => {
-        this.updateFeature(updatedFeature);
-      },
+      onAddLayer: () => ProjectActionsController.addNewLayer(this),
+      onDeleteFeature: (featureId) => FeatureSyncController.deleteFeature(this, featureId),
+      onFeatureUpdate: (updatedFeature) => FeatureSyncController.updateFeature(this, updatedFeature),
       onFeatureCreate: (newFeature) => {
         const norm = normalizeFeature(newFeature);
         this.pushHistory(`Criação de "${norm.name}"`);
@@ -388,17 +294,11 @@ class ConecteMapasApp {
         this.layerPanel.setSelectedFeature(norm);
         this.saveState();
       },
-      onFitFeature: (featureId) => {
-        this.mapEngine.zoomToFeature(featureId);
-      },
+      onFitFeature: (featureId) => this.mapEngine.zoomToFeature(featureId),
       onStartVertexEdit: (feature) => {
-        this.mapEngine.startVertexEditing(feature, (updated) => {
-          this.updateFeature(updated);
-        });
+        this.mapEngine.startVertexEditing(feature, (updated) => FeatureSyncController.updateFeature(this, updated));
       },
-      onStopVertexEdit: () => {
-        this.mapEngine.stopVertexEditing();
-      },
+      onStopVertexEdit: () => this.mapEngine.stopVertexEditing(),
       onSendMessage: (text) => {
         const msg = this.collabHub.sendChatMessage(text);
         this.layerPanel.addChatMessage(msg);
@@ -406,7 +306,6 @@ class ConecteMapasApp {
     });
     this.layerPanel.render(document.getElementById('layer-panel-mount'));
 
-    // 4. Attribute Table
     this.attributeTable = new AttributeTable({
       layers: this.layers,
       features: this.features,
@@ -417,22 +316,18 @@ class ConecteMapasApp {
           this.layerPanel.setSelectedFeature(feat);
         }
       },
-      onDelete: (featureId) => {
-        this.deleteFeature(featureId);
-      }
+      onDelete: (featureId) => FeatureSyncController.deleteFeature(this, featureId)
     });
     this.attributeTable.render(document.getElementById('attribute-table-mount'));
 
-    // 5. Modals
     new ShareModal().render(document.getElementById('share-modal-mount'));
-
     new ImportExportModal({
-      onExport: (format) => this.handleExport(format),
-      onImport: (content, fileName) => this.handleImport(content, fileName)
+      onExport: (format) => ProjectActionsController.handleExport(this, format),
+      onImport: (content, fileName) => ProjectActionsController.handleImport(this, content, fileName)
     }).render(document.getElementById('import-export-modal-mount'));
 
     new ProjectTemplatesModal({
-      onSelectTemplate: (template) => this.loadTemplate(template)
+      onSelectTemplate: (template) => ProjectActionsController.loadTemplate(this, template)
     }).render(document.getElementById('templates-modal-mount'));
 
     this.newFeatureModal = new NewFeatureModal({
@@ -446,504 +341,30 @@ class ConecteMapasApp {
         this.auditLog.unshift(audit);
         this.layerPanel.updateAuditLog(this.auditLog);
         this.saveState();
-
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Feição Adicionada',
-          mensagem: `"${newFeature.name}" inserida com sucesso.`,
-          duracao: 3000
-        });
+        UIToast.notificar({ tipo: 'sucesso', titulo: 'Feição Adicionada', mensagem: `"${newFeature.name}" inserida com sucesso.`, duracao: 3000 });
       }
     });
     this.newFeatureModal.render(document.getElementById('new-feature-modal-mount'));
 
-    // 6. Listeners Globais de Teclado (Undo / Redo / CAD)
-    this.bindGlobalKeyboardShortcuts();
+    this.printComposerModal = new PrintComposerModal({
+      projectName: this.projectName,
+      layers: this.layers,
+      features: this.features,
+      currentBasemap: this.currentBasemap
+    });
+    this.printComposerModal.render(document.getElementById('print-composer-mount'));
+
+    ShortcutsController.bindGlobalShortcuts(this);
   }
 
   pushHistory(description = '') {
-    this.historyUndo.push(JSON.stringify(this.features));
-    if (this.historyUndo.length > 50) this.historyUndo.shift();
-    this.historyRedo = []; // limpa pilha de refazer ao realizar nova ação
-  }
-
-  undo() {
-    if (this.historyUndo.length === 0) {
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Histórico Vazio',
-        mensagem: 'Nenhuma ação recente para desfazer.',
-        duracao: 2000
-      });
-      return;
-    }
-
-    this.historyRedo.push(JSON.stringify(this.features));
-    const previousSnapshot = this.historyUndo.pop();
-    this.features = JSON.parse(previousSnapshot);
-    this.refreshMapAndTable();
-    this.saveState();
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Desfeito (Ctrl+Z)',
-      mensagem: 'Estado anterior recuperado.',
-      duracao: 2000
-    });
-  }
-
-  redo() {
-    if (this.historyRedo.length === 0) {
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Histórico Vazio',
-        mensagem: 'Nenhuma ação para refazer.',
-        duracao: 2000
-      });
-      return;
-    }
-
-    this.historyUndo.push(JSON.stringify(this.features));
-    const nextSnapshot = this.historyRedo.pop();
-    this.features = JSON.parse(nextSnapshot);
-    this.refreshMapAndTable();
-    this.saveState();
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Refeito (Ctrl+Y)',
-      mensagem: 'Alteração reaplicada.',
-      duracao: 2000
-    });
-  }
-
-  bindGlobalKeyboardShortcuts() {
-    window.addEventListener('keydown', (e) => {
-      const path = e.composedPath ? e.composedPath() : [e.target];
-      const isInput = path.some(el => 
-        el && el.tagName && (
-          el.tagName === 'INPUT' || 
-          el.tagName === 'TEXTAREA' || 
-          el.tagName === 'SELECT' || 
-          el.tagName.toLowerCase().includes('campo-texto') ||
-          el.tagName.toLowerCase().includes('lista-flutuante') ||
-          el.isContentEditable
-        )
-      );
-      if (isInput) return;
-
-      // Undo: Ctrl+Z / Cmd+Z
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        // Se houver desenho em progresso, o MapEngine cuida de desfazer o vértice
-        if (this.mapEngine && this.mapEngine.drawingPoints && this.mapEngine.drawingPoints.length > 0) {
-          return;
-        }
-        e.preventDefault();
-        this.undo();
-      }
-      // Redo: Ctrl+Y / Ctrl+Shift+Z / Cmd+Shift+Z
-      else if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') || 
-               ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && e.shiftKey)) {
-        e.preventDefault();
-        this.redo();
-      }
-      // Save: Ctrl+S / Cmd+S
-      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        // Se o botão salvar do inspetor estiver presente, aciona o clique para salvar os campos do formulário
-        const btnSave = document.getElementById('btn-save-inspector');
-        if (btnSave) {
-          btnSave.click();
-        } else {
-          this.saveState();
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Projeto Salvo (Ctrl+S)',
-            mensagem: `${this.features.length} feições gravadas no banco de dados local.`,
-            duracao: 2500
-          });
-        }
-      }
-      // Navegação Master-Detail Workbench (J / K / Setas)
-      else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === 'j' || e.key === 'ArrowDown') {
-          e.preventDefault();
-          this.navigateFeature(1);
-        } else if (e.key === 'k' || e.key === 'ArrowUp') {
-          e.preventDefault();
-          this.navigateFeature(-1);
-        } else if (e.key === 'Delete') {
-          if (this.layerPanel && this.layerPanel.selectedFeature) {
-            e.preventDefault();
-            this.deleteFeature(this.layerPanel.selectedFeature.id);
-          }
-        }
-      }
-    });
-  }
-
-  navigateFeature(direction = 1) {
-    if (!this.features || this.features.length === 0) return;
-    const currentId = this.layerPanel?.selectedFeature?.id;
-    let currentIdx = this.features.findIndex(f => f.id === currentId);
-    if (currentIdx === -1) {
-      currentIdx = direction > 0 ? -1 : this.features.length;
-    }
-    let nextIdx = currentIdx + direction;
-    if (nextIdx < 0) nextIdx = this.features.length - 1;
-    if (nextIdx >= this.features.length) nextIdx = 0;
-
-    const nextFeature = this.features[nextIdx];
-    if (nextFeature) {
-      this.layerPanel.setSelectedFeature(nextFeature);
-      this.mapEngine.zoomToFeature(nextFeature.id);
-    }
-  }
-
-  handleDrawingCompleted(rawFeature) {
-    let defaultName = 'Nova Feição';
-    let defaultCat = 'Geral';
-    const num = Math.floor(Math.random() * 900 + 100);
-
-    if (rawFeature.type === 'Point') {
-      defaultName = `Ponto #${num}`;
-      defaultCat = 'Marco Topográfico';
-    } else if (rawFeature.type === 'LineString') {
-      defaultName = `Rota #${num}`;
-      defaultCat = 'Eixo Viário';
-    } else if (rawFeature.type === 'Polygon') {
-      defaultName = `Polígono #${num}`;
-      defaultCat = 'Área Delimitada';
-    } else if (rawFeature.type === 'Circle') {
-      defaultName = `Buffer (${rawFeature.radius}m)`;
-      defaultCat = 'Raio de Cobertura';
-    }
-
-    const targetLayer = this.layers.find(l => l.visible) || this.layers[0] || { id: 'layer-default', color: '#00E08A' };
-    const layerColor = targetLayer.color || '#00E08A';
-
-    const newFeature = normalizeFeature({
-      ...rawFeature,
-      id: 'feat-' + Date.now(),
-      name: defaultName,
-      layerId: targetLayer.id,
-      category: defaultCat,
-      color: layerColor,
-      description: '',
-      style: {
-        fillColor: layerColor,
-        fillOpacity: rawFeature.type === 'LineString' ? 1 : 0.35,
-        strokeColor: layerColor,
-        strokeWidth: 2.5,
-        strokeDashArray: '',
-        markerIcon: 'pin',
-        markerSize: 24,
-        markerRotation: 0,
-        showLabel: false,
-        labelField: 'name'
-      },
-      properties: {
-        ...(rawFeature.properties || {})
-      },
-      createdBy: 'Você',
-      createdAt: new Date().toISOString()
-    });
-
-    // 1. Salva imediatamente no histórico, estado em memória e banco de dados local
-    this.pushHistory(`Criação de "${newFeature.name}"`);
-    this.features.push(newFeature);
-    this.refreshMapAndTable();
-    this.saveState();
-
-    // 2. Notifica colaboração multi-aba
-    this.collabHub.notifyFeatureCreated(newFeature);
-    const audit = this.collabHub.logAudit(`Criou feição "${newFeature.name}"`, newFeature.type);
-    this.auditLog.unshift(audit);
-    if (this.layerPanel) {
-      this.layerPanel.updateAuditLog(this.auditLog);
-      this.layerPanel.setSelectedFeature(newFeature); // abre o inspetor automaticamente para edição rápida!
-    }
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Feição Salva no Mapa',
-      mensagem: `"${newFeature.name}" adicionada ao mapa.`,
-      duracao: 2500
-    });
-  }
-
-  updateFeature(updatedFeature) {
-    const idx = this.features.findIndex(f => f.id === updatedFeature.id);
-    if (idx >= 0) {
-      // Recalcula métricas se houver coordenadas atualizadas
-      if (updatedFeature.type === 'Polygon' && Array.isArray(updatedFeature.coordinates) && this.mapEngine) {
-        const areaM2 = this.mapEngine.calculatePolygonArea(updatedFeature.coordinates);
-        updatedFeature.properties = updatedFeature.properties || {};
-        updatedFeature.properties['Área (ha)'] = (areaM2 / 10000).toFixed(2) + ' ha';
-        updatedFeature.properties['Área (m²)'] = areaM2.toFixed(1) + ' m²';
-      } else if (updatedFeature.type === 'LineString' && Array.isArray(updatedFeature.coordinates) && this.mapEngine) {
-        const lengthM = this.mapEngine.calculatePolylineLength(updatedFeature.coordinates);
-        updatedFeature.properties = updatedFeature.properties || {};
-        updatedFeature.properties['Extensão'] = lengthM > 1000 ? (lengthM / 1000).toFixed(2) + ' km' : lengthM.toFixed(1) + ' m';
-      }
-
-      this.pushHistory(`Edição de "${updatedFeature.name}"`);
-      this.features[idx] = updatedFeature;
-      this.refreshMapAndTable();
-      this.collabHub.notifyFeatureUpdated(updatedFeature);
-      const audit = this.collabHub.logAudit(`Editou feição "${updatedFeature.name}"`, updatedFeature.id);
-      this.auditLog.unshift(audit);
-      this.layerPanel.updateAuditLog(this.auditLog);
-      this.saveState();
-
-      UIToast.notificar({
-        tipo: 'sucesso',
-        titulo: 'Alterações Salvas',
-        mensagem: `Feição "${updatedFeature.name}" atualizada.`,
-        duracao: 2000
-      });
-    }
-  }
-
-  deleteFeature(featureId) {
-    const feat = this.features.find(f => f.id === featureId);
-    const name = feat ? feat.name : featureId;
-    this.pushHistory(`Exclusão de "${name}"`);
-    this.features = this.features.filter(f => f.id !== featureId);
-    this.refreshMapAndTable();
-    this.collabHub.notifyFeatureDeleted(featureId);
-    const audit = this.collabHub.logAudit(`Excluiu feição "${name}"`, featureId);
-    this.auditLog.unshift(audit);
-    this.layerPanel.updateAuditLog(this.auditLog);
-    this.saveState();
-
-    UIToast.notificar({
-      tipo: 'alerta',
-      titulo: 'Feição Excluída',
-      mensagem: `"${name}" removida. Pressione Ctrl+Z para desfazer.`,
-      duracao: 3500
-    });
-  }
-
-  addNewLayer() {
-    const name = prompt('Nome da nova camada:', 'Nova Camada ' + (this.layers.length + 1));
-    if (!name) return;
-
-    const colors = ['#00E08A', '#38bdf8', '#f59e0b', '#ec4899', '#8b5cf6', '#ef4444'];
-    const color = colors[this.layers.length % colors.length];
-
-    const newLayer = {
-      id: 'layer-' + Date.now(),
-      name,
-      color,
-      visible: true,
-      opacity: 1,
-      locked: false
-    };
-
-    this.layers.push(newLayer);
-    this.layerPanel.updateLayers(this.getLayersWithCounts());
-    this.newFeatureModal.updateLayers(this.layers);
-    this.saveState();
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Camada Criada',
-      mensagem: `Camada "${name}" disponível para novos elementos.`,
-      duracao: 3000
-    });
-  }
-
-  loadTemplate(template) {
-    this.projectName = template.title;
-    this.layers = [...template.layers];
-    this.features = [];
-    this.mapEngine.map.setView(template.center, template.zoom);
-    this.refreshMapAndTable();
-    this.layerPanel.updateLayers(this.getLayersWithCounts());
-    this.newFeatureModal.updateLayers(this.layers);
-    this.saveState();
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Modelo Carregado',
-      mensagem: `Template "${template.title}" pronto para uso.`,
-      duracao: 3500
-    });
-  }
-
-  async handleExport(format) {
-    try {
-      let content = '';
-      let mimeType = 'text/plain';
-      let fileName = `${this.projectName.toLowerCase().replace(/\s+/g, '_')}.${format}`;
-      let blob = null;
-
-      if (format === 'shapefile' || format === 'shp') {
-        blob = await GeoFormats.toShapefileZip(this.features, this.projectName.toLowerCase().replace(/\s+/g, '_'));
-        fileName = `${this.projectName.toLowerCase().replace(/\s+/g, '_')}_shapefile.zip`;
-      } else if (format === 'geojson') {
-        content = GeoFormats.toGeoJSON(this.features, this.projectName);
-        mimeType = 'application/geo+json';
-        blob = new Blob([content], { type: mimeType });
-      } else if (format === 'kml') {
-        content = GeoFormats.toKML(this.features, this.projectName);
-        mimeType = 'application/vnd.google-earth.kml+xml';
-        blob = new Blob([content], { type: mimeType });
-      } else if (format === 'gpx') {
-        content = GeoFormats.toGPX(this.features, this.projectName);
-        mimeType = 'application/gpx+xml';
-        blob = new Blob([content], { type: mimeType });
-      } else if (format === 'csv') {
-        content = GeoFormats.toCSV(this.features);
-        mimeType = 'text/csv';
-        blob = new Blob([content], { type: mimeType });
-      }
-
-      if (!blob) return;
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      UIToast.notificar({
-        tipo: 'sucesso',
-        titulo: 'Exportação Concluída',
-        mensagem: `Arquivo ${fileName} baixado com sucesso!`,
-        duracao: 4000
-      });
-    } catch (err) {
-      UIToast.notificar({
-        tipo: 'erro',
-        titulo: 'Falha na Exportação',
-        mensagem: err.message,
-        duracao: 4000
-      });
-    }
-  }
-
-  async handleImport(content, fileName) {
-    try {
-      UIToast.notificar({
-        tipo: 'info',
-        titulo: 'Processando Arquivo',
-        mensagem: `Lendo geometrias e atributos de "${fileName}"...`,
-        duracao: 2500
-      });
-
-      const parsed = await GeoFormats.parseUploadedFile(content, fileName);
-      if (parsed.features && parsed.features.length > 0) {
-        const normalized = parsed.features.map(f => normalizeFeature(f));
-        this.pushHistory(`Importação de ${normalized.length} feições (${fileName})`);
-        this.features.push(...normalized);
-        this.refreshMapAndTable();
-        this.saveState();
-
-        let metaMsg = `${normalized.length} feições importadas com sucesso.`;
-        if (parsed.metadata) {
-          const m = parsed.metadata;
-          metaMsg = `${normalized.length} feições do Shapefile "${m.baseName}" importadas. Projeção: ${m.projection} | Codificação: ${m.encoding.toUpperCase()}`;
-        }
-
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Importação Concluída',
-          mensagem: metaMsg,
-          duracao: 5000
-        });
-
-        // Zoom automático nas feições importadas
-        if (normalized.length > 0 && normalized[0].id) {
-          this.mapEngine.zoomToFeature(normalized[0].id);
-        }
-
-        // Fecha modal
-        const modal = document.getElementById('modal-import-export');
-        if (modal && modal.fechar) modal.fechar();
-      } else {
-        UIToast.notificar({
-          tipo: 'alerta',
-          titulo: 'Nenhuma Feição Encontrada',
-          mensagem: 'O arquivo não continha geometrias válidas.',
-          duracao: 3000
-        });
-      }
-    } catch (e) {
-      console.error('Erro na importação:', e);
-      UIToast.notificar({
-        tipo: 'erro',
-        titulo: 'Falha na Importação',
-        mensagem: e.message || 'Não foi possível ler o arquivo fornecido.',
-        duracao: 5000
-      });
-    }
-  }
-
-  locateUser() {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const latlng = [pos.coords.latitude, pos.coords.longitude];
-          this.mapEngine.map.flyTo(latlng, 16, { duration: 1.5 });
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Localização Obtida',
-            mensagem: `Posição GPS centrada no mapa.`,
-            duracao: 3000
-          });
-        },
-        (err) => {
-          UIToast.notificar({
-            tipo: 'alerta',
-            titulo: 'GPS Indisponível',
-            mensagem: 'Permissão de localização não concedida.',
-            duracao: 3000
-          });
-        }
-      );
-    }
-  }
-
-  deleteLayer(layerId) {
-    if (this.layers.length <= 1) {
-      UIToast.notificar({ tipo: 'alerta', titulo: 'Aviso', mensagem: 'O projeto deve conter pelo menos uma camada ativa.' });
-      return;
-    }
-    const layer = this.layers.find(l => l.id === layerId);
-    const layerName = layer ? layer.name : layerId;
-    const remainingLayer = this.layers.find(l => l.id !== layerId);
-
-    // Realoca as feições para a primeira camada restante
-    this.features.forEach(f => {
-      if (f.layerId === layerId) {
-        f.layerId = remainingLayer.id;
-      }
-    });
-
-    this.layers = this.layers.filter(l => l.id !== layerId);
-    this.refreshMapAndTable();
-    if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
-    this.saveState();
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Camada Excluída',
-      mensagem: `Camada "${layerName}" removida. Feições movidas para "${remainingLayer.name}".`,
-      duracao: 3000
-    });
+    ShortcutsController.pushHistory(this, description);
   }
 
   refreshMapAndTable() {
     this.mapEngine.renderFeatures(this.features, this.layers);
-    if (this.attributeTable) {
-      this.attributeTable.updateData(this.features, this.layers);
-    }
-    if (this.layerPanel) {
-      this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
-    }
+    if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
+    if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
     this.updateHUD();
   }
 
@@ -953,18 +374,12 @@ class ConecteMapasApp {
       const lid = this.features[i].layerId;
       countMap.set(lid, (countMap.get(lid) || 0) + 1);
     }
-
-    return this.layers.map(layer => ({
-      ...layer,
-      featureCount: countMap.get(layer.id) || 0
-    }));
+    return this.layers.map(layer => ({ ...layer, featureCount: countMap.get(layer.id) || 0 }));
   }
 
   updateHUD() {
     const countSpan = document.getElementById('hud-features-count');
-    if (countSpan) {
-      countSpan.textContent = `${this.features.length} Feições Ativas`;
-    }
+    if (countSpan) countSpan.textContent = `${this.features.length} Feições Ativas`;
   }
 
   getToolName(tool) {
@@ -980,12 +395,10 @@ class ConecteMapasApp {
   }
 }
 
-// Inicialização da aplicação
 window.addEventListener('DOMContentLoaded', () => {
   window.conecteMapasApp = new ConecteMapasApp();
 });
 
-// Limpeza graciosa ao descarregar a aba/janela
 window.addEventListener('beforeunload', () => {
   if (window.conecteMapasApp && window.conecteMapasApp.collabHub) {
     window.conecteMapasApp.collabHub.destroy();

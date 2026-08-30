@@ -18,6 +18,7 @@ export class HeaderBar {
     this.collaborators = options.collaborators || [];
     this.onProjectNameChange = options.onProjectNameChange || (() => {});
     this.onSaveProject = options.onSaveProject || (() => {});
+    this.onOpenPrintComposer = options.onOpenPrintComposer || (() => {});
     this.container = null;
   }
 
@@ -89,6 +90,21 @@ export class HeaderBar {
                 <polyline points="7 3 7 8 15 8"/>
               </svg>
               <span>Salvar</span>
+            </div>
+          </ui-botao-primario>
+
+          <ui-botao-primario 
+            inline 
+            id="btn-open-print-composer" 
+            variante="secundario" 
+            title="Abrir Compositor de Layout de Impressão (Estilo QGIS)">
+            <div class="cm-header-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2"/>
+                <path d="M3 9h18"/>
+                <path d="M9 21V9"/>
+              </svg>
+              <span>Layout QGIS</span>
             </div>
           </ui-botao-primario>
 
@@ -222,6 +238,13 @@ export class HeaderBar {
     if (btnSave) {
       btnSave.addEventListener('click', () => {
         this.onSaveProject();
+      });
+    }
+
+    const btnComposer = this.container.querySelector('#btn-open-print-composer');
+    if (btnComposer) {
+      btnComposer.addEventListener('click', () => {
+        this.onOpenPrintComposer();
       });
     }
   }

@@ -1,0 +1,87 @@
+/* ==========================================================================
+   ConecteMapas - PrintToolbar Styles
+   Responsabilidade Única: Toolbar superior e ferramentas de inserção do compositor
+   ========================================================================== */
+
+.cm-print-topbar {
+  height: 44px;
+  min-height: 44px;
+  background: #141418;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  gap: 8px;
+  z-index: 50;
+}
+
+.cm-print-title-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-print-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-print-tools-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cm-print-tool-btn {
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--cm-text, #e1e1e6);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.cm-print-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.cm-print-tool-btn.active {
+  background: rgba(0, 224, 138, 0.15);
+  border-color: var(--cm-primary, #00E08A);
+  color: var(--cm-primary, #00E08A);
+  font-weight: 600;
+}
+
+.cm-print-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-print-zoom-badge {
+  font-family: var(--cm-fonte-mono, monospace);
+  font-size: 11px;
+  color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.1);
+  border: 1px solid rgba(0, 224, 138, 0.2);
+  padding: 3px 8px;
+  border-radius: 4px;
+}

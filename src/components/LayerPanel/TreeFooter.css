@@ -1,0 +1,84 @@
+/* ==========================================================================
+   ConecteMapas - TreeFooter Styles
+   Responsabilidade Única: Estilos do rodapé de ações coletivas da árvore (Illustrator)
+   ========================================================================== */
+
+.cm-ai-tree-footer {
+  height: 24px;
+  min-height: 24px;
+  background: #141417;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px;
+}
+
+.cm-ai-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cm-ai-footer-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-ai-footer-metric {
+  font-size: 10px;
+  font-family: var(--cm-fonte-mono, monospace);
+  color: var(--cm-primary, #00E08A);
+}
+
+.cm-ai-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cm-ai-footer-btn {
+  background: transparent;
+  border: none;
+  color: #888899;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+}
+
+.cm-ai-footer-btn:hover:not(.disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.cm-ai-footer-btn.disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.cm-ai-footer-color-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+.cm-ai-footer-color {
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.cm-ai-footer-select {
+  background: #1e1e24;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-radius: 2px;
+  font-size: 10px;
+  height: 18px;
+}
