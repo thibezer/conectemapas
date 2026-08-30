@@ -56,6 +56,14 @@ export class PrintComposerModal {
             <button class="cm-print-tool-btn" id="btn-add-print-titleblock" title="Inserir Selo Técnico NBR">🏛️ + Selo</button>
           </div>
 
+          <!-- Controles de Zoom e Enquadramento -->
+          <div class="cm-print-tools-group">
+            <button class="cm-print-tool-btn" id="btn-print-zoom-out" title="Diminuir Zoom">➖</button>
+            <span class="cm-print-zoom-badge" id="cm-print-zoom-val" style="min-width: 42px; text-align: center;">100%</span>
+            <button class="cm-print-tool-btn" id="btn-print-zoom-in" title="Aumentar Zoom">➕</button>
+            <button class="cm-print-tool-btn" id="btn-print-zoom-fit" title="Enquadrar Folha">🎯 Enquadrar</button>
+          </div>
+
           <div class="cm-print-actions-group">
             <ui-botao-primario inline id="btn-export-print-png" variante="secundario" style="height: 28px; font-size: 11px;">
               🖼️ PNG (300 DPI)
@@ -105,10 +113,16 @@ export class PrintComposerModal {
     this.updatePaperSheetDOM();
     this.updateCanvas();
     this.updatePropertiesPanel();
+
+    setTimeout(() => {
+      this.canvasEngine.zoomFit();
+      this.canvasEngine.renderRulers();
+    }, 80);
   }
 
   close() {
     this.destroyLeafletMaps();
+    if (this.canvasEngine) this.canvasEngine.destroy();
     const modal = document.getElementById('cm-print-composer-modal');
     if (modal) modal.classList.add('hidden');
     this.isOpen = false;
@@ -120,6 +134,9 @@ export class PrintComposerModal {
       this.updatePaperSheetDOM();
       this.updateCanvas();
       this.updatePropertiesPanel();
+      setTimeout(() => {
+        this.canvasEngine.zoomFit();
+      }, 50);
     }
   }
 
@@ -132,9 +149,7 @@ export class PrintComposerModal {
       sheet.style.height = `${hPx}px`;
     }
 
-    const rH = document.getElementById('ruler-h');
-    const rV = document.getElementById('ruler-v');
-    this.canvasEngine.renderRulers(rH, rV, this.paperSize.width, this.paperSize.height);
+    this.canvasEngine.renderRulers();
   }
 
   updateCanvas() {
@@ -176,9 +191,13 @@ export class PrintComposerModal {
           ${innerContent}
           ${isSel && !item.locked ? `
             <div class="cm-resize-handle nw" data-handle="nw"></div>
+            <div class="cm-resize-handle n" data-handle="n"></div>
             <div class="cm-resize-handle ne" data-handle="ne"></div>
+            <div class="cm-resize-handle e" data-handle="e"></div>
             <div class="cm-resize-handle se" data-handle="se"></div>
+            <div class="cm-resize-handle s" data-handle="s"></div>
             <div class="cm-resize-handle sw" data-handle="sw"></div>
+            <div class="cm-resize-handle w" data-handle="w"></div>
           ` : ''}
         </div>
       `;
@@ -199,35 +218,95 @@ export class PrintComposerModal {
             preferCanvas: true
           });
 
-          // Adiciona Basemap Esri / OSM
+          // Adiciona Basemap Esri Satélite com crossOrigin para exportação limpa
           L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            maxZoom: 19
+            maxZoom: 19,
+            crossOrigin: true
           }).addTo(map);
 
           if (item.type === 'inset_map') {
-            // Visão macro / continental (América do Sul / Brasil)
             map.setView([-15.78, -47.92], 4);
           } else {
-            // Visão de detalhe das feições
+            // Renderiza geometrias vetoriais das camadas no mapa de impressão
             if (this.features.length > 0) {
               const bounds = [];
               this.features.forEach(f => {
-                if (Array.isArray(f.coordinates)) {
-                  if (f.type === 'Point') bounds.push(f.coordinates);
-                  else if (f.type === 'LineString' || f.type === 'Polygon') bounds.push(...f.coordinates);
+                if (f.visible === false) return;
+                const layer = this.layers.find(l => l.id === f.layerId) || {};
+                const color = layer.color || f.color || '#00E08A';
+                const style = { color, fillColor: color, fillOpacity: 0.35, weight: 2 };
+
+                if (f.type === 'Polygon' && Array.isArray(f.coordinates)) {
+                  L.polygon(f.coordinates, style).addTo(map);
+                  bounds.push(...f.coordinates);
+                } else if (f.type === 'LineString' && Array.isArray(f.coordinates)) {
+                  L.polyline(f.coordinates, style).addTo(map);
+                  bounds.push(...f.coordinates);
+                } else if (f.type === 'Point' && Array.isArray(f.coordinates)) {
+                  L.circleMarker(f.coordinates, { ...style, radius: 6, fillOpacity: 0.85 }).addTo(map);
+                  bounds.push(f.coordinates);
                 }
               });
-              if (bounds.length > 0) map.fitBounds(bounds, { padding: [10, 10] });
+
+              if (bounds.length > 0) map.fitBounds(bounds, { padding: [15, 15] });
               else map.setView([-15.78, -47.92], 14);
             } else {
               map.setView([-15.78, -47.92], 14);
             }
           }
 
+          // Sincronização em tempo real de zoom <-> escala real e grade DMS dinâmica
+          const updateGridAndScale = () => {
+            const center = map.getCenter();
+            item.scale = PrintItemsManager.calculateScale(map.getZoom(), center.lat);
+
+            // Sincroniza a barra de escala se for o mapa principal
+            if (item.type === 'map') {
+              const scaleBar = this.items.find(i => i.type === 'scale_bar');
+              if (scaleBar) {
+                scaleBar.scale = item.scale;
+                const sbEl = document.querySelector('[data-item-id="item-scale-bar"]');
+                if (sbEl) sbEl.innerHTML = PrintItemsManager.renderScaleBar(scaleBar, item.scale);
+              }
+            }
+
+            // Atualiza coordenadas reais da grade
+            const frame = domEl.parentElement;
+            if (frame && item.showGrid) {
+              const b = map.getBounds();
+              const oldGrid = frame.querySelector('.cm-item-grid-border');
+              if (oldGrid) oldGrid.remove();
+              frame.insertAdjacentHTML('beforeend', PrintItemsManager.renderMapGridBorder({
+                north: b.getNorth(),
+                south: b.getSouth(),
+                west: b.getWest(),
+                east: b.getEast()
+              }));
+            }
+          };
+
+          map.on('moveend zoomend', updateGridAndScale);
+          setTimeout(updateGridAndScale, 120);
+
+          if (item.rotation) {
+            domEl.style.transform = `rotate(${item.rotation}deg)`;
+          }
+
           this.leafletMaps.set(item.id, map);
         }
       }
     });
+  }
+
+  applyMapScaleAndRotation(item) {
+    const map = this.leafletMaps.get(item.id);
+    const domEl = document.getElementById(`leaf-map-${item.id}`);
+    if (map && domEl) {
+      const center = map.getCenter();
+      const targetZoom = PrintItemsManager.calculateZoom(item.scale, center.lat);
+      map.setZoom(Math.round(targetZoom));
+      domEl.style.transform = `rotate(${item.rotation || 0}deg)`;
+    }
   }
 
   destroyLeafletMaps() {
@@ -298,132 +377,35 @@ export class PrintComposerModal {
     const btnPdf = document.getElementById('btn-export-print-pdf');
     if (btnPdf) btnPdf.addEventListener('click', () => PrintExporter.exportToPDF(this, 300));
 
+    // Controles de Zoom
+    const btnZoomIn = document.getElementById('btn-print-zoom-in');
+    if (btnZoomIn) btnZoomIn.addEventListener('click', () => this.canvasEngine.zoomIn());
+
+    const btnZoomOut = document.getElementById('btn-print-zoom-out');
+    if (btnZoomOut) btnZoomOut.addEventListener('click', () => this.canvasEngine.zoomOut());
+
+    const btnZoomFit = document.getElementById('btn-print-zoom-fit');
+    if (btnZoomFit) btnZoomFit.addEventListener('click', () => this.canvasEngine.zoomFit());
+
     // Botões de inserção de itens
-    const btnAddMap = document.getElementById('btn-add-print-map');
-    if (btnAddMap) {
-      btnAddMap.addEventListener('click', () => {
-        this.items.push({
-          id: `item-map-${Date.now()}`,
-          type: 'map',
-          name: `Mapa #${this.items.length + 1}`,
-          x: 20,
-          y: 20,
-          width: 140,
-          height: 100,
-          locked: false,
-          visible: true,
-          scale: 10000,
-          showGrid: true
-        });
-        this.updateCanvas();
-        this.updatePropertiesPanel();
-      });
-    }
-
-    const btnAddInset = document.getElementById('btn-add-print-inset');
-    if (btnAddInset) {
-      btnAddInset.addEventListener('click', () => {
-        this.items.push({
-          id: `item-inset-${Date.now()}`,
-          type: 'inset_map',
-          name: 'Mini-mapa Inset',
-          x: 180,
-          y: 20,
-          width: 80,
-          height: 60,
-          locked: false,
-          visible: true,
-          scale: 500000,
-          isOverview: true
-        });
-        this.updateCanvas();
-        this.updatePropertiesPanel();
-      });
-    }
-
-    const btnAddArrow = document.getElementById('btn-add-print-arrow');
-    if (btnAddArrow) {
-      btnAddArrow.addEventListener('click', () => {
-        this.items.push({
-          id: `item-arrow-${Date.now()}`,
-          type: 'north_arrow',
-          name: 'Rosa dos Ventos',
-          x: 20,
-          y: 130,
-          width: 25,
-          height: 25,
-          locked: false,
-          visible: true,
-          arrowStyle: 'classic',
-          rotation: 0
-        });
-        this.updateCanvas();
-        this.updatePropertiesPanel();
-      });
-    }
-
-    const btnAddScale = document.getElementById('btn-add-print-scale');
-    if (btnAddScale) {
-      btnAddScale.addEventListener('click', () => {
-        this.items.push({
-          id: `item-scale-${Date.now()}`,
-          type: 'scale_bar',
-          name: 'Barra de Escala',
-          x: 50,
-          y: 130,
-          width: 50,
-          height: 25,
-          locked: false,
-          visible: true
-        });
-        this.updateCanvas();
-        this.updatePropertiesPanel();
-      });
-    }
-
-    const btnAddLegend = document.getElementById('btn-add-print-legend');
-    if (btnAddLegend) {
-      btnAddLegend.addEventListener('click', () => {
-        this.items.push({
-          id: `item-legend-${Date.now()}`,
-          type: 'legend',
-          name: 'Legenda',
-          x: 180,
-          y: 90,
-          width: 80,
-          height: 50,
-          locked: false,
-          visible: true
-        });
-        this.updateCanvas();
-        this.updatePropertiesPanel();
-      });
-    }
-
-    const btnAddTitleblock = document.getElementById('btn-add-print-titleblock');
-    if (btnAddTitleblock) {
-      btnAddTitleblock.addEventListener('click', () => {
-        this.items.push({
-          id: `item-tb-${Date.now()}`,
-          type: 'title_block',
-          name: 'Carimbo Técnico',
-          x: 180,
-          y: 150,
-          width: 90,
-          height: 45,
-          locked: false,
-          visible: true,
-          properties: {
-            headerTitle: 'PLANTA TOPOGRÁFICA',
-            projectName: this.projectName,
-            author: 'Eng. Cartógrafo',
-            art: 'CREA-BR 2026',
-            datum: 'SIRGAS 2000'
+    const addItemHelper = (btnId, type) => {
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        btn.addEventListener('click', () => {
+          const item = PrintItemsManager.createNewItem(type, this.projectName, this.items.length);
+          if (item) {
+            this.items.push(item);
+            this.selectItem(item.id);
           }
         });
-        this.updateCanvas();
-        this.updatePropertiesPanel();
-      });
-    }
+      }
+    };
+
+    addItemHelper('btn-add-print-map', 'map');
+    addItemHelper('btn-add-print-inset', 'inset_map');
+    addItemHelper('btn-add-print-arrow', 'north_arrow');
+    addItemHelper('btn-add-print-scale', 'scale_bar');
+    addItemHelper('btn-add-print-legend', 'legend');
+    addItemHelper('btn-add-print-titleblock', 'title_block');
   }
 }
