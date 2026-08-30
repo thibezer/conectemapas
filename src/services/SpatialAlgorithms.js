@@ -73,8 +73,24 @@ export class SpatialAlgorithms {
    * @param {boolean} isPolygon Se é polígono fechado
    * @returns {Array<[number, number]>}
    */
+  /**
+   * Algoritmo de Douglas-Peucker com salvaguarda de anel mínimo
+   * @param {Array} coords Lista de pontos [lat, lng] ou múltiplos anéis
+   * @param {number} toleranceMeters Tolerância em metros (ex: 5m, 10m)
+   * @param {boolean} isPolygon Se é polígono fechado
+   * @returns {Array}
+   */
   static simplifyDouglasPeucker(coords, toleranceMeters = 5, isPolygon = false) {
-    if (!Array.isArray(coords) || coords.length <= (isPolygon ? 3 : 2)) {
+    if (!Array.isArray(coords) || coords.length === 0) {
+      return coords;
+    }
+
+    // Se for MultiPolygon / Multi-anéis, simplifica cada anel individualmente
+    if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+      return coords.map(ring => this.simplifyDouglasPeucker(ring, toleranceMeters, isPolygon));
+    }
+
+    if (coords.length <= (isPolygon ? 3 : 2)) {
       return coords;
     }
 
@@ -157,30 +173,34 @@ export class SpatialAlgorithms {
       };
     }
 
-    // Para Linhas e Polígonos: expande a envoltória geodésica em 32 segmentos
+    // Para Linhas e Polígonos: expande a envoltória geodésica
     const coords = feature.coordinates;
-    const bufferPoints = [];
+    const isMulti = Array.isArray(coords[0]) && Array.isArray(coords[0][0]);
+    const flatPoints = isMulti ? coords.flat() : coords;
 
-    if (type === 'Polygon' || type === 'LineString') {
-      const centerLat = coords.reduce((acc, c) => acc + c[0], 0) / coords.length;
-      const centerLng = coords.reduce((acc, c) => acc + c[1], 0) / coords.length;
+    let bufferPoints = [];
+
+    if ((type === 'Polygon' || type === 'LineString') && flatPoints.length > 0) {
+      const centerLat = flatPoints.reduce((acc, c) => acc + c[0], 0) / flatPoints.length;
+      const centerLng = flatPoints.reduce((acc, c) => acc + c[1], 0) / flatPoints.length;
 
       const dLat = this.metersToDegreesLat(radiusMeters);
       const dLng = this.metersToDegreesLng(radiusMeters, centerLat);
 
-      coords.forEach(([lat, lng]) => {
-        // Vetor de afastamento a partir do centroide
+      const offsetRing = (ring) => ring.map(([lat, lng]) => {
         const dirLat = lat - centerLat;
         const dirLng = lng - centerLng;
         const len = Math.sqrt(dirLat * dirLat + dirLng * dirLng) || 1;
         const normLat = dirLat / len;
         const normLng = dirLng / len;
-
-        bufferPoints.push([
-          lat + normLat * dLat,
-          lng + normLng * dLng
-        ]);
+        return [lat + normLat * dLat, lng + normLng * dLng];
       });
+
+      if (isMulti) {
+        bufferPoints = coords.map(ring => offsetRing(ring));
+      } else {
+        bufferPoints = offsetRing(coords);
+      }
     }
 
     return {
@@ -188,7 +208,7 @@ export class SpatialAlgorithms {
       name: `Buffer ${feature.name} (${radiusMeters}m)`,
       layerId: targetLayerId,
       type: 'Polygon',
-      coordinates: bufferPoints.length >= 3 ? bufferPoints : coords,
+      coordinates: bufferPoints.length > 0 ? bufferPoints : coords,
       category: 'Zona de Amortecimento',
       color: '#38bdf8',
       style: {
@@ -224,7 +244,8 @@ export class SpatialAlgorithms {
     if (feature.type === 'Point' || feature.type === 'Circle') {
       refLat = feature.coordinates[0];
     } else if (Array.isArray(feature.coordinates) && feature.coordinates[0]) {
-      refLat = feature.coordinates[0][0];
+      const isMulti = Array.isArray(feature.coordinates[0]) && Array.isArray(feature.coordinates[0][0]);
+      refLat = isMulti ? feature.coordinates[0][0][0] : feature.coordinates[0][0];
     }
 
     const dLat = this.metersToDegreesLat(offsetMeters);
@@ -234,7 +255,12 @@ export class SpatialAlgorithms {
     if (feature.type === 'Point' || feature.type === 'Circle') {
       newCoordinates = [feature.coordinates[0] + dLat, feature.coordinates[1] + dLng];
     } else if (Array.isArray(feature.coordinates)) {
-      newCoordinates = feature.coordinates.map(([lat, lng]) => [lat + dLat, lng + dLng]);
+      const isMulti = Array.isArray(feature.coordinates[0]) && Array.isArray(feature.coordinates[0][0]);
+      if (isMulti) {
+        newCoordinates = feature.coordinates.map(ring => ring.map(([lat, lng]) => [lat + dLat, lng + dLng]));
+      } else {
+        newCoordinates = feature.coordinates.map(([lat, lng]) => [lat + dLat, lng + dLng]);
+      }
     }
 
     return {
