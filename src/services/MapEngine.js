@@ -152,6 +152,8 @@ export class MapEngine {
 
   // --- Delegação de Renderização & Estilos ---
   renderFeatures(features, layers) { this.featureRenderer.renderFeatures(features, layers); }
+  updateFeature(feat, layers) { return this.featureRenderer.renderSingleFeature(feat, layers); }
+  removeFeature(featId) { this.featureRenderer.removeSingleFeature(featId); }
   zoomToFeature(featureId) { this.featureRenderer.zoomToFeature(featureId); }
   fitAllFeatures() { this.featureRenderer.fitAllFeatures(); }
   fitLayer(layerId) { this.featureRenderer.fitLayer(layerId); }

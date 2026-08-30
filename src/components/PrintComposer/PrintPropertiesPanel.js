@@ -1,8 +1,4 @@
-/* ==========================================================================
-   ConecteMapas - PrintPropertiesPanel
-   Responsabilidade Única: Painel lateral de propriedades do item selecionado,
-   configurações da folha de papel e árvore de elementos da prancha.
-   ========================================================================== */
+import { PrintItemsManager } from './PrintItemsManager.js';
 
 export class PrintPropertiesPanel {
   static render(composer) {
@@ -186,11 +182,16 @@ export class PrintPropertiesPanel {
       });
     });
 
-    const updateCurrent = (mutator, shouldUpdateMap = false) => {
+    const updateCurrent = (mutator, shouldUpdateMap = false, isPositionOrSizeChange = false) => {
       const it = composer.items.find(i => i.id === composer.selectedItemId);
       if (it) {
         mutator(it);
-        if (shouldUpdateMap && (it.type === 'map' || it.type === 'inset_map')) {
+        if (isPositionOrSizeChange) {
+          composer.updateItemPositionDOM(it);
+          if (it.type === 'map' || it.type === 'inset_map') {
+            composer.applyMapScaleAndRotation(it);
+          }
+        } else if (shouldUpdateMap && (it.type === 'map' || it.type === 'inset_map')) {
           composer.applyMapScaleAndRotation(it);
         } else if (it.type === 'title_block') {
           const container = document.querySelector(`[data-item-id="${it.id}"]`);
@@ -236,10 +237,10 @@ export class PrintPropertiesPanel {
     const propTbLoc = document.getElementById('prop-tb-loc');
     const propTbDate = document.getElementById('prop-tb-date');
 
-    if (propX) propX.addEventListener('change', (e) => updateCurrent(it => it.x = parseFloat(e.target.value) || 0));
-    if (propY) propY.addEventListener('change', (e) => updateCurrent(it => it.y = parseFloat(e.target.value) || 0));
-    if (propW) propW.addEventListener('change', (e) => updateCurrent(it => it.width = Math.max(10, parseFloat(e.target.value) || 10)));
-    if (propH) propH.addEventListener('change', (e) => updateCurrent(it => it.height = Math.max(10, parseFloat(e.target.value) || 10)));
+    if (propX) propX.addEventListener('change', (e) => updateCurrent(it => it.x = parseFloat(e.target.value) || 0, false, true));
+    if (propY) propY.addEventListener('change', (e) => updateCurrent(it => it.y = parseFloat(e.target.value) || 0, false, true));
+    if (propW) propW.addEventListener('change', (e) => updateCurrent(it => it.width = Math.max(10, parseFloat(e.target.value) || 10), false, true));
+    if (propH) propH.addEventListener('change', (e) => updateCurrent(it => it.height = Math.max(10, parseFloat(e.target.value) || 10), false, true));
     if (propScale) propScale.addEventListener('change', (e) => updateCurrent(it => it.scale = Math.max(100, parseFloat(e.target.value) || 10000), true));
     if (propMapRot) propMapRot.addEventListener('change', (e) => updateCurrent(it => it.rotation = parseFloat(e.target.value) || 0, true));
     if (propGrid) propGrid.addEventListener('change', (e) => updateCurrent(it => it.showGrid = e.target.checked));

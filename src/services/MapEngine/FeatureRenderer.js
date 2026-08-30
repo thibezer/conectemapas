@@ -13,134 +13,53 @@ export class FeatureRenderer {
   }
 
   renderFeatures(features, layers) {
-    this.engine.featureLayers.forEach(layerGroup => this.map.removeLayer(layerGroup));
-    this.engine.featureLayers.clear();
-    this.engine.renderedFeatures.clear();
-
     const layerMap = new Map(layers.map(l => [l.id, l]));
 
+    // 1. Reconciliação dos L.featureGroup das camadas
+    const currentLayerIds = new Set(layers.map(l => l.id));
+    this.engine.featureLayers.forEach((group, layerId) => {
+      if (!currentLayerIds.has(layerId)) {
+        this.map.removeLayer(group);
+        this.engine.featureLayers.delete(layerId);
+      }
+    });
+
     layers.forEach(layer => {
-      const group = L.featureGroup();
-      if (layer.visible !== false) {
-        group.addTo(this.map);
+      let group = this.engine.featureLayers.get(layer.id);
+      if (!group) {
+        group = L.featureGroup();
+        if (layer.visible !== false) {
+          group.addTo(this.map);
+        }
+        this.engine.featureLayers.set(layer.id, group);
+      } else {
+        const isCurrentlyOnMap = this.map.hasLayer(group);
+        if (layer.visible !== false && !isCurrentlyOnMap) {
+          group.addTo(this.map);
+        } else if (layer.visible === false && isCurrentlyOnMap) {
+          this.map.removeLayer(group);
+        }
       }
-      this.engine.featureLayers.set(layer.id, group);
     });
 
+    // 2. Remoção cirúrgica de feições excluídas ou invisíveis
+    const activeFeatMap = new Map();
+    features.forEach(f => {
+      if (f.visible !== false) activeFeatMap.set(f.id, f);
+    });
+
+    this.engine.renderedFeatures.forEach((layerWrapper, featId) => {
+      if (!activeFeatMap.has(featId)) {
+        this.removeSingleFeature(featId);
+      }
+    });
+
+    // 3. Renderização / Patching de cada feição ativa
     features.forEach(feat => {
-      if (feat.visible === false) return;
-
-      const layerConfig = layerMap.get(feat.layerId) || { color: '#00E08A', opacity: 1, visible: true };
-      const defaultColor = feat.color || layerConfig.color || '#00E08A';
-      const layerOpacity = layerConfig.opacity !== undefined ? Number(layerConfig.opacity) : 1;
-      
-      const rawFillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
-      const combinedFillOpacity = Math.max(0, Math.min(1, rawFillOpacity * layerOpacity));
-      const strokeOpacity = layerOpacity;
-
-      const style = {
-        fillColor: feat.style?.fillColor || defaultColor,
-        fillOpacity: combinedFillOpacity,
-        strokeColor: feat.style?.strokeColor || defaultColor,
-        strokeWidth: feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : 2.5,
-        strokeDashArray: feat.style?.strokeDashArray || null,
-        markerIcon: feat.style?.markerIcon || 'pin',
-        markerSize: feat.style?.markerSize !== undefined ? Number(feat.style.markerSize) : 24,
-        markerRotation: feat.style?.markerRotation !== undefined ? Number(feat.style.markerRotation) : 0,
-        showLabel: feat.style?.showLabel === true,
-        labelField: feat.style?.labelField || 'name',
-        layerOpacity: layerOpacity
-      };
-
-      let leafLayer = null;
-      let coords = feat.coordinates;
-
-      if (feat.type === 'Point' && coords && coords.lat !== undefined) {
-        coords = [coords.lat, coords.lng];
-      } else if ((feat.type === 'Polygon' || feat.type === 'LineString') && Array.isArray(coords)) {
-        if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-          coords = coords.map(ring => ring.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt));
-        } else {
-          coords = coords.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt);
-        }
-      } else if (feat.type === 'Circle' && coords && coords.lat !== undefined) {
-        coords = [coords.lat, coords.lng];
-      }
-
-      if (feat.type === 'Point' && coords) {
-        const iconHtml = this.getMarkerSVG(style.markerIcon, style.fillColor, style.markerSize, style.markerRotation);
-        const icon = L.divIcon({
-          className: 'cm-custom-marker-icon',
-          html: iconHtml,
-          iconSize: [style.markerSize, style.markerSize],
-          iconAnchor: [style.markerSize / 2, style.markerSize / 2]
-        });
-        leafLayer = L.marker(coords, { icon, opacity: layerOpacity });
-      } else if (feat.type === 'LineString' && coords && coords.length > 0) {
-        leafLayer = L.polyline(coords, {
-          color: style.strokeColor,
-          weight: style.strokeWidth,
-          dashArray: style.strokeDashArray || undefined,
-          opacity: strokeOpacity
-        });
-      } else if (feat.type === 'Polygon' && coords && coords.length > 0) {
-        leafLayer = L.polygon(coords, {
-          color: style.strokeColor,
-          weight: style.strokeWidth,
-          dashArray: style.strokeDashArray || undefined,
-          fillColor: style.fillColor,
-          fillOpacity: combinedFillOpacity,
-          opacity: strokeOpacity
-        });
-      } else if (feat.type === 'Circle' && coords) {
-        leafLayer = L.circle(coords, {
-          radius: feat.radius || 500,
-          color: style.strokeColor,
-          weight: style.strokeWidth,
-          dashArray: style.strokeDashArray || undefined,
-          fillColor: style.fillColor,
-          fillOpacity: combinedFillOpacity,
-          opacity: strokeOpacity
-        });
-      }
-
-      if (leafLayer) {
-        if (style.showLabel) {
-          let labelText = feat.name || 'Feição';
-          if (style.labelField === 'category') {
-            labelText = feat.category || feat.type;
-          } else if (style.labelField === 'area' && feat.type === 'Polygon') {
-            const a = this.calculatePolygonArea(coords);
-            labelText = `${(a / 10000).toFixed(2)} ha`;
-          } else if (style.labelField === 'extensao' && feat.type === 'LineString') {
-            const l = this.calculatePolylineLength(coords);
-            labelText = l > 1000 ? `${(l / 1000).toFixed(2)} km` : `${l.toFixed(0)} m`;
-          }
-
-          leafLayer.bindTooltip(
-            `<span class="cm-map-feature-label">${this.escapeHtml(labelText)}</span>`,
-            { permanent: true, direction: 'center', className: 'cm-map-label-tooltip', interactive: false }
-          );
-        }
-
-        const popupHtml = this.createFeaturePopupHtml({ ...feat, coordinates: coords });
-        leafLayer.bindPopup(popupHtml, { maxWidth: 280 });
-
-        leafLayer.on('click', () => {
-          this.engine.onFeatureSelected(feat);
-        });
-
-        const targetGroup = this.engine.featureLayers.get(feat.layerId);
-        if (targetGroup) {
-          targetGroup.addLayer(leafLayer);
-        } else {
-          leafLayer.addTo(this.map);
-        }
-
-        this.engine.renderedFeatures.set(feat.id, leafLayer);
-      }
+      this.renderSingleFeature(feat, layers);
     });
 
+    // 4. Ordenação Z-Index das camadas
     const reversedLayers = [...layers].reverse();
     reversedLayers.forEach(layer => {
       const group = this.engine.featureLayers.get(layer.id);
@@ -148,6 +67,248 @@ export class FeatureRenderer {
         group.bringToFront();
       }
     });
+  }
+
+  renderSingleFeature(feat, layers) {
+    if (!feat) return null;
+    if (feat.visible === false) {
+      this.removeSingleFeature(feat.id);
+      return null;
+    }
+
+    const layerMap = Array.isArray(layers) ? new Map(layers.map(l => [l.id, l])) : null;
+    const layerConfig = (layerMap ? layerMap.get(feat.layerId) : null) || { color: '#00E08A', opacity: 1, visible: true };
+    if (layerConfig.visible === false) {
+      this.removeSingleFeature(feat.id);
+      return null;
+    }
+
+    const defaultColor = feat.color || layerConfig.color || '#00E08A';
+    const layerOpacity = layerConfig.opacity !== undefined ? Number(layerConfig.opacity) : 1;
+    
+    const rawFillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
+    const combinedFillOpacity = Math.max(0, Math.min(1, rawFillOpacity * layerOpacity));
+    const strokeOpacity = layerOpacity;
+
+    const style = {
+      fillColor: feat.style?.fillColor || defaultColor,
+      fillOpacity: combinedFillOpacity,
+      strokeColor: feat.style?.strokeColor || defaultColor,
+      strokeWidth: feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : 2.5,
+      strokeDashArray: feat.style?.strokeDashArray || null,
+      markerIcon: feat.style?.markerIcon || 'pin',
+      markerSize: feat.style?.markerSize !== undefined ? Number(feat.style.markerSize) : 24,
+      markerRotation: feat.style?.markerRotation !== undefined ? Number(feat.style.markerRotation) : 0,
+      showLabel: feat.style?.showLabel === true,
+      labelField: feat.style?.labelField || 'name',
+      layerOpacity: layerOpacity
+    };
+
+    const coords = this.normalizeCoordinates(feat);
+    let existingLayer = this.engine.renderedFeatures.get(feat.id);
+
+    // Se o tipo mudou, recria
+    if (existingLayer && existingLayer._cmType !== feat.type) {
+      const oldGroup = this.engine.featureLayers.get(existingLayer._cmLayerId);
+      if (oldGroup) oldGroup.removeLayer(existingLayer);
+      else this.map.removeLayer(existingLayer);
+      existingLayer = null;
+    }
+
+    if (!existingLayer) {
+      // --- MOUNT: Cria nova camada Leaflet ---
+      existingLayer = this.createLeafletLayer(feat, coords, style);
+      if (existingLayer) {
+        existingLayer._cmType = feat.type;
+        existingLayer._cmLayerId = feat.layerId;
+
+        existingLayer.on('click', () => {
+          this.engine.onFeatureSelected(feat);
+        });
+
+        let targetGroup = this.engine.featureLayers.get(feat.layerId);
+        if (!targetGroup) {
+          targetGroup = L.featureGroup();
+          if (layerConfig.visible !== false) targetGroup.addTo(this.map);
+          this.engine.featureLayers.set(feat.layerId, targetGroup);
+        }
+        targetGroup.addLayer(existingLayer);
+        this.engine.renderedFeatures.set(feat.id, existingLayer);
+      }
+    } else {
+      // --- PATCH: Atualiza in-place sem destruir a camada ---
+      this.patchLeafletLayer(existingLayer, feat, coords, style);
+    }
+
+    // Atualiza popup e labels
+    if (existingLayer) {
+      this.updatePopupAndTooltip(existingLayer, feat, coords, style);
+    }
+
+    return existingLayer;
+  }
+
+  removeSingleFeature(featId) {
+    const layer = this.engine.renderedFeatures.get(featId);
+    if (layer) {
+      const targetGroup = this.engine.featureLayers.get(layer._cmLayerId);
+      if (targetGroup && targetGroup.hasLayer(layer)) {
+        targetGroup.removeLayer(layer);
+      } else if (this.map.hasLayer(layer)) {
+        this.map.removeLayer(layer);
+      }
+      this.engine.renderedFeatures.delete(featId);
+    }
+  }
+
+  normalizeCoordinates(feat) {
+    let coords = feat.coordinates;
+    if (feat.type === 'Point' && coords && coords.lat !== undefined) {
+      return [coords.lat, coords.lng];
+    } else if ((feat.type === 'Polygon' || feat.type === 'LineString') && Array.isArray(coords)) {
+      if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+        return coords.map(ring => ring.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt));
+      } else {
+        return coords.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt);
+      }
+    } else if (feat.type === 'Circle' && coords && coords.lat !== undefined) {
+      return [coords.lat, coords.lng];
+    }
+    return coords;
+  }
+
+  createLeafletLayer(feat, coords, style) {
+    if (feat.type === 'Point' && coords) {
+      const iconHtml = this.getMarkerSVG(style.markerIcon, style.fillColor, style.markerSize, style.markerRotation);
+      const icon = L.divIcon({
+        className: 'cm-custom-marker-icon',
+        html: iconHtml,
+        iconSize: [style.markerSize, style.markerSize],
+        iconAnchor: [style.markerSize / 2, style.markerSize / 2]
+      });
+      return L.marker(coords, { icon, opacity: style.layerOpacity });
+    } else if (feat.type === 'LineString' && coords && coords.length > 0) {
+      return L.polyline(coords, {
+        color: style.strokeColor,
+        weight: style.strokeWidth,
+        dashArray: style.strokeDashArray || undefined,
+        opacity: style.layerOpacity
+      });
+    } else if (feat.type === 'Polygon' && coords && coords.length > 0) {
+      return L.polygon(coords, {
+        color: style.strokeColor,
+        weight: style.strokeWidth,
+        dashArray: style.strokeDashArray || undefined,
+        fillColor: style.fillColor,
+        fillOpacity: style.fillOpacity,
+        opacity: style.layerOpacity
+      });
+    } else if (feat.type === 'Circle' && coords) {
+      return L.circle(coords, {
+        radius: feat.radius || 500,
+        color: style.strokeColor,
+        weight: style.strokeWidth,
+        dashArray: style.strokeDashArray || undefined,
+        fillColor: style.fillColor,
+        fillOpacity: style.fillOpacity,
+        opacity: style.layerOpacity
+      });
+    }
+    return null;
+  }
+
+  patchLeafletLayer(layer, feat, coords, style) {
+    // Migração de grupo se mudou de camada
+    if (layer._cmLayerId !== feat.layerId) {
+      const oldGroup = this.engine.featureLayers.get(layer._cmLayerId);
+      if (oldGroup && oldGroup.hasLayer(layer)) {
+        oldGroup.removeLayer(layer);
+      }
+      const newGroup = this.engine.featureLayers.get(feat.layerId);
+      if (newGroup) {
+        newGroup.addLayer(layer);
+      }
+      layer._cmLayerId = feat.layerId;
+    }
+
+    if (feat.type === 'Point' && coords) {
+      layer.setLatLng(coords);
+      layer.setOpacity(style.layerOpacity);
+      const iconHtml = this.getMarkerSVG(style.markerIcon, style.fillColor, style.markerSize, style.markerRotation);
+      const icon = L.divIcon({
+        className: 'cm-custom-marker-icon',
+        html: iconHtml,
+        iconSize: [style.markerSize, style.markerSize],
+        iconAnchor: [style.markerSize / 2, style.markerSize / 2]
+      });
+      layer.setIcon(icon);
+    } else if (feat.type === 'LineString' && coords) {
+      layer.setLatLngs(coords);
+      layer.setStyle({
+        color: style.strokeColor,
+        weight: style.strokeWidth,
+        dashArray: style.strokeDashArray || undefined,
+        opacity: style.layerOpacity
+      });
+    } else if (feat.type === 'Polygon' && coords) {
+      layer.setLatLngs(coords);
+      layer.setStyle({
+        color: style.strokeColor,
+        weight: style.strokeWidth,
+        dashArray: style.strokeDashArray || undefined,
+        fillColor: style.fillColor,
+        fillOpacity: style.fillOpacity,
+        opacity: style.layerOpacity
+      });
+    } else if (feat.type === 'Circle' && coords) {
+      layer.setLatLng(coords);
+      if (feat.radius && layer.setRadius) {
+        layer.setRadius(feat.radius);
+      }
+      layer.setStyle({
+        color: style.strokeColor,
+        weight: style.strokeWidth,
+        dashArray: style.strokeDashArray || undefined,
+        fillColor: style.fillColor,
+        fillOpacity: style.fillOpacity,
+        opacity: style.layerOpacity
+      });
+    }
+  }
+
+  updatePopupAndTooltip(leafLayer, feat, coords, style) {
+    // Popup
+    const popupHtml = this.createFeaturePopupHtml({ ...feat, coordinates: coords });
+    if (leafLayer.getPopup()) {
+      leafLayer.setPopupContent(popupHtml);
+    } else {
+      leafLayer.bindPopup(popupHtml, { maxWidth: 280 });
+    }
+
+    // Tooltip
+    if (style.showLabel) {
+      let labelText = feat.name || 'Feição';
+      if (style.labelField === 'category') {
+        labelText = feat.category || feat.type;
+      } else if (style.labelField === 'area' && feat.type === 'Polygon') {
+        const a = this.calculatePolygonArea(coords);
+        labelText = `${(a / 10000).toFixed(2)} ha`;
+      } else if (style.labelField === 'extensao' && feat.type === 'LineString') {
+        const l = this.calculatePolylineLength(coords);
+        labelText = l > 1000 ? `${(l / 1000).toFixed(2)} km` : `${l.toFixed(0)} m`;
+      }
+
+      const tooltipContent = `<span class="cm-map-feature-label">${this.escapeHtml(labelText)}</span>`;
+      if (leafLayer.getTooltip()) {
+        leafLayer.setTooltipContent(tooltipContent);
+      } else {
+        leafLayer.bindTooltip(tooltipContent, { permanent: true, direction: 'center', className: 'cm-map-label-tooltip', interactive: false });
+      }
+    } else {
+      if (leafLayer.getTooltip()) {
+        leafLayer.unbindTooltip();
+      }
+    }
   }
 
   getMarkerSVG(iconName, color, size = 24, rotation = 0) {

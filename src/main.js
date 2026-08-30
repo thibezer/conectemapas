@@ -102,20 +102,30 @@ class ConecteMapasApp {
     }
   }
 
-  saveState() {
-    StorageService.saveProject({
+  saveState(isImmediate = false) {
+    const payload = {
       name: this.projectName,
       basemap: this.currentBasemap,
       layers: this.layers,
       features: this.features,
       auditLog: this.auditLog
-    });
+    };
+
+    if (isImmediate) {
+      StorageService.flushSync(payload);
+    } else {
+      StorageService.saveProjectDebounced(payload, 350);
+    }
 
     const syncChip = document.getElementById('cm-sync-chip');
     if (syncChip) {
       syncChip.setAttribute('variante', 'sucesso');
       syncChip.textContent = `● Salvo (${this.features.length} feições no IndexedDB)`;
     }
+  }
+
+  flushSaveState() {
+    this.saveState(true);
   }
 
   initCollaboration() {
@@ -125,6 +135,9 @@ class ConecteMapasApp {
   }
 
   initMap() {
+    let cursorRafPending = false;
+    let lastLatlng = null;
+
     this.mapEngine = new MapEngine('map-viewport', {
       onFeatureCreated: (rawFeature) => {
         FeatureSyncController.handleDrawingCompleted(this, rawFeature);
@@ -135,12 +148,19 @@ class ConecteMapasApp {
         }
       },
       onCursorMove: (latlng) => {
-        if (this.collabHub) {
-          this.collabHub.sendCursorPosition([latlng.lat, latlng.lng]);
-        }
-        const latSpan = document.getElementById('hud-latlng');
-        if (latSpan) {
-          latSpan.textContent = `Lat: ${latlng.lat.toFixed(5)} | Lng: ${latlng.lng.toFixed(5)}`;
+        lastLatlng = latlng;
+        if (!cursorRafPending) {
+          cursorRafPending = true;
+          requestAnimationFrame(() => {
+            cursorRafPending = false;
+            if (this.collabHub && lastLatlng) {
+              this.collabHub.sendCursorPosition([lastLatlng.lat, lastLatlng.lng]);
+            }
+            const latSpan = document.getElementById('hud-latlng');
+            if (latSpan && lastLatlng) {
+              latSpan.textContent = `Lat: ${lastLatlng.lat.toFixed(5)} | Lng: ${lastLatlng.lng.toFixed(5)}`;
+            }
+          });
         }
       }
     });
@@ -162,11 +182,11 @@ class ConecteMapasApp {
       collaborators: this.collabHub.getActiveCollaboratorsList(),
       onProjectNameChange: (newName) => {
         this.projectName = newName;
-        this.saveState();
+        this.saveState(true);
         UIToast.notificar({ tipo: 'sucesso', titulo: 'Projeto Renomeado', mensagem: `Nome atualizado para "${newName}".`, duracao: 2500 });
       },
       onSaveProject: () => {
-        this.saveState();
+        this.saveState(true);
         UIToast.notificar({ tipo: 'sucesso', titulo: 'Projeto Salvo', mensagem: `${this.features.length} feições gravadas no banco local com sucesso.`, duracao: 3000 });
       },
       onOpenPrintComposer: () => {
@@ -243,7 +263,11 @@ class ConecteMapasApp {
         const feat = this.features.find(f => f.id === featureId);
         if (feat) {
           feat.visible = isVisible;
-          this.mapEngine.renderFeatures(this.features, this.layers);
+          if (isVisible) {
+            this.mapEngine.updateFeature(feat, this.layers);
+          } else {
+            this.mapEngine.removeFeature(feat.id);
+          }
           this.saveState();
         }
       },
@@ -280,18 +304,40 @@ class ConecteMapasApp {
         this.saveState();
       },
       onAddLayer: () => ProjectActionsController.addNewLayer(this),
+      onAddFeature: (rawFeat) => {
+        const norm = normalizeFeature(rawFeat);
+        this.pushHistory(`Criação de "${norm.name}"`);
+        this.features.push(norm);
+        this.mapEngine.updateFeature(norm, this.layers);
+        if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
+        if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
+        this.updateHUD();
+        this.collabHub.notifyFeatureCreated(norm);
+        const audit = this.collabHub.logAudit(`Criou feição "${norm.name}"`, norm.type);
+        this.auditLog.unshift(audit);
+        if (this.layerPanel) {
+          this.layerPanel.updateAuditLog(this.auditLog);
+          this.layerPanel.setSelectedFeature(norm);
+        }
+        this.saveState();
+      },
       onDeleteFeature: (featureId) => FeatureSyncController.deleteFeature(this, featureId),
       onFeatureUpdate: (updatedFeature) => FeatureSyncController.updateFeature(this, updatedFeature),
       onFeatureCreate: (newFeature) => {
         const norm = normalizeFeature(newFeature);
         this.pushHistory(`Criação de "${norm.name}"`);
         this.features.push(norm);
-        this.refreshMapAndTable();
+        this.mapEngine.updateFeature(norm, this.layers);
+        if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
+        if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
+        this.updateHUD();
         this.collabHub.notifyFeatureCreated(norm);
         const audit = this.collabHub.logAudit(`Criou feição "${norm.name}"`, norm.type);
         this.auditLog.unshift(audit);
-        this.layerPanel.updateAuditLog(this.auditLog);
-        this.layerPanel.setSelectedFeature(norm);
+        if (this.layerPanel) {
+          this.layerPanel.updateAuditLog(this.auditLog);
+          this.layerPanel.setSelectedFeature(norm);
+        }
         this.saveState();
       },
       onFitFeature: (featureId) => this.mapEngine.zoomToFeature(featureId),
@@ -335,11 +381,14 @@ class ConecteMapasApp {
       onSave: (newFeature) => {
         this.pushHistory(`Criação de "${newFeature.name}"`);
         this.features.push(newFeature);
-        this.refreshMapAndTable();
+        this.mapEngine.updateFeature(newFeature, this.layers);
+        if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
+        if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
+        this.updateHUD();
         this.collabHub.notifyFeatureCreated(newFeature);
         const audit = this.collabHub.logAudit(`Criou feição "${newFeature.name}"`, newFeature.type);
         this.auditLog.unshift(audit);
-        this.layerPanel.updateAuditLog(this.auditLog);
+        if (this.layerPanel) this.layerPanel.updateAuditLog(this.auditLog);
         this.saveState();
         UIToast.notificar({ tipo: 'sucesso', titulo: 'Feição Adicionada', mensagem: `"${newFeature.name}" inserida com sucesso.`, duracao: 3000 });
       }
@@ -400,7 +449,16 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 window.addEventListener('beforeunload', () => {
-  if (window.conecteMapasApp && window.conecteMapasApp.collabHub) {
-    window.conecteMapasApp.collabHub.destroy();
+  if (window.conecteMapasApp) {
+    window.conecteMapasApp.flushSaveState();
+    if (window.conecteMapasApp.collabHub) {
+      window.conecteMapasApp.collabHub.destroy();
+    }
+  }
+});
+
+window.addEventListener('pagehide', () => {
+  if (window.conecteMapasApp) {
+    window.conecteMapasApp.flushSaveState();
   }
 });

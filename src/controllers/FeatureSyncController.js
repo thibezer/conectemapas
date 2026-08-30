@@ -59,7 +59,10 @@ export class FeatureSyncController {
 
     app.pushHistory(`Criação de "${newFeature.name}"`);
     app.features.push(newFeature);
-    app.refreshMapAndTable();
+    app.mapEngine.updateFeature(newFeature, app.layers);
+    if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+    if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+    app.updateHUD();
     app.saveState();
 
     app.collabHub.notifyFeatureCreated(newFeature);
@@ -94,11 +97,15 @@ export class FeatureSyncController {
 
       app.pushHistory(`Edição de "${updatedFeature.name}"`);
       app.features[idx] = updatedFeature;
-      app.refreshMapAndTable();
+      app.mapEngine.updateFeature(updatedFeature, app.layers);
+      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      if (app.layerPanel && app.layerPanel.selectedFeature?.id === updatedFeature.id) {
+        app.layerPanel.selectedFeature = updatedFeature;
+      }
       app.collabHub.notifyFeatureUpdated(updatedFeature);
       const audit = app.collabHub.logAudit(`Editou feição "${updatedFeature.name}"`, updatedFeature.id);
       app.auditLog.unshift(audit);
-      app.layerPanel.updateAuditLog(app.auditLog);
+      if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
       app.saveState();
 
       UIToast.notificar({
@@ -115,11 +122,14 @@ export class FeatureSyncController {
     const name = feat ? feat.name : featureId;
     app.pushHistory(`Exclusão de "${name}"`);
     app.features = app.features.filter(f => f.id !== featureId);
-    app.refreshMapAndTable();
+    app.mapEngine.removeFeature(featureId);
+    if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+    if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+    app.updateHUD();
     app.collabHub.notifyFeatureDeleted(featureId);
     const audit = app.collabHub.logAudit(`Excluiu feição "${name}"`, featureId);
     app.auditLog.unshift(audit);
-    app.layerPanel.updateAuditLog(app.auditLog);
+    if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
     app.saveState();
 
     UIToast.notificar({
@@ -137,7 +147,29 @@ export class FeatureSyncController {
       }
     } else if (type === 'feature:created') {
       app.features.push(data.feature);
-      app.refreshMapAndTable();
+      app.mapEngine.updateFeature(data.feature, app.layers);
+      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+      app.updateHUD();
+      UIToast.notificar({
+        tipo: 'informativo',
+        titulo: 'Nova Feição Criada',
+        mensagem: `${data.user.name} adicionou "${data.feature.name}".`,
+        duracao: 3500
+      });
+    } else if (type === 'feature:updated') {
+      const idx = app.features.findIndex(f => f.id === data.feature.id);
+      if (idx >= 0) {
+        app.features[idx] = data.feature;
+        app.mapEngine.updateFeature(data.feature, app.layers);
+        if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      }
+    } else if (type === 'feature:deleted') {
+      app.features = app.features.filter(f => f.id !== data.featureId);
+      app.mapEngine.removeFeature(data.featureId);
+      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+      app.updateHUD();
       UIToast.notificar({
         tipo: 'informativo',
         titulo: 'Nova Feição Criada',

@@ -465,3 +465,9 @@
   font-style: italic;
   background: #141416;
 }
+
+/* Ocultação cirúrgica em tempo real para busca rápida */
+.cm-search-hidden {
+  display: none !important;
+}
+

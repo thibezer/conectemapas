@@ -40,23 +40,72 @@ export class LayerTreeEvents {
     }
 
     const inputSearch = document.getElementById('input-layer-search');
+    const btnClearSearch = document.getElementById('btn-clear-layer-search');
+
+    const applySearchFilter = (query) => {
+      panel.searchQuery = query;
+      const q = query.trim().toLowerCase();
+      const treeMount = document.getElementById('cm-ai-layer-tree-mount');
+      if (!treeMount) return;
+
+      if (btnClearSearch) {
+        btnClearSearch.style.display = q ? 'block' : 'none';
+      }
+
+      const layerGroups = treeMount.querySelectorAll('.cm-ai-layer-group');
+      layerGroups.forEach(group => {
+        const layerId = group.getAttribute('data-layer-id');
+        const layer = panel.layers.find(l => l.id === layerId);
+        const layerName = (layer?.name || '').toLowerCase();
+        const featRows = group.querySelectorAll('.cm-ai-feat-row');
+
+        if (!q) {
+          group.classList.remove('cm-search-hidden');
+          featRows.forEach(row => row.classList.remove('cm-search-hidden'));
+          return;
+        }
+
+        let hasMatchingChild = false;
+        featRows.forEach(row => {
+          const featId = row.getAttribute('data-feat-row');
+          const feat = panel.features.find(f => f.id === featId);
+          const featName = (feat?.name || '').toLowerCase();
+          const featCategory = (feat?.category || '').toLowerCase();
+          const featType = (feat?.type || '').toLowerCase();
+
+          const matches = featName.includes(q) || featCategory.includes(q) || featType.includes(q);
+          if (matches) {
+            row.classList.remove('cm-search-hidden');
+            hasMatchingChild = true;
+          } else {
+            row.classList.add('cm-search-hidden');
+          }
+        });
+
+        const layerMatches = layerName.includes(q);
+        if (layerMatches || hasMatchingChild) {
+          group.classList.remove('cm-search-hidden');
+          // Garante exibição dos filhos se o grupo corresponde
+          if (layerMatches && !hasMatchingChild) {
+            featRows.forEach(row => row.classList.remove('cm-search-hidden'));
+          }
+        } else {
+          group.classList.add('cm-search-hidden');
+        }
+      });
+    };
+
     if (inputSearch) {
       inputSearch.addEventListener('input', (e) => {
-        panel.searchQuery = e.target.value;
-        panel.updateContent();
-        const refreshed = document.getElementById('input-layer-search');
-        if (refreshed) {
-          refreshed.focus();
-          refreshed.selectionStart = refreshed.selectionEnd = refreshed.value.length;
-        }
+        applySearchFilter(e.target.value);
       });
     }
 
-    const btnClearSearch = document.getElementById('btn-clear-layer-search');
     if (btnClearSearch) {
       btnClearSearch.addEventListener('click', () => {
-        panel.searchQuery = '';
-        panel.updateContent();
+        if (inputSearch) inputSearch.value = '';
+        applySearchFilter('');
+        if (inputSearch) inputSearch.focus();
       });
     }
 

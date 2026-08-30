@@ -158,6 +158,22 @@ export class CollaborationHub {
   }
 
   sendCursorPosition(latlng) {
+    const now = performance.now();
+    if (this._lastCursorSend && now - this._lastCursorSend < 50) {
+      this._pendingCursorLatLng = latlng;
+      if (!this._cursorThrottleTimer) {
+        this._cursorThrottleTimer = setTimeout(() => {
+          this._cursorThrottleTimer = null;
+          this._lastCursorSend = performance.now();
+          if (this._pendingCursorLatLng) {
+            this.broadcast('cursor:move', { latlng: this._pendingCursorLatLng });
+            this._pendingCursorLatLng = null;
+          }
+        }, 50);
+      }
+      return;
+    }
+    this._lastCursorSend = now;
     this.broadcast('cursor:move', { latlng });
   }
 

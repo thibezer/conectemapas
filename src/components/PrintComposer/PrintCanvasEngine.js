@@ -212,72 +212,28 @@ export class PrintCanvasEngine {
       }
     };
 
+    // Remove listeners antigos antes de definir e adicionar novos
+    if (this.mouseMoveHandler) window.removeEventListener('mousemove', this.mouseMoveHandler);
+    if (this.mouseUpHandler) window.removeEventListener('mouseup', this.mouseUpHandler);
+
     this.mouseMoveHandler = (e) => {
       if (this.isPanning && vp) {
-        const dx = e.clientX - this.panStartX;
-        const dy = e.clientY - this.panStartY;
-        vp.scrollLeft = this.scrollStartX - dx;
-        vp.scrollTop = this.scrollStartY - dy;
+        vp.scrollLeft = this.scrollStartX - (e.clientX - this.panStartX);
+        vp.scrollTop = this.scrollStartY - (e.clientY - this.panStartY);
         return;
       }
 
       if (this.isDraggingItem && this.itemStartProps) {
-        const dxMm = (e.clientX - this.dragStartX) / this.mmToPx;
-        const dyMm = (e.clientY - this.dragStartY) / this.mmToPx;
-
+        const dx = (e.clientX - this.dragStartX) / this.mmToPx;
+        const dy = (e.clientY - this.dragStartY) / this.mmToPx;
         const it = this.composer.items.find(i => i.id === this.itemStartProps.id);
         if (it) {
-          it.x = Math.max(0, Math.min(this.composer.paperSize.width - it.width, this.itemStartProps.x + dxMm));
-          it.y = Math.max(0, Math.min(this.composer.paperSize.height - it.height, this.itemStartProps.y + dyMm));
+          it.x = Math.max(0, Math.min(this.composer.paperSize.width - it.width, this.itemStartProps.x + dx));
+          it.y = Math.max(0, Math.min(this.composer.paperSize.height - it.height, this.itemStartProps.y + dy));
           this.composer.updateItemPositionDOM(it);
         }
       } else if (this.isResizing && this.itemStartProps) {
-        const dxMm = (e.clientX - this.dragStartX) / this.mmToPx;
-        const dyMm = (e.clientY - this.dragStartY) / this.mmToPx;
-        const it = this.composer.items.find(i => i.id === this.itemStartProps.id);
-        if (!it) return;
-
-        const sp = this.itemStartProps;
-        const minDim = 15;
-
-        switch (this.resizeHandle) {
-          case 'e':
-            it.width = Math.max(minDim, sp.width + dxMm);
-            break;
-          case 's':
-            it.height = Math.max(minDim, sp.height + dyMm);
-            break;
-          case 'se':
-            it.width = Math.max(minDim, sp.width + dxMm);
-            it.height = Math.max(minDim, sp.height + dyMm);
-            break;
-          case 'ne':
-            it.width = Math.max(minDim, sp.width + dxMm);
-            it.height = Math.max(minDim, sp.height - dyMm);
-            it.y = sp.y + (sp.height - it.height);
-            break;
-          case 'sw':
-            it.width = Math.max(minDim, sp.width - dxMm);
-            it.height = Math.max(minDim, sp.height + dyMm);
-            it.x = sp.x + (sp.width - it.width);
-            break;
-          case 'nw':
-            it.width = Math.max(minDim, sp.width - dxMm);
-            it.height = Math.max(minDim, sp.height - dyMm);
-            it.x = sp.x + (sp.width - it.width);
-            it.y = sp.y + (sp.height - it.height);
-            break;
-          case 'n':
-            it.height = Math.max(minDim, sp.height - dyMm);
-            it.y = sp.y + (sp.height - it.height);
-            break;
-          case 'w':
-            it.width = Math.max(minDim, sp.width - dxMm);
-            it.x = sp.x + (sp.width - it.width);
-            break;
-        }
-
-        this.composer.updateItemPositionDOM(it);
+        this.handleItemResize(e);
       }
     };
 
@@ -294,14 +250,41 @@ export class PrintCanvasEngine {
       }
     };
 
-    window.removeEventListener('mousemove', this.mouseMoveHandler);
-    window.removeEventListener('mouseup', this.mouseUpHandler);
     window.addEventListener('mousemove', this.mouseMoveHandler);
     window.addEventListener('mouseup', this.mouseUpHandler);
+  }
+
+  handleItemResize(e) {
+    const dx = (e.clientX - this.dragStartX) / this.mmToPx;
+    const dy = (e.clientY - this.dragStartY) / this.mmToPx;
+    const it = this.composer.items.find(i => i.id === this.itemStartProps.id);
+    if (!it) return;
+
+    const sp = this.itemStartProps;
+    const min = 15;
+
+    if (this.resizeHandle === 'e' || this.resizeHandle === 'se' || this.resizeHandle === 'ne') {
+      it.width = Math.max(min, sp.width + dx);
+    }
+    if (this.resizeHandle === 's' || this.resizeHandle === 'se' || this.resizeHandle === 'sw') {
+      it.height = Math.max(min, sp.height + dy);
+    }
+    if (this.resizeHandle === 'w' || this.resizeHandle === 'sw' || this.resizeHandle === 'nw') {
+      it.width = Math.max(min, sp.width - dx);
+      it.x = sp.x + (sp.width - it.width);
+    }
+    if (this.resizeHandle === 'n' || this.resizeHandle === 'ne' || this.resizeHandle === 'nw') {
+      it.height = Math.max(min, sp.height - dy);
+      it.y = sp.y + (sp.height - it.height);
+    }
+
+    this.composer.updateItemPositionDOM(it);
   }
 
   destroy() {
     if (this.mouseMoveHandler) window.removeEventListener('mousemove', this.mouseMoveHandler);
     if (this.mouseUpHandler) window.removeEventListener('mouseup', this.mouseUpHandler);
+    this.mouseMoveHandler = null;
+    this.mouseUpHandler = null;
   }
 }

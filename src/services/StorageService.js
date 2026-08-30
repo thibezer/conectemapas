@@ -10,6 +10,9 @@ const DB_NAME = 'ConecteMapasDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'projects';
 
+let _saveDebounceTimer = null;
+let _pendingSavePayload = null;
+
 export class StorageService {
   /**
    * Inicializa o banco IndexedDB para armazenamento seguro de grandes volumes vetoriais
@@ -75,6 +78,41 @@ export class StorageService {
     } catch (e) {
       console.error('[StorageService] Erro ao salvar estado:', e);
       return false;
+    }
+  }
+
+  /**
+   * Salva o estado com Debounce inteligente para evitar bloqueio de I/O em edições contínuas
+   * @param {Object} projectData
+   * @param {number} delayMs
+   */
+  static saveProjectDebounced(projectData, delayMs = 400) {
+    _pendingSavePayload = projectData;
+    if (_saveDebounceTimer) {
+      clearTimeout(_saveDebounceTimer);
+    }
+    _saveDebounceTimer = setTimeout(() => {
+      _saveDebounceTimer = null;
+      if (_pendingSavePayload) {
+        this.saveProject(_pendingSavePayload);
+        _pendingSavePayload = null;
+      }
+    }, delayMs);
+  }
+
+  /**
+   * Força a gravação imediata síncrona de qualquer payload pendente (usado no beforeunload / Salvar explícito)
+   * @param {Object} [fallbackData]
+   */
+  static flushSync(fallbackData = null) {
+    if (_saveDebounceTimer) {
+      clearTimeout(_saveDebounceTimer);
+      _saveDebounceTimer = null;
+    }
+    const dataToSave = _pendingSavePayload || fallbackData;
+    if (dataToSave) {
+      this.saveProject(dataToSave);
+      _pendingSavePayload = null;
     }
   }
 

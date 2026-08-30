@@ -181,94 +181,24 @@ export class PrintItemsManager {
   }
 
   static createDefaultItems(projectName = 'Projeto') {
+    const defaultCarimbo = {
+      headerTitle: 'LEVANTAMENTO TOPOGRÁFICO',
+      projectName: projectName,
+      author: 'Eng. Cartógrafo / Topógrafo',
+      art: 'CREA-BR 2026/0012',
+      datum: 'SIRGAS 2000 / UTM',
+      scaleText: '1:10.000',
+      location: 'Distrito Federal - Brasil',
+      date: new Date().toLocaleDateString('pt-BR')
+    };
+
     return [
-      {
-        id: 'item-map-main',
-        type: 'map',
-        name: 'Mapa Principal',
-        x: 10,
-        y: 10,
-        width: 190,
-        height: 190,
-        locked: false,
-        visible: true,
-        scale: 10000,
-        rotation: 0,
-        showGrid: true,
-        gridInterval: 0.02,
-        isOverview: false
-      },
-      {
-        id: 'item-map-inset',
-        type: 'inset_map',
-        name: 'Mapa de Localização (Inset)',
-        x: 205,
-        y: 10,
-        width: 82,
-        height: 65,
-        locked: false,
-        visible: true,
-        scale: 5000000,
-        rotation: 0,
-        showGrid: false,
-        isOverview: true
-      },
-      {
-        id: 'item-north-arrow',
-        type: 'north_arrow',
-        name: 'Rosa dos Ventos',
-        x: 210,
-        y: 80,
-        width: 25,
-        height: 25,
-        locked: false,
-        visible: true,
-        arrowStyle: 'classic',
-        rotation: 0
-      },
-      {
-        id: 'item-scale-bar',
-        type: 'scale_bar',
-        name: 'Barra de Escala',
-        x: 240,
-        y: 80,
-        width: 47,
-        height: 25,
-        locked: false,
-        visible: true
-      },
-      {
-        id: 'item-legend',
-        type: 'legend',
-        name: 'Legenda Temática',
-        x: 205,
-        y: 110,
-        width: 82,
-        height: 45,
-        locked: false,
-        visible: true
-      },
-      {
-        id: 'item-title-block',
-        type: 'title_block',
-        name: 'Carimbo Técnico (NBR 13133)',
-        x: 205,
-        y: 160,
-        width: 82,
-        height: 40,
-        locked: false,
-        visible: true,
-        properties: {
-          headerTitle: 'LEVANTAMENTO TOPOGRÁFICO',
-          projectName: projectName,
-          author: 'Eng. Cartógrafo / Topógrafo',
-          art: 'CREA-BR 2026/0012',
-          datum: 'SIRGAS 2000 / UTM',
-          scaleText: '1:10.000',
-          location: 'Distrito Federal - Brasil',
-          date: new Date().toLocaleDateString('pt-BR')
-        }
-      }
+      { id: 'item-map-main', type: 'map', name: 'Mapa Principal', x: 10, y: 10, width: 190, height: 190, locked: false, visible: true, scale: 10000, rotation: 0, showGrid: true, gridInterval: 0.02, isOverview: false },
+      { id: 'item-map-inset', type: 'inset_map', name: 'Mapa de Localização (Inset)', x: 205, y: 10, width: 82, height: 65, locked: false, visible: true, scale: 5000000, rotation: 0, showGrid: false, isOverview: true },
+      { id: 'item-north-arrow', type: 'north_arrow', name: 'Rosa dos Ventos', x: 210, y: 80, width: 25, height: 25, locked: false, visible: true, arrowStyle: 'classic', rotation: 0 },
+      { id: 'item-scale-bar', type: 'scale_bar', name: 'Barra de Escala', x: 240, y: 80, width: 47, height: 25, locked: false, visible: true },
+      { id: 'item-legend', type: 'legend', name: 'Legenda Temática', x: 205, y: 110, width: 82, height: 45, locked: false, visible: true },
+      { id: 'item-title-block', type: 'title_block', name: 'Carimbo Técnico (NBR 13133)', x: 205, y: 160, width: 82, height: 40, locked: false, visible: true, properties: defaultCarimbo }
     ];
   }
 
@@ -276,95 +206,19 @@ export class PrintItemsManager {
     const ts = Date.now();
     switch (type) {
       case 'map':
-        return {
-          id: `item-map-${ts}`,
-          type: 'map',
-          name: `Mapa #${currentCount + 1}`,
-          x: 20,
-          y: 20,
-          width: 140,
-          height: 100,
-          locked: false,
-          visible: true,
-          scale: 10000,
-          rotation: 0,
-          showGrid: true
-        };
+        return { id: `item-map-${ts}`, type: 'map', name: `Mapa #${currentCount + 1}`, x: 20, y: 20, width: 140, height: 100, locked: false, visible: true, scale: 10000, rotation: 0, showGrid: true };
       case 'inset_map':
-        return {
-          id: `item-inset-${ts}`,
-          type: 'inset_map',
-          name: 'Mini-mapa Inset',
-          x: 180,
-          y: 20,
-          width: 80,
-          height: 60,
-          locked: false,
-          visible: true,
-          scale: 5000000,
-          rotation: 0,
-          showGrid: false,
-          isOverview: true
-        };
+        return { id: `item-inset-${ts}`, type: 'inset_map', name: 'Mini-mapa Inset', x: 180, y: 20, width: 80, height: 60, locked: false, visible: true, scale: 5000000, rotation: 0, showGrid: false, isOverview: true };
       case 'north_arrow':
-        return {
-          id: `item-arrow-${ts}`,
-          type: 'north_arrow',
-          name: 'Rosa dos Ventos',
-          x: 20,
-          y: 130,
-          width: 25,
-          height: 25,
-          locked: false,
-          visible: true,
-          arrowStyle: 'classic',
-          rotation: 0
-        };
+        return { id: `item-arrow-${ts}`, type: 'north_arrow', name: 'Rosa dos Ventos', x: 20, y: 130, width: 25, height: 25, locked: false, visible: true, arrowStyle: 'classic', rotation: 0 };
       case 'scale_bar':
-        return {
-          id: `item-scale-${ts}`,
-          type: 'scale_bar',
-          name: 'Barra de Escala',
-          x: 50,
-          y: 130,
-          width: 50,
-          height: 25,
-          locked: false,
-          visible: true
-        };
+        return { id: `item-scale-${ts}`, type: 'scale_bar', name: 'Barra de Escala', x: 50, y: 130, width: 50, height: 25, locked: false, visible: true };
       case 'legend':
-        return {
-          id: `item-legend-${ts}`,
-          type: 'legend',
-          name: 'Legenda',
-          x: 180,
-          y: 90,
-          width: 80,
-          height: 50,
-          locked: false,
-          visible: true
-        };
+        return { id: `item-legend-${ts}`, type: 'legend', name: 'Legenda', x: 180, y: 90, width: 80, height: 50, locked: false, visible: true };
       case 'title_block':
         return {
-          id: `item-tb-${ts}`,
-          type: 'title_block',
-          name: 'Carimbo Técnico',
-          x: 180,
-          y: 150,
-          width: 90,
-          height: 45,
-          locked: false,
-          visible: true,
-          properties: {
-            headerTitle: 'PLANTA TOPOGRÁFICA',
-            projectName: projectName,
-            author: 'Eng. Cartógrafo',
-            art: 'CREA-BR 2026',
-            datum: 'SIRGAS 2000',
-            scaleText: '1:10.000',
-            location: 'Brasil',
-            date: new Date().toLocaleDateString('pt-BR')
-          }
+          id: `item-tb-${ts}`, type: 'title_block', name: 'Carimbo Técnico', x: 180, y: 150, width: 90, height: 45, locked: false, visible: true,
+          properties: { headerTitle: 'PLANTA TOPOGRÁFICA', projectName, author: 'Eng. Cartógrafo', art: 'CREA-BR 2026', datum: 'SIRGAS 2000', scaleText: '1:10.000', location: 'Brasil', date: new Date().toLocaleDateString('pt-BR') }
         };
       default:
         return null;
