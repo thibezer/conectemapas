@@ -272,6 +272,21 @@ class ConecteMapasApp {
       onFeatureUpdate: (updatedFeature) => {
         this.updateFeature(updatedFeature);
       },
+      onFeatureCreate: (newFeature) => {
+        const norm = normalizeFeature(newFeature);
+        this.pushHistory(`Criação de "${norm.name}"`);
+        this.features.push(norm);
+        this.refreshMapAndTable();
+        this.collabHub.notifyFeatureCreated(norm);
+        const audit = this.collabHub.logAudit(`Criou feição "${norm.name}"`, norm.type);
+        this.auditLog.unshift(audit);
+        this.layerPanel.updateAuditLog(this.auditLog);
+        this.layerPanel.setSelectedFeature(norm);
+        this.saveState();
+      },
+      onFitFeature: (featureId) => {
+        this.mapEngine.zoomToFeature(featureId);
+      },
       onStartVertexEdit: (feature) => {
         this.mapEngine.startVertexEditing(feature, (updated) => {
           this.updateFeature(updated);

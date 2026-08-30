@@ -16,6 +16,7 @@ export function normalizeFeature(feat) {
   const defaultColor = feat.color || '#00E08A';
   return {
     ...feat,
+    locked: feat.locked === true,
     style: {
       fillColor: feat.style?.fillColor || defaultColor,
       fillOpacity: feat.style?.fillOpacity !== undefined ? feat.style.fillOpacity : (feat.type === 'LineString' ? 1 : 0.35),

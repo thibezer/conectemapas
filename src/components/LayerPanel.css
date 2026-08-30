@@ -466,4 +466,182 @@
   border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
 }
 
+/* --- Accordions Modulares do Inspetor Workbench --- */
+.cm-inspector-accordion {
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  border-radius: 6px;
+  background: var(--cm-surface, #141417);
+  overflow: hidden;
+  margin-bottom: 6px;
+  transition: border-color 0.2s;
+}
+
+.cm-inspector-accordion[open] {
+  border-color: rgba(0, 224, 138, 0.3);
+}
+
+.cm-inspector-accordion summary {
+  padding: 7px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--cm-text, #e1e1e6);
+  background: rgba(255, 255, 255, 0.02);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  list-style: none;
+  border-bottom: 1px solid transparent;
+}
+
+.cm-inspector-accordion[open] summary {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cm-inspector-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.cm-accordion-content {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- Micro-ferramentas Espaciais --- */
+.cm-spatial-tool-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cm-spatial-tool-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--cm-text, #e1e1e6);
+}
+
+/* --- Tabela de Atributos Customizados --- */
+.cm-custom-attr-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.cm-custom-attr-input {
+  flex: 1;
+  height: 24px;
+  background: var(--cm-surface-elevated, #1a1a1e);
+  color: var(--cm-text, #e1e1e6);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  border-radius: 3px;
+  font-size: 10.5px;
+  padding: 0 5px;
+  outline: none;
+}
+
+.cm-custom-attr-input:focus {
+  border-color: var(--cm-primary, #00E08A);
+}
+
+/* --- Conversor de Unidades & Coordenadas --- */
+.cm-converter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.cm-converter-item {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cm-converter-label {
+  font-size: 9.5px;
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-converter-val {
+  font-family: var(--cm-fonte-mono, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--cm-primary, #00E08A);
+  word-break: break-all;
+}
+
+/* --- Janela Flutuante Workbench (Detached Window) --- */
+.cm-floating-window {
+  position: fixed;
+  top: 70px;
+  right: 80px;
+  width: 360px;
+  max-height: 82vh;
+  background: rgba(18, 20, 26, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 224, 138, 0.3);
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  resize: vertical;
+}
+
+.cm-floating-header {
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: move;
+  user-select: none;
+}
+
+.cm-floating-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cm-text, #e1e1e6);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-floating-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-locked-badge {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+
 

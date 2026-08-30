@@ -6,6 +6,7 @@
 
 import './LayerPanel.css';
 import { GeoFormats } from '../services/GeoFormats.js';
+import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
 import { UIToast } from 'ui-components-kit';
 
 export class LayerPanel {
@@ -21,12 +22,15 @@ export class LayerPanel {
     this.chatMessages = options.chatMessages || [];
     this.container = null;
     this.isVertexEditing = false;
+    this.isFloating = false;
 
     this.onLayerToggle = options.onLayerToggle || (() => {});
     this.onBasemapChange = options.onBasemapChange || (() => {});
     this.onAddLayer = options.onAddLayer || (() => {});
     this.onDeleteFeature = options.onDeleteFeature || (() => {});
     this.onFeatureUpdate = options.onFeatureUpdate || (() => {});
+    this.onFeatureCreate = options.onFeatureCreate || (() => {});
+    this.onFitFeature = options.onFitFeature || (() => {});
     this.onSendMessage = options.onSendMessage || (() => {});
     this.onStartVertexEdit = options.onStartVertexEdit || (() => {});
     this.onStopVertexEdit = options.onStopVertexEdit || (() => {});
@@ -158,12 +162,13 @@ export class LayerPanel {
         <div style="text-align: center; padding: 24px 10px; color: var(--cm-text-muted);">
           <div style="font-size: 24px; margin-bottom: 8px;">📍</div>
           <div style="font-weight: 500; font-size: 12px; color: var(--cm-text);">Nenhum elemento selecionado</div>
-          <div style="font-size: 11px; margin-top: 4px;">Clique em uma feição no mapa ou na tabela para editar propriedades e simbologia.</div>
+          <div style="font-size: 11px; margin-top: 4px;">Clique em uma feição no mapa ou na tabela para abrir o Workbench CAD/GIS.</div>
         </div>
       `;
     }
 
     const feat = this.selectedFeature;
+    const isLocked = feat.locked === true;
     const safeName = this.escapeHtml(feat.name || '');
     const safeDesc = this.escapeHtml(feat.description || '');
     const safeCategory = this.escapeHtml(feat.category || feat.type || 'Geral');
@@ -192,194 +197,434 @@ export class LayerPanel {
     const hasVertices = (isPoly || isLine) && coordinates.length > 0;
     const segments = hasVertices ? this.calculateFeatureSegments(coordinates, isPoly) : [];
 
+    // Conversões de Área e Extensão
+    let areaM2 = 0;
+    let lengthM = 0;
+    if (isPoly && coordinates.length >= 3) {
+      areaM2 = this.calculatePolygonArea(coordinates);
+    } else if (isCircle) {
+      areaM2 = Math.PI * (feat.radius || 0) * (feat.radius || 0);
+    } else if (isLine && coordinates.length >= 2) {
+      lengthM = this.calculatePolylineLength(coordinates);
+    }
+
+    const areaConversions = SpatialAlgorithms.convertArea(areaM2);
+    const lengthConversions = SpatialAlgorithms.convertLength(lengthM);
+
+    // Centroide / Coordenadas de Referência
+    let refCoord = [0, 0];
+    if (isPoint || isCircle) {
+      refCoord = coordinates;
+    } else if (coordinates.length > 0) {
+      refCoord = [
+        coordinates.reduce((acc, c) => acc + c[0], 0) / coordinates.length,
+        coordinates.reduce((acc, c) => acc + c[1], 0) / coordinates.length
+      ];
+    }
+    const dmsLat = SpatialAlgorithms.ddToDms(refCoord[0], true);
+    const dmsLng = SpatialAlgorithms.ddToDms(refCoord[1], false);
+
+    const customAttrs = Array.isArray(feat.customAttributes) ? feat.customAttributes : [];
+    const historyList = Array.isArray(feat.history) ? feat.history : [];
+
     return `
       <div class="cm-inspector-box">
-        <!-- Topo da Feição: Badge + ID -->
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <ui-badge variante="primario">${safeCategory}</ui-badge>
-          <span style="font-size: 10px; color: var(--cm-text-muted); font-family: var(--cm-fonte-mono);">${safeId}</span>
-        </div>
-
-        <ui-campo-texto id="inspector-feat-name" label="Nome do Elemento" value="${safeName}" obrigatorio></ui-campo-texto>
-        <ui-campo-texto id="inspector-feat-desc" label="Descrição / Observações" value="${safeDesc}"></ui-campo-texto>
-
-        <!-- Seção: Simbologia e Estilo Paramétrico -->
-        <div class="cm-symbology-card">
-          <div class="cm-symbology-title">🎨 Aparência & Simbologia</div>
-
-          ${(isPoly || isCircle) ? `
-            <!-- Preenchimento e Opacidade -->
-            <div class="cm-param-row">
-              <span class="cm-param-label">Cor de Preenchimento:</span>
-              <div class="cm-color-input-wrapper">
-                <input type="color" class="cm-color-picker" id="style-fill-color" value="${style.fillColor}" />
-                <span class="cm-param-badge" id="val-fill-color-hex">${style.fillColor}</span>
-              </div>
-            </div>
-
-            <div class="cm-param-row">
-              <span class="cm-param-label">Opacidade:</span>
-              <input type="range" class="cm-param-slider" id="style-fill-opacity" min="0" max="1" step="0.05" value="${style.fillOpacity}" />
-              <span class="cm-param-badge" id="val-fill-opacity">${Math.round(style.fillOpacity * 100)}%</span>
-            </div>
-          ` : ''}
-
-          ${(isPoly || isCircle || isLine) ? `
-            <!-- Contorno e Padrão de Traço -->
-            <div class="cm-param-row">
-              <span class="cm-param-label">Cor do Contorno:</span>
-              <div class="cm-color-input-wrapper">
-                <input type="color" class="cm-color-picker" id="style-stroke-color" value="${style.strokeColor}" />
-                <span class="cm-param-badge" id="val-stroke-color-hex">${style.strokeColor}</span>
-              </div>
-            </div>
-
-            <div class="cm-param-row">
-              <span class="cm-param-label">Espessura da Linha:</span>
-              <input type="range" class="cm-param-slider" id="style-stroke-width" min="1" max="10" step="0.5" value="${style.strokeWidth}" />
-              <span class="cm-param-badge" id="val-stroke-width">${style.strokeWidth}px</span>
-            </div>
-
-            <div class="cm-param-row">
-              <span class="cm-param-label">Padrão da Linha:</span>
-              <select class="cm-native-select" id="style-stroke-dash" style="width: 140px;">
-                <option value="" ${style.strokeDashArray === '' ? 'selected' : ''}>Sólida (Contínua)</option>
-                <option value="6, 6" ${style.strokeDashArray === '6, 6' ? 'selected' : ''}>Tracejada (---)</option>
-                <option value="2, 4" ${style.strokeDashArray === '2, 4' ? 'selected' : ''}>Pontilhada (···)</option>
-              </select>
-            </div>
-          ` : ''}
-
-          ${isPoint ? `
-            <!-- Ícone e Rotação do Marcador -->
-            <div class="cm-param-row">
-              <span class="cm-param-label">Cor do Marcador:</span>
-              <div class="cm-color-input-wrapper">
-                <input type="color" class="cm-color-picker" id="style-point-color" value="${style.fillColor}" />
-                <span class="cm-param-badge" id="val-point-color-hex">${style.fillColor}</span>
-              </div>
-            </div>
-
-            <div class="cm-param-row">
-              <span class="cm-param-label">Ícone Vetorial:</span>
-              <select class="cm-native-select" id="style-marker-icon" style="width: 140px;">
-                <option value="pin" ${style.markerIcon === 'pin' ? 'selected' : ''}>📌 Pino Padrão</option>
-                <option value="tower" ${style.markerIcon === 'tower' ? 'selected' : ''}>🗼 Base RTK / Torre</option>
-                <option value="tree" ${style.markerIcon === 'tree' ? 'selected' : ''}>🌲 Reserva / APP</option>
-                <option value="warning" ${style.markerIcon === 'warning' ? 'selected' : ''}>⚠️ Alerta / Inspeção</option>
-                <option value="water" ${style.markerIcon === 'water' ? 'selected' : ''}>💧 Hidrografia / Nascente</option>
-                <option value="boundary" ${style.markerIcon === 'boundary' ? 'selected' : ''}>🏛️ Marco Topográfico</option>
-              </select>
-            </div>
-
-            <div class="cm-param-row">
-              <span class="cm-param-label">Tamanho:</span>
-              <input type="range" class="cm-param-slider" id="style-marker-size" min="16" max="48" step="2" value="${style.markerSize}" />
-              <span class="cm-param-badge" id="val-marker-size">${style.markerSize}px</span>
-            </div>
-
-            <div class="cm-param-row">
-              <span class="cm-param-label">Rotação:</span>
-              <input type="range" class="cm-param-slider" id="style-marker-rot" min="0" max="360" step="5" value="${style.markerRotation}" />
-              <span class="cm-param-badge" id="val-marker-rot">${style.markerRotation}°</span>
-            </div>
-          ` : ''}
-
-          <!-- Rótulo Dinâmico no Mapa -->
-          <div class="cm-param-row" style="border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
-            <span class="cm-param-label">Rótulo no Mapa:</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <select class="cm-native-select" id="style-label-field" style="width: 110px;">
-                <option value="name" ${style.labelField === 'name' ? 'selected' : ''}>Nome</option>
-                <option value="category" ${style.labelField === 'category' ? 'selected' : ''}>Categoria</option>
-                ${isPoly ? `<option value="area" ${style.labelField === 'area' ? 'selected' : ''}>Área (ha)</option>` : ''}
-                ${isLine ? `<option value="extensao" ${style.labelField === 'extensao' ? 'selected' : ''}>Extensão</option>` : ''}
-              </select>
-              <ui-switch ${style.showLabel ? 'checked' : ''} id="style-show-label" title="Exibir Rótulo Permanente no Mapa"></ui-switch>
-            </div>
+        <!-- Topo da Feição: Header com Trava, Janela Flutuante e Enquadrar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <ui-badge variante="primario">${safeCategory}</ui-badge>
+            ${isLocked ? `<span class="cm-locked-badge">🔒 Bloqueado</span>` : ''}
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button 
+              id="btn-toggle-lock" 
+              class="cm-native-select" 
+              style="padding: 2px 6px; font-size: 11px;" 
+              title="${isLocked ? 'Desbloquear Feição' : 'Bloquear Feição contra Edições'}">
+              ${isLocked ? '🔒' : '🔓'}
+            </button>
+            <button 
+              id="btn-toggle-float" 
+              class="cm-native-select" 
+              style="padding: 2px 6px; font-size: 11px;" 
+              title="Destacar Inspetor em Janela Flutuante (Workbench)">
+              🪟
+            </button>
+            <button 
+              id="btn-fit-feature" 
+              class="cm-native-select" 
+              style="padding: 2px 6px; font-size: 11px;" 
+              title="Enquadrar no Mapa (Fit Bounds)">
+              🎯
+            </button>
           </div>
         </div>
 
-        <!-- Seção: Geometria, Vértices e Azimutes -->
-        <div class="cm-symbology-card">
-          <div class="cm-symbology-title" style="display: flex; justify-content: space-between; align-items: center;">
-            <span>📐 Geometria & Vértices (${hasVertices ? coordinates.length : 1} nós)</span>
-            <ui-botao-primario 
-              inline 
-              id="btn-toggle-vertex-edit" 
-              variante="${this.isVertexEditing ? 'primary' : 'secundario'}" 
-              style="height: 22px; font-size: 10px; padding: 0 6px;">
-              ${this.isVertexEditing ? '✔ Concluir Edição' : '✏️ Editar no Mapa'}
-            </ui-botao-primario>
-          </div>
+        <div style="font-size: 10px; color: var(--cm-text-muted); font-family: var(--cm-fonte-mono); margin-bottom: 4px;">
+          ID: ${safeId}
+        </div>
 
-          ${hasVertices ? `
-            <!-- Tabela de Vértices Editáveis -->
-            <details class="cm-vertex-details" open>
-              <summary class="cm-vertex-summary">📍 Coordenadas dos Vértices (${coordinates.length})</summary>
-              <div class="cm-vertex-list-scroll">
-                ${coordinates.map((pt, idx) => `
-                  <div class="cm-vertex-row" data-vertex-idx="${idx}">
-                    <span class="cm-vertex-badge">V${idx + 1}</span>
-                    <input type="number" step="0.00001" class="cm-vertex-input" data-v-lat="${idx}" value="${Number(pt[0]).toFixed(5)}" title="Latitude" />
-                    <input type="number" step="0.00001" class="cm-vertex-input" data-v-lng="${idx}" value="${Number(pt[1]).toFixed(5)}" title="Longitude" />
-                    <button class="cm-vertex-del-btn" data-v-del="${idx}" title="Excluir Vértice">×</button>
-                  </div>
+        <!-- 1. ACORDEÃO: 📌 IDENTIFICAÇÃO & CAMADA -->
+        <details class="cm-inspector-accordion" open>
+          <summary><span>📌 Identificação & Camada</span><span>▾</span></summary>
+          <div class="cm-accordion-content">
+            <ui-campo-texto id="inspector-feat-name" label="Nome do Elemento" value="${safeName}" ${isLocked ? 'desabilitado' : ''} obrigatorio></ui-campo-texto>
+            <ui-campo-texto id="inspector-feat-desc" label="Descrição / Observações" value="${safeDesc}" ${isLocked ? 'desabilitado' : ''}></ui-campo-texto>
+            
+            <div class="cm-param-row">
+              <span class="cm-param-label">Camada:</span>
+              <select class="cm-native-select" id="inspector-feat-layer" style="width: 170px;" ${isLocked ? 'disabled' : ''}>
+                ${this.layers.map(l => `
+                  <option value="${l.id}" ${feat.layerId === l.id ? 'selected' : ''}>${this.escapeHtml(l.name)}</option>
                 `).join('')}
-              </div>
-            </details>
-
-            <!-- Métricas de Segmento (Azimutes e Distâncias) -->
-            <details class="cm-vertex-details">
-              <summary class="cm-vertex-summary">🧭 Azimutes & Distâncias das Arestas</summary>
-              <div class="cm-vertex-list-scroll" style="max-height: 110px;">
-                ${segments.map(seg => `
-                  <div class="cm-segment-row">
-                    <span style="color: var(--cm-primary); font-weight: 600;">V${seg.from} ➔ V${seg.to}</span>
-                    <span>Az: <strong>${seg.azimuth.toFixed(1)}°</strong></span>
-                    <span style="color: var(--cm-text-muted);">${seg.distance > 1000 ? (seg.distance/1000).toFixed(2) + ' km' : seg.distance.toFixed(1) + ' m'}</span>
-                  </div>
-                `).join('')}
-              </div>
-            </details>
-          ` : ''}
-
-          <!-- Botões de Cópia Rápida de Geometria Isolada -->
-          <div style="display: flex; gap: 4px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 6px; margin-top: 2px;">
-            <ui-botao-primario inline id="btn-copy-wkt" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar Geometria em Formato WKT">
-              📋 WKT
-            </ui-botao-primario>
-            <ui-botao-primario inline id="btn-copy-geojson" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar Geometria em Formato GeoJSON">
-              📋 GeoJSON
-            </ui-botao-primario>
-            <ui-botao-primario inline id="btn-copy-coord-csv" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar Vértices em Formato CSV">
-              📋 CSV Nós
-            </ui-botao-primario>
-          </div>
-        </div>
-
-        <!-- Seção: Atributos Técnicos -->
-        <div style="background: var(--cm-surface); border: 1px solid var(--cm-border); padding: 8px; border-radius: 6px; font-size: 11px;">
-          <div style="font-weight: 600; margin-bottom: 4px; color: var(--cm-text);">Atributos Técnicos</div>
-          ${Object.entries(feat.properties || {}).map(([k, v]) => `
-            <div style="display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px dashed rgba(255,255,255,0.05); font-family: var(--cm-fonte-mono); font-size: 10.5px;">
-              <span style="color: var(--cm-text-muted);">${this.escapeHtml(k)}:</span>
-              <span style="color: var(--cm-text);">${this.escapeHtml(v)}</span>
+              </select>
             </div>
-          `).join('')}
-        </div>
+          </div>
+        </details>
 
-        <!-- Botões de Ação -->
-        <div style="display: flex; gap: 6px; margin-top: 4px;">
-          <ui-botao-primario inline id="btn-save-inspector" variante="primary" style="height: 30px; flex: 1;">
+        <!-- 2. ACORDEÃO: 🎨 APARÊNCIA & SIMBOLOGIA -->
+        <details class="cm-inspector-accordion" open>
+          <summary><span>🎨 Aparência & Simbologia</span><span>▾</span></summary>
+          <div class="cm-accordion-content">
+            ${(isPoly || isCircle) ? `
+              <div class="cm-param-row">
+                <span class="cm-param-label">Preenchimento:</span>
+                <div class="cm-color-input-wrapper">
+                  <input type="color" class="cm-color-picker" id="style-fill-color" value="${style.fillColor}" ${isLocked ? 'disabled' : ''} />
+                  <span class="cm-param-badge" id="val-fill-color-hex">${style.fillColor}</span>
+                </div>
+              </div>
+
+              <div class="cm-param-row">
+                <span class="cm-param-label">Opacidade:</span>
+                <input type="range" class="cm-param-slider" id="style-fill-opacity" min="0" max="1" step="0.05" value="${style.fillOpacity}" ${isLocked ? 'disabled' : ''} />
+                <span class="cm-param-badge" id="val-fill-opacity">${Math.round(style.fillOpacity * 100)}%</span>
+              </div>
+            ` : ''}
+
+            ${(isPoly || isCircle || isLine) ? `
+              <div class="cm-param-row">
+                <span class="cm-param-label">Contorno:</span>
+                <div class="cm-color-input-wrapper">
+                  <input type="color" class="cm-color-picker" id="style-stroke-color" value="${style.strokeColor}" ${isLocked ? 'disabled' : ''} />
+                  <span class="cm-param-badge" id="val-stroke-color-hex">${style.strokeColor}</span>
+                </div>
+              </div>
+
+              <div class="cm-param-row">
+                <span class="cm-param-label">Espessura:</span>
+                <input type="range" class="cm-param-slider" id="style-stroke-width" min="1" max="10" step="0.5" value="${style.strokeWidth}" ${isLocked ? 'disabled' : ''} />
+                <span class="cm-param-badge" id="val-stroke-width">${style.strokeWidth}px</span>
+              </div>
+
+              <div class="cm-param-row">
+                <span class="cm-param-label">Padrão:</span>
+                <select class="cm-native-select" id="style-stroke-dash" style="width: 140px;" ${isLocked ? 'disabled' : ''}>
+                  <option value="" ${style.strokeDashArray === '' ? 'selected' : ''}>Sólida (Contínua)</option>
+                  <option value="6, 6" ${style.strokeDashArray === '6, 6' ? 'selected' : ''}>Tracejada (---)</option>
+                  <option value="2, 4" ${style.strokeDashArray === '2, 4' ? 'selected' : ''}>Pontilhada (···)</option>
+                </select>
+              </div>
+            ` : ''}
+
+            ${isPoint ? `
+              <div class="cm-param-row">
+                <span class="cm-param-label">Cor Marcador:</span>
+                <div class="cm-color-input-wrapper">
+                  <input type="color" class="cm-color-picker" id="style-point-color" value="${style.fillColor}" ${isLocked ? 'disabled' : ''} />
+                  <span class="cm-param-badge" id="val-point-color-hex">${style.fillColor}</span>
+                </div>
+              </div>
+
+              <div class="cm-param-row">
+                <span class="cm-param-label">Ícone Vetorial:</span>
+                <select class="cm-native-select" id="style-marker-icon" style="width: 140px;" ${isLocked ? 'disabled' : ''}>
+                  <option value="pin" ${style.markerIcon === 'pin' ? 'selected' : ''}>📌 Pino Padrão</option>
+                  <option value="tower" ${style.markerIcon === 'tower' ? 'selected' : ''}>🗼 Base RTK / Torre</option>
+                  <option value="tree" ${style.markerIcon === 'tree' ? 'selected' : ''}>🌲 Reserva / APP</option>
+                  <option value="warning" ${style.markerIcon === 'warning' ? 'selected' : ''}>⚠️ Alerta / Inspeção</option>
+                  <option value="water" ${style.markerIcon === 'water' ? 'selected' : ''}>💧 Hidrografia / Nascente</option>
+                  <option value="boundary" ${style.markerIcon === 'boundary' ? 'selected' : ''}>🏛️ Marco Topográfico</option>
+                </select>
+              </div>
+
+              <div class="cm-param-row">
+                <span class="cm-param-label">Tamanho:</span>
+                <input type="range" class="cm-param-slider" id="style-marker-size" min="16" max="48" step="2" value="${style.markerSize}" ${isLocked ? 'disabled' : ''} />
+                <span class="cm-param-badge" id="val-marker-size">${style.markerSize}px</span>
+              </div>
+
+              <div class="cm-param-row">
+                <span class="cm-param-label">Rotação:</span>
+                <input type="range" class="cm-param-slider" id="style-marker-rot" min="0" max="360" step="5" value="${style.markerRotation}" ${isLocked ? 'disabled' : ''} />
+                <span class="cm-param-badge" id="val-marker-rot">${style.markerRotation}°</span>
+              </div>
+            ` : ''}
+
+            <!-- Rótulo no Mapa -->
+            <div class="cm-param-row" style="border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 6px;">
+              <span class="cm-param-label">Rótulo no Mapa:</span>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <select class="cm-native-select" id="style-label-field" style="width: 110px;" ${isLocked ? 'disabled' : ''}>
+                  <option value="name" ${style.labelField === 'name' ? 'selected' : ''}>Nome</option>
+                  <option value="category" ${style.labelField === 'category' ? 'selected' : ''}>Categoria</option>
+                  ${isPoly ? `<option value="area" ${style.labelField === 'area' ? 'selected' : ''}>Área (ha)</option>` : ''}
+                  ${isLine ? `<option value="extensao" ${style.labelField === 'extensao' ? 'selected' : ''}>Extensão</option>` : ''}
+                </select>
+                <ui-switch ${style.showLabel ? 'checked' : ''} id="style-show-label" ${isLocked ? 'desabilitado' : ''}></ui-switch>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- 3. ACORDEÃO: 📐 VÉRTICES & AZIMUTES -->
+        <details class="cm-inspector-accordion">
+          <summary><span>📐 Geometria & Vértices (${hasVertices ? coordinates.length : 1} nós)</span><span>▾</span></summary>
+          <div class="cm-accordion-content">
+            <div style="display: flex; justify-content: flex-end;">
+              <ui-botao-primario 
+                inline 
+                id="btn-toggle-vertex-edit" 
+                variante="${this.isVertexEditing ? 'primary' : 'secundario'}" 
+                style="height: 24px; font-size: 10.5px; padding: 0 8px;"
+                ${isLocked ? 'desabilitado' : ''}>
+                ${this.isVertexEditing ? '✔ Concluir Edição' : '✏️ Editar Vértices no Mapa'}
+              </ui-botao-primario>
+            </div>
+
+            ${hasVertices ? `
+              <!-- Tabela de Vértices -->
+              <details class="cm-vertex-details" open>
+                <summary class="cm-vertex-summary">📍 Coordenadas dos Vértices (${coordinates.length})</summary>
+                <div class="cm-vertex-list-scroll">
+                  ${coordinates.map((pt, idx) => `
+                    <div class="cm-vertex-row" data-vertex-idx="${idx}">
+                      <span class="cm-vertex-badge">V${idx + 1}</span>
+                      <input type="number" step="0.00001" class="cm-vertex-input" data-v-lat="${idx}" value="${Number(pt[0]).toFixed(5)}" ${isLocked ? 'disabled' : ''} />
+                      <input type="number" step="0.00001" class="cm-vertex-input" data-v-lng="${idx}" value="${Number(pt[1]).toFixed(5)}" ${isLocked ? 'disabled' : ''} />
+                      ${!isLocked ? `<button class="cm-vertex-del-btn" data-v-del="${idx}" title="Excluir Vértice">×</button>` : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </details>
+
+              <!-- Métricas de Segmento -->
+              <details class="cm-vertex-details">
+                <summary class="cm-vertex-summary">🧭 Azimutes & Distâncias das Arestas</summary>
+                <div class="cm-vertex-list-scroll" style="max-height: 110px;">
+                  ${segments.map(seg => `
+                    <div class="cm-segment-row">
+                      <span style="color: var(--cm-primary); font-weight: 600;">V${seg.from} ➔ V${seg.to}</span>
+                      <span>Az: <strong>${seg.azimuth.toFixed(1)}°</strong></span>
+                      <span style="color: var(--cm-text-muted);">${seg.distance > 1000 ? (seg.distance/1000).toFixed(2) + ' km' : seg.distance.toFixed(1) + ' m'}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </details>
+            ` : ''}
+
+            <!-- Botões de Cópia Rápida -->
+            <div style="display: flex; gap: 4px; border-top: 1px dashed rgba(255,255,255,0.06); padding-top: 6px;">
+              <ui-botao-primario inline id="btn-copy-wkt" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar WKT">📋 WKT</ui-botao-primario>
+              <ui-botao-primario inline id="btn-copy-geojson" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar GeoJSON">📋 GeoJSON</ui-botao-primario>
+              <ui-botao-primario inline id="btn-copy-coord-csv" variante="secundario" style="flex: 1; height: 24px; font-size: 10px;" title="Copiar CSV de Nós">📋 CSV</ui-botao-primario>
+            </div>
+          </div>
+        </details>
+
+        <!-- 4. ACORDEÃO: 🛠️ MICRO-FERRAMENTAS ESPACIAIS (CAD/GIS) -->
+        <details class="cm-inspector-accordion">
+          <summary><span>🛠️ Micro-ferramentas Espaciais</span><span>▾</span></summary>
+          <div class="cm-accordion-content">
+            <!-- Ferramenta: Buffer Paramétrico -->
+            <div class="cm-spatial-tool-card">
+              <div class="cm-spatial-tool-header">
+                <span>⚡ Buffer / Zona de Amortecimento</span>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="number" id="buffer-radius-input" class="cm-custom-attr-input" min="1" max="10000" step="5" value="50" style="width: 70px;" />
+                <span style="font-size: 10.5px; color: var(--cm-text-muted);">metros</span>
+                <ui-botao-primario inline id="btn-generate-buffer" variante="secundario" style="height: 24px; font-size: 10px; margin-left: auto;">
+                  Criar Buffer
+                </ui-botao-primario>
+              </div>
+            </div>
+
+            <!-- Ferramenta: Simplificação Douglas-Peucker -->
+            ${hasVertices ? `
+              <div class="cm-spatial-tool-card">
+                <div class="cm-spatial-tool-header">
+                  <span>📉 Simplificação Douglas-Peucker</span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <span style="font-size: 10px; color: var(--cm-text-muted);">Tolerância:</span>
+                  <input type="range" id="dp-tolerance-slider" class="cm-param-slider" min="1" max="50" step="1" value="5" />
+                  <span id="dp-tolerance-val" class="cm-param-badge">5m</span>
+                  <ui-botao-primario inline id="btn-simplify-dp" variante="secundario" style="height: 24px; font-size: 10px;" ${isLocked ? 'desabilitado' : ''}>
+                    Simplificar
+                  </ui-botao-primario>
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- Ferramenta: Duplicação com Offset -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 2px;">
+              <span style="font-size: 10.5px; color: var(--cm-text-muted);">Clonar feição (+30m offset):</span>
+              <ui-botao-primario inline id="btn-duplicate-feat" variante="secundario" style="height: 24px; font-size: 10px;">
+                📑 Duplicar
+              </ui-botao-primario>
+            </div>
+          </div>
+        </details>
+
+        <!-- 5. ACORDEÃO: 📋 ATRIBUTOS CUSTOMIZADOS (CHAVE / VALOR) -->
+        <details class="cm-inspector-accordion">
+          <summary><span>📋 Atributos Personalizados (${customAttrs.length})</span><span>▾</span></summary>
+          <div class="cm-accordion-content">
+            <div id="cm-custom-attr-list" style="display: flex; flex-direction: column; gap: 4px;">
+              ${customAttrs.map((attr, idx) => `
+                <div class="cm-custom-attr-row" data-attr-idx="${idx}">
+                  <input type="text" class="cm-custom-attr-input attr-key" placeholder="Chave (Ex: Matrícula)" value="${this.escapeHtml(attr.key || '')}" ${isLocked ? 'disabled' : ''} />
+                  <input type="text" class="cm-custom-attr-input attr-val" placeholder="Valor" value="${this.escapeHtml(attr.value || '')}" ${isLocked ? 'disabled' : ''} />
+                  ${!isLocked ? `<button class="cm-vertex-del-btn btn-del-attr" data-attr-del="${idx}">🗑️</button>` : ''}
+                </div>
+              `).join('')}
+              ${customAttrs.length === 0 ? `<div style="font-size: 10.5px; color: var(--cm-text-muted);">Nenhum atributo personalizado.</div>` : ''}
+            </div>
+
+            ${!isLocked ? `
+              <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                <ui-botao-primario inline id="btn-add-custom-attr" variante="secundario" style="height: 22px; font-size: 10px;">
+                  + Adicionar Campo
+                </ui-botao-primario>
+              </div>
+            ` : ''}
+          </div>
+        </details>
+
+        <!-- 6. ACORDEÃO: 🔄 CONVERSOR TOPOGRÁFICO & GEODÉSICO -->
+        <details class="cm-inspector-accordion">
+          <summary><span>🔄 Conversor de Unidades & Coordenadas</span><span>▾</span></summary>
+          <div class="cm-accordion-content">
+            ${(isPoly || isCircle) ? `
+              <div style="font-size: 10px; font-weight: 600; color: var(--cm-text);">Área Equivalente:</div>
+              <div class="cm-converter-grid">
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Hectares</span>
+                  <span class="cm-converter-val">${areaConversions.ha}</span>
+                </div>
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Metros Quadrados</span>
+                  <span class="cm-converter-val">${areaConversions.m2}</span>
+                </div>
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Alqueire Paulista (2,42 ha)</span>
+                  <span class="cm-converter-val">${areaConversions.alqueirePaulista}</span>
+                </div>
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Alqueire MG/GO (4,84 ha)</span>
+                  <span class="cm-converter-val">${areaConversions.alqueireMineiro}</span>
+                </div>
+              </div>
+            ` : ''}
+
+            ${isLine ? `
+              <div style="font-size: 10px; font-weight: 600; color: var(--cm-text);">Extensão Linear:</div>
+              <div class="cm-converter-grid">
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Metros</span>
+                  <span class="cm-converter-val">${lengthConversions.meters}</span>
+                </div>
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Quilômetros</span>
+                  <span class="cm-converter-val">${lengthConversions.km}</span>
+                </div>
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Milhas</span>
+                  <span class="cm-converter-val">${lengthConversions.miles}</span>
+                </div>
+                <div class="cm-converter-item">
+                  <span class="cm-converter-label">Pés</span>
+                  <span class="cm-converter-val">${lengthConversions.feet}</span>
+                </div>
+              </div>
+            ` : ''}
+
+            <div style="font-size: 10px; font-weight: 600; color: var(--cm-text); margin-top: 4px;">Centroide / Coordenadas:</div>
+            <div class="cm-converter-grid">
+              <div class="cm-converter-item">
+                <span class="cm-converter-label">Graus Decimais (DD)</span>
+                <span class="cm-converter-val">${refCoord[0].toFixed(5)}, ${refCoord[1].toFixed(5)}</span>
+              </div>
+              <div class="cm-converter-item">
+                <span class="cm-converter-label">DMS (GMS)</span>
+                <span class="cm-converter-val" style="font-size: 9.5px;">${dmsLat}<br>${dmsLng}</span>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <!-- 7. ACORDEÃO: 🕒 HISTÓRICO LOCAL DO ELEMENTO -->
+        <details class="cm-inspector-accordion">
+          <summary><span>🕒 Histórico de Modificações (${historyList.length})</span><span>▾</span></summary>
+          <div class="cm-accordion-content">
+            <div class="cm-audit-log-list" style="max-height: 100px;">
+              ${historyList.length > 0 ? historyList.map(h => `
+                <div class="cm-audit-item">
+                  <span style="color: var(--cm-primary);">${this.escapeHtml(h.time || '')}:</span>
+                  <span style="color: var(--cm-text);">${this.escapeHtml(h.action || '')}</span>
+                </div>
+              `).join('') : `
+                <div class="cm-audit-item">
+                  <span style="color: var(--cm-text-muted);">Criado em ${new Date(feat.createdAt || Date.now()).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+              `}
+            </div>
+          </div>
+        </details>
+
+        <!-- Botões de Ação Inferiores -->
+        <div style="display: flex; gap: 6px; margin-top: 8px;">
+          <ui-botao-primario inline id="btn-save-inspector" variante="primary" style="height: 30px; flex: 1;" ${isLocked ? 'desabilitado' : ''}>
             Salvar Alterações
           </ui-botao-primario>
-          <ui-botao-primario inline id="btn-delete-inspector" variante="destrutivo" title="Excluir Elemento" style="height: 30px; padding: 0 10px;">
+          <ui-botao-primario inline id="btn-delete-inspector" variante="destrutivo" title="Excluir Elemento" style="height: 30px; padding: 0 10px;" ${isLocked ? 'desabilitado' : ''}>
             🗑️
           </ui-botao-primario>
         </div>
       </div>
     `;
+  }
+
+  calculatePolylineLength(coordinates) {
+    let total = 0;
+    for (let i = 0; i < coordinates.length - 1; i++) {
+      total += this.calculateDistance(coordinates[i], coordinates[i + 1]);
+    }
+    return total;
+  }
+
+  calculatePolygonArea(coords) {
+    if (coords.length < 3) return 0;
+    const R = 6378137;
+    let total = 0;
+    const len = coords.length;
+
+    for (let i = 0; i < len; i++) {
+      const lower = coords[i];
+      const middle = coords[(i + 1) % len];
+      const upper = coords[(i + 2) % len];
+
+      const x1 = (middle[1] - lower[1]) * (Math.PI / 180);
+      const y1 = (middle[0] - lower[0]) * (Math.PI / 180);
+      const x2 = (upper[1] - middle[1]) * (Math.PI / 180);
+      const y2 = (upper[0] - middle[0]) * (Math.PI / 180);
+
+      total += (x1 * y2 - y1 * x2);
+    }
+
+    const area = Math.abs(total * (R * R) / 2);
+    return isNaN(area) ? 0 : area;
   }
 
   calculateDistance(p1, p2) {
@@ -615,16 +860,154 @@ export class LayerPanel {
       });
     }
 
+    // Botão de Trava/Lock
+    const btnLock = document.getElementById('btn-toggle-lock');
+    if (btnLock && this.selectedFeature) {
+      btnLock.addEventListener('click', () => {
+        const isLocked = !this.selectedFeature.locked;
+        const updated = {
+          ...this.selectedFeature,
+          locked: isLocked
+        };
+        this.selectedFeature = updated;
+        this.onFeatureUpdate(updated);
+        this.updateContent();
+        UIToast.notificar({
+          tipo: isLocked ? 'alerta' : 'sucesso',
+          titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
+          mensagem: isLocked ? 'Edições e exclusões estão temporariamente travadas.' : 'Edição liberada no mapa e no painel.',
+          duracao: 2000
+        });
+      });
+    }
+
+    // Botão de Janela Flutuante (Floating Detachable Workbench)
+    const btnFloat = document.getElementById('btn-toggle-float');
+    if (btnFloat) {
+      btnFloat.addEventListener('click', () => {
+        this.toggleFloatingWindow();
+      });
+    }
+
+    // Botão Enquadrar Feição
+    const btnFit = document.getElementById('btn-fit-feature');
+    if (btnFit && this.selectedFeature) {
+      btnFit.addEventListener('click', () => {
+        this.onFitFeature(this.selectedFeature.id);
+      });
+    }
+
+    // Buffer Paramétrico
+    const btnGenBuffer = document.getElementById('btn-generate-buffer');
+    if (btnGenBuffer && this.selectedFeature) {
+      btnGenBuffer.addEventListener('click', () => {
+        const radiusInput = document.getElementById('buffer-radius-input');
+        const radius = Math.max(1, parseFloat(radiusInput?.value) || 50);
+        const bufferFeature = SpatialAlgorithms.generateBuffer(this.selectedFeature, radius);
+        if (bufferFeature) {
+          this.onFeatureCreate(bufferFeature);
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Buffer Gerado',
+            mensagem: `Zona de amortecimento de ${radius}m criada no mapa.`,
+            duracao: 2500
+          });
+        }
+      });
+    }
+
+    // Simplificação Douglas-Peucker
+    const dpSlider = document.getElementById('dp-tolerance-slider');
+    const dpValBadge = document.getElementById('dp-tolerance-val');
+    if (dpSlider && dpValBadge) {
+      dpSlider.addEventListener('input', (e) => {
+        dpValBadge.textContent = `${e.target.value}m`;
+      });
+    }
+
+    const btnSimplify = document.getElementById('btn-simplify-dp');
+    if (btnSimplify && this.selectedFeature && Array.isArray(this.selectedFeature.coordinates)) {
+      btnSimplify.addEventListener('click', () => {
+        const tol = parseFloat(dpSlider?.value) || 5;
+        const isPoly = this.selectedFeature.type === 'Polygon';
+        const originalCount = this.selectedFeature.coordinates.length;
+        const simplified = SpatialAlgorithms.simplifyDouglasPeucker(this.selectedFeature.coordinates, tol, isPoly);
+        const newCount = simplified.length;
+        const reduced = originalCount - newCount;
+
+        const updated = {
+          ...this.selectedFeature,
+          coordinates: simplified
+        };
+        this.selectedFeature = updated;
+        this.onFeatureUpdate(updated);
+        this.updateContent();
+
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Geometria Simplificada',
+          mensagem: reduced > 0 ? `${reduced} vértices redundantes removidos (tolerância: ${tol}m).` : 'Geometria já otimizada.',
+          duracao: 2500
+        });
+      });
+    }
+
+    // Duplicação de Feição com Offset
+    const btnDup = document.getElementById('btn-duplicate-feat');
+    if (btnDup && this.selectedFeature) {
+      btnDup.addEventListener('click', () => {
+        const clone = SpatialAlgorithms.duplicateWithOffset(this.selectedFeature, 30);
+        if (clone) {
+          this.onFeatureCreate(clone);
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Feição Duplicada',
+            mensagem: `Cópia criada com deslocamento geodésico de +30m.`,
+            duracao: 2500
+          });
+        }
+      });
+    }
+
+    // Adicionar Atributo Customizado
+    const btnAddAttr = document.getElementById('btn-add-custom-attr');
+    if (btnAddAttr && this.selectedFeature) {
+      btnAddAttr.addEventListener('click', () => {
+        const current = Array.isArray(this.selectedFeature.customAttributes) ? [...this.selectedFeature.customAttributes] : [];
+        current.push({ key: '', value: '' });
+        this.selectedFeature.customAttributes = current;
+        this.updateContent();
+      });
+    }
+
+    // Excluir Atributo Customizado
+    document.querySelectorAll('.btn-del-attr').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-attr-del'), 10);
+        if (this.selectedFeature && Array.isArray(this.selectedFeature.customAttributes)) {
+          this.selectedFeature.customAttributes.splice(idx, 1);
+          this.updateContent();
+        }
+      });
+    });
+
     // Inspetor Salvar/Excluir
     const btnSave = document.getElementById('btn-save-inspector');
     if (btnSave && this.selectedFeature) {
       btnSave.addEventListener('click', () => {
+        if (this.selectedFeature.locked) {
+          UIToast.notificar({ tipo: 'alerta', titulo: 'Feição Bloqueada', mensagem: 'Desbloqueie o elemento antes de salvar alterações.' });
+          return;
+        }
+
         const nameInput = document.getElementById('inspector-feat-name');
         const descInput = document.getElementById('inspector-feat-desc');
+        const layerSelect = document.getElementById('inspector-feat-layer');
         const newName = nameInput ? nameInput.value.trim() : '';
         const newDesc = descInput ? descInput.value.trim() : '';
+        const newLayerId = layerSelect ? layerSelect.value : (this.selectedFeature.layerId || 'layer-topografia');
 
-        const isPoly = this.selectedFeature.type === 'Polygon';
         const isPoint = this.selectedFeature.type === 'Point';
 
         const fillPick = document.getElementById('style-fill-color');
@@ -640,7 +1023,6 @@ export class LayerPanel {
         const labelFSelect = document.getElementById('style-label-field');
 
         const currentStyle = this.selectedFeature.style || {};
-
         const isLabelChecked = labelSw ? (labelSw.checked || labelSw.hasAttribute('checked')) : false;
 
         const newStyle = {
@@ -657,12 +1039,32 @@ export class LayerPanel {
           labelField: labelFSelect ? labelFSelect.value : (currentStyle.labelField || 'name')
         };
 
+        // Coleta atributos customizados dos inputs
+        const customAttrs = [];
+        document.querySelectorAll('.cm-custom-attr-row').forEach(row => {
+          const k = row.querySelector('.attr-key')?.value?.trim();
+          const v = row.querySelector('.attr-val')?.value?.trim();
+          if (k) {
+            customAttrs.push({ key: k, value: v || '' });
+          }
+        });
+
+        // Atualiza mini-histórico
+        const historyList = Array.isArray(this.selectedFeature.history) ? [...this.selectedFeature.history] : [];
+        historyList.unshift({
+          time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          action: `Propriedades salvas por Você`
+        });
+
         const updated = {
           ...this.selectedFeature,
           name: newName || this.selectedFeature.name,
           description: newDesc,
+          layerId: newLayerId,
           color: newStyle.fillColor || newStyle.strokeColor || this.selectedFeature.color,
-          style: newStyle
+          style: newStyle,
+          customAttributes: customAttrs,
+          history: historyList.slice(0, 8)
         };
 
         this.selectedFeature = updated;
@@ -674,6 +1076,10 @@ export class LayerPanel {
     const btnToggleVertex = document.getElementById('btn-toggle-vertex-edit');
     if (btnToggleVertex && this.selectedFeature) {
       btnToggleVertex.addEventListener('click', () => {
+        if (this.selectedFeature.locked) {
+          UIToast.notificar({ tipo: 'alerta', titulo: 'Feição Bloqueada', mensagem: 'Desbloqueie o elemento antes de editar vértices.' });
+          return;
+        }
         this.isVertexEditing = !this.isVertexEditing;
         if (this.isVertexEditing) {
           this.onStartVertexEdit(this.selectedFeature);
@@ -687,6 +1093,7 @@ export class LayerPanel {
     // Inputs de Latitude dos Vértices
     document.querySelectorAll('[data-v-lat]').forEach(input => {
       input.addEventListener('change', (e) => {
+        if (this.selectedFeature.locked) return;
         const idx = parseInt(input.getAttribute('data-v-lat'), 10);
         const newLat = parseFloat(e.target.value);
         if (!isNaN(newLat) && this.selectedFeature && Array.isArray(this.selectedFeature.coordinates)) {
@@ -705,6 +1112,7 @@ export class LayerPanel {
     // Inputs de Longitude dos Vértices
     document.querySelectorAll('[data-v-lng]').forEach(input => {
       input.addEventListener('change', (e) => {
+        if (this.selectedFeature.locked) return;
         const idx = parseInt(input.getAttribute('data-v-lng'), 10);
         const newLng = parseFloat(e.target.value);
         if (!isNaN(newLng) && this.selectedFeature && Array.isArray(this.selectedFeature.coordinates)) {
@@ -724,6 +1132,7 @@ export class LayerPanel {
     document.querySelectorAll('[data-v-del]').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (this.selectedFeature.locked) return;
         const idx = parseInt(btn.getAttribute('data-v-del'), 10);
         if (this.selectedFeature && Array.isArray(this.selectedFeature.coordinates)) {
           const minNodes = this.selectedFeature.type === 'Polygon' ? 3 : 2;
@@ -795,6 +1204,10 @@ export class LayerPanel {
     const btnDelete = document.getElementById('btn-delete-inspector');
     if (btnDelete && this.selectedFeature) {
       btnDelete.addEventListener('click', () => {
+        if (this.selectedFeature.locked) {
+          UIToast.notificar({ tipo: 'alerta', titulo: 'Feição Bloqueada', mensagem: 'Desbloqueie o elemento antes de excluí-lo.' });
+          return;
+        }
         this.onDeleteFeature(this.selectedFeature.id);
         this.setSelectedFeature(null);
       });
@@ -814,4 +1227,106 @@ export class LayerPanel {
       });
     }
   }
+
+  toggleFloatingWindow() {
+    this.isFloating = !this.isFloating;
+    let floatWin = document.getElementById('cm-floating-inspector-window');
+    if (this.isFloating) {
+      if (!floatWin) {
+        floatWin = document.createElement('div');
+        floatWin.id = 'cm-floating-inspector-window';
+        floatWin.className = 'cm-floating-window';
+        document.body.appendChild(floatWin);
+      }
+      floatWin.style.display = 'flex';
+      this.renderFloatingWindowContent();
+      this.makeWindowDraggable(floatWin);
+    } else {
+      if (floatWin) {
+        floatWin.style.display = 'none';
+      }
+    }
+    this.updateContent();
+  }
+
+  renderFloatingWindowContent() {
+    const floatWin = document.getElementById('cm-floating-inspector-window');
+    if (!floatWin || !this.selectedFeature) return;
+
+    floatWin.innerHTML = `
+      <div class="cm-floating-header" id="cm-floating-header-handle">
+        <div class="cm-floating-title">
+          <span>🔍 Inspetor Workbench</span>
+          <span style="font-size: 10px; opacity: 0.7;">(${this.escapeHtml(this.selectedFeature.name || '')})</span>
+        </div>
+        <div style="display: flex; gap: 4px; align-items: center;">
+          <button id="btn-dock-float-win" class="cm-native-select" style="padding: 1px 5px; font-size: 10px;" title="Acoplar de volta na barra lateral">📌 Acoplar</button>
+          <button id="btn-close-float-win" class="cm-vertex-del-btn" style="font-size: 16px; padding: 0 4px;" title="Fechar">×</button>
+        </div>
+      </div>
+      <div class="cm-floating-body">
+        ${this.renderInspectorTab()}
+      </div>
+    `;
+
+    const btnDock = floatWin.querySelector('#btn-dock-float-win');
+    if (btnDock) {
+      btnDock.addEventListener('click', () => {
+        this.toggleFloatingWindow();
+      });
+    }
+
+    const btnClose = floatWin.querySelector('#btn-close-float-win');
+    if (btnClose) {
+      btnClose.addEventListener('click', () => {
+        this.toggleFloatingWindow();
+      });
+    }
+
+    this.bindTabEvents();
+  }
+
+  makeWindowDraggable(win) {
+    const header = win.querySelector('#cm-floating-header-handle');
+    if (!header) return;
+
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initialLeft = 0, initialTop = 0;
+
+    header.onmousedown = (e) => {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = win.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+      win.style.right = 'auto';
+      win.style.left = `${initialLeft}px`;
+      win.style.top = `${initialTop}px`;
+
+      document.onmousemove = (ev) => {
+        if (!isDragging) return;
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+
+        // Clamping de viewport
+        const maxLeft = window.innerWidth - win.offsetWidth - 10;
+        const maxTop = window.innerHeight - win.offsetHeight - 10;
+
+        const newLeft = Math.max(10, Math.min(maxLeft, initialLeft + dx));
+        const newTop = Math.max(10, Math.min(maxTop, initialTop + dy));
+
+        win.style.left = `${newLeft}px`;
+        win.style.top = `${newTop}px`;
+      };
+
+      document.onmouseup = () => {
+        isDragging = false;
+        document.onmousemove = null;
+        document.onmouseup = null;
+      };
+    };
+  }
 }
+

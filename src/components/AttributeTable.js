@@ -87,13 +87,13 @@ export class AttributeTable {
     const rows = filtered.map(f => {
       let dim = '';
       if (f.type === 'Point') dim = `${f.coordinates[0].toFixed(4)}, ${f.coordinates[1].toFixed(4)}`;
-      else if (f.type === 'LineString') dim = f.properties?.extensao || `${f.coordinates.length} vértices`;
-      else if (f.type === 'Polygon') dim = f.properties?.areaCalculada || `${f.coordinates.length} vértices`;
+      else if (f.type === 'LineString') dim = f.properties?.['Extensão'] || f.properties?.extensao || `${f.coordinates.length} nós`;
+      else if (f.type === 'Polygon') dim = f.properties?.['Área (ha)'] || f.properties?.areaCalculada || `${f.coordinates.length} nós`;
       else if (f.type === 'Circle') dim = `Raio: ${f.radius}m`;
 
       return {
         id: f.id,
-        tipo: f.type,
+        tipo: f.locked ? `🔒 ${f.type}` : f.type,
         nome: f.name,
         camada: layerMap.get(f.layerId) || 'Padrão',
         dimensao: dim,
