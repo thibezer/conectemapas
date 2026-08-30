@@ -482,11 +482,16 @@ export class MapEngine {
 
       const layerConfig = layerMap.get(feat.layerId) || { color: '#00E08A', opacity: 1, visible: true };
       const defaultColor = feat.color || layerConfig.color || '#00E08A';
+      const layerOpacity = layerConfig.opacity !== undefined ? Number(layerConfig.opacity) : 1;
       
+      const rawFillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
+      const combinedFillOpacity = Math.max(0, Math.min(1, rawFillOpacity * layerOpacity));
+      const strokeOpacity = layerOpacity;
+
       // Estilo Paramétrico Unificado (Retrocompatível com fallback)
       const style = {
         fillColor: feat.style?.fillColor || defaultColor,
-        fillOpacity: feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : (layerConfig.opacity !== undefined ? 0.35 * layerConfig.opacity : 0.35),
+        fillOpacity: combinedFillOpacity,
         strokeColor: feat.style?.strokeColor || defaultColor,
         strokeWidth: feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : 2.5,
         strokeDashArray: feat.style?.strokeDashArray || null,
@@ -494,7 +499,8 @@ export class MapEngine {
         markerSize: feat.style?.markerSize !== undefined ? Number(feat.style.markerSize) : 24,
         markerRotation: feat.style?.markerRotation !== undefined ? Number(feat.style.markerRotation) : 0,
         showLabel: feat.style?.showLabel === true,
-        labelField: feat.style?.labelField || 'name'
+        labelField: feat.style?.labelField || 'name',
+        layerOpacity: layerOpacity
       };
 
       let leafLayer = null;
@@ -534,13 +540,13 @@ export class MapEngine {
           iconAnchor: [style.markerSize / 2, style.markerSize / 2]
         });
 
-        leafLayer = L.marker(coords, { icon });
+        leafLayer = L.marker(coords, { icon, opacity: layerOpacity });
       } else if (feat.type === 'LineString' && coords && coords.length > 0) {
         leafLayer = L.polyline(coords, {
           color: style.strokeColor,
           weight: style.strokeWidth,
           dashArray: style.strokeDashArray || undefined,
-          opacity: 1
+          opacity: strokeOpacity
         });
       } else if (feat.type === 'Polygon' && coords && coords.length > 0) {
         leafLayer = L.polygon(coords, {
@@ -548,8 +554,8 @@ export class MapEngine {
           weight: style.strokeWidth,
           dashArray: style.strokeDashArray || undefined,
           fillColor: style.fillColor,
-          fillOpacity: style.fillOpacity,
-          opacity: 1
+          fillOpacity: combinedFillOpacity,
+          opacity: strokeOpacity
         });
       } else if (feat.type === 'Circle' && coords) {
         leafLayer = L.circle(coords, {
@@ -558,8 +564,8 @@ export class MapEngine {
           weight: style.strokeWidth,
           dashArray: style.strokeDashArray || undefined,
           fillColor: style.fillColor,
-          fillOpacity: style.fillOpacity,
-          opacity: 1
+          fillOpacity: combinedFillOpacity,
+          opacity: strokeOpacity
         });
       }
 
