@@ -57,16 +57,26 @@ export class LayerPanel {
   }
 
   /**
-   * Obtém a lista linear de IDs de feições visíveis na árvore
+   * Obtém a lista linear de IDs de feições visíveis na árvore (Complexidade O(L + F))
    */
   getVisibleTreeItemIds() {
     const ids = [];
-    this.layers.forEach(layer => {
+    const featsByLayer = new Map();
+    for (let i = 0; i < this.features.length; i++) {
+      const f = this.features[i];
+      if (!featsByLayer.has(f.layerId)) featsByLayer.set(f.layerId, []);
+      featsByLayer.get(f.layerId).push(f);
+    }
+
+    for (let i = 0; i < this.layers.length; i++) {
+      const layer = this.layers[i];
       if (this.expandedLayers.has(layer.id)) {
-        const layerFeats = this.features.filter(f => f.layerId === layer.id);
-        layerFeats.forEach(f => ids.push(f.id));
+        const layerFeats = featsByLayer.get(layer.id) || [];
+        for (let j = 0; j < layerFeats.length; j++) {
+          ids.push(layerFeats[j].id);
+        }
       }
-    });
+    }
     return ids;
   }
 
@@ -157,6 +167,14 @@ export class LayerPanel {
     const selectedFeaturesList = this.features.filter(f => this.selectedFeatureIds.has(f.id));
     const hasSelection = selectedFeaturesList.length > 0;
 
+    // Indexação O(F) de feições por camada para renderização rápida
+    const featsByLayer = new Map();
+    for (let i = 0; i < this.features.length; i++) {
+      const f = this.features[i];
+      if (!featsByLayer.has(f.layerId)) featsByLayer.set(f.layerId, []);
+      featsByLayer.get(f.layerId).push(f);
+    }
+
     // Métricas somadas para o rodapé
     let bulkMetricStr = '';
     const polySelected = selectedFeaturesList.filter(f => f.type === 'Polygon');
@@ -203,7 +221,7 @@ export class LayerPanel {
             const isLocked = layer.locked === true;
             const isExpanded = this.expandedLayers.has(layer.id);
 
-            const layerFeatures = this.features.filter(f => f.layerId === layer.id);
+            const layerFeatures = featsByLayer.get(layer.id) || [];
             const layerSelectedCount = layerFeatures.filter(f => this.selectedFeatureIds.has(f.id)).length;
             const isLayerFullySelected = layerFeatures.length > 0 && layerSelectedCount === layerFeatures.length;
             const isLayerPartiallySelected = layerSelectedCount > 0 && !isLayerFullySelected;
@@ -1079,12 +1097,22 @@ export class LayerPanel {
 
   updateLayers(layers, features = null) {
     this.layers = layers;
-    if (features) this.features = features;
+    if (features) {
+      this.features = features;
+      const validIds = new Set(features.map(f => f.id));
+      for (const id of this.selectedFeatureIds) {
+        if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
+      }
+    }
     if (this.activeTab === 'layers') this.updateContent();
   }
 
   updateFeatures(features) {
     this.features = features;
+    const validIds = new Set(features.map(f => f.id));
+    for (const id of this.selectedFeatureIds) {
+      if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
+    }
     if (this.activeTab === 'layers') this.updateContent();
   }
 
