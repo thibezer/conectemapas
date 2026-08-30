@@ -8,7 +8,7 @@
   top: 10px;
   right: 10px;
   bottom: 46px;
-  width: 310px;
+  width: 335px;
   z-index: 500;
   display: flex;
   flex-direction: column;
@@ -30,8 +30,8 @@
 
 /* --- Cabeçalho de Abas Superior --- */
 .cm-sidebar-header {
-  height: 34px;
-  min-height: 34px;
+  height: 36px;
+  min-height: 36px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -42,9 +42,9 @@
 
 .cm-sidebar-tabs {
   display: flex;
-  gap: 2px;
+  gap: 3px;
   width: 100%;
-  padding: 2px;
+  padding: 3px;
 }
 
 .cm-sidebar-tab-btn {
@@ -61,7 +61,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 5px;
   white-space: nowrap;
   transition: all 0.15s ease;
 }
@@ -101,14 +101,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--cm-text-muted, #888899);
-}
-
-.cm-add-layer-btn {
-  height: 22px !important;
-  font-size: 10.5px !important;
-  padding: 0 8px !important;
-  border-radius: 4px !important;
-  white-space: nowrap !important;
+  white-space: nowrap;
 }
 
 /* --- Toolbar Superior da Árvore de Camadas --- */
@@ -116,14 +109,44 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 2px 2px 6px 2px;
+  padding: 2px 2px 8px 2px;
   border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
+  gap: 8px;
+  min-height: 28px;
+}
+
+.cm-tree-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cm-tree-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-tree-count-badge {
+  font-size: 10px;
+  font-family: var(--cm-fonte-mono, monospace);
+  color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.12);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .cm-tree-actions {
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .cm-tree-action-btn {
@@ -132,8 +155,8 @@
   border-radius: 4px;
   color: var(--cm-text, #e1e1e6);
   font-size: 11px;
-  height: 22px;
-  padding: 0 6px;
+  height: 24px;
+  padding: 0 7px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -144,6 +167,31 @@
 .cm-tree-action-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.cm-tree-btn-new {
+  background: rgba(0, 224, 138, 0.12);
+  border: 1px solid rgba(0, 224, 138, 0.35);
+  color: var(--cm-primary, #00E08A);
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  height: 24px;
+  padding: 0 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.cm-tree-btn-new:hover {
+  background: var(--cm-primary, #00E08A);
+  color: #000;
+  border-color: var(--cm-primary, #00E08A);
+  transform: translateY(-1px);
 }
 
 /* --- Árvore de Camadas (Tree View) --- */

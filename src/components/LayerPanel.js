@@ -62,13 +62,13 @@ export class LayerPanel {
         <div class="cm-sidebar-header">
           <div class="cm-sidebar-tabs">
             <button class="cm-sidebar-tab-btn ${this.activeTab === 'layers' ? 'active' : ''}" data-tab="layers">
-              🗂️ Camadas & Árvore
+              🗂️ Camadas
             </button>
             <button class="cm-sidebar-tab-btn ${this.activeTab === 'inspector' ? 'active' : ''}" data-tab="inspector">
               🔍 Inspeção
             </button>
             <button class="cm-sidebar-tab-btn ${this.activeTab === 'collab' ? 'active' : ''}" data-tab="collab">
-              💬 Equipe & Log
+              💬 Equipe
             </button>
           </div>
         </div>
@@ -101,20 +101,20 @@ export class LayerPanel {
     return `
       <!-- Toolbar Superior da Árvore de Camadas (Estilo Illustrator / Photoshop / QGIS) -->
       <div class="cm-tree-toolbar">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span class="cm-sidebar-section-title" style="margin: 0;">Árvore de Camadas</span>
-          <span class="cm-summary-pill" style="font-size: 9.5px;">${this.layers.length} grupos</span>
+        <div class="cm-tree-title-group">
+          <span class="cm-tree-section-title">CAMADAS</span>
+          <span class="cm-tree-count-badge">${this.layers.length}</span>
         </div>
         <div class="cm-tree-actions">
           <button id="btn-toggle-all-vis" class="cm-tree-action-btn" title="${allVisible ? 'Ocultar Todas as Camadas' : 'Exibir Todas as Camadas'}">
-            ${allVisible ? '👁️' : '👁️‍🗨️'}
+            ${allVisible ? '👁️' : '🚫'}
           </button>
           <button id="btn-toggle-all-expand" class="cm-tree-action-btn" title="${allExpanded ? 'Recolher Todos os Grupos' : 'Expandir Todos os Grupos'}">
             ${allExpanded ? '📁' : '📂'}
           </button>
-          <ui-botao-primario inline id="btn-add-layer" variante="secundario" class="cm-add-layer-btn" title="Criar nova camada/pasta">
-            + Nova
-          </ui-botao-primario>
+          <button id="btn-add-layer" class="cm-tree-btn-new" title="Adicionar nova camada vetorial">
+            + Camada
+          </button>
         </div>
       </div>
 
