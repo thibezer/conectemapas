@@ -1,0 +1,97 @@
+/* ==========================================================================
+   ConecteMapas - PointCluster Styles
+   Responsabilidade Única: Estilização dos marcadores de agrupamento dinâmico (Clusters)
+   ========================================================================== */
+
+.cm-cluster-div-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+.cm-cluster-marker {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.cm-cluster-marker:hover {
+  transform: scale(1.15);
+  z-index: 9999 !important;
+}
+
+.cm-cluster-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--cluster-color, #00E08A);
+  opacity: 0.25;
+  filter: drop-shadow(0 0 8px var(--cluster-color, #00E08A));
+  animation: cm-cluster-pulse 3s infinite ease-in-out;
+}
+
+.cm-cluster-core {
+  position: relative;
+  border-radius: 50%;
+  background: #121217;
+  border: 2.2px solid var(--cluster-color, #00E08A);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), inset 0 0 10px rgba(0, 0, 0, 0.4);
+}
+
+.cm-cluster-marker.small .cm-cluster-core {
+  width: 24px;
+  height: 24px;
+}
+
+.cm-cluster-marker.medium .cm-cluster-core {
+  width: 30px;
+  height: 30px;
+}
+
+.cm-cluster-marker.large .cm-cluster-core {
+  width: 36px;
+  height: 36px;
+}
+
+.cm-cluster-count {
+  font-family: var(--cm-fonte-mono, monospace);
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: -0.2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.cm-cluster-marker.small .cm-cluster-count {
+  font-size: 10px;
+}
+
+.cm-cluster-marker.medium .cm-cluster-count {
+  font-size: 11px;
+}
+
+.cm-cluster-marker.large .cm-cluster-count {
+  font-size: 12px;
+}
+
+@keyframes cm-cluster-pulse {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.2;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(0.92);
+    opacity: 0.2;
+  }
+}

@@ -1,8 +1,9 @@
 /* ==========================================================================
-   ConecteMapas - SpatialIndex (R-Tree / Bounding Box Spatial Indexer)
-   Responsabilidade Única: Indexação espacial em memória O(log N) para busca
-   instantânea de geometrias visíveis na viewport (Viewport Culling).
+   ConecteMapas - SpatialIndex (Bounding-Box AABB Spatial Indexer)
+   Responsabilidade Única: Indexação e poda espacial via AABB (Axis-Aligned Bounding Box)
+   vetorizada em memória para descarte e filtragem de geometrias na viewport (Viewport Culling).
    ========================================================================== */
+
 
 export class SpatialIndex {
   constructor() {

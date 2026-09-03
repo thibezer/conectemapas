@@ -203,7 +203,8 @@ export class LayerTreeRenderer {
         <!-- Rodapé Estilo Adobe Illustrator -->
         <div class="cm-ai-tree-footer">
           <div class="cm-ai-footer-left">
-            <span class="cm-ai-footer-label">${hasSelection ? `${selectedFeaturesList.length} Selecionado${selectedFeaturesList.length > 1 ? 's' : ''}` : `${panel.layers.length} Camadas`}</span>
+            <span class="cm-ai-footer-count">${hasSelection ? selectedFeaturesList.length : panel.layers.length}</span>
+            <span class="cm-ai-footer-label">${hasSelection ? (selectedFeaturesList.length > 1 ? 'selecionados' : 'selecionado') : 'camadas'}</span>
             ${bulkMetricStr ? `<span class="cm-ai-footer-metric">• ${bulkMetricStr}</span>` : ''}
           </div>
           <div class="cm-ai-footer-right">
@@ -234,31 +235,32 @@ export class LayerTreeRenderer {
       </div>
 
       <!-- Seção: Mapa Base -->
-      <div class="cm-sidebar-section-header" style="margin-top: 10px;">
+      <div class="cm-sidebar-section-header" style="margin-top: 6px;">
         <span class="cm-sidebar-section-title">Mapa Base</span>
       </div>
       <div class="cm-basemap-grid">
         <div class="cm-basemap-card ${panel.currentBasemap === 'google_satelite' ? 'active' : ''}" data-basemap="google_satelite" title="Google Maps Satélite / Híbrido">
-          <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=160&auto=format&fit=crop&q=80" alt="Google Satélite" />
+          <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=160&auto=format&fit=crop&q=80" alt="Google Satélite" onerror="this.style.display='none'" />
           <span>🛰️ Google Satélite</span>
         </div>
         <div class="cm-basemap-card ${panel.currentBasemap === 'satelite' ? 'active' : ''}" data-basemap="satelite" title="Satélite de Alta Resolução Esri">
-          <img src="https://images.unsplash.com/photo-1508873696983-2df5293cb32b?w=160&auto=format&fit=crop&q=80" alt="Esri Satélite" />
+          <img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=160&auto=format&fit=crop&q=80" alt="Esri Satélite" onerror="this.style.display='none'" />
           <span>🛰️ Esri Satélite</span>
         </div>
         <div class="cm-basemap-card ${panel.currentBasemap === 'osm' ? 'active' : ''}" data-basemap="osm" title="Mapa Urbano OpenStreetMap">
-          <img src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?w=160&auto=format&fit=crop&q=80" alt="OSM" />
+          <img src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?w=160&auto=format&fit=crop&q=80" alt="OSM" onerror="this.style.display='none'" />
           <span>🗺️ OpenStreet</span>
         </div>
         <div class="cm-basemap-card ${panel.currentBasemap === 'topografia' ? 'active' : ''}" data-basemap="topografia" title="Mapa de Curvas de Nível e Relevo">
-          <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&auto=format&fit=crop&q=80" alt="Topografia" />
+          <img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=160&auto=format&fit=crop&q=80" alt="Topografia" onerror="this.style.display='none'" />
           <span>⛰️ Topografia</span>
         </div>
         <div class="cm-basemap-card ${panel.currentBasemap === 'dark' ? 'active' : ''}" data-basemap="dark" title="Mapa Escuro Esri Dark Canvas">
-          <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=160&auto=format&fit=crop&q=80" alt="Dark" />
+          <img src="https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=160&auto=format&fit=crop&q=80" alt="Dark" onerror="this.style.display='none'" />
           <span>🌑 Dark Canvas</span>
         </div>
       </div>
     `;
+
   }
 }

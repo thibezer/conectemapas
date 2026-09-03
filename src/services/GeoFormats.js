@@ -6,7 +6,9 @@
 import { ShapefileParser } from './ShapefileParser.js';
 import { GeoJsonConverter } from './GeoFormats/GeoJsonConverter.js';
 import { KmlConverter } from './GeoFormats/KmlConverter.js';
+import { GpxConverter } from './GeoFormats/GpxConverter.js';
 import { CsvConverter } from './GeoFormats/CsvConverter.js';
+import { WktConverter } from './GeoFormats/WktConverter.js';
 import { geoWorkerClient } from './Workers/GeoWorkerClient.js';
 
 export class GeoFormats {

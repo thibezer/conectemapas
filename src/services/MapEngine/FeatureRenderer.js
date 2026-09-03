@@ -1,5 +1,6 @@
 import L from 'leaflet';
 import { GeometrySimplifier } from '../GeometrySimplifier.js';
+import { PointClusterEngine } from './PointClusterEngine.js';
 
 export class FeatureRenderer {
   constructor(mapEngine) {
@@ -9,6 +10,10 @@ export class FeatureRenderer {
     this.allLayers = [];
     this.cullingThreshold = 60;
     this._cullingRaf = null;
+
+    // Motor de Agrupamento Dinâmico por Escala e Proximidade em Pixels
+    this.clusterEngine = new PointClusterEngine({ gridSize: 55, maxClusterZoom: 17 });
+    this.renderedClusters = new Map(); // Map<clusterId, L.Marker>
   }
 
   renderFeatures(features, layers) {
@@ -46,26 +51,8 @@ export class FeatureRenderer {
       }
     });
 
-    // 2. Se a base for volumosa (> 60 feições), ativa Viewport Culling
-    if (this.allFeatures.length > this.cullingThreshold) {
-      this.updateViewportCulling();
-    } else {
-      // Para projetos leves, reconciliação direta
-      const activeFeatMap = new Map();
-      this.allFeatures.forEach(f => {
-        if (f.visible !== false) activeFeatMap.set(f.id, f);
-      });
-
-      this.engine.renderedFeatures.forEach((layerWrapper, featId) => {
-        if (!activeFeatMap.has(featId)) {
-          this.removeSingleFeature(featId);
-        }
-      });
-
-      this.allFeatures.forEach(feat => {
-        this.renderSingleFeature(feat, layers);
-      });
-    }
+    // 2. Renderização inteligente com Agrupamento e Culling
+    this.updateViewportCulling();
 
     // 3. Ordenação Z-Index das camadas
     const reversedLayers = [...layers].reverse();
@@ -78,7 +65,7 @@ export class FeatureRenderer {
   }
 
   updateViewportCulling() {
-    if (!this.map || !this.allFeatures || this.allFeatures.length <= this.cullingThreshold) return;
+    if (!this.map || !this.allFeatures) return;
 
     if (this._cullingRaf) cancelAnimationFrame(this._cullingRaf);
     this._cullingRaf = requestAnimationFrame(() => {
@@ -87,32 +74,151 @@ export class FeatureRenderer {
       const visibleIdSet = new Set(visibleFeats.map(f => f.id));
 
       // Protege feição em edição no VertexEditor ou selecionada
-      if (this.engine.activeEditingFeatureId) {
-        visibleIdSet.add(this.engine.activeEditingFeatureId);
+      if (this.engine.vertexEditor?.editingFeature?.id) {
+        visibleIdSet.add(this.engine.vertexEditor.editingFeature.id);
       }
       if (this.engine.selectedFeatureId) {
         visibleIdSet.add(this.engine.selectedFeatureId);
       }
+      if (this.engine.selectedFeatureIds && this.engine.selectedFeatureIds.size > 0) {
+        this.engine.selectedFeatureIds.forEach(id => visibleIdSet.add(id));
+      }
 
-      // Renderiza / atualiza geometrias visíveis com LOD dinâmico
+      const layerMap = new Map(this.allLayers.map(l => [l.id, l]));
+
+      // 1. Separa vetores (polígonos, linhas) de pontos
+      const visibleVectors = [];
+      const visiblePoints = [];
+
       visibleFeats.forEach(feat => {
+        if (feat.visible === false) return;
+        const layerConfig = layerMap.get(feat.layerId);
+        if (layerConfig && layerConfig.visible === false) return;
+
+        if (feat.type === 'Point') {
+          visiblePoints.push(feat);
+        } else {
+          visibleVectors.push(feat);
+        }
+      });
+
+      // 2. Renderiza feições vetoriais normais (com LOD dinâmico)
+      visibleVectors.forEach(feat => {
         this.renderSingleFeature(feat, this.allLayers);
       });
 
-      // Remove do Leaflet as que saíram do campo de visão
+      // 3. Agrupamento Dinâmico de Pontos (Marker Clustering por Escala)
+      const { clusters, singles } = this.clusterEngine.computeClusters(visiblePoints, this.map);
+      const activeClusterIdSet = new Set();
+      const clusteredPointIdSet = new Set();
+
+      // Renderiza os marcadores de cluster
+      clusters.forEach(cluster => {
+        activeClusterIdSet.add(cluster.id);
+        cluster.features.forEach(f => clusteredPointIdSet.add(f.id));
+        this.renderClusterMarker(cluster);
+      });
+
+      // Renderiza pontos isolados (não agrupados)
+      singles.forEach(feat => {
+        this.renderSingleFeature(feat, this.allLayers);
+      });
+
+      // 4. Remove do mapa pontos que foram absorvidos em clusters
+      clusteredPointIdSet.forEach(featId => {
+        if (this.engine.renderedFeatures.has(featId)) {
+          this.removeSingleFeature(featId);
+        }
+      });
+
+      // 5. Remove clusters antigos que não existem mais neste zoom
+      this.renderedClusters.forEach((marker, clusterId) => {
+        if (!activeClusterIdSet.has(clusterId)) {
+          this.removeClusterMarker(clusterId);
+        }
+      });
+
+      // 6. Remove do Leaflet as que saíram do campo de visão
       this.engine.renderedFeatures.forEach((layer, featId) => {
-        if (!visibleIdSet.has(featId)) {
+        if (!visibleIdSet.has(featId) || clusteredPointIdSet.has(featId)) {
           this.removeSingleFeature(featId);
         }
       });
     });
   }
 
+  /**
+   * Renderiza ou atualiza o marcador visual de Cluster
+   */
+  renderClusterMarker(cluster) {
+    let marker = this.renderedClusters.get(cluster.id);
+    const icon = this.clusterEngine.createClusterIcon(cluster);
+
+    if (!marker) {
+      marker = L.marker(cluster.center, {
+        icon,
+        zIndexOffset: 1200
+      });
+
+      marker.on('click', (e) => {
+        if (e && e.originalEvent) {
+          L.DomEvent.stopPropagation(e);
+        }
+        if (cluster.bounds && cluster.bounds.isValid()) {
+          const sw = cluster.bounds.getSouthWest();
+          const ne = cluster.bounds.getNorthEast();
+          // Se todos os pontos do cluster estiverem nas mesmas coordenadas exatas
+          if (sw.lat === ne.lat && sw.lng === ne.lng) {
+            this.map.setView(cluster.center, Math.min(19, this.map.getZoom() + 2), { animate: true });
+          } else {
+            this.map.fitBounds(cluster.bounds.pad(0.35), {
+              maxZoom: Math.min(18, this.map.getZoom() + 3),
+              animate: true,
+              duration: 0.5
+            });
+          }
+        }
+      });
+
+      marker.bindTooltip(
+        `<span style="font-weight: 700; font-size: 11px;">${cluster.count.toLocaleString('pt-BR')} feições agrupadas</span><br/><span style="font-size: 9.5px; color: #aaa;">Clique para aproximar</span>`,
+        { direction: 'top', offset: [0, -18], opacity: 0.95 }
+      );
+
+      marker.addTo(this.map);
+      this.renderedClusters.set(cluster.id, marker);
+    } else {
+      marker.setLatLng(cluster.center);
+      marker.setIcon(icon);
+    }
+
+    return marker;
+  }
+
+  removeClusterMarker(clusterId) {
+    const marker = this.renderedClusters.get(clusterId);
+    if (marker) {
+      marker.off();
+      this.map.removeLayer(marker);
+      this.renderedClusters.delete(clusterId);
+    }
+  }
+
+  clearAllClusters() {
+    this.renderedClusters.forEach(marker => {
+      marker.off();
+      this.map.removeLayer(marker);
+    });
+    this.renderedClusters.clear();
+  }
+
+
   renderSingleFeature(feat, layers) {
     if (!feat) return null;
     if (feat.visible === false) {
       this.removeSingleFeature(feat.id);
       return null;
+
     }
 
     const layerMap = Array.isArray(layers) ? new Map(layers.map(l => [l.id, l])) : null;
@@ -181,9 +287,10 @@ export class FeatureRenderer {
       this.patchLeafletLayer(existingLayer, feat, coords, style);
     }
 
-    // Atualiza popup e labels
+    // Atualiza popup e labels usando a geometria original precisa (rawCoords),
+    // garantindo que cálculo de área (Shoelace) e extensão nunca variem com a câmera/zoom
     if (existingLayer) {
-      this.updatePopupAndTooltip(existingLayer, feat, coords, style);
+      this.updatePopupAndTooltip(existingLayer, feat, rawCoords, style);
     }
 
     return existingLayer;
@@ -317,25 +424,25 @@ export class FeatureRenderer {
     }
   }
 
-  updatePopupAndTooltip(leafLayer, feat, coords, style) {
-    // Popup
-    const popupHtml = this.createFeaturePopupHtml({ ...feat, coordinates: coords });
+  updatePopupAndTooltip(leafLayer, feat, rawCoords, style) {
+    // Popup Lazy (QGIS-like): O HTML e os cálculos de área/perímetro só rodam sob demanda no clique com geometria precisa
+    const getPopupContent = () => this.createFeaturePopupHtml({ ...feat, coordinates: rawCoords });
     if (leafLayer.getPopup()) {
-      leafLayer.setPopupContent(popupHtml);
+      leafLayer.setPopupContent(getPopupContent);
     } else {
-      leafLayer.bindPopup(popupHtml, { maxWidth: 280 });
+      leafLayer.bindPopup(getPopupContent, { maxWidth: 280 });
     }
 
-    // Tooltip
+    // Tooltip com geometria exata
     if (style.showLabel) {
       let labelText = feat.name || 'Feição';
       if (style.labelField === 'category') {
         labelText = feat.category || feat.type;
       } else if (style.labelField === 'area' && feat.type === 'Polygon') {
-        const a = this.calculatePolygonArea(coords);
+        const a = this.calculatePolygonArea(rawCoords);
         labelText = `${(a / 10000).toFixed(2)} ha`;
       } else if (style.labelField === 'extensao' && feat.type === 'LineString') {
-        const l = this.calculatePolylineLength(coords);
+        const l = this.calculatePolylineLength(rawCoords);
         labelText = l > 1000 ? `${(l / 1000).toFixed(2)} km` : `${l.toFixed(0)} m`;
       }
 

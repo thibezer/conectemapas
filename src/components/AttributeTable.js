@@ -74,6 +74,10 @@ export class AttributeTable {
       );
     });
 
+    const maxVisibleRows = 200;
+    const isLimited = filtered.length > maxVisibleRows;
+    const visibleData = filtered.slice(0, maxVisibleRows);
+
     const columns = [
       { id: 'tipo', rotulo: 'Tipo', ordenavel: true, largura: '100px' },
       { id: 'nome', rotulo: 'Nome da Feição', ordenavel: true },
@@ -84,17 +88,27 @@ export class AttributeTable {
       { id: 'data', rotulo: 'Criado em' }
     ];
 
-    const rows = filtered.map(f => {
+    const rows = visibleData.map(f => {
       let dim = '';
-      if (f.type === 'Point') dim = `${f.coordinates[0].toFixed(4)}, ${f.coordinates[1].toFixed(4)}`;
-      else if (f.type === 'LineString') dim = f.properties?.['Extensão'] || f.properties?.extensao || `${f.coordinates.length} nós`;
-      else if (f.type === 'Polygon') dim = f.properties?.['Área (ha)'] || f.properties?.areaCalculada || `${f.coordinates.length} nós`;
-      else if (f.type === 'Circle') dim = `Raio: ${f.radius}m`;
+      if (f.type === 'Point') {
+        const coords = f.coordinates;
+        const lat = Array.isArray(coords) ? coords[0] : coords?.lat;
+        const lng = Array.isArray(coords) ? coords[1] : coords?.lng;
+        dim = (lat != null && lng != null && !isNaN(lat) && !isNaN(lng)) 
+          ? `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}` 
+          : '-';
+      } else if (f.type === 'LineString') {
+        dim = f.properties?.['Extensão'] || f.properties?.extensao || `${Array.isArray(f.coordinates) ? f.coordinates.length : 0} nós`;
+      } else if (f.type === 'Polygon') {
+        dim = f.properties?.['Área (ha)'] || f.properties?.areaCalculada || `${Array.isArray(f.coordinates) ? f.coordinates.length : 0} nós`;
+      } else if (f.type === 'Circle') {
+        dim = `Raio: ${f.radius || 500}m`;
+      }
 
       return {
         id: f.id,
         tipo: f.locked ? `🔒 ${f.type}` : f.type,
-        nome: f.name,
+        nome: f.name || 'Sem nome',
         camada: layerMap.get(f.layerId) || 'Padrão',
         dimensao: dim,
         categoria: f.category || '-',
@@ -105,6 +119,14 @@ export class AttributeTable {
 
     tableEl.colunas = columns;
     tableEl.dados = rows;
+
+    const countHeader = document.querySelector('#cm-bottom-table-header span');
+    if (countHeader) {
+      countHeader.textContent = isLimited 
+        ? `📊 Tabela de Atributos (exibindo 1–${maxVisibleRows} de ${filtered.length.toLocaleString('pt-BR')})`
+        : `📊 Tabela de Atributos & Geometrias (${filtered.length.toLocaleString('pt-BR')})`;
+    }
+
   }
 
   toggleCollapse() {

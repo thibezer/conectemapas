@@ -4,38 +4,57 @@
    ========================================================================== */
 
 .cm-ai-tree-footer {
-  height: 24px;
-  min-height: 24px;
+  height: 28px;
+  min-height: 28px;
   background: #141417;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 6px;
+  gap: 4px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .cm-ai-footer-left {
   display: flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.cm-ai-footer-count {
+  font-size: 10.5px;
+  font-family: var(--cm-fonte-mono, monospace);
+  font-weight: 700;
+  color: var(--cm-primary, #00E08A);
+  line-height: 1;
 }
 
 .cm-ai-footer-label {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--cm-text-muted, #888899);
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .cm-ai-footer-metric {
-  font-size: 10px;
+  font-size: 9.5px;
   font-family: var(--cm-fonte-mono, monospace);
   color: var(--cm-primary, #00E08A);
+  white-space: nowrap;
+  line-height: 1;
 }
 
 .cm-ai-footer-right {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  flex-shrink: 0;
 }
 
 .cm-ai-footer-btn {
@@ -44,11 +63,13 @@
   color: #888899;
   width: 18px;
   height: 18px;
+  padding: 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 2px;
+  transition: all 0.15s ease;
 }
 
 .cm-ai-footer-btn:hover:not(.disabled) {
@@ -67,11 +88,17 @@
 }
 
 .cm-ai-footer-color {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: none;
   background: transparent;
   cursor: pointer;
+  padding: 0;
+}
+
+.cm-ai-footer-move-wrapper {
+  display: flex;
+  align-items: center;
 }
 
 .cm-ai-footer-select {
@@ -81,4 +108,9 @@
   border-radius: 2px;
   font-size: 10px;
   height: 18px;
+  width: 26px;
+  padding: 0;
+  cursor: pointer;
+  text-align: center;
 }
+

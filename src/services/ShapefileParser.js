@@ -103,13 +103,24 @@ export class ShapefileParser {
     const dbfRecords = DbfParser.parse(dbfBuffer, encoding);
     const rawGeometries = ShpParser.parse(shpBuffer, shxOffsets);
 
+    // Otimização QGIS: Compila o pipeline do proj4 UMA ÚNICA VEZ para todo o arquivo
+    let transformer = null;
+    if (prjInfo && !prjInfo.isWGS84 && prjInfo.epsg !== 'EPSG:4326') {
+      try {
+        const sourceEpsg = prjInfo.epsg || 'CUSTOM_PRJ';
+        transformer = proj4(sourceEpsg, 'EPSG:4326');
+      } catch (err) {
+        console.warn('[ShapefileParser] Erro ao instanciar transformer proj4:', err);
+      }
+    }
+
     const features = [];
     for (let i = 0; i < rawGeometries.length; i++) {
       const geom = rawGeometries[i];
       if (!geom || geom.type === 'Null') continue;
 
       const attrs = dbfRecords[i] || {};
-      const reprojectedCoords = this.reprojectGeometry(geom.coordinates, geom.type, prjInfo);
+      const reprojectedCoords = this.reprojectGeometry(geom.coordinates, geom.type, prjInfo, transformer);
 
       let featType = 'Polygon';
       if (geom.type === 'Point' || geom.type === 'MultiPoint') featType = 'Point';
@@ -176,25 +187,32 @@ export class ShapefileParser {
   static buildShpAndShx(features) { return ShapefileWriter.buildShpAndShx(features); }
   static buildDbf(features) { return ShapefileWriter.buildDbf(features); }
 
-  static reprojectGeometry(coords, geomType, prjInfo) {
+  static reprojectGeometry(coords, geomType, prjInfo, transformer = null) {
     if (!prjInfo || prjInfo.isWGS84 || prjInfo.epsg === 'EPSG:4326') {
       return coords;
     }
 
-    const sourceEpsg = prjInfo.epsg || 'CUSTOM_PRJ';
-    const targetEpsg = 'EPSG:4326';
+    // Se não recebeu o transformer compilado do batch, compila agora (apenas uma vez por geometria)
+    if (!transformer) {
+      const sourceEpsg = prjInfo.epsg || 'CUSTOM_PRJ';
+      try {
+        transformer = proj4(sourceEpsg, 'EPSG:4326');
+      } catch (err) {
+        console.warn('[ShapefileParser] Erro ao instanciar transformer proj4:', err);
+        return coords;
+      }
+    }
 
     const reprojectPoint = (pt) => {
       try {
-        const y = pt[0];
-        const x = pt[1];
-        const [wgsLng, wgsLat] = proj4(sourceEpsg, targetEpsg, [x, y]);
+        // No Shapefile do ShpParser, pt é [lat, lng]. proj4.forward recebe [lng, lat]
+        const [wgsLng, wgsLat] = transformer.forward([pt[1], pt[0]]);
         return [wgsLat, wgsLng];
       } catch (err) {
-        console.warn('Erro ao reprojetar coordenada:', pt, err);
         return pt;
       }
     };
+
 
     if (geomType === 'Point') {
       return reprojectPoint(coords);
@@ -206,6 +224,7 @@ export class ShapefileParser {
     }
     return coords;
   }
+
 
   static async exportToShapefileZip(features, baseName = 'conectemapas_export') {
     const zip = new JSZip();

@@ -5,6 +5,7 @@
 
 @import "ui-components-kit/style.css";
 @import "leaflet/dist/leaflet.css";
+@import "./PointCluster.css";
 
 :root {
   /* Alinhamento estrito com os tokens Componentes-UI */
