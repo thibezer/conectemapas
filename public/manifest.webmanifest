@@ -1,0 +1,21 @@
+{
+  "name": "ConecteMapas - Plataforma GIS Colaborativa",
+  "short_name": "ConecteMapas",
+  "description": "Criação, desenho vetorial, medições precisas e levantamentos topográficos colaborativos.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0b0b0d",
+  "background_color": "#0b0b0d",
+  "lang": "pt-BR",
+  "categories": ["productivity", "utilities", "navigation"],
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -6,11 +6,17 @@
 
 import { GeoFormats } from '../services/GeoFormats.js';
 import { normalizeFeature } from '../services/MockData.js';
+import { MapImageExporter } from '../services/MapImageExporter.js';
 import { UIToast } from 'ui-components-kit';
 
 export class ProjectActionsController {
-  static async handleExport(app, format) {
+  static async handleExport(app, format, options = {}) {
     try {
+      if (format === 'png' || format === 'image') {
+        await MapImageExporter.exportMapToPNG(app, options);
+        return;
+      }
+
       let content = '';
       let mimeType = 'text/plain';
       let fileName = `${app.projectName.toLowerCase().replace(/\s+/g, '_')}.${format}`;
@@ -60,6 +66,10 @@ export class ProjectActionsController {
         duracao: 4000
       });
     }
+  }
+
+  static async handleExportImage(app, options = {}) {
+    return MapImageExporter.exportMapToPNG(app, options);
   }
 
   static async handleImport(app, content, fileName) {

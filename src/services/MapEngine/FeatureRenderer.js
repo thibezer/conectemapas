@@ -1,19 +1,23 @@
-/* ==========================================================================
-   ConecteMapas - FeatureRenderer
-   Responsabilidade Única: Renderização de camadas vetoriais, estilos paramétricos,
-   popups, rótulos e zoom/enquadramento de geometrias no Leaflet.
-   ========================================================================== */
-
 import L from 'leaflet';
+import { GeometrySimplifier } from '../GeometrySimplifier.js';
 
 export class FeatureRenderer {
   constructor(mapEngine) {
     this.engine = mapEngine;
     this.map = mapEngine.map;
+    this.allFeatures = [];
+    this.allLayers = [];
+    this.cullingThreshold = 60;
+    this._cullingRaf = null;
   }
 
   renderFeatures(features, layers) {
+    this.allFeatures = features || [];
+    this.allLayers = layers || [];
     const layerMap = new Map(layers.map(l => [l.id, l]));
+
+    // Atualiza o índice espacial com todas as feições do projeto
+    this.engine.spatialIndex.build(this.allFeatures);
 
     // 1. Reconciliação dos L.featureGroup das camadas
     const currentLayerIds = new Set(layers.map(l => l.id));
@@ -42,30 +46,65 @@ export class FeatureRenderer {
       }
     });
 
-    // 2. Remoção cirúrgica de feições excluídas ou invisíveis
-    const activeFeatMap = new Map();
-    features.forEach(f => {
-      if (f.visible !== false) activeFeatMap.set(f.id, f);
-    });
+    // 2. Se a base for volumosa (> 60 feições), ativa Viewport Culling
+    if (this.allFeatures.length > this.cullingThreshold) {
+      this.updateViewportCulling();
+    } else {
+      // Para projetos leves, reconciliação direta
+      const activeFeatMap = new Map();
+      this.allFeatures.forEach(f => {
+        if (f.visible !== false) activeFeatMap.set(f.id, f);
+      });
 
-    this.engine.renderedFeatures.forEach((layerWrapper, featId) => {
-      if (!activeFeatMap.has(featId)) {
-        this.removeSingleFeature(featId);
-      }
-    });
+      this.engine.renderedFeatures.forEach((layerWrapper, featId) => {
+        if (!activeFeatMap.has(featId)) {
+          this.removeSingleFeature(featId);
+        }
+      });
 
-    // 3. Renderização / Patching de cada feição ativa
-    features.forEach(feat => {
-      this.renderSingleFeature(feat, layers);
-    });
+      this.allFeatures.forEach(feat => {
+        this.renderSingleFeature(feat, layers);
+      });
+    }
 
-    // 4. Ordenação Z-Index das camadas
+    // 3. Ordenação Z-Index das camadas
     const reversedLayers = [...layers].reverse();
     reversedLayers.forEach(layer => {
       const group = this.engine.featureLayers.get(layer.id);
       if (group && layer.visible !== false && this.map.hasLayer(group)) {
         group.bringToFront();
       }
+    });
+  }
+
+  updateViewportCulling() {
+    if (!this.map || !this.allFeatures || this.allFeatures.length <= this.cullingThreshold) return;
+
+    if (this._cullingRaf) cancelAnimationFrame(this._cullingRaf);
+    this._cullingRaf = requestAnimationFrame(() => {
+      const bounds = this.map.getBounds();
+      const visibleFeats = this.engine.spatialIndex.query(bounds, 0.20);
+      const visibleIdSet = new Set(visibleFeats.map(f => f.id));
+
+      // Protege feição em edição no VertexEditor ou selecionada
+      if (this.engine.activeEditingFeatureId) {
+        visibleIdSet.add(this.engine.activeEditingFeatureId);
+      }
+      if (this.engine.selectedFeatureId) {
+        visibleIdSet.add(this.engine.selectedFeatureId);
+      }
+
+      // Renderiza / atualiza geometrias visíveis com LOD dinâmico
+      visibleFeats.forEach(feat => {
+        this.renderSingleFeature(feat, this.allLayers);
+      });
+
+      // Remove do Leaflet as que saíram do campo de visão
+      this.engine.renderedFeatures.forEach((layer, featId) => {
+        if (!visibleIdSet.has(featId)) {
+          this.removeSingleFeature(featId);
+        }
+      });
     });
   }
 
@@ -88,7 +127,6 @@ export class FeatureRenderer {
     
     const rawFillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
     const combinedFillOpacity = Math.max(0, Math.min(1, rawFillOpacity * layerOpacity));
-    const strokeOpacity = layerOpacity;
 
     const style = {
       fillColor: feat.style?.fillColor || defaultColor,
@@ -104,7 +142,10 @@ export class FeatureRenderer {
       layerOpacity: layerOpacity
     };
 
-    const coords = this.normalizeCoordinates(feat);
+    const rawCoords = this.normalizeCoordinates(feat);
+    const zoom = this.map ? this.map.getZoom() : 14;
+    // LOD dinâmico não-destrutivo para renderização ultrarrápida
+    const coords = GeometrySimplifier.simplify(rawCoords, feat.type, zoom);
     let existingLayer = this.engine.renderedFeatures.get(feat.id);
 
     // Se o tipo mudou, recria

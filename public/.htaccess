@@ -1,0 +1,94 @@
+# ==============================================================================
+# ConecteMapas - Configuração de Produção Apache / LiteSpeed (Hostinger)
+# ==============================================================================
+
+# 1. Forçar Conexão Segura HTTPS
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteCond %{HTTPS} off
+  RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+</IfModule>
+
+# 2. SPA Fallback (Roteamento de Aplicação de Página Única)
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . index.html [L]
+</IfModule>
+
+# 3. Tipos MIME Modernos
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+  AddType application/geo+json .geojson
+  AddType application/json .json
+  AddType image/svg+xml .svg .svgz
+  AddType font/woff2 .woff2
+  AddType application/javascript .js .mjs
+</IfModule>
+
+# 4. Compressão Gzip / Deflate
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html
+  AddOutputFilterByType DEFLATE text/plain
+  AddOutputFilterByType DEFLATE text/xml
+  AddOutputFilterByType DEFLATE text/css
+  AddOutputFilterByType DEFLATE text/javascript
+  AddOutputFilterByType DEFLATE application/javascript
+  AddOutputFilterByType DEFLATE application/json
+  AddOutputFilterByType DEFLATE application/geo+json
+  AddOutputFilterByType DEFLATE application/manifest+json
+  AddOutputFilterByType DEFLATE image/svg+xml
+  AddOutputFilterByType DEFLATE font/woff2
+</IfModule>
+
+# 5. Política de Cache (Browser Caching & Invalidação Imediata de HTML)
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresDefault "access plus 1 month"
+
+  # HTML nunca retém cache longo (evita que o usuário fique em versão antiga após deploy)
+  ExpiresByType text/html "access plus 0 seconds"
+
+  # Assets versionados com hash Vite (podem ser cacheados por 1 ano com segurança)
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType text/javascript "access plus 1 year"
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType image/svg+xml "access plus 1 year"
+  ExpiresByType image/png "access plus 1 year"
+  ExpiresByType image/jpeg "access plus 1 year"
+  ExpiresByType font/woff2 "access plus 1 year"
+  ExpiresByType application/manifest+json "access plus 1 week"
+</IfModule>
+
+# 6. Headers de Segurança e Content-Security-Policy Otimizado para GIS
+<IfModule mod_headers.c>
+  # Previne clickjacking
+  Header always set X-Frame-Options "SAMEORIGIN"
+  
+  # Previne detecção incorreta de MIME-type
+  Header always set X-Content-Type-Options "nosniff"
+  
+  # Preserva privacidade no referenciamento
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  
+  # Permite recursos de geolocalização do operador no mapa
+  Header always set Permissions-Policy "geolocation=(self), camera=(), microphone=()"
+
+  # CSP permissivo para provedores de tiles (Google Maps, Esri, OSM, OpenTopoMap) e fontes Google
+  Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://mt1.google.com https://*.google.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://images.unsplash.com; connect-src 'self' blob: data: https://*; worker-src 'self' blob:;"
+
+  # Cache imutável para a pasta de assets gerados pelo build do Vite
+  <FilesMatch "\.(js|css|woff2|svg|png|jpg|webp)$">
+    Header set Cache-Control "max-age=31536000, public, immutable"
+  </FilesMatch>
+
+  # HTML com validação contínua
+  <FilesMatch "\.(html)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+  </FilesMatch>
+</IfModule>

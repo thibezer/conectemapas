@@ -6,9 +6,6 @@
 @import "ui-components-kit/style.css";
 @import "leaflet/dist/leaflet.css";
 
-/* Fontes Modernas de Alta Legibilidade */
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
-
 :root {
   /* Alinhamento estrito com os tokens Componentes-UI */
   --cm-fonte: var(--ui-fonte-base, 'Inter', system-ui, sans-serif);

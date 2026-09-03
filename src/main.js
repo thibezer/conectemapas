@@ -368,7 +368,8 @@ class ConecteMapasApp {
 
     new ShareModal().render(document.getElementById('share-modal-mount'));
     new ImportExportModal({
-      onExport: (format) => ProjectActionsController.handleExport(this, format),
+      onExport: (format, options) => ProjectActionsController.handleExport(this, format, options),
+      onExportImage: (options) => ProjectActionsController.handleExportImage(this, options),
       onImport: (content, fileName) => ProjectActionsController.handleImport(this, content, fileName)
     }).render(document.getElementById('import-export-modal-mount'));
 
@@ -462,3 +463,23 @@ window.addEventListener('pagehide', () => {
     window.conecteMapasApp.flushSaveState();
   }
 });
+
+// Monitoramento de Conectividade em Tempo Real para Operação Web
+window.addEventListener('offline', () => {
+  UIToast.notificar({
+    tipo: 'alerta',
+    titulo: 'Modo Offline Ativado',
+    mensagem: 'Conexão com a rede perdida. Suas edições continuam seguras no banco local IndexedDB.',
+    duracao: 6000
+  });
+});
+
+window.addEventListener('online', () => {
+  UIToast.notificar({
+    tipo: 'sucesso',
+    titulo: 'Conexão Restabelecida',
+    mensagem: 'Acesso à internet recuperado. Satélite e recursos de rede sincronizados.',
+    duracao: 4000
+  });
+});
+

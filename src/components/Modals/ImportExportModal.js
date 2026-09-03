@@ -7,18 +7,20 @@
 export class ImportExportModal {
   constructor(options = {}) {
     this.onExport = options.onExport || (() => {});
+    this.onExportImage = options.onExportImage || ((opts) => this.onExport('png', opts));
     this.onImport = options.onImport || (() => {});
     this.pendingFiles = null;
+    this.selectedScale = 2;
   }
 
   render(container) {
     container.innerHTML = `
       <ui-modal id="modal-import-export" titulo="⇄ Importar / Exportar Dados Cartográficos & GIS">
         <div style="display: flex; flex-direction: column; gap: 16px;">
-          <!-- Seção de Exportação -->
+          <!-- Seção de Exportação de Vetores & Tabelas -->
           <div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <ui-texto variante="h6" style="font-weight: 600;">Exportar Dados do Mapa</ui-texto>
+              <ui-texto variante="h6" style="font-weight: 600;">Exportar Vetores & Tabelas</ui-texto>
               <span style="font-size: 10.5px; color: var(--cm-text-muted);">Padrões OGC & ESRI</span>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
@@ -37,6 +39,120 @@ export class ImportExportModal {
               <ui-botao-primario inline id="btn-export-csv" variante="secundario" title="Exportar Tabela de Coordenadas" style="height: 34px;">
                 📊 Planilha (.csv)
               </ui-botao-primario>
+            </div>
+          </div>
+
+          <!-- Seção de Exportação de Imagem PNG em Alta Resolução -->
+          <div style="border-top: 1px solid var(--cm-border); padding-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <ui-texto variante="h6" style="font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                <span>🖼️ Imagem do Mapa (PNG Alta Resolução)</span>
+              </ui-texto>
+              <span style="font-size: 10px; color: var(--cm-primary); font-family: var(--cm-fonte-mono); font-weight: 600;">Full HD • 2K • 4K (300 DPI)</span>
+            </div>
+
+            <div style="
+              background: rgba(255, 255, 255, 0.03);
+              border: 1px solid var(--cm-border);
+              border-radius: 8px;
+              padding: 12px;
+              display: flex;
+              flex-direction: column;
+              gap: 10px;
+            ">
+              <!-- Seletor de Resolução / Qualidade -->
+              <div>
+                <span style="font-size: 11px; font-weight: 600; color: var(--cm-text); display: block; margin-bottom: 6px;">
+                  Resolução / Densidade de Pixels:
+                </span>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;" id="cm-png-scale-selector">
+                  <button type="button" class="cm-scale-opt-btn" data-scale="1" style="
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid var(--cm-border);
+                    border-radius: 6px;
+                    padding: 6px 4px;
+                    color: var(--cm-text-muted);
+                    font-size: 11px;
+                    cursor: pointer;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 2px;
+                    transition: all 0.2s;
+                  ">
+                    <span style="font-weight: 600;">1x Padrão</span>
+                    <span style="font-size: 9.5px; opacity: 0.8;">Full HD 1080p</span>
+                  </button>
+
+                  <button type="button" class="cm-scale-opt-btn active" data-scale="2" style="
+                    background: rgba(0, 224, 138, 0.12);
+                    border: 1px solid var(--cm-primary);
+                    border-radius: 6px;
+                    padding: 6px 4px;
+                    color: var(--cm-primary);
+                    font-size: 11px;
+                    cursor: pointer;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 2px;
+                    transition: all 0.2s;
+                  ">
+                    <span style="font-weight: 700;">💎 2x Alta Qualidade</span>
+                    <span style="font-size: 9.5px; opacity: 0.9;">2K QHD (Recomendado)</span>
+                  </button>
+
+                  <button type="button" class="cm-scale-opt-btn" data-scale="3" style="
+                    background: rgba(255, 255, 255, 0.05);
+                    border: 1px solid var(--cm-border);
+                    border-radius: 6px;
+                    padding: 6px 4px;
+                    color: var(--cm-text-muted);
+                    font-size: 11px;
+                    cursor: pointer;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    gap: 2px;
+                    transition: all 0.2s;
+                  ">
+                    <span style="font-weight: 600;">🌟 3x Ultra HD</span>
+                    <span style="font-size: 9.5px; opacity: 0.8;">4K UHD (300 DPI)</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Elementos Cartográficos Opcionais -->
+              <div>
+                <span style="font-size: 11px; font-weight: 600; color: var(--cm-text); display: block; margin-bottom: 6px;">
+                  Composição Cartográfica na Imagem:
+                </span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; color: var(--cm-text);">
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="cm-png-scalebar" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
+                    <span>📏 Régua de Escala</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="cm-png-north" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
+                    <span>🧭 Rosa dos Ventos (Norte)</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="cm-png-titleblock" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
+                    <span>📋 Carimbo & Datum SIRGAS</span>
+                  </label>
+                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                    <input type="checkbox" id="cm-png-legend" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
+                    <span>🏷️ Legenda das Camadas</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Botão de Download da Imagem -->
+              <div style="margin-top: 4px;">
+                <ui-botao-primario inline id="btn-export-png-direct" variante="primary" title="Renderizar e baixar imagem PNG em alta resolução" style="width: 100%; height: 38px; font-weight: 600; font-size: 12.5px;">
+                  📥 Baixar Imagem PNG em Alta Qualidade
+                </ui-botao-primario>
+              </div>
             </div>
           </div>
 
@@ -120,11 +236,51 @@ export class ImportExportModal {
     const btnGeoJSON = container.querySelector('#btn-export-geojson');
     const btnKML = container.querySelector('#btn-export-kml');
     const btnCSV = container.querySelector('#btn-export-csv');
+    const btnPNG = container.querySelector('#btn-export-png-direct');
 
     if (btnSHP) btnSHP.addEventListener('click', () => this.onExport('shapefile'));
     if (btnGeoJSON) btnGeoJSON.addEventListener('click', () => this.onExport('geojson'));
     if (btnKML) btnKML.addEventListener('click', () => this.onExport('kml'));
     if (btnCSV) btnCSV.addEventListener('click', () => this.onExport('csv'));
+
+    // Configuração dos botões de escala de resolução
+    const scaleButtons = container.querySelectorAll('.cm-scale-opt-btn');
+    scaleButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        scaleButtons.forEach((b) => {
+          b.classList.remove('active');
+          b.style.background = 'rgba(255, 255, 255, 0.05)';
+          b.style.borderColor = 'var(--cm-border)';
+          b.style.color = 'var(--cm-text-muted)';
+        });
+        btn.classList.add('active');
+        btn.style.background = 'rgba(0, 224, 138, 0.12)';
+        btn.style.borderColor = 'var(--cm-primary)';
+        btn.style.color = 'var(--cm-primary)';
+        this.selectedScale = Number(btn.getAttribute('data-scale')) || 2;
+      });
+    });
+
+    if (btnPNG) {
+      btnPNG.addEventListener('click', () => {
+        const checkScaleBar = container.querySelector('#cm-png-scalebar');
+        const checkNorth = container.querySelector('#cm-png-north');
+        const checkTitleBlock = container.querySelector('#cm-png-titleblock');
+        const checkLegend = container.querySelector('#cm-png-legend');
+
+        const options = {
+          scale: this.selectedScale,
+          elements: {
+            scaleBar: checkScaleBar ? checkScaleBar.checked : true,
+            northArrow: checkNorth ? checkNorth.checked : true,
+            titleBlock: checkTitleBlock ? checkTitleBlock.checked : true,
+            legend: checkLegend ? checkLegend.checked : true
+          }
+        };
+
+        this.onExportImage(options);
+      });
+    }
 
     const dropzone = container.querySelector('#cm-dropzone');
     const fileInput = container.querySelector('#cm-file-input');

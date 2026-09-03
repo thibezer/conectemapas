@@ -1,7 +1,7 @@
 /* ==========================================================================
    ConecteMapas - PrintCanvasEngine
    Responsabilidade Única: Motor de interação da prancheta, réguas milimétricas sincronizadas,
-   zoom/pan, arrasto de itens e manipulação completa das 8 alças de redimensionamento.
+   zoom/pan, arrasto de itens, manipulação das 8 alças e atalhos de teclado de precisão.
    ========================================================================== */
 
 export class PrintCanvasEngine {
@@ -15,12 +15,19 @@ export class PrintCanvasEngine {
     this.dragStartY = 0;
     this.itemStartProps = null;
 
-    // Pan state
+    // Pan state da folha
     this.isPanning = false;
     this.panStartX = 0;
     this.panStartY = 0;
     this.scrollStartX = 0;
     this.scrollStartY = 0;
+
+    // Handlers para descarte limpo
+    this.mouseMoveHandler = null;
+    this.mouseUpHandler = null;
+    this.keyDownHandler = null;
+
+    this.bindKeyboardShortcuts();
   }
 
   // 1 mm em pixels de tela para o nível atual de zoom
@@ -31,7 +38,6 @@ export class PrintCanvasEngine {
   setZoom(val) {
     this.zoom = Math.max(0.2, Math.min(3.0, val));
     this.composer.updatePaperSheetDOM();
-    this.composer.updateCanvas();
     this.updateZoomBadge();
   }
 
@@ -159,7 +165,7 @@ export class PrintCanvasEngine {
       vp.addEventListener('scroll', () => requestAnimationFrame(() => this.renderRulers()));
       window.addEventListener('resize', () => requestAnimationFrame(() => this.renderRulers()));
 
-      // Zoom com Wheel (Ctrl + Roda ou Roda direta na prancheta)
+      // Zoom com Wheel (Ctrl + Roda ou Roda direta na prancheta fora do mapa)
       vp.addEventListener('wheel', (e) => {
         if (e.ctrlKey || e.metaKey || e.altKey) {
           e.preventDefault();
@@ -168,9 +174,9 @@ export class PrintCanvasEngine {
         }
       }, { passive: false });
 
-      // Pan com Botão do Meio ou Espaço
+      // Pan da prancheta com Botão do Meio ou arrasto fora dos itens
       vp.addEventListener('mousedown', (e) => {
-        if (e.button === 1 || (e.button === 0 && e.target === vp)) {
+        if (e.button === 1 || (e.button === 0 && (e.target === vp || e.target.id === 'cm-print-paper-sheet'))) {
           this.isPanning = true;
           this.panStartX = e.clientX;
           this.panStartY = e.clientY;
@@ -182,6 +188,12 @@ export class PrintCanvasEngine {
     }
 
     paperSheet.onmousedown = (e) => {
+      // Se estiver no modo de navegação de conteúdo do mapa, não captura o arrasto da caixa
+      if (this.composer.interactionMode === 'content_pan') {
+        const isMapClick = e.target.closest('.cm-item-map-frame');
+        if (isMapClick) return; // Permite ao Leaflet lidar com o evento nativo
+      }
+
       const handle = e.target.closest('.cm-resize-handle');
       const itemEl = e.target.closest('.cm-print-item');
 
@@ -200,7 +212,10 @@ export class PrintCanvasEngine {
       } else if (itemEl) {
         const itemId = itemEl.getAttribute('data-item-id');
         const item = this.composer.items.find(i => i.id === itemId);
-        if (!item || item.locked) return;
+        if (!item || item.locked) {
+          if (item) this.composer.selectItem(itemId);
+          return;
+        }
 
         this.isDraggingItem = true;
         this.dragStartX = e.clientX;
@@ -212,7 +227,7 @@ export class PrintCanvasEngine {
       }
     };
 
-    // Remove listeners antigos antes de definir e adicionar novos
+    // Remove listeners antigos antes de definir novos
     if (this.mouseMoveHandler) window.removeEventListener('mousemove', this.mouseMoveHandler);
     if (this.mouseUpHandler) window.removeEventListener('mouseup', this.mouseUpHandler);
 
@@ -281,10 +296,73 @@ export class PrintCanvasEngine {
     this.composer.updateItemPositionDOM(it);
   }
 
+  bindKeyboardShortcuts() {
+    if (this.keyDownHandler) window.removeEventListener('keydown', this.keyDownHandler);
+
+    this.keyDownHandler = (e) => {
+      if (!this.composer.isOpen) return;
+
+      // Salvaguarda: NUNCA intercepta teclas quando o foco estiver em campos de input ou texto (Regra GEMINI.md)
+      const target = e.target;
+      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      if (isInput) return;
+
+      // Preserva modificadores do sistema
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const selectedId = this.composer.selectedItemId;
+      if (!selectedId) return;
+
+      const item = this.composer.items.find(i => i.id === selectedId);
+      if (!item || item.locked) return;
+
+      // Excluir com Delete ou Backspace
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        this.composer.deleteItem(selectedId);
+        return;
+      }
+
+      // Mover milímetro a milímetro com as setas (5mm com Shift)
+      const step = e.shiftKey ? 5 : 1;
+      let moved = false;
+
+      if (e.key === 'ArrowUp') {
+        item.y = Math.max(0, item.y - step);
+        moved = true;
+      } else if (e.key === 'ArrowDown') {
+        item.y = Math.min(this.composer.paperSize.height - item.height, item.y + step);
+        moved = true;
+      } else if (e.key === 'ArrowLeft') {
+        item.x = Math.max(0, item.x - step);
+        moved = true;
+      } else if (e.key === 'ArrowRight') {
+        item.x = Math.min(this.composer.paperSize.width - item.width, item.x + step);
+        moved = true;
+      } else if (e.key === 'Escape') {
+        if (this.composer.interactionMode === 'content_pan') {
+          this.composer.setInteractionMode('layout');
+        } else {
+          this.composer.selectItem(null);
+        }
+      }
+
+      if (moved) {
+        e.preventDefault();
+        this.composer.updateItemPositionDOM(item);
+        this.composer.updatePropertiesPanel();
+      }
+    };
+
+    window.addEventListener('keydown', this.keyDownHandler);
+  }
+
   destroy() {
     if (this.mouseMoveHandler) window.removeEventListener('mousemove', this.mouseMoveHandler);
     if (this.mouseUpHandler) window.removeEventListener('mouseup', this.mouseUpHandler);
+    if (this.keyDownHandler) window.removeEventListener('keydown', this.keyDownHandler);
     this.mouseMoveHandler = null;
     this.mouseUpHandler = null;
+    this.keyDownHandler = null;
   }
 }

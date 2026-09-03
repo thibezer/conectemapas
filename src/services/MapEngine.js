@@ -7,6 +7,7 @@ import L from 'leaflet';
 import { DrawingEngine } from './MapEngine/DrawingEngine.js';
 import { VertexEditor } from './MapEngine/VertexEditor.js';
 import { FeatureRenderer } from './MapEngine/FeatureRenderer.js';
+import { SpatialIndex } from './SpatialIndex.js';
 
 export class MapEngine {
   constructor(containerId, options = {}) {
@@ -23,6 +24,7 @@ export class MapEngine {
     this.featureLayers = new Map();
     this.renderedFeatures = new Map();
     this.remoteCursors = new Map();
+    this.spatialIndex = new SpatialIndex();
 
     this.onFeatureCreated = options.onFeatureCreated || (() => {});
     this.onFeatureSelected = options.onFeatureSelected || (() => {});
@@ -57,32 +59,38 @@ export class MapEngine {
       google_satelite: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         maxNativeZoom: 20,
         maxZoom: 22,
-        attribution: '© Google Maps'
+        attribution: '© Google Maps',
+        crossOrigin: true
       }),
       satelite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxNativeZoom: 18,
         maxZoom: 22,
-        attribution: 'Esri Satellite'
+        attribution: 'Esri Satellite',
+        crossOrigin: true
       }),
       osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: 19,
         maxZoom: 22,
-        attribution: '© OpenStreetMap'
+        attribution: '© OpenStreetMap',
+        crossOrigin: true
       }),
       topografia: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
         maxNativeZoom: 17,
         maxZoom: 22,
-        attribution: 'OpenTopoMap'
+        attribution: 'OpenTopoMap',
+        crossOrigin: true
       }),
       dark: L.layerGroup([
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
           maxNativeZoom: 16,
           maxZoom: 22,
-          attribution: 'Esri Dark Gray'
+          attribution: 'Esri Dark Gray',
+          crossOrigin: true
         }),
         L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
           maxNativeZoom: 16,
-          maxZoom: 22
+          maxZoom: 22,
+          crossOrigin: true
         })
       ])
     };
@@ -111,6 +119,12 @@ export class MapEngine {
 
     this.map.on('dblclick', () => {
       this.drawingEngine.handleDoubleClick();
+    });
+
+    this.map.on('moveend zoomend', () => {
+      if (this.featureRenderer) {
+        this.featureRenderer.updateViewportCulling();
+      }
     });
 
     window.addEventListener('keydown', (e) => {
@@ -152,8 +166,14 @@ export class MapEngine {
 
   // --- Delegação de Renderização & Estilos ---
   renderFeatures(features, layers) { this.featureRenderer.renderFeatures(features, layers); }
-  updateFeature(feat, layers) { return this.featureRenderer.renderSingleFeature(feat, layers); }
-  removeFeature(featId) { this.featureRenderer.removeSingleFeature(featId); }
+  updateFeature(feat, layers) {
+    if (feat) this.spatialIndex.insert(feat);
+    return this.featureRenderer.renderSingleFeature(feat, layers);
+  }
+  removeFeature(featId) {
+    this.spatialIndex.remove(featId);
+    this.featureRenderer.removeSingleFeature(featId);
+  }
   zoomToFeature(featureId) { this.featureRenderer.zoomToFeature(featureId); }
   fitAllFeatures() { this.featureRenderer.fitAllFeatures(); }
   fitLayer(layerId) { this.featureRenderer.fitLayer(layerId); }

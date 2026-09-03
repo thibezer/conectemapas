@@ -7,8 +7,7 @@ import { ShapefileParser } from './ShapefileParser.js';
 import { GeoJsonConverter } from './GeoFormats/GeoJsonConverter.js';
 import { KmlConverter } from './GeoFormats/KmlConverter.js';
 import { CsvConverter } from './GeoFormats/CsvConverter.js';
-import { WktConverter } from './GeoFormats/WktConverter.js';
-import { GpxConverter } from './GeoFormats/GpxConverter.js';
+import { geoWorkerClient } from './Workers/GeoWorkerClient.js';
 
 export class GeoFormats {
   static sanitizeText(str) {
@@ -95,7 +94,7 @@ export class GeoFormats {
     // GeoJSON ou Projeto ConecteMapas JSON
     if (lowerName.endsWith('.geojson') || lowerName.endsWith('.json') || content.trim().startsWith('{')) {
       try {
-        const parsed = JSON.parse(content);
+        const parsed = await geoWorkerClient.parseJSONAsync(content);
         if (parsed.type === 'FeatureCollection' && Array.isArray(parsed.features)) {
           return this.parseGeoJSON(parsed);
         }
