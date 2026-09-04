@@ -23,14 +23,26 @@ export class LayerTreeEvents {
 
     const btnToggleAllExpand = document.getElementById('btn-toggle-all-expand');
     if (btnToggleAllExpand) {
-      btnToggleAllExpand.addEventListener('click', () => {
+      btnToggleAllExpand.addEventListener('click', (e) => {
+        e.stopPropagation();
         const allExpanded = panel.layers.every(l => panel.expandedLayers.has(l.id));
         if (allExpanded) {
           panel.expandedLayers.clear();
         } else {
           panel.expandedLayers = new Set(panel.layers.map(l => l.id));
         }
-        panel.updateContent();
+        btnToggleAllExpand.title = allExpanded ? 'Expandir Todos os Grupos' : 'Recolher Todos os Grupos';
+        btnToggleAllExpand.textContent = allExpanded ? '📂' : '📁';
+
+        // Atualização instantânea in-place no DOM (0ms, sem re-renderizar todo o painel)
+        document.querySelectorAll('.cm-ai-layer-group').forEach(group => {
+          const layerId = group.getAttribute('data-layer-id');
+          const isExp = panel.expandedLayers.has(layerId);
+          const chevron = group.querySelector('.cm-ai-chevron-icon');
+          if (chevron) chevron.classList.toggle('open', isExp);
+          const children = group.querySelector('.cm-ai-children-container');
+          if (children) children.style.display = isExp ? 'block' : 'none';
+        });
       });
     }
 
@@ -207,12 +219,29 @@ export class LayerTreeEvents {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const layerId = btn.getAttribute('data-layer-expand');
-        if (panel.expandedLayers.has(layerId)) {
-          panel.expandedLayers.delete(layerId);
-        } else {
+        const group = btn.closest('.cm-ai-layer-group');
+        const isExp = !panel.expandedLayers.has(layerId);
+
+        if (isExp) {
           panel.expandedLayers.add(layerId);
+        } else {
+          panel.expandedLayers.delete(layerId);
         }
-        panel.updateContent();
+
+        // Atualização instantânea in-place (0ms)
+        const chevron = btn.querySelector('.cm-ai-chevron-icon');
+        if (chevron) chevron.classList.toggle('open', isExp);
+        if (group) {
+          const children = group.querySelector('.cm-ai-children-container');
+          if (children) children.style.display = isExp ? 'block' : 'none';
+        }
+
+        const btnToggleAll = document.getElementById('btn-toggle-all-expand');
+        if (btnToggleAll) {
+          const allExp = panel.layers.every(l => panel.expandedLayers.has(l.id));
+          btnToggleAll.title = allExp ? 'Recolher Todos os Grupos' : 'Expandir Todos os Grupos';
+          btnToggleAll.textContent = allExp ? '📁' : '📂';
+        }
       });
     });
 
@@ -392,13 +421,18 @@ export class LayerTreeEvents {
       });
     });
 
-    // Basemaps
+    // Basemaps (com suporte a desativar / Sem Mapa Base e alternância instantânea)
     document.querySelectorAll('[data-basemap]').forEach(card => {
       card.addEventListener('click', () => {
         const base = card.getAttribute('data-basemap');
-        panel.currentBasemap = base;
-        panel.onBasemapChange(base);
-        panel.updateContent();
+        const newBase = (panel.currentBasemap === base && base !== 'none') ? 'none' : base;
+        panel.currentBasemap = newBase;
+        panel.onBasemapChange(newBase);
+
+        // Atualização visual instantânea in-place sem re-renderizar o painel
+        document.querySelectorAll('[data-basemap]').forEach(c => {
+          c.classList.toggle('active', c.getAttribute('data-basemap') === newBase);
+        });
       });
     });
 

@@ -45,6 +45,15 @@
   background: #0f1115 !important;
 }
 
+#map-viewport.cm-no-basemap,
+.cm-no-basemap.leaflet-container {
+  background-color: #121318 !important;
+  background-image: 
+    radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+    radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px) !important;
+  background-size: 40px 40px, 10px 10px !important;
+}
+
 .leaflet-control-zoom {
   border: 1px solid var(--cm-border) !important;
   border-radius: var(--cm-radius-sm) !important;

@@ -127,11 +127,17 @@ export class LayerPanel {
               💬 Equipe
             </button>
           </div>
+          <button class="cm-sidebar-toggle-btn" id="btn-collapse-sidebar" title="Recolher Painel Lateral">
+            ❯
+          </button>
         </div>
         <div class="cm-sidebar-body" id="cm-sidebar-tab-content">
           ${this.renderTabContent()}
         </div>
       </aside>
+      <button class="cm-sidebar-floating-toggle" id="btn-expand-sidebar" style="display: none;" title="Expandir Painel Lateral">
+        🗂️
+      </button>
     `;
 
     this.bindEvents();
@@ -170,6 +176,24 @@ export class LayerPanel {
       });
     });
 
+    const btnCollapse = this.container.querySelector('#btn-collapse-sidebar');
+    const btnExpand = this.container.querySelector('#btn-expand-sidebar');
+    const sidebar = this.container.querySelector('#cm-sidebar-panel');
+
+    if (btnCollapse) {
+      btnCollapse.addEventListener('click', () => {
+        if (sidebar) sidebar.classList.add('collapsed');
+        if (btnExpand) btnExpand.style.display = 'flex';
+      });
+    }
+
+    if (btnExpand) {
+      btnExpand.addEventListener('click', () => {
+        if (sidebar) sidebar.classList.remove('collapsed');
+        if (btnExpand) btnExpand.style.display = 'none';
+      });
+    }
+
     this.bindTabEvents();
   }
 
@@ -195,9 +219,11 @@ export class LayerPanel {
     this.layers = layers;
     if (features) {
       this.features = features;
-      const validIds = new Set(features.map(f => f.id));
-      for (const id of this.selectedFeatureIds) {
-        if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
+      if (this.selectedFeatureIds && this.selectedFeatureIds.size > 0) {
+        const validIds = new Set(features.map(f => f.id));
+        for (const id of this.selectedFeatureIds) {
+          if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
+        }
       }
     }
     if (this.activeTab === 'layers') this.updateContent();
@@ -205,9 +231,11 @@ export class LayerPanel {
 
   updateFeatures(features) {
     this.features = features;
-    const validIds = new Set(features.map(f => f.id));
-    for (const id of this.selectedFeatureIds) {
-      if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
+    if (this.selectedFeatureIds && this.selectedFeatureIds.size > 0) {
+      const validIds = new Set(features.map(f => f.id));
+      for (const id of this.selectedFeatureIds) {
+        if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
+      }
     }
     if (this.activeTab === 'layers') this.updateContent();
   }

@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { UIToast } from 'ui-components-kit';
+import { StorageService } from '../services/StorageService.js';
 
 export class ShortcutsController {
   static pushHistory(app, description = '') {
@@ -26,9 +27,11 @@ export class ShortcutsController {
 
     app.historyRedo.push(JSON.stringify(app.features));
     const previousSnapshot = app.historyUndo.pop();
+    const oldFeatures = app.features;
     app.features = JSON.parse(previousSnapshot);
+    StorageService.applyDiff(oldFeatures, app.features);
     app.refreshMapAndTable();
-    app.saveState();
+    app.saveMetadata(false);
 
     UIToast.notificar({
       tipo: 'sucesso',
@@ -51,9 +54,11 @@ export class ShortcutsController {
 
     app.historyUndo.push(JSON.stringify(app.features));
     const nextSnapshot = app.historyRedo.pop();
+    const oldFeatures = app.features;
     app.features = JSON.parse(nextSnapshot);
+    StorageService.applyDiff(oldFeatures, app.features);
     app.refreshMapAndTable();
-    app.saveState();
+    app.saveMetadata(false);
 
     UIToast.notificar({
       tipo: 'sucesso',
@@ -117,7 +122,7 @@ export class ShortcutsController {
         if (btnSave) {
           btnSave.click();
         } else {
-          app.saveState();
+          app.saveState(true, { featuresChanged: true });
           UIToast.notificar({
             tipo: 'sucesso',
             titulo: 'Projeto Salvo (Ctrl+S)',
@@ -137,7 +142,9 @@ export class ShortcutsController {
         } else if (e.key === 'Delete') {
           if (app.layerPanel && app.layerPanel.selectedFeature) {
             e.preventDefault();
-            app.deleteFeature(app.layerPanel.selectedFeature.id);
+            if (typeof app.deleteFeature === 'function') {
+              app.deleteFeature(app.layerPanel.selectedFeature.id);
+            }
           }
         }
       }

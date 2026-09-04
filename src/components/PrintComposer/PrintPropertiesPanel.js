@@ -43,6 +43,9 @@ export class PrintPropertiesPanel {
               <div style="font-size: 9.5px; color: #888899; line-height: 1.3;">
                 Margem esquerda de 25 mm para encadernação e borda interna ABNT.
               </div>
+              <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" style="width: 100%; height: 26px; font-size: 11px; margin-top: 4px;">
+                📐 Auto-Alinhar à Norma ABNT
+              </ui-botao-primario>
             </div>
           </details>
 
@@ -102,9 +105,11 @@ export class PrintPropertiesPanel {
                       <span class="cm-param-label">Camada Base:</span>
                       <select id="prop-map-basemap" class="cm-native-select" style="width: 140px;">
                         <option value="satelite" ${selectedItem.basemap === 'satelite' ? 'selected' : ''}>🛰️ Esri Satélite</option>
+                        <option value="google_satelite_puro" ${selectedItem.basemap === 'google_satelite_puro' ? 'selected' : ''}>🛰️ Google Satélite Puro</option>
+                        <option value="google_satelite" ${selectedItem.basemap === 'google_satelite' ? 'selected' : ''}>🛰️ Google Híbrido</option>
                         <option value="osm" ${selectedItem.basemap === 'osm' ? 'selected' : ''}>🗺️ OpenStreetMap</option>
-                        <option value="cartodb_positron" ${selectedItem.basemap === 'cartodb_positron' ? 'selected' : ''}>☀️ CartoDB Claro</option>
-                        <option value="cartodb_dark" ${selectedItem.basemap === 'cartodb_dark' ? 'selected' : ''}>🌙 CartoDB Escuro</option>
+                        <option value="esri_light" ${selectedItem.basemap === 'esri_light' || selectedItem.basemap === 'cartodb_positron' ? 'selected' : ''}>☀️ Esri Claro Neutro</option>
+                        <option value="esri_dark" ${selectedItem.basemap === 'esri_dark' || selectedItem.basemap === 'cartodb_dark' ? 'selected' : ''}>🌙 Esri Escuro</option>
                         <option value="relevo" ${selectedItem.basemap === 'relevo' ? 'selected' : ''}>⛰️ Relevo Topo</option>
                         <option value="branco" ${selectedItem.basemap === 'branco' ? 'selected' : ''}>⚪ Fundo Branco CAD</option>
                       </select>
@@ -251,6 +256,11 @@ export class PrintPropertiesPanel {
     const abntMarginsCheck = document.getElementById('print-abnt-margins-check');
     if (abntMarginsCheck) {
       abntMarginsCheck.addEventListener('change', (e) => composer.setAbntMargins(e.target.checked));
+    }
+
+    const btnAlignAbnt = document.getElementById('btn-prop-align-abnt');
+    if (btnAlignAbnt) {
+      btnAlignAbnt.addEventListener('click', () => composer.resetDefaultLayout());
     }
 
     document.querySelectorAll('[data-composer-item-id]').forEach(el => {

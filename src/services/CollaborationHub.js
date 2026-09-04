@@ -25,7 +25,6 @@ export class CollaborationHub {
     this.simulationTimer = null;
 
     this.initChannel();
-    this.initSimulatedCollaborators();
   }
 
   initChannel() {
@@ -43,46 +42,6 @@ export class CollaborationHub {
     } catch (e) {
       console.warn('[CollaborationHub] BroadcastChannel não suportado neste ambiente:', e);
     }
-  }
-
-  initSimulatedCollaborators() {
-    // Operadores Virtuais para enriquecer a experiência colaborativa
-    const simUsers = [
-      {
-        id: 'usr_ana_silva',
-        name: 'Ana Silva',
-        role: 'Topógrafa RTK',
-        color: '#38bdf8',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80',
-        status: 'online',
-        lastCoords: [-15.7942, -47.8822]
-      },
-      {
-        id: 'usr_carlos_edu',
-        name: 'Carlos Eduardo',
-        role: 'Engenheiro GIS',
-        color: '#f59e0b',
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop&q=80',
-        status: 'ocupado',
-        lastCoords: [-15.7985, -47.8640]
-      }
-    ];
-
-    simUsers.forEach(u => this.activeCollaborators.set(u.id, u));
-
-    // Movimentação sutil de cursores simulados
-    this.simulationTimer = setInterval(() => {
-      simUsers.forEach(u => {
-        const dLat = (Math.random() - 0.5) * 0.0015;
-        const dLng = (Math.random() - 0.5) * 0.0015;
-        u.lastCoords = [u.lastCoords[0] + dLat, u.lastCoords[1] + dLng];
-        
-        this.onEvent('cursor:move', {
-          user: u,
-          latlng: u.lastCoords
-        });
-      });
-    }, 2800);
   }
 
   broadcast(type, data) {

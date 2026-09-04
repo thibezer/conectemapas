@@ -4,6 +4,8 @@
    para o Web Worker com fallback resiliente para main-thread se desativado.
    ========================================================================== */
 
+import { normalizeFeature } from '../MockData.js';
+
 export class GeoWorkerClient {
   constructor() {
     this.worker = null;
@@ -49,6 +51,23 @@ export class GeoWorkerClient {
     return new Promise((resolve, reject) => {
       this.pendingCalls.set(id, { resolve, reject });
       this.worker.postMessage({ id, type: 'parse_json', jsonString });
+    });
+  }
+
+  normalizeFeaturesAsync(features) {
+    if (!Array.isArray(features) || features.length === 0) {
+      return Promise.resolve([]);
+    }
+
+    if (!this.worker) {
+      // Fallback síncrono resiliente caso Worker não esteja disponível
+      return Promise.resolve(features.map(f => normalizeFeature(f)));
+    }
+
+    const id = ++this.callIdCounter;
+    return new Promise((resolve, reject) => {
+      this.pendingCalls.set(id, { resolve, reject });
+      this.worker.postMessage({ id, type: 'normalize_features', features });
     });
   }
 

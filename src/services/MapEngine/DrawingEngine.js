@@ -14,8 +14,14 @@ export class DrawingEngine {
     this.drawingPoints = [];
     this.tempLayer = null;
     this.measureTooltip = null;
+    this._measureTextEl = null;
     this.vertexMarkers = L.layerGroup().addTo(this.map);
     this.lastCircleRadius = null;
+
+    // Otimizações de mousemove & memória (Item 9)
+    this._previewPoints = [];
+    this._lastMoveLatLng = null;
+    this._cumulativeMeasureDistance = 0;
   }
 
   setTool(tool) {
@@ -30,6 +36,11 @@ export class DrawingEngine {
 
   resetDrawingState() {
     this.drawingPoints = [];
+    this._previewPoints = [];
+    this._lastMoveLatLng = null;
+    this._cumulativeMeasureDistance = 0;
+    this.lastCircleRadius = null;
+
     if (this.tempLayer) {
       this.map.removeLayer(this.tempLayer);
       this.tempLayer = null;
@@ -40,6 +51,7 @@ export class DrawingEngine {
     if (this.measureTooltip) {
       this.map.removeLayer(this.measureTooltip);
       this.measureTooltip = null;
+      this._measureTextEl = null;
     }
     this.updateDrawingHUD();
   }
@@ -159,12 +171,21 @@ export class DrawingEngine {
   undoLastVertex() {
     if (this.drawingPoints.length > 0) {
       this.drawingPoints.pop();
+      if (this.activeTool === 'measure') {
+        this._cumulativeMeasureDistance = this.engine.calculatePolylineLength(this.drawingPoints);
+      }
+      this._previewPoints = [...this.drawingPoints];
       this.renderVertexHandles();
 
       if (this.drawingPoints.length === 0) {
         if (this.tempLayer) {
           this.map.removeLayer(this.tempLayer);
           this.tempLayer = null;
+        }
+        if (this.measureTooltip) {
+          this.map.removeLayer(this.measureTooltip);
+          this.measureTooltip = null;
+          this._measureTextEl = null;
         }
       } else {
         if (this.tempLayer) {
@@ -188,6 +209,7 @@ export class DrawingEngine {
       this.setTool('select');
     } else if (this.activeTool === 'line') {
       this.drawingPoints.push(latlng);
+      this._previewPoints = [...this.drawingPoints, latlng];
       this.renderVertexHandles();
       if (!this.tempLayer) {
         this.tempLayer = L.polyline(this.drawingPoints, {
@@ -201,6 +223,7 @@ export class DrawingEngine {
       this.updateDrawingHUD();
     } else if (this.activeTool === 'polygon') {
       this.drawingPoints.push(latlng);
+      this._previewPoints = [...this.drawingPoints, latlng];
       this.renderVertexHandles();
       if (!this.tempLayer) {
         this.tempLayer = L.polygon(this.drawingPoints, {
@@ -217,6 +240,7 @@ export class DrawingEngine {
     } else if (this.activeTool === 'circle') {
       if (this.drawingPoints.length === 0) {
         this.drawingPoints.push(latlng);
+        this._previewPoints = [...this.drawingPoints, latlng];
         this.renderVertexHandles();
         this.updateDrawingHUD();
       } else {
@@ -231,7 +255,14 @@ export class DrawingEngine {
         this.setTool('select');
       }
     } else if (this.activeTool === 'measure') {
+      if (this.drawingPoints.length > 0) {
+        const prev = this.drawingPoints[this.drawingPoints.length - 1];
+        this._cumulativeMeasureDistance += this.engine.calculateDistance(prev, latlng);
+      } else {
+        this._cumulativeMeasureDistance = 0;
+      }
       this.drawingPoints.push(latlng);
+      this._previewPoints = [...this.drawingPoints, latlng];
       this.renderVertexHandles();
       if (!this.tempLayer) {
         this.tempLayer = L.polyline(this.drawingPoints, {
@@ -248,20 +279,41 @@ export class DrawingEngine {
 
   handleMouseMove(e) {
     if (this.drawingPoints.length === 0) return;
+    if (this.activeTool === 'select' || this.activeTool === 'point') return;
 
-    const currentLatLng = [e.latlng.lat, e.latlng.lng];
-    const previewPoints = [...this.drawingPoints, currentLatLng];
+    const lat = e.latlng.lat;
+    const lng = e.latlng.lng;
 
-    if (this.activeTool === 'line' || this.activeTool === 'measure') {
-      if (this.tempLayer) this.tempLayer.setLatLngs(previewPoints);
-      if (this.activeTool === 'measure') {
-        this.updateMeasureTooltip(e.latlng, previewPoints);
+    // Filtro de micro-movimento: evita disparar atualizações SVG para variações sub-pixel
+    if (this._lastMoveLatLng) {
+      if (Math.abs(this._lastMoveLatLng.lat - lat) < 1e-6 && Math.abs(this._lastMoveLatLng.lng - lng) < 1e-6) {
+        return;
       }
+    }
+    this._lastMoveLatLng = { lat, lng };
+
+    const currentLatLng = [lat, lng];
+
+    // Reutilização do array de preview in-place sem alocação contínua de memória
+    if (this._previewPoints.length !== this.drawingPoints.length + 1) {
+      this._previewPoints = [...this.drawingPoints, currentLatLng];
+    } else {
+      this._previewPoints[this._previewPoints.length - 1] = currentLatLng;
+    }
+
+    if (this.activeTool === 'line') {
+      if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
     } else if (this.activeTool === 'polygon') {
-      if (this.tempLayer) this.tempLayer.setLatLngs(previewPoints);
+      if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
+    } else if (this.activeTool === 'measure') {
+      if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
+      this.updateMeasureTooltip(e.latlng, currentLatLng);
     } else if (this.activeTool === 'circle') {
       const center = this.drawingPoints[0];
       const radius = this.engine.calculateDistance(center, currentLatLng);
+      if (this.lastCircleRadius !== null && Math.abs(this.lastCircleRadius - radius) < 0.2) {
+        return;
+      }
       this.lastCircleRadius = radius;
       if (!this.tempLayer) {
         this.tempLayer = L.circle(center, {
@@ -289,26 +341,54 @@ export class DrawingEngine {
     this.finalizeCurrentDrawing();
   }
 
-  updateMeasureTooltip(latlng, points = null) {
-    const pts = points || this.drawingPoints;
-    const distanceMeters = this.engine.calculatePolylineLength(pts);
+  updateMeasureTooltip(latlng, currentLatLng = null) {
+    let distanceMeters = 0;
+    if (currentLatLng && this.drawingPoints.length > 0) {
+      const lastFixedPoint = this.drawingPoints[this.drawingPoints.length - 1];
+      distanceMeters = this._cumulativeMeasureDistance + this.engine.calculateDistance(lastFixedPoint, currentLatLng);
+    } else {
+      distanceMeters = this._cumulativeMeasureDistance || this.engine.calculatePolylineLength(this.drawingPoints);
+    }
+
     const distText = distanceMeters > 1000 
       ? `${(distanceMeters / 1000).toFixed(2)} km`
       : `${distanceMeters.toFixed(1)} m`;
 
-    const html = `<div style="background: rgba(0,0,0,0.85); color: #ffb86c; font-family: monospace; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid #ffb86c;">📏 Distância: ${distText}</div>`;
-
     if (!this.measureTooltip) {
+      const container = document.createElement('div');
+      container.className = 'cm-measure-tooltip-box';
+      container.style.cssText = 'background: rgba(0,0,0,0.85); color: #ffb86c; font-family: monospace; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid #ffb86c; white-space: nowrap;';
+      container.innerHTML = `📏 Distância: <span class="cm-measure-text">${distText}</span>`;
+      this._measureTextEl = container.querySelector('.cm-measure-text');
+
       this.measureTooltip = L.popup({
         closeButton: false,
         offset: [0, -10],
         className: 'cm-measure-popup'
       })
       .setLatLng(latlng)
-      .setContent(html)
+      .setContent(container)
       .openOn(this.map);
     } else {
-      this.measureTooltip.setLatLng(latlng).setContent(html);
+      this.measureTooltip.setLatLng(latlng);
+      if (this._measureTextEl) {
+        this._measureTextEl.textContent = distText;
+      }
     }
+  }
+
+  destroy() {
+    this.resetDrawingState();
+    if (this.vertexMarkers) {
+      this.vertexMarkers.clearLayers();
+      if (this.map && this.map.hasLayer(this.vertexMarkers)) {
+        this.map.removeLayer(this.vertexMarkers);
+      }
+      this.vertexMarkers = null;
+    }
+    const hud = document.getElementById('cm-cad-hud');
+    if (hud) hud.remove();
+    this.map = null;
+    this.engine = null;
   }
 }

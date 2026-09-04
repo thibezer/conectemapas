@@ -188,4 +188,19 @@ export class VertexEditor {
       });
     }
   }
+
+  destroy() {
+    this.stopEditing();
+    if (this.editHandlesLayer) {
+      this.editHandlesLayer.clearLayers();
+      if (this.map && this.map.hasLayer(this.editHandlesLayer)) {
+        this.map.removeLayer(this.editHandlesLayer);
+      }
+      this.editHandlesLayer = null;
+    }
+    const hud = document.getElementById('cm-vertex-edit-hud');
+    if (hud) hud.remove();
+    this.map = null;
+    this.engine = null;
+  }
 }

@@ -48,11 +48,30 @@
   cursor: move;
   user-select: none;
   box-sizing: border-box;
+  z-index: 10;
+}
+
+.cm-print-item[data-item-type="map"] {
+  z-index: 2;
+}
+
+.cm-print-item[data-item-type="inset_map"] {
+  z-index: 6;
+}
+
+.cm-print-item[data-item-type="north_arrow"],
+.cm-print-item[data-item-type="scale_bar"],
+.cm-print-item[data-item-type="legend"],
+.cm-print-item[data-item-type="title_block"],
+.cm-print-item[data-item-type="table_vertices"],
+.cm-print-item[data-item-type="text_block"] {
+  z-index: 12;
 }
 
 .cm-print-item.selected {
-  outline: 1.5px solid #38bdf8;
-  box-shadow: 0 0 0 1px #0284c7;
+  z-index: 30 !important;
+  outline: 2px solid #38bdf8;
+  box-shadow: 0 0 0 1px #0284c7, 0 4px 14px rgba(0, 0, 0, 0.25);
 }
 
 .cm-print-item.locked {
@@ -86,6 +105,7 @@
   position: relative;
   overflow: hidden;
   background: #e5e5e5;
+  border: 1.5px solid #000;
 }
 
 .cm-item-map-canvas {
@@ -119,7 +139,7 @@
 .cm-grid-label-w { left: 2px; transform: rotate(-90deg); transform-origin: left center; }
 .cm-grid-label-e { right: 2px; transform: rotate(90deg); transform-origin: right center; }
 
-/* Selo Técnico / Carimbo Cartográfico (ABNT / NBR 13133) */
+/* Selo Técnico / Carimbo Cartográfico (ABNT / NBR 13133 e NBR 6492) */
 .cm-item-title-block {
   width: 100%;
   height: 100%;
@@ -130,17 +150,19 @@
   color: #000;
   font-family: Arial, sans-serif;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .cm-title-block-header {
   background: #000;
   color: #fff;
-  font-size: 8px;
+  font-size: 7.5px;
   font-weight: bold;
-  padding: 3px 5px;
+  padding: 2.5px 4px;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
+  flex-shrink: 0;
 }
 
 .cm-title-block-grid {
@@ -148,15 +170,18 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   border-top: 1px solid #000;
-  font-size: 7.5px;
+  font-size: 7px;
+  overflow: hidden;
 }
 
 .cm-title-block-cell {
-  padding: 2px 4px;
+  padding: 1.5px 3.5px;
   border-right: 1px solid #000;
   border-bottom: 1px solid #000;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .cm-title-block-cell:nth-child(2n) {
@@ -169,16 +194,25 @@
 }
 
 .cm-cell-label {
-  font-size: 6px;
+  font-size: 5.5px;
   color: #555;
   text-transform: uppercase;
   font-weight: bold;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cm-cell-val {
   font-weight: bold;
   color: #000;
   margin-top: 1px;
+  font-size: 6.5px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Barra de Escala Gráfica */
@@ -191,9 +225,10 @@
   justify-content: center;
   font-family: Arial, sans-serif;
   color: #000;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.95);
   padding: 2px 6px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
+  border: 1px solid #000;
+  box-sizing: border-box;
 }
 
 .cm-scale-bar-ruler {
@@ -225,54 +260,70 @@
 .cm-item-legend {
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.95);
-  border: 1px solid #000;
-  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1.5px solid #000;
+  padding: 4px 6px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
   color: #000;
   font-family: Arial, sans-serif;
-  overflow-y: auto;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .cm-legend-title {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: bold;
-  border-bottom: 1px solid #ddd;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid #000;
   padding-bottom: 2px;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  text-align: center;
+  background: #f1f3f5;
+  flex-shrink: 0;
+}
+
+.cm-legend-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
 }
 
 .cm-legend-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 7.5px;
+  gap: 6px;
+  font-size: 7px;
+  line-height: 1.2;
 }
 
 .cm-legend-swatch {
-  width: 10px;
-  height: 10px;
-  border: 1px solid rgba(0, 0, 0, 0.3);
+  width: 12px;
+  height: 9px;
+  border: 1px solid #000;
   border-radius: 1px;
   flex-shrink: 0;
 }
 
-.cm-legend-content {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  overflow-y: auto;
+.cm-legend-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  color: #111;
 }
 
 /* Moldura Interna com Margens Normatizadas ABNT */
 .cm-abnt-margins-frame {
   position: absolute;
   pointer-events: none;
-  border: 1px solid #111111;
+  border: 1.5px solid #111111;
   box-sizing: border-box;
-  z-index: 1;
+  z-index: 20;
 }
 
 /* Modo de Navegação de Terreno no Mapa */

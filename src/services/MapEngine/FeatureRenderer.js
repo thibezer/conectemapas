@@ -8,35 +8,110 @@ export class FeatureRenderer {
     this.map = mapEngine.map;
     this.allFeatures = [];
     this.allLayers = [];
+    this.layerMap = new Map();
     this.cullingThreshold = 60;
     this._cullingRaf = null;
 
     // Motor de Agrupamento Dinâmico por Escala e Proximidade em Pixels
     this.clusterEngine = new PointClusterEngine({ gridSize: 55, maxClusterZoom: 17 });
     this.renderedClusters = new Map(); // Map<clusterId, L.Marker>
+    this.featureMap = new Map(); // Map<featId, Feature>
+    this._lastCullingZoom = null;
+
+    // Cache e Invalidação Inteligente de Clusters (Item 8)
+    this._clusterRevision = 0;
+    this._lastClusterRevision = -1;
+    this._lastClusterZoom = null;
+    this._lastVisiblePointIds = null;
+    this._cachedClusters = null;
+    this._cachedSingles = null;
+
+    // Gerenciamento de Z-Index via Custom Panes (Item 11)
+    this._createdPaneNames = new Set();
   }
 
-  renderFeatures(features, layers) {
-    this.allFeatures = features || [];
+  /**
+   * Obtém ou cria um Leaflet Pane dedicado para a camada (CSS z-index acelerado por GPU)
+   */
+  getOrCreateLayerPane(layerId) {
+    const paneName = `cm-layer-pane-${layerId}`;
+    let pane = this.map ? this.map.getPane(paneName) : null;
+    if (!pane && this.map) {
+      pane = this.map.createPane(paneName);
+      this._createdPaneNames.add(paneName);
+    }
+    return { paneName, pane };
+  }
+
+  /**
+   * Remove o pane customizado de uma camada excluída
+   */
+  removeLayerPane(layerId) {
+    const paneName = `cm-layer-pane-${layerId}`;
+    const pane = this.map ? this.map.getPane(paneName) : null;
+    if (pane && pane.parentNode) {
+      pane.parentNode.removeChild(pane);
+    }
+    this._createdPaneNames.delete(paneName);
+  }
+
+  /**
+   * Atualiza o CSS z-index de cada camada diretamente em seus Panes (O(m) CSS, sem tocar no DOM Leaflet)
+   */
+  updateLayerZIndexes(layers) {
+    const layerList = layers || this.allLayers || [];
+    const total = layerList.length;
+    layerList.forEach((layer, index) => {
+      const { pane } = this.getOrCreateLayerPane(layer.id);
+      if (pane) {
+        // Camada index 0 (topo no painel) recebe o maior z-index
+        // Range: 410 a 590 (acima do overlayPane 400 e abaixo do markerPane 600)
+        const zIndex = 410 + (total - index) * 5;
+        pane.style.zIndex = String(zIndex);
+      }
+    });
+  }
+
+  /**
+   * Invalida o cache de agrupamento quando posições ou feições pontuais são alteradas
+   */
+  invalidateClusterCache() {
+    this._clusterRevision++;
+  }
+
+  /**
+   * Sincroniza o array de camadas e o Map indexado por ID O(1)
+   */
+  _syncLayerMap(layers) {
     this.allLayers = layers || [];
-    const layerMap = new Map(layers.map(l => [l.id, l]));
+    this.layerMap = new Map(this.allLayers.map(l => [l.id, l]));
+  }
 
-    // Atualiza o índice espacial com todas as feições do projeto
-    this.engine.spatialIndex.build(this.allFeatures);
+  renderFeatures(features, layers, forceRebuildIndex = false) {
+    this.allFeatures = features || [];
+    this.featureMap = new Map(this.allFeatures.map(f => [f.id, f]));
+    this._syncLayerMap(layers);
 
-    // 1. Reconciliação dos L.featureGroup das camadas
-    const currentLayerIds = new Set(layers.map(l => l.id));
+    // Constrói o índice espacial de forma inteligente: só reconstrói se forçado ou tamanho alterado
+    if (forceRebuildIndex || this.engine.spatialIndex.size !== this.allFeatures.length) {
+      this.engine.spatialIndex.build(this.allFeatures, true);
+    }
+
+    // 1. Reconciliação dos L.featureGroup e Panes das camadas
+    const currentLayerIds = new Set(this.allLayers.map(l => l.id));
     this.engine.featureLayers.forEach((group, layerId) => {
       if (!currentLayerIds.has(layerId)) {
         this.map.removeLayer(group);
         this.engine.featureLayers.delete(layerId);
+        this.removeLayerPane(layerId);
       }
     });
 
-    layers.forEach(layer => {
+    this.allLayers.forEach(layer => {
+      const { paneName } = this.getOrCreateLayerPane(layer.id);
       let group = this.engine.featureLayers.get(layer.id);
       if (!group) {
-        group = L.featureGroup();
+        group = L.featureGroup([], { pane: paneName });
         if (layer.visible !== false) {
           group.addTo(this.map);
         }
@@ -51,25 +126,221 @@ export class FeatureRenderer {
       }
     });
 
-    // 2. Renderização inteligente com Agrupamento e Culling
+    // 2. Remove imediatamente do mapa quaisquer feições e clusters antigos que foram excluídos
+    const currentFeatureIds = new Set(this.allFeatures.map(f => f.id));
+    this.engine.renderedFeatures.forEach((layer, featId) => {
+      if (!currentFeatureIds.has(featId)) {
+        this.removeSingleFeature(featId);
+      }
+    });
+    this.clearAllClusters();
+
+    // 3. Renderização inteligente com Agrupamento e Culling
     this.updateViewportCulling();
 
-    // 3. Ordenação Z-Index das camadas
-    const reversedLayers = [...layers].reverse();
-    reversedLayers.forEach(layer => {
-      const group = this.engine.featureLayers.get(layer.id);
-      if (group && layer.visible !== false && this.map.hasLayer(group)) {
-        group.bringToFront();
+    // 4. Ordenação Z-Index das camadas via Leaflet Custom Panes (O(1) no compositor, sem bringToFront)
+    this.updateLayerZIndexes(this.allLayers);
+  }
+
+  /**
+   * Altera a visibilidade de uma camada diretamente no Leaflet sem reprocessar o índice espacial (O(1))
+   */
+  setLayerVisibility(layerId, isVisible) {
+    const layer = this.layerMap.get(layerId);
+    if (layer) layer.visible = isVisible;
+
+    const group = this.engine.featureLayers.get(layerId);
+    if (group) {
+      if (isVisible && !this.map.hasLayer(group)) {
+        group.addTo(this.map);
+      } else if (!isVisible && this.map.hasLayer(group)) {
+        this.map.removeLayer(group);
+      }
+    }
+    // Reavalia culling e clusters de pontos visíveis
+    this.updateViewportCulling();
+  }
+
+  /**
+   * Altera a opacidade de uma camada in-place nas instâncias Leaflet sem tocar no índice espacial (O(k))
+   */
+  setLayerOpacity(layerId, opacity) {
+    const layer = this.layerMap.get(layerId);
+    if (layer) layer.opacity = opacity;
+
+    const numOpacity = Number(opacity);
+    const group = this.engine.featureLayers.get(layerId);
+    if (!group) return;
+
+    group.eachLayer(leafLayer => {
+      if (typeof leafLayer.setOpacity === 'function') {
+        leafLayer.setOpacity(numOpacity);
+      }
+      if (typeof leafLayer.setStyle === 'function') {
+        const feat = leafLayer._cmFeature;
+        const baseFillOpacity = feat?.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
+        leafLayer.setStyle({
+          opacity: numOpacity,
+          fillOpacity: baseFillOpacity * numOpacity
+        });
       }
     });
   }
 
-  updateViewportCulling() {
+  /**
+   * Altera a cor de uma camada in-place nas instâncias Leaflet (O(k))
+   * O cluster não é recalculado: apenas os estilos dos marcadores e clusters existentes
+   * são atualizados diretamente na tela.
+   */
+  setLayerColor(layerId, color) {
+    const layer = this.layerMap.get(layerId);
+    if (layer) layer.color = color;
+
+    // 1. Atualiza feições vetoriais e pontos individuais da camada
+    const group = this.engine.featureLayers.get(layerId);
+    if (group) {
+      group.eachLayer(leafLayer => {
+        if (typeof leafLayer.setStyle === 'function') {
+          leafLayer.setStyle({
+            color: color,
+            fillColor: color
+          });
+        } else if (leafLayer._cmType === 'Point' && typeof leafLayer.setIcon === 'function') {
+          const feat = leafLayer._cmFeature;
+          const iconName = feat?.style?.markerIcon || 'pin';
+          const size = feat?.style?.markerSize || 24;
+          const rotation = feat?.style?.markerRotation || 0;
+          const iconHtml = this.getMarkerSVG(iconName, color, size, rotation);
+          leafLayer.setIcon(L.divIcon({
+            className: 'cm-custom-marker-icon',
+            html: iconHtml,
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2]
+          }));
+        }
+      });
+    }
+
+    // 2. Atualiza clusters ativos in-place (sem recomputar partições geométricas)
+    this.renderedClusters.forEach(marker => {
+      const cluster = marker._cmCluster;
+      if (cluster && Array.isArray(cluster.features)) {
+        const hasPointFromLayer = cluster.features.some(f => f.layerId === layerId);
+        if (hasPointFromLayer) {
+          cluster.color = color;
+          marker._lastColor = color;
+          marker.setIcon(this.clusterEngine.createClusterIcon(cluster));
+        }
+      }
+    });
+
+    // 3. Atualiza dados no cache para preservar a cor sem recomputação
+    if (this._cachedClusters) {
+      this._cachedClusters.forEach(cluster => {
+        if (cluster.features && cluster.features.some(f => f.layerId === layerId)) {
+          cluster.color = color;
+        }
+      });
+    }
+  }
+
+  /**
+   * Reorganiza o Z-Index das camadas no Leaflet instantaneamente via Panes (O(m) CSS / O(1) DOM)
+   * Elimina completamente manipulação de nós DOM do bringToFront()
+   */
+  reorderLayers(layers) {
+    this._syncLayerMap(layers);
+    this.updateLayerZIndexes(this.allLayers);
+  }
+
+
+  /**
+   * Adiciona feição ao motor respeitando o culling espacial:
+   * Se estiver fora do viewport atual, indexa em O(1) mas não toca no Leaflet.
+   */
+  addFeature(feat, layers) {
+    if (!feat || !feat.id) return;
+    if (feat.type === 'Point') {
+      this.invalidateClusterCache();
+    }
+    if (layers && layers !== this.allLayers) {
+      this._syncLayerMap(layers);
+    }
+    if (!this.featureMap.has(feat.id)) {
+      this.allFeatures.push(feat);
+      this.featureMap.set(feat.id, feat);
+    } else {
+      this.featureMap.set(feat.id, feat);
+      const idx = this.allFeatures.findIndex(f => f.id === feat.id);
+      if (idx >= 0) this.allFeatures[idx] = feat;
+    }
+
+    const bounds = this.map ? this.map.getBounds() : null;
+    const isVisibleInViewport = bounds ? this.engine.spatialIndex.intersects(feat, bounds, 0.20) : true;
+
+    if (isVisibleInViewport && feat.visible !== false) {
+      this.renderSingleFeature(feat, layers);
+    }
+  }
+
+  /**
+   * Atualiza feição in-place respeitando o culling espacial:
+   * Monta se entrou na visão, desmembra se saiu, ou atualiza in-place se permanece.
+   */
+  updateFeature(feat, layers) {
+    if (!feat || !feat.id) return;
+    if (feat.type === 'Point') {
+      this.invalidateClusterCache();
+    }
+    if (layers && layers !== this.allLayers) {
+      this._syncLayerMap(layers);
+    }
+    this.featureMap.set(feat.id, feat);
+    const idx = this.allFeatures.findIndex(f => f.id === feat.id);
+    if (idx >= 0) this.allFeatures[idx] = feat;
+    else this.allFeatures.push(feat);
+
+    const bounds = this.map ? this.map.getBounds() : null;
+    const isVisibleInViewport = bounds ? this.engine.spatialIndex.intersects(feat, bounds, 0.20) : true;
+
+    if (isVisibleInViewport && feat.visible !== false) {
+      this.renderSingleFeature(feat, layers);
+    } else {
+      this.removeSingleFeature(feat.id);
+    }
+  }
+
+  /**
+   * Remove feição do motor e do mapa
+   */
+  removeFeature(featId) {
+    const feat = this.featureMap.get(featId);
+    if (!feat || feat.type === 'Point') {
+      this.invalidateClusterCache();
+    }
+    this.featureMap.delete(featId);
+    const idx = this.allFeatures.findIndex(f => f.id === featId);
+    if (idx >= 0) this.allFeatures.splice(idx, 1);
+    this.removeSingleFeature(featId);
+  }
+
+  /**
+   * CULLING ESPACIAL COMO CORAÇÃO DO MOTOR:
+   * Diferencial de Viewport (Diffing):
+   * - Em Pans: feições já renderizadas que permanecem na visão NÃO sofrem nenhum reprocessamento (0 ms overhead).
+   * - Apenas feições que entram são montadas, e que saem são desmontadas.
+   * - Em Zooms: recalculam-se clusters e LOD dinâmico.
+   */
+  updateViewportCulling(forceRefresh = false) {
     if (!this.map || !this.allFeatures) return;
 
     if (this._cullingRaf) cancelAnimationFrame(this._cullingRaf);
     this._cullingRaf = requestAnimationFrame(() => {
       const bounds = this.map.getBounds();
+      const currentZoom = this.map.getZoom();
+      const zoomChanged = this._lastCullingZoom !== currentZoom;
+      this._lastCullingZoom = currentZoom;
+
       const visibleFeats = this.engine.spatialIndex.query(bounds, 0.20);
       const visibleIdSet = new Set(visibleFeats.map(f => f.id));
 
@@ -84,15 +355,13 @@ export class FeatureRenderer {
         this.engine.selectedFeatureIds.forEach(id => visibleIdSet.add(id));
       }
 
-      const layerMap = new Map(this.allLayers.map(l => [l.id, l]));
-
       // 1. Separa vetores (polígonos, linhas) de pontos
       const visibleVectors = [];
       const visiblePoints = [];
 
       visibleFeats.forEach(feat => {
         if (feat.visible === false) return;
-        const layerConfig = layerMap.get(feat.layerId);
+        const layerConfig = this.layerMap.get(feat.layerId);
         if (layerConfig && layerConfig.visible === false) return;
 
         if (feat.type === 'Point') {
@@ -102,26 +371,72 @@ export class FeatureRenderer {
         }
       });
 
-      // 2. Renderiza feições vetoriais normais (com LOD dinâmico)
+      // 2. Renderização seletiva de vetores (com Viewport Diffing)
       visibleVectors.forEach(feat => {
-        this.renderSingleFeature(feat, this.allLayers);
+        const isRendered = this.engine.renderedFeatures.has(feat.id);
+        // Se já está na tela e o zoom não mudou: PULA (0 overhead de reconciliação!)
+        if (isRendered && !zoomChanged && !forceRefresh) {
+          return;
+        }
+        this.renderSingleFeature(feat);
       });
 
       // 3. Agrupamento Dinâmico de Pontos (Marker Clustering por Escala)
-      const { clusters, singles } = this.clusterEngine.computeClusters(visiblePoints, this.map);
+      // O cluster só é recalculado quando:
+      // - O nível de zoom mudou (zoomChanged)
+      // - A lista de pontos visíveis mudou (entraram ou saíram do viewport)
+      // - Pontos foram adicionados, removidos ou tiveram coordenadas alteradas (_clusterRevision)
+      // - forceRefresh foi solicitado
+      let pointsChanged = false;
+      if (!this._lastVisiblePointIds || this._lastVisiblePointIds.length !== visiblePoints.length) {
+        pointsChanged = true;
+      } else {
+        for (let i = 0; i < visiblePoints.length; i++) {
+          if (visiblePoints[i].id !== this._lastVisiblePointIds[i]) {
+            pointsChanged = true;
+            break;
+          }
+        }
+      }
+
+      const needsClusterRecompute = zoomChanged ||
+        pointsChanged ||
+        this._lastClusterRevision !== this._clusterRevision ||
+        forceRefresh ||
+        !this._cachedClusters;
+
+      let clusters, singles;
+      if (!needsClusterRecompute) {
+        clusters = this._cachedClusters;
+        singles = this._cachedSingles;
+      } else {
+        const computed = this.clusterEngine.computeClusters(visiblePoints, this.map);
+        clusters = computed.clusters;
+        singles = computed.singles;
+        this._cachedClusters = clusters;
+        this._cachedSingles = singles;
+        this._lastVisiblePointIds = visiblePoints.map(p => p.id);
+        this._lastClusterRevision = this._clusterRevision;
+        this._lastClusterZoom = currentZoom;
+      }
+
       const activeClusterIdSet = new Set();
       const clusteredPointIdSet = new Set();
 
-      // Renderiza os marcadores de cluster
+      // Renderiza marcadores de cluster
       clusters.forEach(cluster => {
         activeClusterIdSet.add(cluster.id);
         cluster.features.forEach(f => clusteredPointIdSet.add(f.id));
         this.renderClusterMarker(cluster);
       });
 
-      // Renderiza pontos isolados (não agrupados)
+      // Renderiza pontos isolados
       singles.forEach(feat => {
-        this.renderSingleFeature(feat, this.allLayers);
+        const isRendered = this.engine.renderedFeatures.has(feat.id);
+        if (isRendered && !zoomChanged && !forceRefresh) {
+          return;
+        }
+        this.renderSingleFeature(feat);
       });
 
       // 4. Remove do mapa pontos que foram absorvidos em clusters
@@ -138,7 +453,7 @@ export class FeatureRenderer {
         }
       });
 
-      // 6. Remove do Leaflet as que saíram do campo de visão
+      // 6. Remove do Leaflet feições que saíram do campo de visão (Culling Exit)
       this.engine.renderedFeatures.forEach((layer, featId) => {
         if (!visibleIdSet.has(featId) || clusteredPointIdSet.has(featId)) {
           this.removeSingleFeature(featId);
@@ -152,13 +467,16 @@ export class FeatureRenderer {
    */
   renderClusterMarker(cluster) {
     let marker = this.renderedClusters.get(cluster.id);
-    const icon = this.clusterEngine.createClusterIcon(cluster);
 
     if (!marker) {
+      const icon = this.clusterEngine.createClusterIcon(cluster);
       marker = L.marker(cluster.center, {
         icon,
         zIndexOffset: 1200
       });
+      marker._cmCluster = cluster;
+      marker._lastCount = cluster.count;
+      marker._lastColor = cluster.color;
 
       marker.on('click', (e) => {
         if (e && e.originalEvent) {
@@ -188,8 +506,14 @@ export class FeatureRenderer {
       marker.addTo(this.map);
       this.renderedClusters.set(cluster.id, marker);
     } else {
-      marker.setLatLng(cluster.center);
-      marker.setIcon(icon);
+      marker._cmCluster = cluster;
+      // Atualiza coordenadas ou ícone apenas se tiver havido alteração de contagem ou cor
+      if (marker._lastCount !== cluster.count || marker._lastColor !== cluster.color) {
+        marker._lastCount = cluster.count;
+        marker._lastColor = cluster.color;
+        marker.setLatLng(cluster.center);
+        marker.setIcon(this.clusterEngine.createClusterIcon(cluster));
+      }
     }
 
     return marker;
@@ -210,6 +534,9 @@ export class FeatureRenderer {
       this.map.removeLayer(marker);
     });
     this.renderedClusters.clear();
+    this._cachedClusters = null;
+    this._cachedSingles = null;
+    this._lastVisiblePointIds = null;
   }
 
 
@@ -221,8 +548,11 @@ export class FeatureRenderer {
 
     }
 
-    const layerMap = Array.isArray(layers) ? new Map(layers.map(l => [l.id, l])) : null;
-    const layerConfig = (layerMap ? layerMap.get(feat.layerId) : null) || { color: '#00E08A', opacity: 1, visible: true };
+    if (layers && layers !== this.allLayers) {
+      this._syncLayerMap(layers);
+    }
+
+    const layerConfig = this.layerMap.get(feat.layerId) || { color: '#00E08A', opacity: 1, visible: true };
     if (layerConfig.visible === false) {
       this.removeSingleFeature(feat.id);
       return null;
@@ -254,8 +584,12 @@ export class FeatureRenderer {
     const coords = GeometrySimplifier.simplify(rawCoords, feat.type, zoom);
     let existingLayer = this.engine.renderedFeatures.get(feat.id);
 
-    // Se o tipo mudou, recria
-    if (existingLayer && existingLayer._cmType !== feat.type) {
+    // Se o tipo mudou ou o subtipo de marcador pontual (Canvas CircleMarker vs DOM SVG) mudou, recria
+    const isSvgMarker = existingLayer instanceof L.Marker;
+    const wantsSvgMarker = feat.type === 'Point' && ['tower', 'tree', 'warning', 'water', 'boundary'].includes(style.markerIcon);
+    const markerKindMismatch = feat.type === 'Point' && existingLayer && (isSvgMarker !== wantsSvgMarker);
+
+    if (existingLayer && (existingLayer._cmType !== feat.type || markerKindMismatch)) {
       const oldGroup = this.engine.featureLayers.get(existingLayer._cmLayerId);
       if (oldGroup) oldGroup.removeLayer(existingLayer);
       else this.map.removeLayer(existingLayer);
@@ -268,6 +602,7 @@ export class FeatureRenderer {
       if (existingLayer) {
         existingLayer._cmType = feat.type;
         existingLayer._cmLayerId = feat.layerId;
+        existingLayer._cmFeature = feat;
 
         existingLayer.on('click', () => {
           this.engine.onFeatureSelected(feat);
@@ -284,8 +619,10 @@ export class FeatureRenderer {
       }
     } else {
       // --- PATCH: Atualiza in-place sem destruir a camada ---
+      existingLayer._cmFeature = feat;
       this.patchLeafletLayer(existingLayer, feat, coords, style);
     }
+
 
     // Atualiza popup e labels usando a geometria original precisa (rawCoords),
     // garantindo que cálculo de área (Shoelace) e extensão nunca variem com a câmera/zoom
@@ -326,7 +663,24 @@ export class FeatureRenderer {
   }
 
   createLeafletLayer(feat, coords, style) {
+    const paneName = this.getOrCreateLayerPane(feat.layerId).paneName;
+
     if (feat.type === 'Point' && coords) {
+      const isCustomSvgIcon = ['tower', 'tree', 'warning', 'water', 'boundary'].includes(style.markerIcon);
+      if (!isCustomSvgIcon) {
+        // Canvas CircleMarker de alta performance (Zero nós DOM adicionais)
+        const radius = Math.max(5, Math.round((style.markerSize || 24) / 3.2));
+        return L.circleMarker(coords, {
+          radius,
+          fillColor: style.fillColor,
+          fillOpacity: style.fillOpacity !== undefined ? style.fillOpacity : 0.85,
+          color: '#ffffff',
+          weight: 2,
+          opacity: style.layerOpacity,
+          pane: paneName
+        });
+      }
+
       const iconHtml = this.getMarkerSVG(style.markerIcon, style.fillColor, style.markerSize, style.markerRotation);
       const icon = L.divIcon({
         className: 'cm-custom-marker-icon',
@@ -334,13 +688,14 @@ export class FeatureRenderer {
         iconSize: [style.markerSize, style.markerSize],
         iconAnchor: [style.markerSize / 2, style.markerSize / 2]
       });
-      return L.marker(coords, { icon, opacity: style.layerOpacity });
+      return L.marker(coords, { icon, opacity: style.layerOpacity, pane: paneName });
     } else if (feat.type === 'LineString' && coords && coords.length > 0) {
       return L.polyline(coords, {
         color: style.strokeColor,
         weight: style.strokeWidth,
         dashArray: style.strokeDashArray || undefined,
-        opacity: style.layerOpacity
+        opacity: style.layerOpacity,
+        pane: paneName
       });
     } else if (feat.type === 'Polygon' && coords && coords.length > 0) {
       return L.polygon(coords, {
@@ -349,7 +704,8 @@ export class FeatureRenderer {
         dashArray: style.strokeDashArray || undefined,
         fillColor: style.fillColor,
         fillOpacity: style.fillOpacity,
-        opacity: style.layerOpacity
+        opacity: style.layerOpacity,
+        pane: paneName
       });
     } else if (feat.type === 'Circle' && coords) {
       return L.circle(coords, {
@@ -359,7 +715,8 @@ export class FeatureRenderer {
         dashArray: style.strokeDashArray || undefined,
         fillColor: style.fillColor,
         fillOpacity: style.fillOpacity,
-        opacity: style.layerOpacity
+        opacity: style.layerOpacity,
+        pane: paneName
       });
     }
     return null;
@@ -380,16 +737,29 @@ export class FeatureRenderer {
     }
 
     if (feat.type === 'Point' && coords) {
-      layer.setLatLng(coords);
-      layer.setOpacity(style.layerOpacity);
-      const iconHtml = this.getMarkerSVG(style.markerIcon, style.fillColor, style.markerSize, style.markerRotation);
-      const icon = L.divIcon({
-        className: 'cm-custom-marker-icon',
-        html: iconHtml,
-        iconSize: [style.markerSize, style.markerSize],
-        iconAnchor: [style.markerSize / 2, style.markerSize / 2]
-      });
-      layer.setIcon(icon);
+      if (layer instanceof L.CircleMarker) {
+        layer.setLatLng(coords);
+        const radius = Math.max(5, Math.round((style.markerSize || 24) / 3.2));
+        layer.setStyle({
+          radius,
+          fillColor: style.fillColor,
+          fillOpacity: style.fillOpacity !== undefined ? style.fillOpacity : 0.85,
+          color: '#ffffff',
+          weight: 2,
+          opacity: style.layerOpacity
+        });
+      } else if (layer.setIcon) {
+        layer.setLatLng(coords);
+        layer.setOpacity(style.layerOpacity);
+        const iconHtml = this.getMarkerSVG(style.markerIcon, style.fillColor, style.markerSize, style.markerRotation);
+        const icon = L.divIcon({
+          className: 'cm-custom-marker-icon',
+          html: iconHtml,
+          iconSize: [style.markerSize, style.markerSize],
+          iconAnchor: [style.markerSize / 2, style.markerSize / 2]
+        });
+        layer.setIcon(icon);
+      }
     } else if (feat.type === 'LineString' && coords) {
       layer.setLatLngs(coords);
       layer.setStyle({
@@ -643,5 +1013,29 @@ export class FeatureRenderer {
       });
     }
     return segments;
+  }
+
+  destroy() {
+    if (this._cullingRaf) {
+      cancelAnimationFrame(this._cullingRaf);
+      this._cullingRaf = null;
+    }
+    this.clearAllClusters();
+    this.renderedClusters.clear();
+    this.allFeatures = [];
+    this.featureMap.clear();
+    this.layerMap.clear();
+
+    if (this.map && this._createdPaneNames) {
+      this._createdPaneNames.forEach(paneName => {
+        const pane = this.map.getPane(paneName);
+        if (pane && pane.parentNode) {
+          pane.parentNode.removeChild(pane);
+        }
+      });
+      this._createdPaneNames.clear();
+    }
+    this.map = null;
+    this.engine = null;
   }
 }

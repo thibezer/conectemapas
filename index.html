@@ -1,84 +1,93 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    
-    <title>ConecteMapas - Plataforma Colaborativa de Mapeamento GIS</title>
-    <meta name="description" content="Criação, desenho vetorial, medições precisas e colaboração em tempo real para mapas e levantamentos topográficos." />
-    <meta name="keywords" content="gis, topografia, mapas, colaborativo, leaflet, cad, levantamento planialtimetrico, shapefile, geojson" />
-    <meta name="author" content="ConecteMapas" />
-    <meta name="theme-color" content="#0b0b0d" />
 
-    <!-- Metatags Mobile & PWA -->
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="ConecteMapas" />
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 
-    <!-- Open Graph / Redes Sociais -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="ConecteMapas - Plataforma Colaborativa de Mapeamento GIS" />
-    <meta property="og:description" content="Criação, desenho vetorial, medições precisas e levantamentos topográficos colaborativos." />
-    <meta property="og:image" content="./favicon.svg" />
+  <title>ConecteMapas</title>
+  <meta name="description"
+    content="Criação, desenho vetorial, medições precisas e colaboração em tempo real para mapas e levantamentos topográficos." />
+  <meta name="keywords"
+    content="gis, topografia, mapas, colaborativo, leaflet, cad, levantamento planialtimetrico, shapefile, geojson" />
+  <meta name="author" content="ConecteMapas" />
+  <meta name="theme-color" content="#0b0b0d" />
 
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="ConecteMapas - Plataforma Colaborativa de Mapeamento GIS" />
-    <meta name="twitter:description" content="Criação, desenho vetorial, medições precisas e levantamentos topográficos colaborativos." />
-    <meta name="twitter:image" content="./favicon.svg" />
+  <!-- Metatags Mobile & PWA -->
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ConecteMapas" />
 
-    <!-- Otimização de Carregamento de Fontes -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Open Graph / Redes Sociais -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="ConecteMapas - Plataforma Colaborativa de Mapeamento GIS" />
+  <meta property="og:description"
+    content="Criação, desenho vetorial, medições precisas e levantamentos topográficos colaborativos." />
+  <meta property="og:image" content="./favicon.svg" />
 
-    <!-- Design Tokens e Estilos -->
-    <link rel="stylesheet" href="./src/styles/theme.css" />
-    <link rel="stylesheet" href="./src/styles/app.css" />
-  </head>
-  <body>
-    <div id="app">
-      <!-- Barra Superior (Header) -->
-      <div id="header-mount"></div>
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="ConecteMapas - Plataforma Colaborativa de Mapeamento GIS" />
+  <meta name="twitter:description"
+    content="Criação, desenho vetorial, medições precisas e levantamentos topográficos colaborativos." />
+  <meta name="twitter:image" content="./favicon.svg" />
 
-      <!-- Área de Trabalho Principal -->
-      <main class="cm-workspace">
-        <!-- Barra de Ferramentas Vetoriais Flutuante (Esquerda) -->
-        <div id="drawing-toolbar-mount"></div>
+  <!-- Otimização de Carregamento de Fontes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap"
+    rel="stylesheet" />
 
-        <!-- Visualizador do Mapa (Leaflet) -->
-        <div id="map-viewport"></div>
+  <!-- Design Tokens e Estilos -->
+  <link rel="stylesheet" href="./src/styles/theme.css" />
+  <link rel="stylesheet" href="./src/styles/app.css" />
+</head>
 
-        <!-- HUD de Coordenadas e Escala -->
-        <div class="cm-map-hud" id="cm-map-hud">
-          <span id="hud-latlng">Lat: -15.79420 | Lng: -47.88220</span>
-          <span>|</span>
-          <span id="hud-zoom">Zoom: 14</span>
-          <span>|</span>
-          <span id="hud-features-count">6 Feições</span>
-        </div>
+<body>
+  <div id="app">
+    <!-- Barra Superior (Header) -->
+    <div id="header-mount"></div>
 
-        <!-- Painel Lateral de Camadas / Inspeção / Chat (Direita) -->
-        <div id="layer-panel-mount"></div>
+    <!-- Área de Trabalho Principal -->
+    <main class="cm-workspace">
+      <!-- Barra de Ferramentas Vetoriais Flutuante (Esquerda) -->
+      <div id="drawing-toolbar-mount"></div>
 
-        <!-- Tabela de Atributos Retrátil (Inferior) -->
-        <div id="attribute-table-mount"></div>
-      </main>
+      <!-- Visualizador do Mapa (Leaflet) -->
+      <div id="map-viewport"></div>
 
-      <!-- Containers de Modais -->
-      <div id="modals-mount">
-        <div id="share-modal-mount"></div>
-        <div id="import-export-modal-mount"></div>
-        <div id="templates-modal-mount"></div>
-        <div id="new-feature-modal-mount"></div>
-        <div id="print-composer-mount"></div>
+      <!-- HUD de Coordenadas e Escala -->
+      <div class="cm-map-hud" id="cm-map-hud">
+        <span id="hud-latlng">Lat: -23.76610 | Lng: -53.32060</span>
+        <span>|</span>
+        <span id="hud-zoom">Zoom: 14</span>
+        <span>|</span>
+        <span id="hud-features-count">6 Feições</span>
       </div>
-    </div>
 
-    <!-- Script Principal -->
-    <script type="module" src="./src/main.js"></script>
-  </body>
+      <!-- Painel Lateral de Camadas / Inspeção / Chat (Direita) -->
+      <div id="layer-panel-mount"></div>
+
+      <!-- Tabela de Atributos Retrátil (Inferior) -->
+      <div id="attribute-table-mount"></div>
+    </main>
+
+    <!-- Containers de Modais -->
+    <div id="modals-mount">
+      <div id="share-modal-mount"></div>
+      <div id="import-export-modal-mount"></div>
+      <div id="templates-modal-mount"></div>
+      <div id="new-feature-modal-mount"></div>
+      <div id="print-composer-mount"></div>
+    </div>
+  </div>
+
+  <!-- Script Principal -->
+  <script type="module" src="./src/main.js"></script>
+</body>
+
 </html>

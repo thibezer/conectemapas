@@ -7,6 +7,8 @@
 import { GeoFormats } from '../services/GeoFormats.js';
 import { normalizeFeature } from '../services/MockData.js';
 import { MapImageExporter } from '../services/MapImageExporter.js';
+import { StorageService } from '../services/StorageService.js';
+import { FeatureSyncController } from './FeatureSyncController.js';
 import { UIToast } from 'ui-components-kit';
 
 export class ProjectActionsController {
@@ -72,7 +74,7 @@ export class ProjectActionsController {
     return MapImageExporter.exportMapToPNG(app, options);
   }
 
-  static async handleImport(app, content, fileName) {
+  static async handleImport(app, content, fileName, options = {}) {
     try {
       UIToast.notificar({
         tipo: 'info',
@@ -81,18 +83,43 @@ export class ProjectActionsController {
         duracao: 2500
       });
 
-      const parsed = await GeoFormats.parseUploadedFile(content, fileName);
+      const parsed = await GeoFormats.parseUploadedFile(content, fileName, options);
+
+      // Se o arquivo tiver camadas (como AutoCAD DWG/DXF), integra ao projeto
+      if (Array.isArray(parsed.layers) && parsed.layers.length > 0) {
+        let addedLayersCount = 0;
+        parsed.layers.forEach(cadLayer => {
+          if (!app.layers.some(l => l.id === cadLayer.id)) {
+            app.layers.push(cadLayer);
+            addedLayersCount++;
+          }
+        });
+
+        if (addedLayersCount > 0) {
+          app.saveMetadata(false);
+          if (app.layerPanel) {
+            app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+          }
+          if (app.newFeatureModal) {
+            app.newFeatureModal.updateLayers(app.layers);
+          }
+        }
+      }
+
       if (parsed.features && parsed.features.length > 0) {
-        const normalized = parsed.features.map(f => normalizeFeature(f));
-        app.pushHistory(`Importação de ${normalized.length} feições (${fileName})`);
-        app.features.push(...normalized);
-        app.refreshMapAndTable();
-        app.saveState();
+        // Pipeline consolidado em lote via Web Worker (P1)
+        const normalized = await FeatureSyncController.createFeaturesBatchAsync(app, parsed.features, {
+          sourceDescription: `Importação de "${fileName}"`
+        });
 
         let metaMsg = `${normalized.length} feições importadas com sucesso.`;
         if (parsed.metadata) {
           const m = parsed.metadata;
           metaMsg = `${normalized.length} feições do Shapefile "${m.baseName}" importadas. Projeção: ${m.projection} | Codificação: ${m.encoding.toUpperCase()}`;
+        } else if (parsed.isDwg || fileName.toLowerCase().endsWith('.dwg') || fileName.toLowerCase().endsWith('.dxf')) {
+          const cadVer = parsed.version?.versionName || 'AutoCAD CAD';
+          const layerTotal = parsed.layers?.length || 1;
+          metaMsg = `${normalized.length} entidades do ${cadVer} importadas em ${layerTotal} camada(s) com conversão UTM SIRGAS 2000.`;
         }
 
         UIToast.notificar({
@@ -105,6 +132,17 @@ export class ProjectActionsController {
         if (normalized.length > 0 && normalized[0].id) {
           app.mapEngine.zoomToFeature(normalized[0].id);
         }
+
+        // Sincroniza lote importado com o MySQL da Hostinger em segundo plano
+        StorageService.syncProjectToCloudDebounced({
+          id: app.projectId || 'projeto_padrao',
+          name: app.projectName,
+          basemap: app.currentBasemap,
+          layers: app.layers,
+          features: app.features,
+          center: app.mapEngine && app.mapEngine.map ? [app.mapEngine.map.getCenter().lat, app.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
+          zoom: app.mapEngine && app.mapEngine.map ? app.mapEngine.map.getZoom() : 14
+        }, 1000);
 
         const modal = document.getElementById('modal-import-export');
         if (modal && modal.fechar) modal.fechar();
@@ -140,13 +178,15 @@ export class ProjectActionsController {
       color,
       visible: true,
       opacity: 1,
-      locked: false
+      locked: false,
+      order: app.layers.length
     };
 
     app.layers.push(newLayer);
+    StorageService.saveLayer(newLayer);
     app.layerPanel.updateLayers(app.getLayersWithCounts());
     app.newFeatureModal.updateLayers(app.layers);
-    app.saveState();
+    app.saveMetadata();
 
     UIToast.notificar({
       tipo: 'sucesso',
@@ -165,16 +205,23 @@ export class ProjectActionsController {
     const layerName = layer ? layer.name : layerId;
     const remainingLayer = app.layers.find(l => l.id !== layerId);
 
+    const movedFeatures = [];
     app.features.forEach(f => {
       if (f.layerId === layerId) {
         f.layerId = remainingLayer.id;
+        movedFeatures.push(f);
       }
     });
+
+    StorageService.deleteLayer(layerId, remainingLayer.id);
+    if (movedFeatures.length > 0) {
+      StorageService.queueFeaturesBulkUpsert(movedFeatures);
+    }
 
     app.layers = app.layers.filter(l => l.id !== layerId);
     app.refreshMapAndTable();
     if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
-    app.saveState();
+    app.saveMetadata(false);
 
     UIToast.notificar({
       tipo: 'sucesso',
@@ -192,7 +239,9 @@ export class ProjectActionsController {
     app.refreshMapAndTable();
     app.layerPanel.updateLayers(app.getLayersWithCounts());
     app.newFeatureModal.updateLayers(app.layers);
-    app.saveState();
+    StorageService.saveFeaturesBatch([]);
+    StorageService.saveLayersBatch(app.layers);
+    app.saveMetadata(true);
 
     UIToast.notificar({
       tipo: 'sucesso',

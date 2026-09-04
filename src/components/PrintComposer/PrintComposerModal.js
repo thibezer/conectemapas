@@ -36,7 +36,7 @@ export class PrintComposerModal {
     };
     this.paperSize = this.paperSizes.A4_L;
 
-    this.items = PrintItemsManager.createDefaultItems(this.projectName);
+    this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
     this.selectedItemId = 'item-map-main';
     this.leafletMaps = new Map(); // Sub-instâncias do Leaflet nos itens
     this.insetExtentLayer = null; // Retângulo no Inset Map
@@ -82,6 +82,7 @@ export class PrintComposerModal {
             <span class="cm-print-zoom-badge" id="cm-print-zoom-val" style="min-width: 44px; text-align: center;">100%</span>
             <button class="cm-print-tool-btn" id="btn-print-zoom-in" title="Aumentar Zoom">➕</button>
             <button class="cm-print-tool-btn" id="btn-print-zoom-fit" title="Enquadrar Folha">🎯 Enquadrar</button>
+            <button class="cm-print-tool-btn" id="btn-print-auto-align" title="Reorganizar e Alinhar Elementos Automaticamente à Norma ABNT" style="background: rgba(0, 224, 138, 0.15); border-color: var(--cm-primary, #00E08A); color: var(--cm-primary, #00E08A);">📐 Alinhar ABNT</button>
           </div>
 
           <!-- Ações de Exportação em Alta Resolução -->
@@ -144,6 +145,12 @@ export class PrintComposerModal {
     if (modal) modal.classList.remove('hidden');
     this.isOpen = true;
 
+    // Salvaguarda visual: se os itens estiverem fora da margem ABNT ou desajustados, restabelece o layout ótimo ABNT
+    const mainMap = this.items.find(i => i.type === 'map');
+    if (!this.items || this.items.length === 0 || !mainMap || mainMap.x < this.paperSize.marginL || mainMap.width > (this.paperSize.width - this.paperSize.marginL - 50)) {
+      this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
+    }
+
     this.updatePaperSheetDOM();
     this.renderAllItems();
     this.updatePropertiesPanel();
@@ -153,6 +160,19 @@ export class PrintComposerModal {
       this.canvasEngine.renderRulers();
       this.updateInsetMapExtent();
     }, 100);
+  }
+
+  resetDefaultLayout() {
+    this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
+    this.renderAllItems();
+    this.updatePropertiesPanel();
+    this.selectItem('item-map-main');
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: 'Layout Alinhado à Norma ABNT',
+      mensagem: `Prancha reorganizada com precisão milimétrica para ${this.paperSize.name}.`,
+      duracao: 2500
+    });
   }
 
   close() {
@@ -202,6 +222,7 @@ export class PrintComposerModal {
       const badge = document.getElementById('cm-print-paper-badge');
       if (badge) badge.textContent = this.paperSize.name;
 
+      this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
       this.updatePaperSheetDOM();
       this.renderAllItems();
       this.updatePropertiesPanel();
@@ -264,6 +285,7 @@ export class PrintComposerModal {
       return `
         <div class="cm-print-item ${isSel ? 'selected' : ''} ${item.locked ? 'locked' : ''}" 
              data-item-id="${item.id}" 
+             data-item-type="${item.type}"
              style="left: ${xPx}px; top: ${yPx}px; width: ${wPx}px; height: ${hPx}px;">
           ${this.getItemInnerContent(item)}
           ${isSel && !item.locked ? this.getResizeHandlesHTML() : ''}
@@ -462,14 +484,22 @@ export class PrintComposerModal {
 
     if (basemapKey === 'osm') {
       url = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    } else if (basemapKey === 'cartodb_positron') {
-      url = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-      maxZoom = 20;
-    } else if (basemapKey === 'cartodb_dark') {
-      url = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
-      maxZoom = 20;
-    } else if (basemapKey === 'relevo') {
+      maxZoom = 19;
+    } else if (basemapKey === 'cartodb_positron' || basemapKey === 'esri_light' || basemapKey === 'light') {
+      // Esri Light Gray Canvas: Elegante, sem API Key, perfeito para inset/overview map
+      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+      maxZoom = 16;
+    } else if (basemapKey === 'cartodb_dark' || basemapKey === 'esri_dark' || basemapKey === 'dark') {
+      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+      maxZoom = 16;
+    } else if (basemapKey === 'relevo' || basemapKey === 'topografia') {
       url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}';
+    } else if (basemapKey === 'google_satelite_puro') {
+      url = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
+      maxZoom = 20;
+    } else if (basemapKey === 'google_satelite') {
+      url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      maxZoom = 20;
     }
 
     L.tileLayer(url, { maxZoom, crossOrigin: true }).addTo(map);
@@ -595,6 +625,10 @@ export class PrintComposerModal {
 
     const btnZoomFit = document.getElementById('btn-print-zoom-fit');
     if (btnZoomFit) btnZoomFit.addEventListener('click', () => this.canvasEngine.zoomFit());
+
+    // Alinhar e organizar prancha à norma ABNT
+    const btnAutoAlign = document.getElementById('btn-print-auto-align');
+    if (btnAutoAlign) btnAutoAlign.addEventListener('click', () => this.resetDefaultLayout());
 
     // Botões de inserção de itens cartográficos
     const addItemHelper = (btnId, type) => {

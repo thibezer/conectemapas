@@ -146,9 +146,13 @@ export class LayerTreeRenderer {
                 </div>
               ` : ''}
 
-              ${isExpanded ? `
-                <div class="cm-ai-children-container">
-                  ${layerFeatures.map((feat) => {
+              <div class="cm-ai-children-container" style="display: ${isExpanded ? 'block' : 'none'};">
+                ${(() => {
+                  const maxTreeItems = 60;
+                  const visibleTreeFeats = layerFeatures.slice(0, maxTreeItems);
+                  const hasTruncated = layerFeatures.length > maxTreeItems;
+
+                  const itemsHtml = visibleTreeFeats.map((feat) => {
                     const featName = panel.escapeHtml(feat.name || 'Feição');
                     const featId = panel.escapeHtml(feat.id || '');
                     const featColor = panel.escapeHtml(feat.color || safeColor);
@@ -173,7 +177,7 @@ export class LayerTreeRenderer {
                         <div class="cm-ai-col cm-ai-col-lock" data-feat-lock="${featId}" title="${isFeatLocked ? 'Desbloquear' : 'Bloquear'}">
                           ${isFeatLocked ? `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
                         </div>
-                        <div class="cm-ai-col-colorbar" style="background: ${featColor};"></div>
+                        <div class="cm-ai-col cm-ai-col-colorbar" style="background: ${featColor};"></div>
                         <div class="cm-ai-col cm-ai-col-branch"><span class="cm-ai-branch-line">└</span></div>
                         <div class="cm-ai-col cm-ai-col-thumb"><div class="cm-ai-thumb-box">${thumbSvg}</div></div>
                         <div class="cm-ai-col cm-ai-col-name" data-feat-name-trigger="${featId}" data-feat-select="${featId}" title="Clique para selecionar, duplo clique para renomear">
@@ -191,10 +195,18 @@ export class LayerTreeRenderer {
                         </div>
                       </div>
                     `;
-                  }).join('')}
-                  ${layerFeatures.length === 0 ? `<div class="cm-ai-empty-row"><span>${q ? 'Nenhum item correspondente' : 'Nenhum elemento neste grupo'}</span></div>` : ''}
-                </div>
-              ` : ''}
+                  }).join('');
+
+                  const footerNotice = hasTruncated ? `
+                    <div style="padding: 6px 12px; font-size: 11px; color: var(--cm-text-muted); font-style: italic; background: rgba(0,0,0,0.15); border-radius: 4px; margin: 4px 8px;">
+                      ⚡ Exibindo ${maxTreeItems} de ${layerFeatures.length.toLocaleString('pt-BR')} feições. Use a busca acima para filtrar.
+                    </div>
+                  ` : '';
+
+                  return itemsHtml + footerNotice;
+                })()}
+                ${layerFeatures.length === 0 ? `<div class="cm-ai-empty-row"><span>${q ? 'Nenhum item correspondente' : 'Nenhum elemento neste grupo'}</span></div>` : ''}
+              </div>
             </div>
           `;
           }).join('')}
@@ -239,9 +251,17 @@ export class LayerTreeRenderer {
         <span class="cm-sidebar-section-title">Mapa Base</span>
       </div>
       <div class="cm-basemap-grid">
-        <div class="cm-basemap-card ${panel.currentBasemap === 'google_satelite' ? 'active' : ''}" data-basemap="google_satelite" title="Google Maps Satélite / Híbrido">
-          <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=160&auto=format&fit=crop&q=80" alt="Google Satélite" onerror="this.style.display='none'" />
-          <span>🛰️ Google Satélite</span>
+        <div class="cm-basemap-card ${(!panel.currentBasemap || panel.currentBasemap === 'none') ? 'active' : ''}" data-basemap="none" title="Sem Mapa Base (Tela CAD Neutra)">
+          <div class="cm-basemap-none-preview">🚫</div>
+          <span>🚫 Sem Mapa</span>
+        </div>
+        <div class="cm-basemap-card ${panel.currentBasemap === 'google_satelite_puro' ? 'active' : ''}" data-basemap="google_satelite_puro" title="Google Maps Satélite Puro (sem ruas ou rótulos)">
+          <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=160&auto=format&fit=crop&q=80" alt="Google Satélite Puro" onerror="this.style.display='none'" />
+          <span>🛰️ Google Puro</span>
+        </div>
+        <div class="cm-basemap-card ${panel.currentBasemap === 'google_satelite' ? 'active' : ''}" data-basemap="google_satelite" title="Google Maps Satélite Híbrido (com ruas e nomes)">
+          <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=160&auto=format&fit=crop&q=80" alt="Google Híbrido" onerror="this.style.display='none'" />
+          <span>🗺️ Google Híbrido</span>
         </div>
         <div class="cm-basemap-card ${panel.currentBasemap === 'satelite' ? 'active' : ''}" data-basemap="satelite" title="Satélite de Alta Resolução Esri">
           <img src="https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=160&auto=format&fit=crop&q=80" alt="Esri Satélite" onerror="this.style.display='none'" />

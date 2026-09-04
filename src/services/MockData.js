@@ -190,7 +190,7 @@ export const PROJECT_TEMPLATES = [
     icon: '📐',
     badge: 'Georreferenciamento',
     description: 'Configurado para levantamento planialtimétrico, marcos do IBGE, cálculo de azimutes e memoriais descritivos.',
-    center: [-15.7942, -47.8822],
+    center: [-23.7661, -53.3206],
     zoom: 14,
     layers: [
       { id: 'layer-marcos', name: 'Marcos & Piquetes', color: '#00E08A', visible: true, opacity: 1, locked: false },
@@ -204,7 +204,7 @@ export const PROJECT_TEMPLATES = [
     icon: '🌳',
     badge: 'Florestal',
     description: 'Focado em Cadastro Ambiental Rural, nascentes, matas ciliares, áreas antropizadas e Reserva Legal.',
-    center: [-15.7942, -47.8822],
+    center: [-23.7661, -53.3206],
     zoom: 13,
     layers: [
       { id: 'layer-app', name: 'Áreas de Preservação (APP)', color: '#10b981', visible: true, opacity: 0.75, locked: false },
@@ -218,7 +218,7 @@ export const PROJECT_TEMPLATES = [
     icon: '🏙️',
     badge: 'Zoneamento',
     description: 'Estruturado para delimitação de quadras, arruamento, faixas de servidão e equipamentos públicos.',
-    center: [-15.7942, -47.8822],
+    center: [-23.7661, -53.3206],
     zoom: 15,
     layers: [
       { id: 'layer-lotes', name: 'Lotes e Quadras', color: '#3b82f6', visible: true, opacity: 0.7, locked: false },

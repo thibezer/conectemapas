@@ -9,11 +9,16 @@ import { KmlConverter } from './GeoFormats/KmlConverter.js';
 import { GpxConverter } from './GeoFormats/GpxConverter.js';
 import { CsvConverter } from './GeoFormats/CsvConverter.js';
 import { WktConverter } from './GeoFormats/WktConverter.js';
+import { DwgDxfParser } from './CadFormats/DwgDxfParser.js';
 import { geoWorkerClient } from './Workers/GeoWorkerClient.js';
 
 export class GeoFormats {
   static sanitizeText(str) {
     return KmlConverter.sanitizeText(str);
+  }
+
+  static async parseCad(input, fileName = '', options = {}) {
+    return DwgDxfParser.parseCadFile(input, fileName, options);
   }
 
   static async toShapefileZip(features, projectName = 'conectemapas_export') {
@@ -64,8 +69,9 @@ export class GeoFormats {
    * Parser unificado e inteligente para arquivos importados
    * @param {File|FileList|Blob|ArrayBuffer|string} contentOrFile
    * @param {string} fileName
+   * @param {Object} [options={}]
    */
-  static async parseUploadedFile(contentOrFile, fileName = '') {
+  static async parseUploadedFile(contentOrFile, fileName = '', options = {}) {
     const isBlob = typeof Blob !== 'undefined' && contentOrFile instanceof Blob;
     const isFile = typeof File !== 'undefined' && contentOrFile instanceof File;
     const isFileList = typeof FileList !== 'undefined' && contentOrFile instanceof FileList;
@@ -85,13 +91,31 @@ export class GeoFormats {
 
     const lowerName = fileName.toLowerCase();
 
+    // AutoCAD DWG / DXF
+    if (lowerName.endsWith('.dwg') || lowerName.endsWith('.dxf')) {
+      return DwgDxfParser.parseCadFile(contentOrFile, fileName, options);
+    }
+
     if (lowerName.endsWith('.zip') || lowerName.endsWith('.shp') || lowerName.endsWith('.dbf')) {
       return this.parseShapefile(contentOrFile);
+    }
+
+    // Se for buffer e tiver assinatura AC10xx de DWG
+    if (contentOrFile instanceof ArrayBuffer || (typeof Uint8Array !== 'undefined' && contentOrFile instanceof Uint8Array)) {
+      const version = DwgDxfParser.detectDwgVersion(contentOrFile);
+      if (version.isDwg || version.isDxf) {
+        return DwgDxfParser.parseCadFile(contentOrFile, fileName, options);
+      }
     }
 
     const content = typeof contentOrFile === 'string' 
       ? contentOrFile 
       : new TextDecoder('utf-8').decode(contentOrFile);
+
+    // Detecção de DXF em texto plano
+    if (content.includes('ENTITIES') && content.includes('SECTION')) {
+      return DwgDxfParser.parseDxf(content, options);
+    }
 
     // GeoJSON ou Projeto ConecteMapas JSON
     if (lowerName.endsWith('.geojson') || lowerName.endsWith('.json') || content.trim().startsWith('{')) {
@@ -118,6 +142,6 @@ export class GeoFormats {
       return this.parseCSV(content);
     }
 
-    throw new Error('Formato de arquivo não reconhecido. Suportamos Shapefile (.zip/.shp/.dbf/.prj/.shx/.cpg), GeoJSON, KML e CSV.');
+    throw new Error('Formato de arquivo não reconhecido. Suportamos AutoCAD (.dwg, .dxf), Shapefile (.zip/.shp/.dbf), GeoJSON, KML e CSV.');
   }
 }

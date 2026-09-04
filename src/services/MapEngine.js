@@ -13,7 +13,7 @@ export class MapEngine {
   constructor(containerId, options = {}) {
     this.containerId = containerId;
     this.options = {
-      center: options.center || [-15.7942, -47.8822],
+      center: options.center || [-23.7661, -53.3206],
       zoom: options.zoom || 14,
       ...options
     };
@@ -56,10 +56,16 @@ export class MapEngine {
 
   initBaseLayers() {
     this.baseLayers = {
+      google_satelite_puro: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+        maxNativeZoom: 20,
+        maxZoom: 22,
+        attribution: '© Google Maps (Satélite Puro)',
+        crossOrigin: true
+      }),
       google_satelite: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         maxNativeZoom: 20,
         maxZoom: 22,
-        attribution: '© Google Maps',
+        attribution: '© Google Maps (Híbrido)',
         crossOrigin: true
       }),
       satelite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -95,30 +101,65 @@ export class MapEngine {
       ])
     };
 
-    this.setBaseLayer('google_satelite');
+    if (this.options.initialBasemap !== undefined) {
+      this.setBaseLayer(this.options.initialBasemap);
+    } else {
+      this.setBaseLayer('google_satelite');
+    }
   }
 
   setBaseLayer(name) {
     if (this.currentBaseLayer) {
       this.map.removeLayer(this.currentBaseLayer);
+      this.currentBaseLayer = null;
     }
-    const target = this.baseLayers[name] || this.baseLayers.google_satelite;
-    target.addTo(this.map);
-    this.currentBaseLayer = target;
+
+    const container = this.map ? this.map.getContainer() : null;
+    if (!name || name === 'none') {
+      if (container) container.classList.add('cm-no-basemap');
+      this.currentBasemapName = 'none';
+      return;
+    }
+
+    if (container) container.classList.remove('cm-no-basemap');
+    const target = this.baseLayers[name];
+    if (target) {
+      target.addTo(this.map);
+      this.currentBaseLayer = target;
+      this.currentBasemapName = name;
+    }
   }
 
   bindEvents() {
+    let mouseMovePending = false;
+    let latestMouseMoveEvent = null;
+    this._mouseMoveRafId = null;
+
     this.map.on('mousemove', (e) => {
-      this.onCursorMove(e.latlng);
-      this.drawingEngine.handleMouseMove(e);
+      latestMouseMoveEvent = e;
+
+      if (!mouseMovePending) {
+        mouseMovePending = true;
+        this._mouseMoveRafId = requestAnimationFrame(() => {
+          mouseMovePending = false;
+          this._mouseMoveRafId = null;
+          if (latestMouseMoveEvent) {
+            this.onCursorMove(latestMouseMoveEvent.latlng);
+            // Só aciona o DrawingEngine se houver uma ferramenta CAD desenhando ativamente
+            if (this.drawingEngine && this.drawingEngine.drawingPoints.length > 0) {
+              this.drawingEngine.handleMouseMove(latestMouseMoveEvent);
+            }
+          }
+        });
+      }
     });
 
     this.map.on('click', (e) => {
-      this.drawingEngine.handleClick(e);
+      if (this.drawingEngine) this.drawingEngine.handleClick(e);
     });
 
     this.map.on('dblclick', () => {
-      this.drawingEngine.handleDoubleClick();
+      if (this.drawingEngine) this.drawingEngine.handleDoubleClick();
     });
 
     this.map.on('moveend zoomend', () => {
@@ -127,7 +168,7 @@ export class MapEngine {
       }
     });
 
-    window.addEventListener('keydown', (e) => {
+    this._onKeyDown = (e) => {
       const path = e.composedPath ? e.composedPath() : [e.target];
       const isInput = path.some(el => 
         el && el.tagName && (
@@ -141,7 +182,7 @@ export class MapEngine {
       );
       if (isInput) return;
       
-      if (this.drawingEngine.activeTool !== 'select') {
+      if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           this.drawingEngine.finalizeCurrentDrawing();
@@ -154,7 +195,9 @@ export class MapEngine {
           this.drawingEngine.undoLastVertex();
         }
       }
-    });
+    };
+
+    window.addEventListener('keydown', this._onKeyDown);
   }
 
   // --- Delegação de Ferramentas CAD ---
@@ -164,16 +207,48 @@ export class MapEngine {
   finalizeCurrentDrawing() { return this.drawingEngine.finalizeCurrentDrawing(); }
   undoLastVertex() { return this.drawingEngine.undoLastVertex(); }
 
-  // --- Delegação de Renderização & Estilos ---
-  renderFeatures(features, layers) { this.featureRenderer.renderFeatures(features, layers); }
-  updateFeature(feat, layers) {
+  // --- Delegação de Renderização & Estilos Granulares ---
+  renderFeatures(features, layers, forceRebuildIndex = false) { 
+    this.featureRenderer.renderFeatures(features, layers, forceRebuildIndex); 
+  }
+  setLayerVisibility(layerId, isVisible) { this.featureRenderer.setLayerVisibility(layerId, isVisible); }
+  setLayerOpacity(layerId, opacity) { this.featureRenderer.setLayerOpacity(layerId, opacity); }
+  setLayerColor(layerId, color) { this.featureRenderer.setLayerColor(layerId, color); }
+  reorderLayers(layers) { this.featureRenderer.reorderLayers(layers); }
+  addFeature(feat, layers) {
     if (feat) this.spatialIndex.insert(feat);
-    return this.featureRenderer.renderSingleFeature(feat, layers);
+    return this.featureRenderer.addFeature(feat, layers || this.featureRenderer.allLayers);
+  }
+  updateFeature(feat, layers) {
+    if (feat) this.spatialIndex.update(feat);
+    return this.featureRenderer.updateFeature(feat, layers || this.featureRenderer.allLayers);
   }
   removeFeature(featId) {
     this.spatialIndex.remove(featId);
-    this.featureRenderer.removeSingleFeature(featId);
+    this.featureRenderer.removeFeature(featId);
   }
+
+  selectFeature(featureId) {
+    this.selectedFeatureId = featureId;
+    if (this.selectedFeatureIds) {
+      this.selectedFeatureIds.clear();
+      if (featureId) this.selectedFeatureIds.add(featureId);
+    }
+    if (this.featureRenderer) {
+      this.featureRenderer.updateViewportCulling();
+    }
+  }
+
+  clearSelection() {
+    this.selectedFeatureId = null;
+    if (this.selectedFeatureIds) {
+      this.selectedFeatureIds.clear();
+    }
+    if (this.featureRenderer) {
+      this.featureRenderer.updateViewportCulling();
+    }
+  }
+
   zoomToFeature(featureId) { this.featureRenderer.zoomToFeature(featureId); }
   fitAllFeatures() { this.featureRenderer.fitAllFeatures(); }
   fitLayer(layerId) { this.featureRenderer.fitLayer(layerId); }
@@ -213,6 +288,81 @@ export class MapEngine {
       this.remoteCursors.set(user.id, cursor);
     } else {
       cursor.setLatLng(latlng);
+    }
+  }
+
+  /**
+   * Ciclo de Vida: Destrói completamente o MapEngine, liberando listeners de janela,
+   * cancelando animações pendentes (RAFs), limpando memória e removendo a instância do Leaflet.
+   */
+  destroy() {
+    if (this.isDestroyed) return;
+    this.isDestroyed = true;
+
+    // 1. Desvincula listeners globais da janela
+    if (this._onKeyDown) {
+      window.removeEventListener('keydown', this._onKeyDown);
+      this._onKeyDown = null;
+    }
+
+    // 2. Cancela animações e RAFs pendentes
+    if (this._mouseMoveRafId) {
+      cancelAnimationFrame(this._mouseMoveRafId);
+      this._mouseMoveRafId = null;
+    }
+
+    // 3. Destrói sub-motores especializados
+    if (this.drawingEngine && typeof this.drawingEngine.destroy === 'function') {
+      this.drawingEngine.destroy();
+      this.drawingEngine = null;
+    }
+
+    if (this.vertexEditor && typeof this.vertexEditor.destroy === 'function') {
+      this.vertexEditor.destroy();
+      this.vertexEditor = null;
+    }
+
+    if (this.featureRenderer && typeof this.featureRenderer.destroy === 'function') {
+      this.featureRenderer.destroy();
+      this.featureRenderer = null;
+    }
+
+    // 4. Limpa cursores remotos colaborativos
+    this.remoteCursors.forEach(marker => {
+      if (this.map && this.map.hasLayer(marker)) {
+        this.map.removeLayer(marker);
+      }
+    });
+    this.remoteCursors.clear();
+
+    // 5. Limpa feature layers e camadas adicionadas
+    this.featureLayers.forEach(group => {
+      group.clearLayers();
+      if (this.map && this.map.hasLayer(group)) {
+        this.map.removeLayer(group);
+      }
+    });
+    this.featureLayers.clear();
+    this.renderedFeatures.clear();
+
+    // 6. Limpa camadas base
+    if (this.currentBaseLayer && this.map) {
+      this.map.removeLayer(this.currentBaseLayer);
+      this.currentBaseLayer = null;
+    }
+    this.baseLayers = {};
+
+    // 7. Limpa índice espacial
+    if (this.spatialIndex) {
+      this.spatialIndex.clear();
+      this.spatialIndex = null;
+    }
+
+    // 8. Remove o mapa Leaflet e desanexa listeners do container
+    if (this.map) {
+      this.map.off();
+      this.map.remove();
+      this.map = null;
     }
   }
 }

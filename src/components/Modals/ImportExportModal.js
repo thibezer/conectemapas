@@ -156,34 +156,49 @@ export class ImportExportModal {
             </div>
           </div>
 
-          <!-- Seção de Importação com Suporte Completo aos 5 Arquivos SHP -->
+          <!-- Seção de Importação com Suporte Completo a AutoCAD (DWG/DXF) e ESRI Shapefile -->
           <div style="border-top: 1px solid var(--cm-border); padding-top: 14px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <ui-texto variante="h6" style="font-weight: 600;">Importar Camadas & Geometrias</ui-texto>
-              <span style="font-size: 10px; color: var(--cm-primary); font-family: var(--cm-fonte-mono);">SHP, DBF, PRJ, SHX, CPG, ZIP, GeoJSON, KML, CSV</span>
+              <ui-texto variante="h6" style="font-weight: 600;">Importar Camadas & Desenhos Técnicos</ui-texto>
+              <span style="font-size: 10px; color: var(--cm-primary); font-family: var(--cm-fonte-mono);">DWG, DXF, SHP, GeoJSON, KML, CSV</span>
             </div>
 
-            <!-- Guia Visual dos 5 Arquivos do SHP -->
-            <div style="
-              background: rgba(255, 255, 255, 0.03); 
-              border: 1px solid var(--cm-border); 
-              border-radius: 6px; 
-              padding: 8px 10px; 
-              margin-bottom: 10px;
-              font-size: 11px;
-            ">
-              <div style="font-weight: 600; margin-bottom: 4px; color: var(--cm-text); display: flex; align-items: center; gap: 6px;">
-                <span>📦 Suporte Completo ao Pacote ESRI Shapefile:</span>
+            <!-- Guia Visual: AutoCAD e Shapefile -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+              <!-- Card AutoCAD -->
+              <div style="
+                background: rgba(239, 68, 68, 0.06); 
+                border: 1px solid rgba(239, 68, 68, 0.25); 
+                border-radius: 6px; 
+                padding: 8px 10px; 
+                font-size: 11px;
+              ">
+                <div style="font-weight: 600; margin-bottom: 4px; color: #f87171; display: flex; align-items: center; gap: 6px;">
+                  <span>📐 AutoCAD (.DWG / .DXF)</span>
+                </div>
+                <div style="color: var(--cm-text-muted); font-size: 10px; line-height: 1.4;">
+                  Reconhece <strong>camadas originais</strong>, linhas, polígonos, cotas e <strong>coordenadas métricas UTM</strong>.
+                </div>
               </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 4px; color: var(--cm-text-muted); font-size: 10px;">
-                <div><strong style="color: var(--cm-primary);">.SHP:</strong> Geometria Vetorial</div>
-                <div><strong style="color: #60a5fa;">.DBF:</strong> Atributos dBase</div>
-                <div><strong style="color: #f59e0b;">.PRJ:</strong> Datum & Projeção</div>
-                <div><strong style="color: #a78bfa;">.SHX:</strong> Índice Posicional</div>
-                <div><strong style="color: #34d399;">.CPG:</strong> Codificação UTF-8</div>
+
+              <!-- Card Shapefile -->
+              <div style="
+                background: rgba(0, 224, 138, 0.05); 
+                border: 1px solid rgba(0, 224, 138, 0.2); 
+                border-radius: 6px; 
+                padding: 8px 10px; 
+                font-size: 11px;
+              ">
+                <div style="font-weight: 600; margin-bottom: 4px; color: var(--cm-primary); display: flex; align-items: center; gap: 6px;">
+                  <span>📦 ESRI Shapefile (.ZIP / .SHP)</span>
+                </div>
+                <div style="color: var(--cm-text-muted); font-size: 10px; line-height: 1.4;">
+                  Pacote completo com <strong>.shp, .dbf, .prj, .shx e .cpg</strong> com decodificação dBase.
+                </div>
               </div>
             </div>
 
+            <!-- Dropzone para Upload -->
             <div id="cm-dropzone" style="
               border: 2px dashed var(--cm-border);
               border-radius: var(--cm-radius-md);
@@ -194,20 +209,48 @@ export class ImportExportModal {
               transition: all 0.2s;
             ">
               <div style="font-size: 28px; margin-bottom: 6px;">📂</div>
-              <ui-texto variante="corpo" style="font-weight: 500;">Arraste e solte o arquivo <strong>.ZIP</strong> ou os <strong>5 arquivos SHP</strong> juntos</ui-texto>
+              <ui-texto variante="corpo" style="font-weight: 500;">Arraste e solte o arquivo <strong>AutoCAD (.DWG / .DXF)</strong> ou <strong>Shapefile (.ZIP)</strong></ui-texto>
               <ui-texto variante="caption" style="display: block; color: var(--cm-text-muted); margin-top: 4px;">
-                Você pode selecionar arquivos avulsos (.shp, .dbf, .prj, .shx, .cpg) ou arquivo compactado (.zip)
+                Também suporta GeoJSON, KML e planilhas CSV com coordenadas
               </ui-texto>
-              <input type="file" id="cm-file-input" accept=".zip,.shp,.dbf,.prj,.shx,.cpg,.geojson,.json,.kml,.gpx,.csv" multiple style="display: none;" />
+              <input type="file" id="cm-file-input" accept=".dwg,.dxf,.zip,.shp,.dbf,.prj,.shx,.cpg,.geojson,.json,.kml,.gpx,.csv" multiple style="display: none;" />
             </div>
 
-            <!-- Preview dos Arquivos Detectados -->
+            <!-- Preview dos Arquivos Detectados & Configuração de Projeção -->
             <div id="cm-shp-file-preview" style="display: none; margin-top: 10px; background: rgba(0, 224, 138, 0.05); border: 1px solid rgba(0, 224, 138, 0.2); border-radius: 6px; padding: 10px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <span style="font-size: 11.5px; font-weight: 600; color: var(--cm-primary);" id="cm-preview-title">Arquivos Carregados</span>
                 <span style="font-size: 10.5px; color: var(--cm-text-muted);" id="cm-preview-count">0 arquivos</span>
               </div>
               <div id="cm-preview-badges" style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;"></div>
+
+              <!-- Seletor de Fuso UTM / Datum para Desenhos CAD -->
+              <div id="cm-cad-proj-wrapper" style="margin-top: 6px; margin-bottom: 10px; background: rgba(0, 0, 0, 0.2); border-radius: 6px; padding: 8px;">
+                <div style="font-size: 11px; font-weight: 600; color: var(--cm-text); margin-bottom: 4px; display: flex; align-items: center; gap: 4px;">
+                  <span>🌐 Projeção / Fuso UTM do Desenho:</span>
+                </div>
+                <select id="cm-cad-proj-select" style="
+                  width: 100%;
+                  height: 30px;
+                  background: var(--cm-surface);
+                  border: 1px solid var(--cm-border);
+                  border-radius: 4px;
+                  color: var(--cm-text);
+                  font-size: 11px;
+                  padding: 0 8px;
+                  outline: none;
+                ">
+                  <option value="EPSG:31983" selected>SIRGAS 2000 / UTM Zona 23S (DF, SP, MG, RJ) - Padrão</option>
+                  <option value="EPSG:31982">SIRGAS 2000 / UTM Zona 22S (PR, SC, RS, MS, GO Sul)</option>
+                  <option value="EPSG:31984">SIRGAS 2000 / UTM Zona 24S (BA, SE, AL, PE, PB, RN, CE)</option>
+                  <option value="EPSG:31981">SIRGAS 2000 / UTM Zona 21S (MT, RO, AC, MS Oeste)</option>
+                  <option value="EPSG:31985">SIRGAS 2000 / UTM Zona 25S (Litoral Nordeste / PB / PE)</option>
+                  <option value="EPSG:29193">SAD69 / UTM Zona 23S (Legado TopoGRAPH)</option>
+                  <option value="EPSG:29192">SAD69 / UTM Zona 22S (Legado)</option>
+                  <option value="EPSG:4326">Coordenadas Geográficas (Graus Decimais WGS84)</option>
+                </select>
+              </div>
+
               <div style="display: flex; justify-content: flex-end; gap: 6px;">
                 <ui-botao-primario inline id="btn-cancel-upload" variante="secundario" style="height: 28px; font-size: 11px;">
                   Cancelar
@@ -324,22 +367,34 @@ export class ImportExportModal {
     if (btnConfirm) {
       btnConfirm.addEventListener('click', () => {
         if (this.pendingFiles) {
+          const projSelect = container.querySelector('#cm-cad-proj-select');
+          const selectedProj = projSelect ? projSelect.value : 'EPSG:31983';
+          const importOptions = { sourceProjection: selectedProj };
+
           if (this.pendingFiles.length === 1) {
             const singleFile = this.pendingFiles[0];
             const name = singleFile.name.toLowerCase();
-            if (name.endsWith('.geojson') || name.endsWith('.json') || name.endsWith('.kml') || name.endsWith('.csv')) {
+
+            if (name.endsWith('.dwg')) {
+              // DWG binário: lê como ArrayBuffer para decodificação
               const reader = new FileReader();
               reader.onload = (e) => {
-                this.onImport(e.target.result, singleFile.name);
+                this.onImport(e.target.result, singleFile.name, importOptions);
+              };
+              reader.readAsArrayBuffer(singleFile);
+            } else if (name.endsWith('.dxf') || name.endsWith('.geojson') || name.endsWith('.json') || name.endsWith('.kml') || name.endsWith('.csv')) {
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                this.onImport(e.target.result, singleFile.name, importOptions);
               };
               reader.readAsText(singleFile);
             } else {
               // Shapefile ZIP ou SHP binário
-              this.onImport(singleFile, singleFile.name);
+              this.onImport(singleFile, singleFile.name, importOptions);
             }
           } else {
             // Múltiplos arquivos Shapefile
-            this.onImport(Array.from(this.pendingFiles), 'shapefile_bundle');
+            this.onImport(Array.from(this.pendingFiles), 'shapefile_bundle', importOptions);
           }
 
           if (previewBox) previewBox.style.display = 'none';
@@ -366,43 +421,56 @@ export class ImportExportModal {
     previewCount.textContent = `${files.length} arquivo(s) selecionado(s)`;
     previewBadges.innerHTML = '';
 
-    const extCounts = { shp: 0, dbf: 0, prj: 0, shx: 0, cpg: 0, zip: 0, other: 0 };
+    const extCounts = { dwg: 0, dxf: 0, shp: 0, dbf: 0, prj: 0, shx: 0, cpg: 0, zip: 0, other: 0 };
+    const cadProjWrapper = document.getElementById('cm-cad-proj-wrapper');
 
     Array.from(files).forEach(f => {
       const ext = f.name.split('.').pop().toLowerCase();
       if (ext in extCounts) extCounts[ext]++;
       else extCounts.other++;
 
+      const isCad = ext === 'dwg' || ext === 'dxf';
+      const isShp = ['shp', 'dbf', 'prj', 'shx', 'cpg'].includes(ext);
+
       const badge = document.createElement('span');
       badge.style.cssText = `
         font-size: 10px;
         font-family: var(--cm-fonte-mono, monospace);
-        background: rgba(255, 255, 255, 0.08);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        background: ${isCad ? 'rgba(239, 68, 68, 0.15)' : (isShp ? 'rgba(0, 224, 138, 0.15)' : 'rgba(255, 255, 255, 0.08)')};
+        border: 1px solid ${isCad ? '#ef4444' : (isShp ? '#00E08A' : 'rgba(255, 255, 255, 0.1)')};
         padding: 2px 6px;
         border-radius: 4px;
-        color: var(--cm-text);
+        color: ${isCad ? '#fca5a5' : (isShp ? '#6ee7b7' : 'var(--cm-text)')};
+        font-weight: ${isCad || isShp ? '600' : '400'};
       `;
       badge.textContent = `${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
       previewBadges.appendChild(badge);
     });
 
-    if (extCounts.zip > 0) {
-      previewTitle.textContent = `📦 Pacote ZIP Detectado (${files[0].name})`;
-    } else if (extCounts.shp > 0) {
-      const missing = [];
-      if (extCounts.dbf === 0) missing.push('.dbf (atributos)');
-      if (extCounts.prj === 0) missing.push('.prj (projeção)');
-      if (extCounts.shx === 0) missing.push('.shx (índice)');
-      if (extCounts.cpg === 0) missing.push('.cpg (codificação)');
-
-      if (missing.length === 0) {
-        previewTitle.textContent = `✔ Pacote Shapefile Completo (5 de 5 arquivos presentes)`;
-      } else {
-        previewTitle.textContent = `⚠️ Shapefile Parcial (.shp detectado - ausentes: ${missing.join(', ')})`;
-      }
+    // Exibe ou oculta o seletor de projeção UTM para arquivos CAD
+    if (extCounts.dwg > 0 || extCounts.dxf > 0) {
+      if (cadProjWrapper) cadProjWrapper.style.display = 'block';
+      const fileExt = extCounts.dwg > 0 ? 'DWG' : 'DXF';
+      previewTitle.textContent = `📐 Desenho AutoCAD .${fileExt} Detectado (${files[0].name})`;
     } else {
-      previewTitle.textContent = `Arquivos Prontos para Importação`;
+      if (cadProjWrapper) cadProjWrapper.style.display = 'none';
+      if (extCounts.zip > 0) {
+        previewTitle.textContent = `📦 Pacote ZIP Detectado (${files[0].name})`;
+      } else if (extCounts.shp > 0) {
+        const missing = [];
+        if (extCounts.dbf === 0) missing.push('.dbf (atributos)');
+        if (extCounts.prj === 0) missing.push('.prj (projeção)');
+        if (extCounts.shx === 0) missing.push('.shx (índice)');
+        if (extCounts.cpg === 0) missing.push('.cpg (codificação)');
+
+        if (missing.length === 0) {
+          previewTitle.textContent = `✔ Pacote Shapefile Completo (5 de 5 arquivos presentes)`;
+        } else {
+          previewTitle.textContent = `⚠️ Shapefile Parcial (.shp detectado - ausentes: ${missing.join(', ')})`;
+        }
+      } else {
+        previewTitle.textContent = `Arquivos Prontos para Importação`;
+      }
     }
   }
 }

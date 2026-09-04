@@ -9,11 +9,18 @@
   RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 </IfModule>
 
-# 2. SPA Fallback (Roteamento de Aplicação de Página Única)
+# 2. Proteção de Arquivos Sensíveis de Configuração
+<FilesMatch "^(db_config\.php|\.env|\.sql|\.git)">
+  Order allow,deny
+  Deny from all
+</FilesMatch>
+
+# 3. SPA Fallback (Roteamento de Aplicação de Página Única)
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
   RewriteRule ^index\.html$ - [L]
+  RewriteRule ^api\.php$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule . index.html [L]

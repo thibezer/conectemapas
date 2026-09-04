@@ -233,11 +233,11 @@ export class PrintItemsManager {
         <div class="cm-legend-title">LEGENDA CONVENCIONAL</div>
         <div class="cm-legend-content">
           ${visibleLayers.length > 0 ? visibleLayers.map(l => `
-            <div class="cm-legend-row">
+            <div class="cm-legend-row" title="${esc(l.name)}">
               <div class="cm-legend-swatch" style="background: ${l.color || '#00E08A'};"></div>
-              <span title="${esc(l.name)}">${esc(l.name)}</span>
+              <span class="cm-legend-name">${esc(l.name)}</span>
             </div>
-          `).join('') : '<div style="font-size: 7px; color: #777;">Nenhuma camada visível</div>'}
+          `).join('') : '<div style="font-size: 7px; color: #777; text-align: center; padding: 4px 0;">Nenhuma camada visível</div>'}
         </div>
       </div>
     `;
@@ -432,9 +432,10 @@ export class PrintItemsManager {
   }
 
   /**
-   * Elementos padrão de uma nova Composição de Impressão
+   * Elementos padrão de uma nova Composição de Impressão (Normatizada ABNT NBR 13133/6492)
    */
-  static createDefaultItems(projectName = 'Projeto') {
+  static createDefaultItems(projectName = 'Projeto', paperSize = null) {
+    const size = paperSize || { id: 'A4_L', width: 297, height: 210, marginL: 25, marginO: 7 };
     const defaultCarimbo = {
       headerTitle: 'PLANTA TOPOGRÁFICA / CARTOGRÁFICA',
       projectName: projectName,
@@ -448,89 +449,205 @@ export class PrintItemsManager {
       date: new Date().toLocaleDateString('pt-BR')
     };
 
-    return [
-      {
-        id: 'item-map-main',
-        type: 'map',
-        name: 'Mapa Principal',
-        x: 10,
-        y: 10,
-        width: 190,
-        height: 190,
-        locked: false,
-        visible: true,
-        scale: 10000,
-        rotation: 0,
-        showGrid: true,
-        gridType: 'dms',
-        gridInterval: 'auto',
-        basemap: 'satelite',
-        isOverview: false
-      },
-      {
-        id: 'item-map-inset',
-        type: 'inset_map',
-        name: 'Mapa de Localização (Inset)',
-        x: 205,
-        y: 10,
-        width: 82,
-        height: 55,
-        locked: false,
-        visible: true,
-        scale: 5000000,
-        rotation: 0,
-        showGrid: false,
-        basemap: 'cartodb_positron',
-        isOverview: true
-      },
-      {
-        id: 'item-north-arrow',
-        type: 'north_arrow',
-        name: 'Rosa dos Ventos',
-        x: 208,
-        y: 70,
-        width: 22,
-        height: 22,
-        locked: false,
-        visible: true,
-        arrowStyle: 'classic',
-        rotation: 0
-      },
-      {
-        id: 'item-scale-bar',
-        type: 'scale_bar',
-        name: 'Barra de Escala',
-        x: 234,
-        y: 70,
-        width: 53,
-        height: 22,
-        locked: false,
-        visible: true
-      },
-      {
-        id: 'item-legend',
-        type: 'legend',
-        name: 'Legenda Temática',
-        x: 205,
-        y: 96,
-        width: 82,
-        height: 40,
-        locked: false,
-        visible: true
-      },
-      {
-        id: 'item-title-block',
-        type: 'title_block',
-        name: 'Carimbo Técnico (NBR 13133)',
-        x: 205,
-        y: 140,
-        width: 82,
-        height: 60,
-        locked: false,
-        visible: true,
-        properties: defaultCarimbo
-      }
-    ];
+    const isLandscape = size.width >= size.height;
+    const mL = size.marginL || 25;
+    const mO = size.marginO || 7;
+    const utilW = size.width - mL - mO;
+    const utilH = size.height - 2 * mO;
+
+    if (isLandscape) {
+      // Largura da coluna técnica lateral (ajustada para A4 ~72mm, A3/A2 até 82mm)
+      const colWidth = Math.min(84, Math.max(70, Math.round(utilW * 0.27)));
+      const gap = 3;
+      const mapWidth = utilW - colWidth - gap;
+      const mapHeight = utilH;
+      const colX = mL + mapWidth + gap;
+
+      // Distribuição vertical proporcional na coluna lateral
+      const insetHeight = Math.max(45, Math.min(62, Math.round(utilH * 0.25)));
+      const toolY = mO + insetHeight + gap;
+      const toolHeight = 20;
+      const seloHeight = Math.max(58, Math.min(72, Math.round(utilH * 0.33)));
+      const seloY = mO + utilH - seloHeight;
+      const legY = toolY + toolHeight + gap;
+      const legHeight = Math.max(35, seloY - legY - gap);
+
+      return [
+        {
+          id: 'item-map-main',
+          type: 'map',
+          name: 'Mapa Principal',
+          x: mL,
+          y: mO,
+          width: mapWidth,
+          height: mapHeight,
+          locked: false,
+          visible: true,
+          scale: 10000,
+          rotation: 0,
+          showGrid: true,
+          gridType: 'dms',
+          gridInterval: 'auto',
+          basemap: 'satelite',
+          isOverview: false
+        },
+        {
+          id: 'item-map-inset',
+          type: 'inset_map',
+          name: 'Mapa de Localização (Inset)',
+          x: colX,
+          y: mO,
+          width: colWidth,
+          height: insetHeight,
+          locked: false,
+          visible: true,
+          scale: 5000000,
+          rotation: 0,
+          showGrid: false,
+          basemap: 'esri_light',
+          isOverview: true
+        },
+        {
+          id: 'item-north-arrow',
+          type: 'north_arrow',
+          name: 'Rosa dos Ventos',
+          x: colX,
+          y: toolY,
+          width: 20,
+          height: toolHeight,
+          locked: false,
+          visible: true,
+          arrowStyle: 'classic',
+          rotation: 0
+        },
+        {
+          id: 'item-scale-bar',
+          type: 'scale_bar',
+          name: 'Barra de Escala',
+          x: colX + 22,
+          y: toolY,
+          width: colWidth - 22,
+          height: toolHeight,
+          locked: false,
+          visible: true
+        },
+        {
+          id: 'item-legend',
+          type: 'legend',
+          name: 'Legenda Temática',
+          x: colX,
+          y: legY,
+          width: colWidth,
+          height: legHeight,
+          locked: false,
+          visible: true
+        },
+        {
+          id: 'item-title-block',
+          type: 'title_block',
+          name: 'Carimbo Técnico (NBR 13133)',
+          x: colX,
+          y: seloY,
+          width: colWidth,
+          height: seloHeight,
+          locked: false,
+          visible: true,
+          properties: defaultCarimbo
+        }
+      ];
+    } else {
+      // Modo Retrato (A4 Retrato, A3 Retrato)
+      const gap = 3;
+      const bottomHeight = Math.min(100, Math.round(utilH * 0.35));
+      const mapHeight = utilH - bottomHeight - gap;
+      const mapWidth = utilW;
+      const bottomY = mO + mapHeight + gap;
+      const halfW = Math.floor((utilW - gap) / 2);
+
+      return [
+        {
+          id: 'item-map-main',
+          type: 'map',
+          name: 'Mapa Principal',
+          x: mL,
+          y: mO,
+          width: mapWidth,
+          height: mapHeight,
+          locked: false,
+          visible: true,
+          scale: 10000,
+          rotation: 0,
+          showGrid: true,
+          gridType: 'dms',
+          gridInterval: 'auto',
+          basemap: 'satelite',
+          isOverview: false
+        },
+        {
+          id: 'item-map-inset',
+          type: 'inset_map',
+          name: 'Mapa de Localização (Inset)',
+          x: mL,
+          y: bottomY,
+          width: halfW,
+          height: 38,
+          locked: false,
+          visible: true,
+          scale: 5000000,
+          rotation: 0,
+          showGrid: false,
+          basemap: 'esri_light',
+          isOverview: true
+        },
+        {
+          id: 'item-legend',
+          type: 'legend',
+          name: 'Legenda Temática',
+          x: mL,
+          y: bottomY + 41,
+          width: halfW,
+          height: bottomHeight - 41,
+          locked: false,
+          visible: true
+        },
+        {
+          id: 'item-north-arrow',
+          type: 'north_arrow',
+          name: 'Rosa dos Ventos',
+          x: mL + halfW + gap,
+          y: bottomY,
+          width: 20,
+          height: 20,
+          locked: false,
+          visible: true,
+          arrowStyle: 'classic',
+          rotation: 0
+        },
+        {
+          id: 'item-scale-bar',
+          type: 'scale_bar',
+          name: 'Barra de Escala',
+          x: mL + halfW + gap + 22,
+          y: bottomY,
+          width: halfW - 22,
+          height: 20,
+          locked: false,
+          visible: true
+        },
+        {
+          id: 'item-title-block',
+          type: 'title_block',
+          name: 'Carimbo Técnico (NBR 13133)',
+          x: mL + halfW + gap,
+          y: bottomY + 23,
+          width: halfW,
+          height: bottomHeight - 23,
+          locked: false,
+          visible: true,
+          properties: defaultCarimbo
+        }
+      ];
+    }
   }
 
   /**
@@ -570,7 +687,7 @@ export class PrintItemsManager {
           scale: 5000000,
           rotation: 0,
           showGrid: false,
-          basemap: 'cartodb_positron',
+          basemap: 'esri_light',
           isOverview: true
         };
       case 'north_arrow':

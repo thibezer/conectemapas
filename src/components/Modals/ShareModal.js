@@ -7,8 +7,11 @@
 import './ShareModal.css';
 
 export class ShareModal {
-  constructor() {
+  constructor(options = {}) {
     this.container = null;
+    this.getProjectId = options.getProjectId || (() => 'projeto_padrao');
+    this.getProjectName = options.getProjectName || (() => 'Novo Mapa');
+    this.onSyncBeforeShare = options.onSyncBeforeShare || null;
   }
 
   escapeHtml(str) {
@@ -21,29 +24,41 @@ export class ShareModal {
       .replace(/'/g, '&#039;');
   }
 
+  getShareUrl() {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+    const projectId = this.getProjectId();
+    return `${origin}${pathname}?project=${encodeURIComponent(projectId)}`;
+  }
+
   /**
    * Renderiza o modal de compartilhamento
    * @param {HTMLElement} container
    */
   render(container) {
     this.container = container;
-    const currentUrl = window.location.href;
+    const currentUrl = this.getShareUrl();
     const safeUrl = this.escapeHtml(currentUrl);
     const rawEmbed = `<iframe src="${currentUrl}" width="100%" height="600" frameborder="0"></iframe>`;
     const safeEmbed = this.escapeHtml(rawEmbed);
 
     this.container.innerHTML = `
-      <ui-modal id="modal-share" titulo="🔗 Compartilhar Sessão">
+      <ui-modal id="modal-share" titulo="🔗 Compartilhar Projeto em Nuvem">
         <div class="cm-share-container">
           <!-- Banner Informativo Compacto -->
           <div class="cm-share-banner">
-            <span class="cm-share-banner-icon">✓</span>
-            <span>Qualquer pessoa com o link poderá visualizar e colaborar no mapa em tempo real.</span>
+            <span class="cm-share-banner-icon">☁️</span>
+            <span>Qualquer pessoa com este link acessará o mapa com todas as camadas e feições salvas no MySQL da Hostinger.</span>
           </div>
 
-          <!-- Seção: Link Direto da Sala -->
+          <!-- Seção: Sincronização & Link Direto -->
           <div class="cm-share-section">
-            <span class="cm-share-label">Link da Sessão Colaborativa</span>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span class="cm-share-label">Link do Projeto Público</span>
+              <span id="cm-share-sync-status" style="font-size: 10.5px; color: var(--cm-primary); font-family: var(--cm-fonte-mono);">
+                ● Conectado ao MySQL Hostinger
+              </span>
+            </div>
             <div class="cm-share-input-row">
               <ui-campo-texto 
                 id="share-link-input" 
@@ -62,15 +77,25 @@ export class ShareModal {
             </div>
           </div>
 
+          <!-- Botão de Sincronização Pré-Compartilhamento -->
+          <div style="margin-top: 4px;">
+            <ui-botao-primario 
+              inline 
+              id="btn-sync-before-share" 
+              variante="secundario" 
+              style="width: 100%; height: 36px; font-weight: 600; font-size: 12px;">
+              ☁️ Salvar Alterações na Nuvem Hostinger Agora
+            </ui-botao-primario>
+          </div>
+
           <div class="cm-share-divider"></div>
 
           <!-- Seção: Permissões de Acesso -->
           <div class="cm-share-section">
             <span class="cm-share-label">Nível de Acesso Padrão</span>
             <ui-lista-flutuante id="share-permission-select" label="Permissão">
-              <option value="editor" selected>✏️ Editor (Pode desenhar e editar geometrias)</option>
+              <option value="editor" selected>✏️ Editor (Pode visualizar, desenhar e exportar)</option>
               <option value="viewer">👁️ Leitor (Apenas visualização)</option>
-              <option value="admin">⭐ Administrador (Acesso total)</option>
             </ui-lista-flutuante>
           </div>
 
@@ -78,7 +103,7 @@ export class ShareModal {
 
           <!-- Seção: Código Embed (Iframe) -->
           <div class="cm-share-section">
-            <span class="cm-share-label">Incorporar no seu Site (Iframe)</span>
+            <span class="cm-share-label">Incorporar no seu Site ou Relatório (Iframe)</span>
             <div class="cm-share-input-row">
               <ui-campo-texto 
                 id="share-iframe-code" 
@@ -106,7 +131,39 @@ export class ShareModal {
       </ui-modal>
     `;
 
+    this.bindEvents();
     this.applyCompactModalStyles();
+  }
+
+  bindEvents() {
+    const btnSync = this.container.querySelector('#btn-sync-before-share');
+    const statusSpan = this.container.querySelector('#cm-share-sync-status');
+    const inputLink = this.container.querySelector('#share-link-input');
+    const copyBtn = this.container.querySelector('#btn-copy-share-link');
+
+    if (btnSync) {
+      btnSync.addEventListener('click', async () => {
+        if (typeof this.onSyncBeforeShare === 'function') {
+          if (statusSpan) statusSpan.textContent = '⏳ Salvando no MySQL...';
+          btnSync.setAttribute('disabled', 'true');
+          try {
+            const res = await this.onSyncBeforeShare();
+            if (res && res.success) {
+              if (statusSpan) statusSpan.textContent = '✓ 100% Salvo na Nuvem';
+              const updatedUrl = this.getShareUrl();
+              if (inputLink) inputLink.setAttribute('value', updatedUrl);
+              if (copyBtn) copyBtn.setAttribute('copiar-texto', updatedUrl);
+            } else {
+              if (statusSpan) statusSpan.textContent = '⚠️ Falha: ' + (res?.error || 'Erro de rede');
+            }
+          } catch (e) {
+            if (statusSpan) statusSpan.textContent = '⚠️ Erro ao sincronizar';
+          } finally {
+            btnSync.removeAttribute('disabled');
+          }
+        }
+      });
+    }
   }
 
   /**
