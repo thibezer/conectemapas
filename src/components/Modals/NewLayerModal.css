@@ -1,0 +1,72 @@
+/* ==========================================================================
+   ConecteMapas - NewLayerModal Styles
+   Design moderno alinhado ao sistema de tokens e Componentes-UI
+   ========================================================================== */
+
+.cm-new-layer-palette {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.cm-new-layer-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  outline: none;
+  padding: 0;
+}
+
+.cm-new-layer-swatch:hover {
+  transform: scale(1.15);
+}
+
+.cm-new-layer-swatch.active {
+  border-color: #ffffff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.4);
+  transform: scale(1.1);
+}
+
+.cm-new-layer-color-custom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.cm-new-layer-color-input {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 32px;
+  border: none;
+  cursor: pointer;
+  background: none;
+  border-radius: 4px;
+}
+
+.cm-new-layer-color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.cm-new-layer-color-input::-webkit-color-swatch {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.cm-new-layer-hex-badge {
+  font-family: 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--cm-text-main, #ffffff);
+  letter-spacing: 0.5px;
+}

@@ -165,17 +165,21 @@ export class ProjectActionsController {
     }
   }
 
-  static addNewLayer(app) {
-    const name = prompt('Nome da nova camada:', 'Nova Camada ' + (app.layers.length + 1));
-    if (!name) return;
+  static openNewLayerModal(app) {
+    if (app.newLayerModal) {
+      app.newLayerModal.open(`Nova Camada ${app.layers.length + 1}`);
+    } else {
+      this.addNewLayer(app);
+    }
+  }
 
-    const colors = ['#00E08A', '#38bdf8', '#f59e0b', '#ec4899', '#8b5cf6', '#ef4444'];
-    const color = colors[app.layers.length % colors.length];
+  static createLayer(app, { name, color }) {
+    if (!name) return;
 
     const newLayer = {
       id: 'layer-' + Date.now(),
       name,
-      color,
+      color: color || '#00E08A',
       visible: true,
       opacity: 1,
       locked: false,
@@ -184,17 +188,35 @@ export class ProjectActionsController {
 
     app.layers.push(newLayer);
     StorageService.saveLayer(newLayer);
-    app.layerPanel.updateLayers(app.getLayersWithCounts());
-    app.newFeatureModal.updateLayers(app.layers);
+    if (app.layerPanel) {
+      app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+    }
+    if (app.newFeatureModal) {
+      app.newFeatureModal.updateLayers(app.layers);
+    }
+    if (app.attributeTable) {
+      app.attributeTable.updateData(app.features, app.layers);
+    }
     app.saveMetadata();
 
     UIToast.notificar({
       tipo: 'sucesso',
       titulo: 'Camada Criada',
-      mensagem: `Camada "${name}" disponível para novos elementos.`,
+      mensagem: `Camada "${name}" criada com sucesso.`,
       duracao: 3000
     });
   }
+
+  static addNewLayer(app) {
+    const name = prompt('Nome da nova camada:', 'Nova Camada ' + (app.layers.length + 1));
+    if (!name) return;
+
+    const colors = ['#00E08A', '#38bdf8', '#f59e0b', '#ec4899', '#8b5cf6', '#ef4444'];
+    const color = colors[app.layers.length % colors.length];
+
+    this.createLayer(app, { name, color });
+  }
+
 
   static deleteLayer(app, layerId) {
     if (app.layers.length <= 1) {

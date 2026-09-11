@@ -22,6 +22,7 @@ import { ShareModal } from './components/Modals/ShareModal.js';
 import { ImportExportModal } from './components/Modals/ImportExportModal.js';
 import { ProjectTemplatesModal } from './components/Modals/ProjectTemplatesModal.js';
 import { NewFeatureModal } from './components/Modals/NewFeatureModal.js';
+import { NewLayerModal } from './components/Modals/NewLayerModal.js';
 import { PrintComposerModal } from './components/PrintComposer/PrintComposerModal.js';
 
 import { ProjectActionsController } from './controllers/ProjectActionsController.js';
@@ -46,6 +47,7 @@ class ConecteMapasApp {
     this.layerPanel = null;
     this.attributeTable = null;
     this.newFeatureModal = null;
+    this.newLayerModal = null;
     this.printComposerModal = null;
 
     this.historyUndo = [];
@@ -558,6 +560,7 @@ class ConecteMapasApp {
 
       onLayerDelete: (layerId) => ProjectActionsController.deleteLayer(this, layerId),
       onLayerFit: (layerId) => this.mapEngine.fitLayer(layerId),
+      onAddLayer: () => ProjectActionsController.openNewLayerModal(this),
       onFeatureToggle: (featureId, isVisible) => {
         const feat = this.features.find(f => f.id === featureId);
         if (feat) {
@@ -665,6 +668,11 @@ class ConecteMapasApp {
       onSave: (newFeature) => FeatureSyncController.createFeature(this, newFeature)
     });
     this.newFeatureModal.render(document.getElementById('new-feature-modal-mount'));
+
+    this.newLayerModal = new NewLayerModal({
+      onSave: (layerData) => ProjectActionsController.createLayer(this, layerData)
+    });
+    this.newLayerModal.render(document.getElementById('new-layer-modal-mount'));
 
     this.printComposerModal = new PrintComposerModal({
       projectName: this.projectName,
