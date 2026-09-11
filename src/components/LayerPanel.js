@@ -210,7 +210,28 @@ export class LayerPanel {
   setSelectedFeature(feat) {
     this.selectedFeature = feat;
     if (feat) {
+      this.selectedFeatureIds.clear();
+      this.selectedFeatureIds.add(feat.id);
       this.activeTab = 'inspector';
+    } else {
+      this.selectedFeatureIds.clear();
+    }
+    this.updateContent();
+  }
+
+  setSelectedFeatures(features = []) {
+    this.selectedFeatureIds.clear();
+    (features || []).forEach(f => {
+      if (f && f.id) this.selectedFeatureIds.add(f.id);
+    });
+    if (features && features.length === 1) {
+      this.selectedFeature = features[0];
+      this.activeTab = 'inspector';
+    } else {
+      this.selectedFeature = null;
+      if (features && features.length > 0) {
+        this.activeTab = 'layers';
+      }
     }
     this.updateContent();
   }

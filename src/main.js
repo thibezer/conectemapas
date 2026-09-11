@@ -415,6 +415,22 @@ class ConecteMapasApp {
           this.layerPanel.setSelectedFeature(feature);
         }
       },
+      onFeaturesSelected: (features) => {
+        if (this.layerPanel) {
+          this.layerPanel.setSelectedFeatures(features);
+        }
+        if (this.attributeTable && features && features.length === 1) {
+          this.attributeTable.selectFeature(features[0].id);
+        }
+        if (features && features.length > 1) {
+          UIToast.notificar({
+            tipo: 'informativo',
+            titulo: 'Caixa de Seleção',
+            mensagem: `${features.length} feições selecionadas.`,
+            duracao: 2000
+          });
+        }
+      },
       onCursorMove: (latlng) => {
         if (!latlng) return;
         if (this.collabHub) {

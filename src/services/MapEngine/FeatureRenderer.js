@@ -578,6 +578,16 @@ export class FeatureRenderer {
       layerOpacity: layerOpacity
     };
 
+    const isSelected = (this.engine.selectedFeatureId === feat.id) || 
+                       (this.engine.selectedFeatureIds && this.engine.selectedFeatureIds.has(feat.id));
+    if (isSelected) {
+      style.strokeWidth = Math.max(3.8, style.strokeWidth + 1.8);
+      style.strokeColor = '#38bdf8'; // Ciano CAD de destaque de seleção
+      if (feat.type === 'Polygon' || feat.type === 'Circle') {
+        style.fillOpacity = Math.min(1, style.fillOpacity + 0.18);
+      }
+    }
+
     const rawCoords = this.normalizeCoordinates(feat);
     const zoom = this.map ? this.map.getZoom() : 14;
     // LOD dinâmico não-destrutivo para renderização ultrarrápida
@@ -604,7 +614,11 @@ export class FeatureRenderer {
         existingLayer._cmLayerId = feat.layerId;
         existingLayer._cmFeature = feat;
 
-        existingLayer.on('click', () => {
+        existingLayer.on('click', (e) => {
+          if (e && e.originalEvent) {
+            e.originalEvent._cmFeatureClicked = true;
+          }
+          this.engine.selectFeature(feat.id);
           this.engine.onFeatureSelected(feat);
         });
 

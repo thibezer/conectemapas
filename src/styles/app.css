@@ -345,3 +345,17 @@
   right: 16px;
   z-index: 490;
 }
+
+/* Caixa de Seleção Vetorial (Estilo CAD / Marquee Selection) */
+.cm-selection-box {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1000;
+  border: 1.5px dashed #38bdf8;
+  background-color: rgba(56, 189, 248, 0.18);
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+  border-radius: 2px;
+  display: none;
+  box-sizing: border-box;
+}
+

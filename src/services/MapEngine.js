@@ -28,7 +28,11 @@ export class MapEngine {
 
     this.onFeatureCreated = options.onFeatureCreated || (() => {});
     this.onFeatureSelected = options.onFeatureSelected || (() => {});
+    this.onFeaturesSelected = options.onFeaturesSelected || (() => {});
     this.onCursorMove = options.onCursorMove || (() => {});
+
+    this.selectedFeatureId = null;
+    this.selectedFeatureIds = new Set();
 
     this.initMap();
     this.drawingEngine = new DrawingEngine(this);
@@ -45,7 +49,8 @@ export class MapEngine {
       preferCanvas: true, // Aceleração gráfica por GPU via Canvas para milhares de vetores
       doubleClickZoom: false,
       zoomControl: false,
-      attributionControl: false
+      attributionControl: false,
+      dragging: false // Desativa arrasto pelo botão esquerdo, liberando-o para a caixa de seleção
     });
 
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
@@ -135,6 +140,137 @@ export class MapEngine {
     let latestMouseMoveEvent = null;
     this._mouseMoveRafId = null;
 
+    const mapContainer = this.map.getContainer();
+
+    // --------------------------------------------------------------------------
+    // 1. PAN COM A RODINHA DO MOUSE (Middle Click / Wheel Button Pan)
+    // --------------------------------------------------------------------------
+    this._isMiddlePanning = false;
+    this._middlePanStart = null;
+
+    mapContainer.addEventListener('auxclick', (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
+
+    mapContainer.addEventListener('mousedown', (e) => {
+      if (e.button === 1) { // Rodinha do mouse
+        e.preventDefault();
+        e.stopPropagation();
+        this._isMiddlePanning = true;
+        this._middlePanStart = { x: e.clientX, y: e.clientY };
+        mapContainer.style.cursor = 'grabbing';
+        document.body.style.cursor = 'grabbing';
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (this._isMiddlePanning && this._middlePanStart) {
+        e.preventDefault();
+        const dx = e.clientX - this._middlePanStart.x;
+        const dy = e.clientY - this._middlePanStart.y;
+        if (dx !== 0 || dy !== 0) {
+          this.map.panBy([-dx, -dy], { animate: false });
+          this._middlePanStart = { x: e.clientX, y: e.clientY };
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (this._isMiddlePanning && (e.button === 1 || e.buttons === 0)) {
+        this._isMiddlePanning = false;
+        this._middlePanStart = null;
+        mapContainer.style.cursor = this.activeTool === 'select' ? '' : 'crosshair';
+        document.body.style.cursor = '';
+      }
+    });
+
+    // --------------------------------------------------------------------------
+    // 2. CAIXA DE SELEÇÃO COM O BOTÃO ESQUERDO (Left Click Marquee Selection Box)
+    // --------------------------------------------------------------------------
+    this._isBoxSelecting = false;
+    this._boxSelectStart = null;
+    this._selectionBoxEl = null;
+
+    mapContainer.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (this.activeTool !== 'select') return;
+
+      const isControl = e.target.closest('.leaflet-control, .cm-map-hud, .cm-sidebar, button, input, select, a');
+      if (isControl) return;
+
+      this._boxSelectStart = { x: e.clientX, y: e.clientY };
+      this._boxSelectModifiers = { shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey };
+      this._isBoxSelecting = false;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (this._boxSelectStart && this.activeTool === 'select') {
+        const dx = e.clientX - this._boxSelectStart.x;
+        const dy = e.clientY - this._boxSelectStart.y;
+
+        if (!this._isBoxSelecting && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+          this._isBoxSelecting = true;
+          if (!this._selectionBoxEl) {
+            this._selectionBoxEl = document.createElement('div');
+            this._selectionBoxEl.className = 'cm-selection-box';
+            mapContainer.appendChild(this._selectionBoxEl);
+          }
+        }
+
+        if (this._isBoxSelecting && this._selectionBoxEl) {
+          const rect = mapContainer.getBoundingClientRect();
+          const startX = this._boxSelectStart.x - rect.left;
+          const startY = this._boxSelectStart.y - rect.top;
+          const currentX = e.clientX - rect.left;
+          const currentY = e.clientY - rect.top;
+
+          const left = Math.max(0, Math.min(startX, currentX));
+          const top = Math.max(0, Math.min(startY, currentY));
+          const width = Math.min(rect.width - left, Math.abs(currentX - startX));
+          const height = Math.min(rect.height - top, Math.abs(currentY - startY));
+
+          this._selectionBoxEl.style.left = `${left}px`;
+          this._selectionBoxEl.style.top = `${top}px`;
+          this._selectionBoxEl.style.width = `${width}px`;
+          this._selectionBoxEl.style.height = `${height}px`;
+          this._selectionBoxEl.style.display = 'block';
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0 && this._boxSelectStart) {
+        if (this._isBoxSelecting && this._selectionBoxEl) {
+          const rect = mapContainer.getBoundingClientRect();
+          const startX = this._boxSelectStart.x - rect.left;
+          const startY = this._boxSelectStart.y - rect.top;
+          const endX = e.clientX - rect.left;
+          const endY = e.clientY - rect.top;
+
+          const minX = Math.min(startX, endX);
+          const maxX = Math.max(startX, endX);
+          const minY = Math.min(startY, endY);
+          const maxY = Math.max(startY, endY);
+
+          const nw = this.map.containerPointToLatLng([minX, minY]);
+          const se = this.map.containerPointToLatLng([maxX, maxY]);
+          const boxBounds = L.latLngBounds(nw, se);
+
+          const matchedFeatures = this.findFeaturesInBounds(boxBounds);
+          this.handleBoxSelectionResult(matchedFeatures, this._boxSelectModifiers);
+
+          this._selectionBoxEl.remove();
+          this._selectionBoxEl = null;
+        }
+
+        this._isBoxSelecting = false;
+        this._boxSelectStart = null;
+      }
+    });
+
+    // --------------------------------------------------------------------------
+    // 3. CURSOR E DESENHO CAD
+    // --------------------------------------------------------------------------
     this.map.on('mousemove', (e) => {
       latestMouseMoveEvent = e;
 
@@ -155,7 +291,19 @@ export class MapEngine {
     });
 
     this.map.on('click', (e) => {
-      if (this.drawingEngine) this.drawingEngine.handleClick(e);
+      if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
+        this.drawingEngine.handleClick(e);
+      } else if (this.activeTool === 'select') {
+        // Se clicou em área vazia do mapa (não em uma feição e não foi drag de seleção)
+        if (!e.originalEvent || !e.originalEvent._cmFeatureClicked) {
+          this.clearSelection();
+          if (this.onFeaturesSelected) {
+            this.onFeaturesSelected([]);
+          } else if (this.onFeatureSelected) {
+            this.onFeatureSelected(null);
+          }
+        }
+      }
     });
 
     this.map.on('dblclick', () => {
@@ -226,6 +374,63 @@ export class MapEngine {
   removeFeature(featId) {
     this.spatialIndex.remove(featId);
     this.featureRenderer.removeFeature(featId);
+  }
+
+  findFeaturesInBounds(bounds) {
+    if (!bounds || !this.featureRenderer) return [];
+
+    const validLayers = new Set(
+      (this.featureRenderer.allLayers || [])
+        .filter(l => l.visible !== false)
+        .map(l => l.id)
+    );
+
+    const candidates = this.spatialIndex.query(bounds, 0) || [];
+    const results = [];
+    const seen = new Set();
+
+    candidates.forEach(feat => {
+      if (!feat || !feat.id || seen.has(feat.id)) return;
+      if (feat.visible === false || !validLayers.has(feat.layerId)) return;
+
+      if (this.spatialIndex.intersects(feat, bounds, 0)) {
+        seen.add(feat.id);
+        results.push(feat);
+      }
+    });
+
+    return results;
+  }
+
+  handleBoxSelectionResult(matchedFeatures, { shift = false, ctrl = false } = {}) {
+    if (shift || ctrl) {
+      matchedFeatures.forEach(f => this.selectedFeatureIds.add(f.id));
+    } else {
+      this.selectedFeatureIds.clear();
+      matchedFeatures.forEach(f => this.selectedFeatureIds.add(f.id));
+    }
+
+    this.selectedFeatureId = this.selectedFeatureIds.size === 1
+      ? Array.from(this.selectedFeatureIds)[0]
+      : null;
+
+    if (this.featureRenderer) {
+      this.featureRenderer.updateViewportCulling();
+    }
+
+    if (this.onFeaturesSelected) {
+      const selectedList = this.featureRenderer.allFeatures.filter(f => this.selectedFeatureIds.has(f.id));
+      this.onFeaturesSelected(selectedList);
+    }
+  }
+
+  selectFeatures(featureIds = []) {
+    this.selectedFeatureIds.clear();
+    (featureIds || []).forEach(id => this.selectedFeatureIds.add(id));
+    this.selectedFeatureId = featureIds.length === 1 ? featureIds[0] : null;
+    if (this.featureRenderer) {
+      this.featureRenderer.updateViewportCulling();
+    }
   }
 
   selectFeature(featureId) {
