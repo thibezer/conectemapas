@@ -97,6 +97,7 @@ export class LayerTreeRenderer {
             }
 
             const allFeatsSelected = layerFeatures.length > 0 && layerFeatures.every(f => panel.selectedFeatureIds.has(f.id));
+            const someFeatsSelected = !allFeatsSelected && layerFeatures.some(f => panel.selectedFeatureIds.has(f.id));
             const isActiveLayer = panel.activeLayerId === layer.id;
 
             return `

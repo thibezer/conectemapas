@@ -237,6 +237,28 @@ export class LayerPanel {
     this.updateContent();
   }
 
+  updateLayers(layers = [], features = null) {
+    if (Array.isArray(layers)) {
+      this.layers = layers;
+      layers.forEach(l => {
+        if (!this.expandedLayers.has(l.id)) {
+          this.expandedLayers.add(l.id);
+        }
+      });
+    }
+    if (Array.isArray(features)) {
+      this.features = features;
+    }
+    this.updateContent();
+  }
+
+  updateAuditLog(auditLog = []) {
+    this.auditLog = auditLog || [];
+    if (this.activeTab === 'collab') {
+      this.updateContent();
+    }
+  }
+
   setActiveLayerId(layerId) {
     this.activeLayerId = layerId;
     if (this.activeTab === 'layers' && this.container) {
