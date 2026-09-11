@@ -322,6 +322,47 @@
 .cm-ai-layer-row {
   background: #1e1e24;
   font-weight: 600;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+
+.cm-ai-layer-row:hover {
+  background: #25252d;
+}
+
+.cm-ai-layer-row.active-drawing-layer {
+  background: rgba(0, 224, 138, 0.12) !important;
+  border-left: 3px solid var(--layer-active-color, #00E08A) !important;
+  box-shadow: inset 0 0 10px rgba(0, 224, 138, 0.06);
+}
+
+.cm-ai-layer-row.active-drawing-layer .cm-ai-name-text {
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.cm-ai-active-badge {
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.18);
+  border: 1px solid rgba(0, 224, 138, 0.45);
+  padding: 1px 5px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.1;
+  animation: cmPulseBadge 2.5s infinite;
+}
+
+@keyframes cmPulseBadge {
+  0% { opacity: 0.85; }
+  50% { opacity: 1; filter: drop-shadow(0 0 4px rgba(0, 224, 138, 0.5)); }
+  100% { opacity: 0.85; }
 }
 
 .cm-ai-feat-row {

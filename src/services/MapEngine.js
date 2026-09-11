@@ -30,6 +30,8 @@ export class MapEngine {
     this.onFeatureSelected = options.onFeatureSelected || (() => {});
     this.onFeaturesSelected = options.onFeaturesSelected || (() => {});
     this.onCursorMove = options.onCursorMove || (() => {});
+    this.onToolChange = options.onToolChange || (() => {});
+    this.onContextMenu = options.onContextMenu || (() => {});
 
     this.selectedFeatureId = null;
     this.selectedFeatureIds = new Set();
@@ -281,8 +283,8 @@ export class MapEngine {
           this._mouseMoveRafId = null;
           if (latestMouseMoveEvent) {
             this.onCursorMove(latestMouseMoveEvent.latlng);
-            // Só aciona o DrawingEngine se houver uma ferramenta CAD desenhando ativamente
-            if (this.drawingEngine && this.drawingEngine.drawingPoints.length > 0) {
+            // Aciona o DrawingEngine se houver uma ferramenta CAD ativa
+            if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
               this.drawingEngine.handleMouseMove(latestMouseMoveEvent);
             }
           }
@@ -308,6 +310,38 @@ export class MapEngine {
 
     this.map.on('dblclick', () => {
       if (this.drawingEngine) this.drawingEngine.handleDoubleClick();
+    });
+
+    this.map.on('contextmenu', (e) => {
+      if (e && e.originalEvent) {
+        e.originalEvent.preventDefault();
+      }
+
+      // Se estiver desenhando com uma ferramenta CAD ativa
+      if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
+        const tool = this.drawingEngine.activeTool;
+        const pts = this.drawingEngine.drawingPoints;
+        const minPts = tool === 'polygon' ? 3 : (tool === 'line' || tool === 'measure' ? 2 : 1);
+        if (pts.length >= minPts) {
+          this.drawingEngine.finalizeCurrentDrawing();
+        } else if (pts.length > 0) {
+          this.drawingEngine.undoLastVertex();
+        } else {
+          this.setTool('select');
+        }
+        return;
+      }
+
+      // Modo Select / Normal: Aciona Menu de Contexto CAD/GIS
+      const feature = e.originalEvent?._cmFeatureRightClicked || null;
+      if (this.onContextMenu) {
+        this.onContextMenu({
+          latlng: e.latlng,
+          point: e.containerPoint,
+          originalEvent: e.originalEvent,
+          feature
+        });
+      }
     });
 
     this.map.on('moveend zoomend', () => {
@@ -337,7 +371,7 @@ export class MapEngine {
         } else if (e.key === 'Escape') {
           e.preventDefault();
           this.drawingEngine.resetDrawingState();
-          this.drawingEngine.setTool('select');
+          this.setTool('select');
         } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
           e.preventDefault();
           this.drawingEngine.undoLastVertex();
@@ -349,11 +383,34 @@ export class MapEngine {
   }
 
   // --- Delegação de Ferramentas CAD ---
-  get activeTool() { return this.drawingEngine.activeTool; }
-  setTool(tool) { this.drawingEngine.setTool(tool); }
+  get activeTool() { return this.drawingEngine ? this.drawingEngine.activeTool : 'select'; }
+  get isDrawing() { 
+    return Boolean(this.drawingEngine && this.drawingEngine.activeTool !== 'select' && this.drawingEngine.drawingPoints.length > 0); 
+  }
+  get drawingPoints() { 
+    return this.drawingEngine ? this.drawingEngine.drawingPoints : []; 
+  }
+  setTool(tool) { 
+    if (this.drawingEngine) {
+      this.drawingEngine.setTool(tool); 
+      if (this.onToolChange) {
+        this.onToolChange(tool);
+      }
+    }
+  }
+  notifyToolChange(tool) {
+    if (this.onToolChange) {
+      this.onToolChange(tool);
+    }
+  }
   resetDrawingState() { this.drawingEngine.resetDrawingState(); }
   finalizeCurrentDrawing() { return this.drawingEngine.finalizeCurrentDrawing(); }
   undoLastVertex() { return this.drawingEngine.undoLastVertex(); }
+  setActiveDrawingLayer(layer) {
+    if (this.drawingEngine && typeof this.drawingEngine.setActiveDrawingLayer === 'function') {
+      this.drawingEngine.setActiveDrawingLayer(layer);
+    }
+  }
 
   // --- Delegação de Renderização & Estilos Granulares ---
   renderFeatures(features, layers, forceRebuildIndex = false) { 
@@ -431,6 +488,9 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.updateViewportCulling();
     }
+    const selectedList = this.getSelectedFeatures();
+    if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
+    if (this.onFeatureSelected) this.onFeatureSelected(selectedList[0] || null);
   }
 
   selectFeature(featureId) {
@@ -442,6 +502,9 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.updateViewportCulling();
     }
+    const selectedList = this.getSelectedFeatures();
+    if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
+    if (this.onFeatureSelected) this.onFeatureSelected(selectedList[0] || null);
   }
 
   clearSelection() {
@@ -452,9 +515,40 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.updateViewportCulling();
     }
+    if (this.onFeaturesSelected) this.onFeaturesSelected([]);
+    if (this.onFeatureSelected) this.onFeatureSelected(null);
+  }
+
+  getSelectedFeatures() {
+    if (!this.selectedFeatureIds || this.selectedFeatureIds.size === 0) {
+      if (this.selectedFeatureId) {
+        const f = this.featureRenderer?.allFeatures?.find(x => x.id === this.selectedFeatureId);
+        return f ? [f] : [];
+      }
+      return [];
+    }
+    return (this.featureRenderer?.allFeatures || []).filter(f => this.selectedFeatureIds.has(f.id));
   }
 
   zoomToFeature(featureId) { this.featureRenderer.zoomToFeature(featureId); }
+
+  zoomToFeatures(features = []) {
+    if (!features || features.length === 0) return;
+    if (features.length === 1) {
+      this.zoomToFeature(features[0].id);
+      return;
+    }
+    const bounds = L.latLngBounds([]);
+    features.forEach(f => {
+      const raw = this.featureRenderer.normalizeCoordinates(f);
+      if (f.type === 'Point' && raw) bounds.extend(raw);
+      else if (Array.isArray(raw)) bounds.extend(raw.flat(2));
+    });
+    if (bounds.isValid() && this.map) {
+      this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+    }
+  }
+
   fitAllFeatures() { this.featureRenderer.fitAllFeatures(); }
   fitLayer(layerId) { this.featureRenderer.fitLayer(layerId); }
 

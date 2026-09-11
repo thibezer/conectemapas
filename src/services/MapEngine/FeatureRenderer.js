@@ -608,19 +608,38 @@ export class FeatureRenderer {
 
     if (!existingLayer) {
       // --- MOUNT: Cria nova camada Leaflet ---
-      existingLayer = this.createLeafletLayer(feat, coords, style);
+      existingLayer = this.createLeafletLayer(feat, coords, style, isSelected);
       if (existingLayer) {
         existingLayer._cmType = feat.type;
         existingLayer._cmLayerId = feat.layerId;
         existingLayer._cmFeature = feat;
 
         existingLayer.on('click', (e) => {
+          if (this.engine.activeTool !== 'select') {
+            if (this.engine.drawingEngine) {
+              this.engine.drawingEngine.handleClick(e);
+            }
+            return;
+          }
           if (e && e.originalEvent) {
             e.originalEvent._cmFeatureClicked = true;
           }
           this.engine.selectFeature(feat.id);
           this.engine.onFeatureSelected(feat);
         });
+
+        existingLayer.on('contextmenu', (e) => {
+          if (e && e.originalEvent) {
+            e.originalEvent._cmFeatureRightClicked = feat;
+          }
+        });
+
+        if (existingLayer._path) {
+          existingLayer._path.classList.toggle('cm-feature-selected', isSelected);
+        }
+        if (existingLayer._icon) {
+          existingLayer._icon.classList.toggle('cm-feature-selected-marker', isSelected);
+        }
 
         let targetGroup = this.engine.featureLayers.get(feat.layerId);
         if (!targetGroup) {
@@ -634,7 +653,25 @@ export class FeatureRenderer {
     } else {
       // --- PATCH: Atualiza in-place sem destruir a camada ---
       existingLayer._cmFeature = feat;
-      this.patchLeafletLayer(existingLayer, feat, coords, style);
+
+      // Se a camada da feição foi alterada, move o elemento para o featureGroup da nova camada
+      if (existingLayer._cmLayerId !== feat.layerId) {
+        const oldGroup = this.engine.featureLayers.get(existingLayer._cmLayerId);
+        if (oldGroup && oldGroup.hasLayer(existingLayer)) {
+          oldGroup.removeLayer(existingLayer);
+        }
+        let targetGroup = this.engine.featureLayers.get(feat.layerId);
+        if (!targetGroup) {
+          const { paneName } = this.getOrCreateLayerPane(feat.layerId);
+          targetGroup = L.featureGroup([], { pane: paneName });
+          if (layerConfig.visible !== false) targetGroup.addTo(this.map);
+          this.engine.featureLayers.set(feat.layerId, targetGroup);
+        }
+        targetGroup.addLayer(existingLayer);
+        existingLayer._cmLayerId = feat.layerId;
+      }
+
+      this.patchLeafletLayer(existingLayer, feat, coords, style, isSelected);
     }
 
 
@@ -676,7 +713,7 @@ export class FeatureRenderer {
     return coords;
   }
 
-  createLeafletLayer(feat, coords, style) {
+  createLeafletLayer(feat, coords, style, isSelected = false) {
     const paneName = this.getOrCreateLayerPane(feat.layerId).paneName;
 
     if (feat.type === 'Point' && coords) {
@@ -688,8 +725,8 @@ export class FeatureRenderer {
           radius,
           fillColor: style.fillColor,
           fillOpacity: style.fillOpacity !== undefined ? style.fillOpacity : 0.85,
-          color: '#ffffff',
-          weight: 2,
+          color: isSelected ? '#38bdf8' : '#ffffff',
+          weight: isSelected ? 4 : 2,
           opacity: style.layerOpacity,
           pane: paneName
         });
@@ -736,7 +773,7 @@ export class FeatureRenderer {
     return null;
   }
 
-  patchLeafletLayer(layer, feat, coords, style) {
+  patchLeafletLayer(layer, feat, coords, style, isSelected = false) {
     // Migração de grupo se mudou de camada
     if (layer._cmLayerId !== feat.layerId) {
       const oldGroup = this.engine.featureLayers.get(layer._cmLayerId);
@@ -758,8 +795,8 @@ export class FeatureRenderer {
           radius,
           fillColor: style.fillColor,
           fillOpacity: style.fillOpacity !== undefined ? style.fillOpacity : 0.85,
-          color: '#ffffff',
-          weight: 2,
+          color: isSelected ? '#38bdf8' : '#ffffff',
+          weight: isSelected ? 4 : 2,
           opacity: style.layerOpacity
         });
       } else if (layer.setIcon) {
@@ -805,6 +842,13 @@ export class FeatureRenderer {
         fillOpacity: style.fillOpacity,
         opacity: style.layerOpacity
       });
+    }
+
+    if (layer._path) {
+      layer._path.classList.toggle('cm-feature-selected', isSelected);
+    }
+    if (layer._icon) {
+      layer._icon.classList.toggle('cm-feature-selected-marker', isSelected);
     }
   }
 
@@ -984,13 +1028,24 @@ export class FeatureRenderer {
 
   calculateSinglePolygonArea(coords) {
     if (!Array.isArray(coords) || coords.length < 3) return 0;
+    // Se o polígono vier fechado (primeiro ponto igual ao último), remove o último duplicado para a fórmula Shoelace
+    let pts = coords;
+    if (coords.length > 3) {
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+        pts = coords.slice(0, -1);
+      }
+    }
+    if (pts.length < 3) return 0;
+
     const R = 6378137;
     let total = 0;
-    const len = coords.length;
+    const len = pts.length;
     for (let i = 0; i < len; i++) {
-      const lower = coords[i];
-      const middle = coords[(i + 1) % len];
-      const upper = coords[(i + 2) % len];
+      const lower = pts[i];
+      const middle = pts[(i + 1) % len];
+      const upper = pts[(i + 2) % len];
       const x1 = (middle[1] - lower[1]) * (Math.PI / 180);
       const y1 = (middle[0] - lower[0]) * (Math.PI / 180);
       const x2 = (upper[1] - middle[1]) * (Math.PI / 180);

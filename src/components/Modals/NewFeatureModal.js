@@ -8,8 +8,17 @@ import { normalizeFeature } from '../../services/MockData.js';
 export class NewFeatureModal {
   constructor(options = {}) {
     this.layers = options.layers || [];
+    this.activeLayerId = options.activeLayerId || (this.layers[0]?.id || null);
     this.pendingFeature = null;
     this.onSave = options.onSave || (() => {});
+  }
+
+  setActiveLayerId(layerId) {
+    this.activeLayerId = layerId;
+    const layerSelect = document.getElementById('new-feat-layer');
+    if (layerSelect && layerId) {
+      layerSelect.value = layerId;
+    }
   }
 
   render(container) {
@@ -84,6 +93,12 @@ export class NewFeatureModal {
     if (nameInput) nameInput.value = defaultName;
     if (catInput) catInput.value = defaultCat;
     if (descInput) descInput.value = '';
+
+    const layerSelect = document.getElementById('new-feat-layer');
+    const targetLayerId = rawFeature.layerId || this.activeLayerId || (this.layers[0]?.id);
+    if (layerSelect && targetLayerId) {
+      layerSelect.value = targetLayerId;
+    }
 
     const modal = document.getElementById('modal-new-feature');
     if (modal && modal.abrir) modal.abrir();

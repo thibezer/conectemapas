@@ -103,7 +103,7 @@ export class ShortcutsController {
 
       // Undo: Ctrl+Z / Cmd+Z
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
-        if (app.mapEngine && app.mapEngine.drawingPoints && app.mapEngine.drawingPoints.length > 0) {
+        if (app.mapEngine && (app.mapEngine.isDrawing || (app.mapEngine.drawingPoints && app.mapEngine.drawingPoints.length > 0) || (app.mapEngine.drawingEngine && app.mapEngine.drawingEngine.drawingPoints.length > 0))) {
           return;
         }
         e.preventDefault();
@@ -139,6 +139,13 @@ export class ShortcutsController {
         } else if (e.key === 'k' || e.key === 'ArrowUp') {
           e.preventDefault();
           this.navigateFeature(app, -1);
+        } else if (e.key === 'Escape') {
+          if (app.contextMenu) {
+            app.contextMenu.close();
+          }
+          if (app.mapEngine) {
+            app.mapEngine.clearSelection();
+          }
         } else if (e.key === 'Delete') {
           if (app.layerPanel && app.layerPanel.selectedFeature) {
             e.preventDefault();

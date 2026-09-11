@@ -46,6 +46,7 @@ let _cloudStatus = {
 const _cloudStatusListeners = new Set();
 let _cloudMetaDebounceTimer = null;
 let _lastServerSyncTimestamp = null;
+let _currentProjectId = 'projeto_padrao';
 
 function yieldToMain() {
   return new Promise((resolve) => {
@@ -54,6 +55,28 @@ function yieldToMain() {
 }
 
 export class StorageService {
+  /**
+   * Define o ID do projeto ativo globalmente para isolamento estrito de dados
+   * @param {string} id
+   */
+  static setCurrentProjectId(id) {
+    if (id && typeof id === 'string') {
+      const clean = id.trim();
+      if (clean !== _currentProjectId) {
+        _currentProjectId = clean;
+        _lastServerSyncTimestamp = null; // Reseta cursor temporal para o novo projeto
+      }
+    }
+  }
+
+  /**
+   * Retorna o ID do projeto atualmente em foco
+   * @returns {string}
+   */
+  static getCurrentProjectId() {
+    return _currentProjectId;
+  }
+
   /**
    * Inicializa o banco IndexedDB (v3) com Object Stores normalizadas e índices relacionais
    */
@@ -232,7 +255,7 @@ export class StorageService {
   static saveMetadata(projectData) {
     try {
       const manifest = {
-        id: projectData.id || 'projeto_padrao',
+        id: projectData.id || _currentProjectId || 'projeto_padrao',
         name: projectData.name || 'Levantamento Topográfico - Umuarama',
         description: projectData.description || '',
         updatedAt: new Date().toISOString(),
@@ -319,8 +342,9 @@ export class StorageService {
    * @param {Object} layer
    * @param {string} projectId
    */
-  static async saveLayer(layer, projectId = 'projeto_padrao') {
+  static async saveLayer(layer, projectId = null) {
     if (!layer || !layer.id) return;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     try {
       const db = await this.getDB();
       if (!db) return;
@@ -328,7 +352,7 @@ export class StorageService {
       const store = tx.objectStore(STORE_LAYERS);
       store.put({
         ...layer,
-        projectId,
+        projectId: projId,
         updatedAt: new Date().toISOString()
       });
     } catch (e) {
@@ -339,10 +363,11 @@ export class StorageService {
   /**
    * Grava múltiplas camadas com ordenação na store 'layers'
    * @param {Array<Object>} layers
-   * @param {string} projectId
+   * @param {string|null} projectId
    */
-  static async saveLayersBatch(layers, projectId = 'projeto_padrao') {
+  static async saveLayersBatch(layers, projectId = null) {
     if (!Array.isArray(layers)) return;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     try {
       const db = await this.getDB();
       if (!db) return;
@@ -353,7 +378,7 @@ export class StorageService {
         if (l && l.id) {
           store.put({
             ...l,
-            projectId,
+            projectId: projId,
             order: l.order !== undefined ? l.order : i,
             updatedAt: l.updatedAt || new Date().toISOString()
           });
@@ -369,9 +394,9 @@ export class StorageService {
    * Migra feições órfãs para a camada de destino antes da exclusão.
    * @param {string} layerId
    * @param {string|null} fallbackLayerId
-   * @param {string} projectId
+   * @param {string|null} projectId
    */
-  static async deleteLayer(layerId, fallbackLayerId = null, projectId = 'projeto_padrao') {
+  static async deleteLayer(layerId, fallbackLayerId = null, projectId = null) {
     if (!layerId) return;
     try {
       const db = await this.getDB();
@@ -402,22 +427,24 @@ export class StorageService {
   // FEIÇÕES (STORE 'features' - PERSISTÊNCIA DIFERENCIAL & DELTA QUEUE)
   // ==========================================================================
 
-  static queueFeatureUpsert(feature, projectId = 'projeto_padrao') {
+  static queueFeatureUpsert(feature, projectId = null) {
     if (!feature || !feature.id) return;
+    const projId = projectId || _currentProjectId;
     const compacted = GeoCompressor.compactFeatureForStorage(feature);
     _deletedFeatureIds.delete(feature.id);
-    _dirtyFeatures.set(feature.id, { ...compacted, projectId });
+    _dirtyFeatures.set(feature.id, { ...compacted, projectId: projId });
     this.commitDeltasDebounced(350);
   }
 
-  static queueFeaturesBulkUpsert(features, projectId = 'projeto_padrao') {
+  static queueFeaturesBulkUpsert(features, projectId = null) {
     if (!Array.isArray(features) || features.length === 0) return;
+    const projId = projectId || _currentProjectId;
     for (let i = 0; i < features.length; i++) {
       const feat = features[i];
       if (feat && feat.id) {
         const compacted = GeoCompressor.compactFeatureForStorage(feat);
         _deletedFeatureIds.delete(feat.id);
-        _dirtyFeatures.set(feat.id, { ...compacted, projectId });
+        _dirtyFeatures.set(feat.id, { ...compacted, projectId: projId });
       }
     }
     this.commitDeltasDebounced(350);
@@ -488,14 +515,14 @@ export class StorageService {
           };
         });
 
-        // Sincronização em nuvem assíncrona não-bloqueante
-        this.syncDeltasToCloud(toUpsert, toDelete);
+        // Sincronização em nuvem assíncrona com o projectId atual
+        this.syncDeltasToCloud(toUpsert, toDelete, _currentProjectId);
 
         return await idbPromise;
       }
 
       const chunkedResult = await this.executeDeltasChunked(db, toDelete, toUpsert, 10000);
-      this.syncDeltasToCloud(toUpsert, toDelete);
+      this.syncDeltasToCloud(toUpsert, toDelete, _currentProjectId);
       return chunkedResult;
     } catch (err) {
       console.warn('[StorageService] Erro ao commitar deltas no IndexedDB:', err);
@@ -534,7 +561,8 @@ export class StorageService {
     return true;
   }
 
-  static applyDiff(oldFeatures, newFeatures, projectId = 'projeto_padrao') {
+  static applyDiff(oldFeatures, newFeatures, projectId = null) {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     const oldMap = new Map((oldFeatures || []).map(f => [f.id, f]));
     const newMap = new Map((newFeatures || []).map(f => [f.id, f]));
 
@@ -555,10 +583,10 @@ export class StorageService {
     }
 
     if (toDelete.length > 0) this.queueFeaturesBulkDelete(toDelete);
-    if (toUpsert.length > 0) this.queueFeaturesBulkUpsert(toUpsert, projectId);
+    if (toUpsert.length > 0) this.queueFeaturesBulkUpsert(toUpsert, projId);
   }
 
-  static async saveFeature(feature, projectId = 'projeto_padrao') {
+  static async saveFeature(feature, projectId = null) {
     this.queueFeatureUpsert(feature, projectId);
   }
 
@@ -566,19 +594,31 @@ export class StorageService {
     this.queueFeatureDelete(featureId);
   }
 
-  static async saveFeaturesBatch(features, projectId = 'projeto_padrao') {
+  static async saveFeaturesBatch(features, projectId = null) {
     if (!Array.isArray(features)) return;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     try {
       const db = await this.getDB();
       if (!db) return;
 
+      // Remove com segurança apenas as feições do projeto específico (sem store.clear() global)
+      await new Promise((resolve) => {
+        const tx = db.transaction(STORE_FEATURES, 'readwrite');
+        const store = tx.objectStore(STORE_FEATURES);
+        const index = store.index('projectId');
+        const req = index.openKeyCursor(IDBKeyRange.only(projId));
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            store.delete(cursor.primaryKey);
+            cursor.continue();
+          }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+      });
+
       if (features.length === 0) {
-        await new Promise((resolve) => {
-          const tx = db.transaction(STORE_FEATURES, 'readwrite');
-          tx.objectStore(STORE_FEATURES).clear();
-          tx.oncomplete = () => resolve();
-          tx.onerror = () => resolve();
-        });
         return;
       }
 
@@ -586,12 +626,11 @@ export class StorageService {
         await new Promise((resolve) => {
           const tx = db.transaction(STORE_FEATURES, 'readwrite');
           const store = tx.objectStore(STORE_FEATURES);
-          store.clear();
           for (let i = 0; i < features.length; i++) {
             const feat = features[i];
             if (feat && feat.id) {
               const compacted = GeoCompressor.compactFeatureForStorage(feat);
-              store.put({ ...compacted, projectId });
+              store.put({ ...compacted, projectId: projId });
             }
           }
           tx.oncomplete = () => resolve();
@@ -599,13 +638,6 @@ export class StorageService {
         });
         return;
       }
-
-      await new Promise((resolve) => {
-        const tx = db.transaction(STORE_FEATURES, 'readwrite');
-        tx.objectStore(STORE_FEATURES).clear();
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => resolve();
-      });
 
       // Transações agrupadas de alta vazão (10.000 itens) sem pausas artificiais
       const CHUNK_SIZE = 10000;
@@ -618,7 +650,7 @@ export class StorageService {
             const feat = chunk[j];
             if (feat && feat.id) {
               const compacted = GeoCompressor.compactFeatureForStorage(feat);
-              store.put({ ...compacted, projectId });
+              store.put({ ...compacted, projectId: projId });
             }
           }
           tx.oncomplete = () => resolve();
@@ -641,10 +673,11 @@ export class StorageService {
    * Adiciona um registro de auditoria isolado na store 'audit' (O(1))
    * Sem inchar o registro do projeto.
    * @param {Object} entry
-   * @param {string} projectId
+   * @param {string|null} projectId
    */
-  static async logAudit(entry, projectId = 'projeto_padrao') {
+  static async logAudit(entry, projectId = null) {
     if (!entry) return;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     try {
       const db = await this.getDB();
       if (!db) return;
@@ -652,7 +685,7 @@ export class StorageService {
       const store = tx.objectStore(STORE_AUDIT);
       const record = {
         id: entry.id || 'aud-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-        projectId,
+        projectId: projId,
         timestamp: entry.timestamp || new Date().toISOString(),
         user: entry.user || 'Você',
         action: entry.action || '',
@@ -666,10 +699,11 @@ export class StorageService {
 
   /**
    * Recupera o log de auditoria do projeto ordenado do mais recente ao mais antigo
-   * @param {string} projectId
+   * @param {string|null} projectId
    * @param {number} limit
    */
-  static async getAuditLog(projectId = 'projeto_padrao', limit = 100) {
+  static async getAuditLog(projectId = null, limit = 100) {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     try {
       const db = await this.getDB();
       if (!db) return [];
@@ -678,7 +712,7 @@ export class StorageService {
         const tx = db.transaction(STORE_AUDIT, 'readonly');
         const store = tx.objectStore(STORE_AUDIT);
         const index = store.index('projectId');
-        const req = index.getAll(IDBKeyRange.only(projectId));
+        const req = index.getAll(IDBKeyRange.only(projId));
 
         req.onsuccess = () => {
           const list = req.result || [];
@@ -719,15 +753,16 @@ export class StorageService {
   /**
    * Recompõe o estado completo de forma transparente a partir das 4 stores normalizadas:
    * 'projects', 'layers', 'features', 'audit'.
-   * @param {string} projectId
+   * @param {string|null} projectId
    */
-  static async loadCurrentProjectAsync(projectId = 'projeto_padrao') {
+  static async loadCurrentProjectAsync(projectId = null) {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     try {
       const db = await this.getDB();
       if (!db) return this.loadCurrentProject();
 
       // Executa migração assíncrona se encontrar dados de versões legadas
-      await this.migrateLegacyDataIfNeeded(db, projectId);
+      await this.migrateLegacyDataIfNeeded(db, projId);
 
       return new Promise((resolve) => {
         const tx = db.transaction([STORE_PROJECTS, STORE_LAYERS, STORE_FEATURES, STORE_AUDIT], 'readonly');
@@ -736,13 +771,13 @@ export class StorageService {
         const featuresStore = tx.objectStore(STORE_FEATURES);
         const auditStore = tx.objectStore(STORE_AUDIT);
 
-        const projectReq = projectsStore.get(projectId);
+        const projectReq = projectsStore.get(projId);
         const layersIndex = layersStore.index('projectId');
-        const layersReq = layersIndex.getAll(projectId);
+        const layersReq = layersIndex.getAll(projId);
         const featuresIndex = featuresStore.index('projectId');
-        const featuresReq = featuresIndex.getAll(projectId);
+        const featuresReq = featuresIndex.getAll(projId);
         const auditIndex = auditStore.index('projectId');
-        const auditReq = auditIndex.getAll(projectId);
+        const auditReq = auditIndex.getAll(projId);
 
         tx.oncomplete = () => {
           const projectData = projectReq.result || StorageService.loadCurrentProject() || {};
@@ -757,25 +792,9 @@ export class StorageService {
             projectData.layers = (syncProject && Array.isArray(syncProject.layers)) ? syncProject.layers : [];
           }
 
-          // 2. Recompõe Feições normalizadas
+          // 2. Recompõe Feições normalizadas (Respeita Regra 1 do GEMINI.md: array vazio [] deve permanecer vazio)
           let features = featuresReq.result || [];
-          // Fallback caso a feição ainda não tenha o projectId indexado
-          if (features.length === 0) {
-            try {
-              const allTx = db.transaction(STORE_FEATURES, 'readonly');
-              const allReq = allTx.objectStore(STORE_FEATURES).getAll();
-              allReq.onsuccess = () => {
-                const allFeats = allReq.result || [];
-                // Respeita a Regra 1 do GEMINI.md
-                projectData.features = Array.isArray(allFeats) ? allFeats : [];
-              };
-            } catch {
-              projectData.features = [];
-            }
-          } else {
-            // Respeita a Regra 1 do GEMINI.md: Se for array vazio [], respeitar e não voltar aos mocks
-            projectData.features = Array.isArray(features) ? features : [];
-          }
+          projectData.features = Array.isArray(features) ? features : [];
 
           // 3. Recompõe Log de Auditoria
           const audit = auditReq.result || [];
@@ -870,13 +889,47 @@ export class StorageService {
       if (typeof localStorage !== 'undefined') {
         localStorage.removeItem(STORAGE_KEY);
       }
+      const projId = _currentProjectId || 'projeto_padrao';
       this.getDB().then(db => {
         if (!db) return;
         const tx = db.transaction([STORE_PROJECTS, STORE_LAYERS, STORE_FEATURES, STORE_AUDIT], 'readwrite');
-        tx.objectStore(STORE_PROJECTS).clear();
-        tx.objectStore(STORE_LAYERS).clear();
-        tx.objectStore(STORE_FEATURES).clear();
-        tx.objectStore(STORE_AUDIT).clear();
+        tx.objectStore(STORE_PROJECTS).delete(projId);
+
+        // Remove apenas as camadas do projeto atual
+        const layersStore = tx.objectStore(STORE_LAYERS);
+        const layersIdx = layersStore.index('projectId');
+        const layersReq = layersIdx.openKeyCursor(IDBKeyRange.only(projId));
+        layersReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            layersStore.delete(cursor.primaryKey);
+            cursor.continue();
+          }
+        };
+
+        // Remove apenas as feições do projeto atual
+        const featuresStore = tx.objectStore(STORE_FEATURES);
+        const featuresIdx = featuresStore.index('projectId');
+        const featuresReq = featuresIdx.openKeyCursor(IDBKeyRange.only(projId));
+        featuresReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            featuresStore.delete(cursor.primaryKey);
+            cursor.continue();
+          }
+        };
+
+        // Remove apenas a auditoria do projeto atual
+        const auditStore = tx.objectStore(STORE_AUDIT);
+        const auditIdx = auditStore.index('projectId');
+        const auditReq = auditIdx.openKeyCursor(IDBKeyRange.only(projId));
+        auditReq.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            auditStore.delete(cursor.primaryKey);
+            cursor.continue();
+          }
+        };
       });
     } catch {}
   }
@@ -981,8 +1034,9 @@ export class StorageService {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
 
+      const projId = projectData.id || _currentProjectId || 'projeto_padrao';
       const payload = {
-        id: projectData.id || 'projeto_padrao',
+        id: projId,
         name: projectData.name || 'Levantamento Topográfico - Umuarama',
         description: projectData.description || '',
         basemap: projectData.basemap || 'google_satelite_puro',
@@ -1017,15 +1071,16 @@ export class StorageService {
   /**
    * Sincroniza deltas de feições na nuvem de forma assíncrona
    */
-  static async syncDeltasToCloud(toUpsert, toDelete, projectId = 'projeto_padrao') {
+  static async syncDeltasToCloud(toUpsert, toDelete, projectId = null) {
     if ((!toUpsert || toUpsert.length === 0) && (!toDelete || toDelete.length === 0)) return;
 
     try {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
 
+      const projId = projectId || _currentProjectId || 'projeto_padrao';
       const payload = {
-        projectId,
+        projectId: projId,
         toUpsert: toUpsert || [],
         toDelete: toDelete || []
       };
@@ -1064,8 +1119,9 @@ export class StorageService {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
 
+      const projId = projectData.id || _currentProjectId || 'projeto_padrao';
       const payload = {
-        id: projectData.id || 'projeto_padrao',
+        id: projId,
         name: projectData.name || 'Levantamento Topográfico - Umuarama',
         description: projectData.description || '',
         basemap: projectData.basemap || 'google_satelite_puro',
@@ -1121,9 +1177,10 @@ export class StorageService {
   /**
    * Carrega o projeto da nuvem (Hostinger MySQL)
    */
-  static async loadProjectFromCloud(projectId = 'projeto_padrao') {
+  static async loadProjectFromCloud(projectId = null) {
     try {
-      const res = await fetch(`${CLOUD_API_URL}?action=load&projectId=${encodeURIComponent(projectId)}`, {
+      const projId = projectId || _currentProjectId || 'projeto_padrao';
+      const res = await fetch(`${CLOUD_API_URL}?action=load&projectId=${encodeURIComponent(projId)}`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         cache: 'no-cache'
@@ -1164,13 +1221,14 @@ export class StorageService {
 
   /**
    * Busca alterações remotas (deltas) na nuvem desde a última checagem
-   * @param {string} projectId
-   * @returns {Promise<{upserted: Array, deleted: Array, project: Object}|null>}
+   * @param {string|null} projectId
+   * @returns {Promise<{upserted: Array, deleted: Array, layers: Array, project: Object}|null>}
    */
-  static async pullChangesFromCloud(projectId = 'projeto_padrao') {
+  static async pullChangesFromCloud(projectId = null) {
     try {
+      const projId = projectId || _currentProjectId || 'projeto_padrao';
       const sinceParam = _lastServerSyncTimestamp ? encodeURIComponent(_lastServerSyncTimestamp) : '';
-      const url = `${CLOUD_API_URL}?action=pull_changes&projectId=${encodeURIComponent(projectId)}&since=${sinceParam}`;
+      const url = `${CLOUD_API_URL}?action=pull_changes&projectId=${encodeURIComponent(projId)}&since=${sinceParam}`;
 
       const res = await fetch(url, {
         method: 'GET',
@@ -1194,6 +1252,7 @@ export class StorageService {
       return {
         upserted: Array.isArray(data.upserted) ? data.upserted : [],
         deleted: Array.isArray(data.deleted) ? data.deleted : [],
+        layers: Array.isArray(data.layers) ? data.layers : [],
         project: data.project || null
       };
     } catch (err) {
@@ -1206,8 +1265,9 @@ export class StorageService {
    * Grava no IndexedDB local as alterações vindas da nuvem (remotas)
    * sem reenviá-las para o servidor (evita loops e ecos de sincronização)
    */
-  static async applyRemoteChangesLocally(upserted = [], deletedIds = [], projectId = 'projeto_padrao') {
+  static async applyRemoteChangesLocally(upserted = [], deletedIds = [], projectId = null) {
     if ((!upserted || upserted.length === 0) && (!deletedIds || deletedIds.length === 0)) return true;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
 
     // Limpa das filas dirty locais para garantir que não haja feedback loop
     if (Array.isArray(deletedIds)) {
@@ -1244,7 +1304,7 @@ export class StorageService {
             const feat = upserted[i];
             if (feat && feat.id) {
               const compacted = GeoCompressor.compactFeatureForStorage(feat);
-              store.put({ ...compacted, projectId });
+              store.put({ ...compacted, projectId: projId });
             }
           }
         }

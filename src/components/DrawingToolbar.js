@@ -95,10 +95,32 @@ export class DrawingToolbar {
           </svg>
           <span class="cm-tool-shortcut">Z</span>
         </button>
+
+        <div class="cm-tool-divider"></div>
+
+        <!-- Indicador de Camada Ativa -->
+        <div class="cm-active-layer-indicator" id="cm-active-layer-indicator" title="Camada ativa para novos desenhos">
+          <div class="cm-active-layer-dot" style="background: ${this.activeLayer?.color || '#00E08A'};"></div>
+        </div>
       </div>
     `;
 
     this.bindEvents();
+  }
+
+  /**
+   * Atualiza a camada ativa de desenho na toolbar
+   * @param {Object} layer
+   */
+  setActiveLayer(layer) {
+    this.activeLayer = layer;
+    if (!this.container) return;
+    const indicator = this.container.querySelector('#cm-active-layer-indicator');
+    if (indicator && layer) {
+      indicator.title = `Camada ativa: "${layer.name}" (novos desenhos serão salvos nela)`;
+      const dot = indicator.querySelector('.cm-active-layer-dot');
+      if (dot) dot.style.background = layer.color || '#00E08A';
+    }
   }
 
   /**

@@ -359,3 +359,32 @@
   box-sizing: border-box;
 }
 
+/* ==========================================================================
+   Realce Visual de Feições Selecionadas no Mapa (CAD & GIS Selection Glow)
+   ========================================================================== */
+path.cm-feature-selected {
+  stroke: #38bdf8 !important;
+  stroke-width: 4px !important;
+  stroke-dasharray: 7, 5 !important;
+  filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.95)) drop-shadow(0 0 3px rgba(14, 165, 233, 0.8)) !important;
+  animation: cm-cad-stroke-pulse 2.2s infinite ease-in-out;
+}
+
+.cm-feature-selected-marker {
+  filter: drop-shadow(0 0 12px rgba(56, 189, 248, 1)) drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)) !important;
+  transform: scale(1.22) !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), filter 0.2s ease;
+  z-index: 9999 !important;
+}
+
+@keyframes cm-cad-stroke-pulse {
+  0%, 100% {
+    stroke-opacity: 1;
+    stroke-width: 4px;
+  }
+  50% {
+    stroke-opacity: 0.72;
+    stroke-width: 5.5px;
+  }
+}
+

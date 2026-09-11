@@ -32,7 +32,8 @@ export class LayerPanel {
     this.selectedFeatureIds = new Set();
     this.lastClickedFeatureId = null;
 
-    // Callbacks
+    this.activeLayerId = options.activeLayerId || (this.layers[0]?.id || null);
+    this.onLayerSelect = options.onLayerSelect || (() => {});
     this.onLayerToggle = options.onLayerToggle || (() => {});
     this.onLayerReorder = options.onLayerReorder || (() => {});
     this.onLayerOpacityChange = options.onLayerOpacityChange || (() => {});
@@ -234,6 +235,37 @@ export class LayerPanel {
       }
     }
     this.updateContent();
+  }
+
+  setActiveLayerId(layerId) {
+    this.activeLayerId = layerId;
+    if (this.activeTab === 'layers' && this.container) {
+      const rows = this.container.querySelectorAll('.cm-ai-layer-row');
+      rows.forEach(row => {
+        const rowLayerId = row.getAttribute('data-layer-row');
+        const isActive = rowLayerId === layerId;
+        row.classList.toggle('active-drawing-layer', isActive);
+
+        const nameCol = row.querySelector('.cm-ai-col-name');
+        if (nameCol) {
+          const existingBadge = nameCol.querySelector('.cm-ai-active-badge');
+          if (isActive && !existingBadge) {
+            const badge = document.createElement('span');
+            badge.className = 'cm-ai-active-badge';
+            badge.title = 'Camada ativa para novos desenhos';
+            badge.textContent = '✏️ Ativa';
+            const countChip = nameCol.querySelector('.cm-ai-count-chip');
+            if (countChip) {
+              nameCol.insertBefore(badge, countChip);
+            } else {
+              nameCol.appendChild(badge);
+            }
+          } else if (!isActive && existingBadge) {
+            existingBadge.remove();
+          }
+        }
+      });
+    }
   }
 
   updateLayers(layers, features = null) {

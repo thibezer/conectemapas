@@ -51,13 +51,33 @@ export class FeatureSyncController {
       }
     }
 
-    const targetLayer = app.layers.find(l => l.id === rawFeature.layerId) 
-      || app.layers.find(l => l.visible) 
-      || app.layers[0] 
+    const activeLayer = app.layers.find(l => l.id === app.activeLayerId)
+      || app.layers.find(l => l.visible)
+      || app.layers[0]
       || { id: 'layer-default', color: '#00E08A' };
-    const layerColor = rawFeature.color || targetLayer.color || '#00E08A';
 
-    // 2. Normalização estrita da feição
+    const targetLayer = app.layers.find(l => l.id === rawFeature.layerId) || activeLayer;
+    const layerColor = rawFeature.color || (rawFeature.layerId ? targetLayer.color : (activeLayer.color || targetLayer.color || '#00E08A'));
+
+    // 2. Normalização estrita da feição e cálculo de propriedades geométricas
+    const initialProps = { ...(rawFeature.properties || {}) };
+    if (app.mapEngine && Array.isArray(rawFeature.coordinates)) {
+      if (rawFeature.type === 'Polygon') {
+        const areaM2 = app.mapEngine.calculatePolygonArea(rawFeature.coordinates);
+        const perimM = app.mapEngine.calculatePolylineLength(rawFeature.coordinates);
+        if (!initialProps['Área (ha)']) initialProps['Área (ha)'] = (areaM2 / 10000).toFixed(2) + ' ha';
+        if (!initialProps['Área (m²)']) initialProps['Área (m²)'] = areaM2.toFixed(1) + ' m²';
+        if (!initialProps['Perímetro']) initialProps['Perímetro'] = perimM > 1000 ? (perimM / 1000).toFixed(2) + ' km' : perimM.toFixed(1) + ' m';
+      } else if (rawFeature.type === 'LineString') {
+        const lengthM = app.mapEngine.calculatePolylineLength(rawFeature.coordinates);
+        if (!initialProps['Extensão']) initialProps['Extensão'] = lengthM > 1000 ? (lengthM / 1000).toFixed(2) + ' km' : lengthM.toFixed(1) + ' m';
+      }
+    } else if (rawFeature.type === 'Circle' && rawFeature.radius) {
+      if (!initialProps['Raio']) initialProps['Raio'] = `${rawFeature.radius} m`;
+      const circleAreaHa = (Math.PI * Math.pow(rawFeature.radius, 2)) / 10000;
+      if (!initialProps['Área Coberta']) initialProps['Área Coberta'] = `${circleAreaHa.toFixed(2)} ha`;
+    }
+
     const newFeature = normalizeFeature({
       ...rawFeature,
       id: rawFeature.id || ('feat-' + Date.now() + '-' + Math.floor(Math.random() * 1000)),
@@ -79,9 +99,7 @@ export class FeatureSyncController {
         labelField: 'name',
         ...(rawFeature.style || {})
       },
-      properties: {
-        ...(rawFeature.properties || {})
-      },
+      properties: initialProps,
       createdBy: rawFeature.createdBy || 'Você',
       createdAt: rawFeature.createdAt || new Date().toISOString()
     });
@@ -164,7 +182,7 @@ export class FeatureSyncController {
     app.features.push(...normalized);
 
     // 2. Gravação em lote atômica e assíncrona no IndexedDB
-    StorageService.queueFeaturesBulkUpsert(normalized);
+    StorageService.queueFeaturesBulkUpsert(normalized, app.projectId);
 
     // 3. Atualização única e consolidada de todo o sistema
     app.refreshMapAndTable(true);
@@ -202,7 +220,7 @@ export class FeatureSyncController {
     app.features.push(...normalized);
 
     // 2. Gravação em lote atômica e assíncrona no IndexedDB
-    StorageService.queueFeaturesBulkUpsert(normalized);
+    StorageService.queueFeaturesBulkUpsert(normalized, app.projectId);
 
     // 3. Atualização única e consolidada de todo o sistema
     app.refreshMapAndTable(true);
@@ -245,8 +263,11 @@ export class FeatureSyncController {
       app.features[idx] = updatedFeature;
       app.mapEngine.updateFeature(updatedFeature, app.layers);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-      if (app.layerPanel && app.layerPanel.selectedFeature?.id === updatedFeature.id) {
-        app.layerPanel.selectedFeature = updatedFeature;
+      if (app.layerPanel) {
+        app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        if (app.layerPanel.selectedFeature?.id === updatedFeature.id) {
+          app.layerPanel.selectedFeature = updatedFeature;
+        }
       }
       app.collabHub.notifyFeatureUpdated(updatedFeature);
       const audit = app.collabHub.logAudit(`Editou feição "${updatedFeature.name}"`, updatedFeature.id);
@@ -299,6 +320,17 @@ export class FeatureSyncController {
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
       app.updateHUD();
+
+      // Persistência local imediata para que a feição criada pelo colega não desapareça ao recarregar a aba
+      StorageService.applyRemoteChangesLocally([data.feature], [], app.projectId);
+      StorageService.saveMetadata({
+        id: app.projectId,
+        name: app.projectName,
+        basemap: app.currentBasemap,
+        layers: app.layers,
+        featureCount: app.features.length
+      });
+
       UIToast.notificar({
         tipo: 'informativo',
         titulo: 'Nova Feição Criada',
@@ -311,6 +343,7 @@ export class FeatureSyncController {
         app.features[idx] = data.feature;
         app.mapEngine.updateFeature(data.feature, app.layers);
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+        StorageService.applyRemoteChangesLocally([data.feature], [], app.projectId);
       }
     } else if (type === 'feature:deleted') {
       app.features = app.features.filter(f => f.id !== data.featureId);
@@ -318,19 +351,65 @@ export class FeatureSyncController {
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
       app.updateHUD();
+
+      // Persistência local imediata do expurgo
+      StorageService.applyRemoteChangesLocally([], [data.featureId], app.projectId);
+      StorageService.saveMetadata({
+        id: app.projectId,
+        name: app.projectName,
+        basemap: app.currentBasemap,
+        layers: app.layers,
+        featureCount: app.features.length
+      });
+
       UIToast.notificar({
         tipo: 'informativo',
         titulo: 'Feição Excluída',
         mensagem: `${data.user.name} removeu uma feição.`,
         duracao: 3500
       });
+    } else if (type === 'layer:created') {
+      if (data.layer && !app.layers.some(l => l.id === data.layer.id)) {
+        app.layers.push(data.layer);
+        StorageService.saveLayer(data.layer, app.projectId);
+        if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+        if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+        UIToast.notificar({
+          tipo: 'informativo',
+          titulo: 'Nova Camada Adicionada',
+          mensagem: `${data.user?.name || 'Colaborador'} criou a camada "${data.layer.name}".`,
+          duracao: 3000
+        });
+      }
+    } else if (type === 'layer:updated') {
+      if (data.layer) {
+        const lIdx = app.layers.findIndex(l => l.id === data.layer.id);
+        if (lIdx >= 0) {
+          app.layers[lIdx] = data.layer;
+          StorageService.saveLayer(data.layer, app.projectId);
+          if (app.mapEngine) {
+            app.mapEngine.setLayerColor(data.layer.id, data.layer.color);
+            app.mapEngine.setLayerVisibility(data.layer.id, data.layer.visible !== false);
+          }
+          if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        }
+      }
+    } else if (type === 'layer:deleted') {
+      if (data.layerId) {
+        app.layers = app.layers.filter(l => l.id !== data.layerId);
+        StorageService.deleteLayer(data.layerId, null, app.projectId);
+        if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+        app.refreshMapAndTable();
+      }
     } else if (type === 'chat:message') {
       if (app.layerPanel) {
         app.layerPanel.addChatMessage(data.message);
       }
     } else if (type === 'audit:log') {
       app.auditLog.unshift(data.entry);
-      StorageService.logAudit(data.entry);
+      StorageService.logAudit(data.entry, app.projectId);
       if (app.layerPanel) {
         app.layerPanel.updateAuditLog(app.auditLog);
       }
@@ -345,13 +424,41 @@ export class FeatureSyncController {
    * Aplica deltas recebidos da sincronização na nuvem (multi-dispositivo)
    * Atualiza com segurança a memória, o motor de mapa e o IndexedDB local
    */
-  static applyRemoteDeltas(app, { upserted = [], deleted = [], project = null } = {}) {
+  static applyRemoteDeltas(app, { upserted = [], deleted = [], layers = [], project = null } = {}) {
     if (!app) return false;
 
     let stateChanged = false;
     const deletedSet = new Set(deleted);
 
-    // 1. Processa expurgos remotos (Tombstones)
+    // 1. Processa reconciliação de camadas remotas
+    if (Array.isArray(layers) && layers.length > 0) {
+      let layersChanged = false;
+      for (const remLayer of layers) {
+        if (!remLayer || !remLayer.id) continue;
+        const localLayer = app.layers.find(l => l.id === remLayer.id);
+        if (!localLayer) {
+          app.layers.push(remLayer);
+          layersChanged = true;
+        } else {
+          if (localLayer.name !== remLayer.name || localLayer.color !== remLayer.color) {
+            localLayer.name = remLayer.name;
+            localLayer.color = remLayer.color;
+            layersChanged = true;
+          }
+        }
+      }
+      if (layersChanged) {
+        stateChanged = true;
+        if (typeof app.setActiveLayer === 'function' && !app.layers.some(l => l.id === app.activeLayerId) && app.layers.length > 0) {
+          app.setActiveLayer(app.layers[0].id, false);
+        }
+        StorageService.saveLayersBatch(app.layers, app.projectId);
+        if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+      }
+    }
+
+    // 2. Processa expurgos remotos (Tombstones)
     if (deletedSet.size > 0) {
       const initialCount = app.features.length;
       app.features = app.features.filter(f => !deletedSet.has(f.id));
@@ -365,7 +472,7 @@ export class FeatureSyncController {
       }
     }
 
-    // 2. Processa feições criadas ou atualizadas remotamente
+    // 3. Processa feições criadas ou atualizadas remotamente
     if (Array.isArray(upserted) && upserted.length > 0) {
       for (const rawFeat of upserted) {
         if (!rawFeat || !rawFeat.id) continue;
@@ -388,7 +495,7 @@ export class FeatureSyncController {
       }
     }
 
-    // 3. Atualiza UI se houve qualquer modificação
+    // 4. Atualiza UI se houve qualquer modificação
     if (stateChanged) {
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);

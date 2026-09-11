@@ -4,11 +4,12 @@
    ========================================================================== */
 
 export class CollaborationHub {
-  constructor(currentUser, onEvent) {
+  constructor(currentUser, onEvent, projectId = 'projeto_padrao') {
     const defaultId = typeof crypto !== 'undefined' && crypto.randomUUID 
       ? 'usr_' + crypto.randomUUID().slice(0, 8) 
       : 'usr_' + Math.random().toString(36).substring(2, 10);
 
+    this.projectId = projectId || 'projeto_padrao';
     this.currentUser = currentUser || {
       id: defaultId,
       name: 'Você (Operador)',
@@ -29,7 +30,7 @@ export class CollaborationHub {
 
   initChannel() {
     try {
-      this.channel = new BroadcastChannel('conectemapas_collaboration_v1');
+      this.channel = new BroadcastChannel(`conectemapas_collab_${this.projectId}`);
       this.channel.onmessage = (event) => {
         const { type, data, sender } = event.data;
         if (sender && sender.id === this.currentUser.id) return; // Ignora próprias msgs
@@ -92,6 +93,18 @@ export class CollaborationHub {
         this.onEvent('feature:deleted', { featureId: data.featureId, user: sender });
         break;
 
+      case 'layer:create':
+        this.onEvent('layer:created', { layer: data.layer, user: sender });
+        break;
+
+      case 'layer:update':
+        this.onEvent('layer:updated', { layer: data.layer, user: sender });
+        break;
+
+      case 'layer:delete':
+        this.onEvent('layer:deleted', { layerId: data.layerId, user: sender });
+        break;
+
       case 'feature:lock':
         this.lockedFeatures.set(data.featureId, sender.id);
         this.onEvent('feature:locked', { featureId: data.featureId, user: sender });
@@ -146,6 +159,18 @@ export class CollaborationHub {
 
   notifyFeatureDeleted(featureId) {
     this.broadcast('feature:delete', { featureId });
+  }
+
+  notifyLayerCreated(layer) {
+    this.broadcast('layer:create', { layer });
+  }
+
+  notifyLayerUpdated(layer) {
+    this.broadcast('layer:update', { layer });
+  }
+
+  notifyLayerDeleted(layerId) {
+    this.broadcast('layer:delete', { layerId });
   }
 
   lockFeature(featureId) {

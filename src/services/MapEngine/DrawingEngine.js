@@ -16,12 +16,19 @@ export class DrawingEngine {
     this.measureTooltip = null;
     this._measureTextEl = null;
     this.vertexMarkers = L.layerGroup().addTo(this.map);
+    this.snapMarker = null;
     this.lastCircleRadius = null;
 
     // Otimizações de mousemove & memória (Item 9)
     this._previewPoints = [];
     this._lastMoveLatLng = null;
     this._cumulativeMeasureDistance = 0;
+    this._activeSnapLatLng = null;
+    this.activeDrawingLayer = null;
+  }
+
+  setActiveDrawingLayer(layer) {
+    this.activeDrawingLayer = layer;
   }
 
   setTool(tool) {
@@ -32,6 +39,10 @@ export class DrawingEngine {
     if (container) {
       container.style.cursor = tool === 'select' ? '' : 'crosshair';
     }
+
+    if (this.engine && typeof this.engine.notifyToolChange === 'function') {
+      this.engine.notifyToolChange(tool);
+    }
   }
 
   resetDrawingState() {
@@ -40,6 +51,7 @@ export class DrawingEngine {
     this._lastMoveLatLng = null;
     this._cumulativeMeasureDistance = 0;
     this.lastCircleRadius = null;
+    this._activeSnapLatLng = null;
 
     if (this.tempLayer) {
       this.map.removeLayer(this.tempLayer);
@@ -47,6 +59,10 @@ export class DrawingEngine {
     }
     if (this.vertexMarkers) {
       this.vertexMarkers.clearLayers();
+    }
+    if (this.snapMarker) {
+      this.map.removeLayer(this.snapMarker);
+      this.snapMarker = null;
     }
     if (this.measureTooltip) {
       this.map.removeLayer(this.measureTooltip);
@@ -73,7 +89,14 @@ export class DrawingEngine {
       if (isFirst) {
         marker.bindTooltip('Clique para fechar forma', { direction: 'top', offset: [0, -6] });
         marker.on('click', (e) => {
-          L.DomEvent.stopPropagation(e);
+          if (e) {
+            L.DomEvent.stop(e);
+            if (e.originalEvent) {
+              e.originalEvent._cmFeatureClicked = true;
+              e.originalEvent.stopPropagation();
+              e.originalEvent.preventDefault();
+            }
+          }
           if (this.drawingPoints.length >= 3) {
             this.finalizeCurrentDrawing();
           }
@@ -112,8 +135,8 @@ export class DrawingEngine {
     hud.innerHTML = `
       <span class="cm-cad-hud-pulse"></span>
       <span><strong>${toolName}:</strong> ${count} vértice(s) adicionado(s)</span>
-      <span class="cm-cad-hud-hint">• Pressione <strong>[Enter]</strong> ou <strong>[Espaço]</strong> para concluir</span>
-      <span class="cm-cad-hud-hint">• <strong>[Ctrl+Z]</strong> desfaz vértice</span>
+      <span class="cm-cad-hud-hint">• <strong>[Enter]</strong> ou <strong>[Espaço]</strong> conclui</span>
+      <span class="cm-cad-hud-hint">• <strong>[Ctrl+Z]</strong> ou <strong>[Botão Direito]</strong> desfaz</span>
       <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> cancela</span>
       ${canFinish ? `<button id="btn-cad-finish" class="cm-cad-finish-btn">✔ Concluir Forma</button>` : ''}
     `;
@@ -128,6 +151,9 @@ export class DrawingEngine {
   }
 
   finalizeCurrentDrawing() {
+    const layerId = this.activeDrawingLayer ? this.activeDrawingLayer.id : undefined;
+    const color = this.activeDrawingLayer ? this.activeDrawingLayer.color : undefined;
+
     if (this.activeTool === 'line' && this.drawingPoints.length >= 2) {
       const coords = [...this.drawingPoints];
       this.resetDrawingState();
@@ -135,7 +161,9 @@ export class DrawingEngine {
 
       this.engine.onFeatureCreated({
         type: 'LineString',
-        coordinates: coords
+        coordinates: coords,
+        layerId,
+        color
       });
       return true;
     } else if (this.activeTool === 'polygon' && this.drawingPoints.length >= 3) {
@@ -145,10 +173,12 @@ export class DrawingEngine {
 
       this.engine.onFeatureCreated({
         type: 'Polygon',
-        coordinates: coords
+        coordinates: coords,
+        layerId,
+        color
       });
       return true;
-    } else if (this.activeTool === 'circle' && this.drawingPoints.length >= 1 && this.lastCircleRadius) {
+    } else if (this.activeTool === 'circle' && this.drawingPoints.length >= 1 && this.lastCircleRadius && this.lastCircleRadius >= 2) {
       const center = this.drawingPoints[0];
       const radius = Math.round(this.lastCircleRadius);
       this.resetDrawingState();
@@ -157,7 +187,9 @@ export class DrawingEngine {
       this.engine.onFeatureCreated({
         type: 'Circle',
         coordinates: center,
-        radius
+        radius,
+        layerId,
+        color
       });
       return true;
     } else if (this.activeTool === 'measure' && this.drawingPoints.length >= 2) {
@@ -198,22 +230,72 @@ export class DrawingEngine {
     return false;
   }
 
+  findNearbyVertex(mouseLatLng, maxPixelDistance = 14) {
+    if (!this.map || !mouseLatLng) return null;
+    const mousePt = this.map.latLngToContainerPoint(mouseLatLng);
+
+    // 1. Prioridade: Primeiro ponto do polígono em desenho (para fechamento fácil e perfeito)
+    if (this.activeTool === 'polygon' && this.drawingPoints.length >= 3) {
+      const firstPt = this.drawingPoints[0];
+      const p1 = this.map.latLngToContainerPoint(firstPt);
+      if (Math.hypot(mousePt.x - p1.x, mousePt.y - p1.y) <= maxPixelDistance) {
+        return firstPt;
+      }
+    }
+
+    // 2. Vértices de feições visíveis no viewport
+    if (this.engine.featureRenderer && this.engine.featureRenderer.allFeatures) {
+      const bounds = this.map.getBounds();
+      const visibleFeatures = this.engine.spatialIndex 
+        ? this.engine.spatialIndex.query(bounds, 0.05)
+        : this.engine.featureRenderer.allFeatures;
+
+      for (const feat of visibleFeatures) {
+        if (!feat || feat.visible === false) continue;
+        if (feat.type === 'Point' && feat.coordinates) {
+          const pt = [feat.coordinates[0], feat.coordinates[1]];
+          const p = this.map.latLngToContainerPoint(pt);
+          if (Math.hypot(mousePt.x - p.x, mousePt.y - p.y) <= maxPixelDistance) {
+            return pt;
+          }
+        } else if ((feat.type === 'LineString' || feat.type === 'Polygon') && Array.isArray(feat.coordinates)) {
+          for (const vertex of feat.coordinates) {
+            if (!vertex) continue;
+            const pt = (vertex.lat !== undefined) ? [vertex.lat, vertex.lng] : vertex;
+            const p = this.map.latLngToContainerPoint(pt);
+            if (Math.hypot(mousePt.x - p.x, mousePt.y - p.y) <= maxPixelDistance) {
+              return pt;
+            }
+          }
+        }
+      }
+    }
+
+    return null;
+  }
+
   handleClick(e) {
-    const latlng = [e.latlng.lat, e.latlng.lng];
+    const rawLatLng = [e.latlng.lat, e.latlng.lng];
+    const latlng = this._activeSnapLatLng || rawLatLng;
+    const activeColor = this.activeDrawingLayer?.color || '#00E08A';
+    const activeLayerId = this.activeDrawingLayer?.id;
 
     if (this.activeTool === 'point') {
+      this.resetDrawingState();
+      this.setTool('select');
       this.engine.onFeatureCreated({
         type: 'Point',
-        coordinates: latlng
+        coordinates: latlng,
+        layerId: activeLayerId,
+        color: activeColor
       });
-      this.setTool('select');
     } else if (this.activeTool === 'line') {
       this.drawingPoints.push(latlng);
       this._previewPoints = [...this.drawingPoints, latlng];
       this.renderVertexHandles();
       if (!this.tempLayer) {
         this.tempLayer = L.polyline(this.drawingPoints, {
-          color: '#00E08A',
+          color: activeColor,
           weight: 3,
           dashArray: '4, 4'
         }).addTo(this.map);
@@ -222,13 +304,21 @@ export class DrawingEngine {
       }
       this.updateDrawingHUD();
     } else if (this.activeTool === 'polygon') {
+      // Se clicou no primeiro vértice para fechar com 3+ pontos
+      if (this.drawingPoints.length >= 3 && this._activeSnapLatLng && 
+          this._activeSnapLatLng[0] === this.drawingPoints[0][0] && 
+          this._activeSnapLatLng[1] === this.drawingPoints[0][1]) {
+        this.finalizeCurrentDrawing();
+        return;
+      }
+
       this.drawingPoints.push(latlng);
       this._previewPoints = [...this.drawingPoints, latlng];
       this.renderVertexHandles();
       if (!this.tempLayer) {
         this.tempLayer = L.polygon(this.drawingPoints, {
-          color: '#00E08A',
-          fillColor: '#00E08A',
+          color: activeColor,
+          fillColor: activeColor,
           fillOpacity: 0.35,
           weight: 2,
           dashArray: '4, 4'
@@ -246,13 +336,18 @@ export class DrawingEngine {
       } else {
         const center = this.drawingPoints[0];
         const radius = this.engine.calculateDistance(center, latlng);
+        if (radius < 2) {
+          return;
+        }
+        this.resetDrawingState();
+        this.setTool('select');
         this.engine.onFeatureCreated({
           type: 'Circle',
           coordinates: center,
-          radius: Math.round(radius)
+          radius: Math.round(radius),
+          layerId: activeLayerId,
+          color: activeColor
         });
-        this.resetDrawingState();
-        this.setTool('select');
       }
     } else if (this.activeTool === 'measure') {
       if (this.drawingPoints.length > 0) {
@@ -278,8 +373,7 @@ export class DrawingEngine {
   }
 
   handleMouseMove(e) {
-    if (this.drawingPoints.length === 0) return;
-    if (this.activeTool === 'select' || this.activeTool === 'point') return;
+    if (this.activeTool === 'select') return;
 
     const lat = e.latlng.lat;
     const lng = e.latlng.lng;
@@ -292,7 +386,34 @@ export class DrawingEngine {
     }
     this._lastMoveLatLng = { lat, lng };
 
-    const currentLatLng = [lat, lng];
+    // Snapping Magnético inteligente
+    const snapped = this.findNearbyVertex(e.latlng, 14);
+    if (snapped) {
+      this._activeSnapLatLng = snapped;
+      if (!this.snapMarker) {
+        this.snapMarker = L.circleMarker(snapped, {
+          radius: 7,
+          color: '#00E08A',
+          fillColor: 'transparent',
+          weight: 2.5,
+          dashArray: '3, 3',
+          interactive: false
+        }).addTo(this.map);
+      } else {
+        this.snapMarker.setLatLng(snapped);
+      }
+    } else {
+      this._activeSnapLatLng = null;
+      if (this.snapMarker) {
+        this.map.removeLayer(this.snapMarker);
+        this.snapMarker = null;
+      }
+    }
+
+    if (this.drawingPoints.length === 0) return;
+    if (this.activeTool === 'point') return;
+
+    const currentLatLng = this._activeSnapLatLng || [lat, lng];
 
     // Reutilização do array de preview in-place sem alocação contínua de memória
     if (this._previewPoints.length !== this.drawingPoints.length + 1) {
@@ -316,10 +437,11 @@ export class DrawingEngine {
       }
       this.lastCircleRadius = radius;
       if (!this.tempLayer) {
+        const circleColor = this.activeDrawingLayer?.color || '#8b5cf6';
         this.tempLayer = L.circle(center, {
           radius,
-          color: '#8b5cf6',
-          fillColor: '#8b5cf6',
+          color: circleColor,
+          fillColor: circleColor,
           fillOpacity: 0.25,
           weight: 2,
           dashArray: '4, 4'
@@ -334,7 +456,14 @@ export class DrawingEngine {
     if (this.drawingPoints.length > 1) {
       const last = this.drawingPoints[this.drawingPoints.length - 1];
       const prev = this.drawingPoints[this.drawingPoints.length - 2];
-      if (this.engine.calculateDistance(last, prev) < 3) {
+      if (this.map) {
+        const pLast = this.map.latLngToContainerPoint(last);
+        const pPrev = this.map.latLngToContainerPoint(prev);
+        const distPx = Math.hypot(pLast.x - pPrev.x, pLast.y - pPrev.y);
+        if (distPx < 16) {
+          this.drawingPoints.pop();
+        }
+      } else if (this.engine.calculateDistance(last, prev) < 2) {
         this.drawingPoints.pop();
       }
     }

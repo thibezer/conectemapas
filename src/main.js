@@ -11,7 +11,6 @@ import { StorageService } from './services/StorageService.js';
 import { DEFAULT_LAYERS, normalizeFeature } from './services/MockData.js';
 import { CollaborationHub } from './services/CollaborationHub.js';
 import { MapEngine } from './services/MapEngine.js';
-import { StressBenchmark } from './services/StressBenchmark.js';
 
 import { HeaderBar } from './components/HeaderBar.js';
 import { DrawingToolbar } from './components/DrawingToolbar.js';
@@ -25,6 +24,9 @@ import { NewFeatureModal } from './components/Modals/NewFeatureModal.js';
 import { NewLayerModal } from './components/Modals/NewLayerModal.js';
 import { PrintComposerModal } from './components/PrintComposer/PrintComposerModal.js';
 
+import { ContextMenu } from './components/ContextMenu.js';
+import { SelectionHUD } from './components/SelectionHUD.js';
+
 import { ProjectActionsController } from './controllers/ProjectActionsController.js';
 import { ShortcutsController } from './controllers/ShortcutsController.js';
 import { FeatureSyncController } from './controllers/FeatureSyncController.js';
@@ -33,8 +35,10 @@ class ConecteMapasApp {
   constructor() {
     const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     this.projectId = (urlParams && urlParams.get('project')) ? urlParams.get('project') : 'projeto_padrao';
+    StorageService.setCurrentProjectId(this.projectId);
     this.projectName = 'Levantamento Topográfico - Umuarama';
     this.layers = [...DEFAULT_LAYERS];
+    this.activeLayerId = this.layers[0]?.id || 'layer-topografia';
     this.features = [];
     this.auditLog = [];
     this.chatMessages = [];
@@ -42,6 +46,8 @@ class ConecteMapasApp {
 
     this.mapEngine = null;
     this.collabHub = null;
+    this.contextMenu = null;
+    this.selectionHUD = null;
     this.headerBar = null;
     this.drawingToolbar = null;
     this.layerPanel = null;
@@ -81,9 +87,6 @@ class ConecteMapasApp {
       }
     });
 
-    this.stressBenchmark = new StressBenchmark(this);
-    window.stressBenchmark = this.stressBenchmark;
-
     setTimeout(() => {
       UIToast.notificar({
         tipo: 'sucesso',
@@ -96,19 +99,25 @@ class ConecteMapasApp {
 
   loadState() {
     const saved = StorageService.loadCurrentProject();
-    if (saved) {
+    if (saved && (!saved.id || saved.id === this.projectId)) {
       if (saved.name) {
         this.projectName = (saved.name === 'Levantamento Planialtimétrico - Brasília')
           ? 'Levantamento Topográfico - Umuarama'
           : saved.name;
       }
-      if (Array.isArray(saved.layers)) this.layers = saved.layers;
+      if (Array.isArray(saved.layers) && saved.layers.length > 0) {
+        this.layers = saved.layers;
+        if (!this.layers.some(l => l.id === this.activeLayerId)) {
+          this.activeLayerId = this.layers[0].id;
+        }
+      }
       if (Array.isArray(saved.features)) {
         this.features = saved.features.map(normalizeFeature);
       }
       if (Array.isArray(saved.auditLog)) this.auditLog = saved.auditLog;
       if (saved.basemap) this.currentBasemap = saved.basemap;
     } else {
+      this.features = [];
       this.auditLog.push({
         id: 'aud_init',
         action: 'Projeto inicializado',
@@ -125,6 +134,16 @@ class ConecteMapasApp {
         if (saved.name) this.projectName = saved.name;
         if (Array.isArray(saved.layers) && saved.layers.length > 0) {
           this.layers = saved.layers;
+          if (!this.layers.some(l => l.id === this.activeLayerId)) {
+            this.activeLayerId = this.layers[0].id;
+          }
+          const curActive = this.layers.find(l => l.id === this.activeLayerId) || this.layers[0];
+          if (curActive) {
+            if (this.mapEngine) this.mapEngine.setActiveDrawingLayer(curActive);
+            if (this.drawingToolbar) this.drawingToolbar.setActiveLayer(curActive);
+            if (this.layerPanel) this.layerPanel.setActiveLayerId(curActive.id);
+            if (this.newFeatureModal) this.newFeatureModal.setActiveLayerId(curActive.id);
+          }
         }
         if (Array.isArray(saved.auditLog) && saved.auditLog.length > 0) {
           this.auditLog = saved.auditLog;
@@ -173,7 +192,7 @@ class ConecteMapasApp {
             updated = true;
           }
 
-          if (Array.isArray(cloudData.features) && cloudData.features.length > 0) {
+          if (Array.isArray(cloudData.features)) {
             this.features = cloudData.features.map(normalizeFeature);
             updated = true;
           }
@@ -215,7 +234,7 @@ class ConecteMapasApp {
         // Dispositivo já possui feições em cache local: busca deltas e tombstones ocorridos desde a última sessão
         try {
           const deltaChanges = await StorageService.pullChangesFromCloud(this.projectId);
-          if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0)) {
+          if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
             FeatureSyncController.applyRemoteDeltas(this, deltaChanges);
           }
         } catch (e) {
@@ -253,8 +272,9 @@ class ConecteMapasApp {
 
         const hasUpserted = Array.isArray(changes.upserted) && changes.upserted.length > 0;
         const hasDeleted = Array.isArray(changes.deleted) && changes.deleted.length > 0;
+        const hasLayers = Array.isArray(changes.layers) && changes.layers.length > 0;
 
-        if (hasUpserted || hasDeleted) {
+        if (hasUpserted || hasDeleted || hasLayers) {
           const changed = FeatureSyncController.applyRemoteDeltas(this, changes);
           if (changed) {
             this._updateSyncChip();
@@ -271,6 +291,7 @@ class ConecteMapasApp {
    */
   saveMetadata(isImmediate = false) {
     const payload = {
+      id: this.projectId,
       name: this.projectName,
       basemap: this.currentBasemap,
       layers: this.layers,
@@ -291,7 +312,7 @@ class ConecteMapasApp {
    */
   saveFeature(feature) {
     if (feature) {
-      StorageService.saveFeature(feature);
+      StorageService.saveFeature(feature, this.projectId);
       this.saveMetadata(false);
     }
   }
@@ -323,6 +344,7 @@ class ConecteMapasApp {
     }
 
     const payload = {
+      id: this.projectId,
       name: this.projectName,
       basemap: this.currentBasemap,
       layers: this.layers,
@@ -394,7 +416,7 @@ class ConecteMapasApp {
   initCollaboration() {
     this.collabHub = new CollaborationHub(null, (type, data) => {
       FeatureSyncController.handleCollabEvent(this, type, data);
-    });
+    }, this.projectId);
   }
 
   initMap() {
@@ -407,29 +429,24 @@ class ConecteMapasApp {
       center: [-23.7661, -53.3206],
       zoom: 14,
       initialBasemap: this.currentBasemap,
+      onToolChange: (tool) => {
+        if (this.drawingToolbar) {
+          this.drawingToolbar.setActiveTool(tool);
+        }
+      },
       onFeatureCreated: (rawFeature) => {
         FeatureSyncController.handleDrawingCompleted(this, rawFeature);
       },
-      onFeatureSelected: (feature) => {
-        if (this.layerPanel) {
-          this.layerPanel.setSelectedFeature(feature);
+      onContextMenu: (data) => {
+        if (this.contextMenu) {
+          this.contextMenu.open(data);
         }
       },
+      onFeatureSelected: (feature) => {
+        this.updateSelectionState(feature ? [feature] : []);
+      },
       onFeaturesSelected: (features) => {
-        if (this.layerPanel) {
-          this.layerPanel.setSelectedFeatures(features);
-        }
-        if (this.attributeTable && features && features.length === 1) {
-          this.attributeTable.selectFeature(features[0].id);
-        }
-        if (features && features.length > 1) {
-          UIToast.notificar({
-            tipo: 'informativo',
-            titulo: 'Caixa de Seleção',
-            mensagem: `${features.length} feições selecionadas.`,
-            duracao: 2000
-          });
-        }
+        this.updateSelectionState(features || []);
       },
       onCursorMove: (latlng) => {
         if (!latlng) return;
@@ -446,12 +463,45 @@ class ConecteMapasApp {
     this.mapEngine.setBaseLayer(this.currentBasemap);
     this.mapEngine.renderFeatures(this.features, this.layers);
 
+    const initialActive = this.layers.find(l => l.id === this.activeLayerId) || this.layers[0];
+    if (initialActive && this.mapEngine) {
+      this.mapEngine.setActiveDrawingLayer(initialActive);
+    }
+
     this.mapEngine.map.on('zoomend', () => {
       const zoomSpan = document.getElementById('hud-zoom');
       if (zoomSpan && this.mapEngine.map) {
         zoomSpan.textContent = `Zoom: ${this.mapEngine.map.getZoom()}`;
       }
     });
+  }
+
+  setActiveLayer(layerId, notify = true) {
+    const layer = this.layers.find(l => l.id === layerId) || this.layers[0];
+    if (!layer) return;
+    this.activeLayerId = layer.id;
+
+    if (this.layerPanel && typeof this.layerPanel.setActiveLayerId === 'function') {
+      this.layerPanel.setActiveLayerId(layer.id);
+    }
+    if (this.mapEngine && typeof this.mapEngine.setActiveDrawingLayer === 'function') {
+      this.mapEngine.setActiveDrawingLayer(layer);
+    }
+    if (this.drawingToolbar && typeof this.drawingToolbar.setActiveLayer === 'function') {
+      this.drawingToolbar.setActiveLayer(layer);
+    }
+    if (this.newFeatureModal && typeof this.newFeatureModal.setActiveLayerId === 'function') {
+      this.newFeatureModal.setActiveLayerId(layer.id);
+    }
+
+    if (notify) {
+      UIToast.notificar({
+        tipo: 'informativo',
+        titulo: 'Camada de Desenho Ativa',
+        mensagem: `Novos desenhos serão salvos em "${layer.name}".`,
+        duracao: 2200
+      });
+    }
   }
 
   initComponents() {
@@ -523,10 +573,16 @@ class ConecteMapasApp {
       }
     });
     this.drawingToolbar.render(document.getElementById('drawing-toolbar-mount'));
+    const initialLayer = this.layers.find(l => l.id === this.activeLayerId) || this.layers[0];
+    if (initialLayer && this.drawingToolbar) {
+      this.drawingToolbar.setActiveLayer(initialLayer);
+    }
 
     this.layerPanel = new LayerPanel({
       layers: this.getLayersWithCounts(),
       features: this.features,
+      activeLayerId: this.activeLayerId,
+      onLayerSelect: (layerId) => this.setActiveLayer(layerId),
       currentBasemap: this.currentBasemap,
       auditLog: this.auditLog,
       chatMessages: this.chatMessages,
@@ -535,14 +591,15 @@ class ConecteMapasApp {
         if (layer) {
           layer.visible = isVisible;
           this.mapEngine.setLayerVisibility(layerId, isVisible);
-          StorageService.saveLayer(layer);
+          StorageService.saveLayer(layer, this.projectId);
+          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
           this.saveMetadata();
         }
       },
       onLayerReorder: (newLayers) => {
         this.layers = [...newLayers];
         this.mapEngine.reorderLayers(this.layers);
-        StorageService.saveLayersBatch(this.layers);
+        StorageService.saveLayersBatch(this.layers, this.projectId);
         this.saveMetadata();
         UIToast.notificar({ tipo: 'informativo', titulo: 'Sobreposição Atualizada', mensagem: 'Ordem das camadas e Z-Index reordenados.', duracao: 1800 });
       },
@@ -551,7 +608,8 @@ class ConecteMapasApp {
         if (layer) {
           layer.opacity = opacity;
           this.mapEngine.setLayerOpacity(layerId, opacity);
-          StorageService.saveLayer(layer);
+          StorageService.saveLayer(layer, this.projectId);
+          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
           this.saveMetadata();
         }
       },
@@ -559,7 +617,8 @@ class ConecteMapasApp {
         const layer = this.layers.find(l => l.id === layerId);
         if (layer) {
           layer.name = newName;
-          StorageService.saveLayer(layer);
+          StorageService.saveLayer(layer, this.projectId);
+          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
           this.saveMetadata();
           UIToast.notificar({ tipo: 'sucesso', titulo: 'Camada Renomeada', mensagem: `Nome alterado para "${newName}".`, duracao: 2000 });
         }
@@ -569,7 +628,8 @@ class ConecteMapasApp {
         if (layer) {
           layer.color = newColor;
           this.mapEngine.setLayerColor(layerId, newColor);
-          StorageService.saveLayer(layer);
+          StorageService.saveLayer(layer, this.projectId);
+          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
           this.saveMetadata();
         }
       },
@@ -681,6 +741,7 @@ class ConecteMapasApp {
 
     this.newFeatureModal = new NewFeatureModal({
       layers: this.layers,
+      activeLayerId: this.activeLayerId,
       onSave: (newFeature) => FeatureSyncController.createFeature(this, newFeature)
     });
     this.newFeatureModal.render(document.getElementById('new-feature-modal-mount'));
@@ -697,6 +758,53 @@ class ConecteMapasApp {
       currentBasemap: this.currentBasemap
     });
     this.printComposerModal.render(document.getElementById('print-composer-mount'));
+
+    // Menu de Contexto CAD/GIS acionado pelo Botão Direito
+    this.contextMenu = new ContextMenu(this);
+
+    // Barra Flutuante Indicadora de Feições Selecionadas (Selection HUD)
+    this.selectionHUD = new SelectionHUD({
+      container: document.querySelector('.cm-workspace') || document.body,
+      onInspect: (feature) => {
+        if (this.layerPanel) {
+          this.layerPanel.setSelectedFeature(feature);
+          const sidebar = document.getElementById('sidebar');
+          if (sidebar && sidebar.classList.contains('collapsed')) {
+            sidebar.classList.remove('collapsed');
+          }
+        }
+      },
+      onZoom: (features) => {
+        if (!features || features.length === 0) return;
+        if (this.mapEngine) {
+          this.mapEngine.zoomToFeatures(features);
+        }
+      },
+      onOpenTable: (features) => {
+        const bottomPanel = document.getElementById('bottom-panel');
+        if (bottomPanel && !bottomPanel.classList.contains('open')) {
+          const toggleBtn = document.getElementById('btn-toggle-table');
+          if (toggleBtn) toggleBtn.click();
+        }
+        if (this.attributeTable && features.length > 0) {
+          this.attributeTable.selectFeature(features[0].id);
+        }
+      },
+      onDelete: (features) => {
+        if (!features || features.length === 0) return;
+        if (features.length === 1) {
+          this.deleteFeature(features[0].id);
+        } else {
+          const ids = features.map(f => f.id);
+          this.layerPanel?.options?.onBulkDelete?.(ids);
+        }
+      },
+      onClear: () => {
+        if (this.mapEngine) {
+          this.mapEngine.clearSelection();
+        }
+      }
+    });
 
     ShortcutsController.bindGlobalShortcuts(this);
   }
@@ -721,9 +829,48 @@ class ConecteMapasApp {
     return this.layers.map(layer => ({ ...layer, featureCount: countMap.get(layer.id) || 0 }));
   }
 
-  updateHUD() {
+  updateSelectionState(features = []) {
+    const list = Array.isArray(features) ? features : (features ? [features] : []);
+
+    // 1. Atualiza o SelectionHUD flutuante
+    if (this.selectionHUD) {
+      this.selectionHUD.update(list, this.layers);
+    }
+
+    // 2. Sincroniza com o LayerPanel
+    if (this.layerPanel) {
+      if (list.length === 1) {
+        this.layerPanel.setSelectedFeature(list[0]);
+      } else if (list.length > 1) {
+        this.layerPanel.setSelectedFeatures(list);
+      } else {
+        this.layerPanel.setSelectedFeature(null);
+      }
+    }
+
+    // 3. Sincroniza com a Tabela de Atributos
+    if (this.attributeTable && list.length === 1) {
+      this.attributeTable.selectFeature(list[0].id);
+    }
+
+    // 4. Atualiza o contador do HUD inferior
+    this.updateHUD(list.length);
+  }
+
+  updateHUD(selectedCount = null) {
     const countSpan = document.getElementById('hud-features-count');
-    if (countSpan) countSpan.textContent = `${this.features.length} Feições Ativas`;
+    if (countSpan) {
+      const total = this.features ? this.features.length : 0;
+      const count = selectedCount !== null 
+        ? selectedCount 
+        : (this.mapEngine?.selectedFeatureIds?.size || (this.mapEngine?.selectedFeatureId ? 1 : 0));
+
+      if (count > 0) {
+        countSpan.innerHTML = `<strong>${total}</strong> Feições Ativas <span style="color: #38bdf8; font-weight: 600;">(${count} selecionada${count > 1 ? 's' : ''})</span>`;
+      } else {
+        countSpan.textContent = `${total} Feições Ativas`;
+      }
+    }
   }
 
   getToolName(tool) {
@@ -736,6 +883,14 @@ class ConecteMapasApp {
       measure: 'Régua de Medição (M)'
     };
     return names[tool] || tool;
+  }
+
+  deleteFeature(featureId) {
+    return FeatureSyncController.deleteFeature(this, featureId);
+  }
+
+  updateFeature(updatedFeature) {
+    return FeatureSyncController.updateFeature(this, updatedFeature);
   }
 
   createFeature(rawFeature, options = {}) {

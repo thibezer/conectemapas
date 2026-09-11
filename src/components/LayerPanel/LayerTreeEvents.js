@@ -214,6 +214,22 @@ export class LayerTreeEvents {
       });
     }
 
+    // Camadas: Selecionar Camada Ativa para Desenho
+    document.querySelectorAll('[data-layer-row]').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('[data-layer-eye], [data-layer-lock], [data-layer-expand], [data-layer-target], [data-layer-fit], [data-layer-settings], input, button')) {
+          return;
+        }
+        const layerId = row.getAttribute('data-layer-row');
+        if (layerId && panel.activeLayerId !== layerId) {
+          panel.setActiveLayerId(layerId);
+          if (typeof panel.onLayerSelect === 'function') {
+            panel.onLayerSelect(layerId);
+          }
+        }
+      });
+    });
+
     // Camadas: Expand, Eye, Lock, Target, Fit
     document.querySelectorAll('[data-layer-expand]').forEach(btn => {
       btn.addEventListener('click', (e) => {

@@ -250,6 +250,7 @@ switch ($action) {
             $coords = json_decode($f['coordinates'], true);
             $props = !empty($f['properties']) ? json_decode($f['properties'], true) : [];
             $style = !empty($f['style']) ? json_decode($f['style'], true) : [];
+            $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
             $features[] = [
                 'id'          => $f['id'],
                 'layerId'     => $f['layerId'],
@@ -259,6 +260,7 @@ switch ($action) {
                 'properties'  => $props,
                 'style'       => $style,
                 'color'       => $f['color'],
+                'radius'      => $radius,
                 'createdBy'   => $f['createdBy'],
                 'createdAt'   => $f['createdAt']
             ];
@@ -426,6 +428,11 @@ switch ($action) {
 
                 foreach ($toUpsert as $feat) {
                     if (empty($feat['id'])) continue;
+                    $props = !empty($feat['properties']) ? (is_array($feat['properties']) ? $feat['properties'] : json_decode($feat['properties'], true)) : [];
+                    if (!empty($feat['radius'])) {
+                        $props['radius'] = (float)$feat['radius'];
+                    }
+
                     $stmtUpsert->execute([
                         $feat['id'],
                         $projectId,
@@ -433,7 +440,7 @@ switch ($action) {
                         $feat['name'] ?? 'Feição',
                         $feat['type'] ?? 'Polygon',
                         json_encode($feat['coordinates'] ?? [], JSON_UNESCAPED_UNICODE),
-                        json_encode($feat['properties'] ?? [], JSON_UNESCAPED_UNICODE),
+                        json_encode($props, JSON_UNESCAPED_UNICODE),
                         json_encode($feat['style'] ?? [], JSON_UNESCAPED_UNICODE),
                         $feat['color'] ?? '#00E08A',
                         $feat['createdBy'] ?? 'Operador'
@@ -486,15 +493,19 @@ switch ($action) {
         $rawUpserted = $stmtUpsert->fetchAll();
         $upserted = [];
         foreach ($rawUpserted as $f) {
+            $props = !empty($f['properties']) ? json_decode($f['properties'], true) : [];
+            $style = !empty($f['style']) ? json_decode($f['style'], true) : [];
+            $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
             $upserted[] = [
                 'id'          => $f['id'],
                 'layerId'     => $f['layerId'],
                 'name'        => $f['name'],
                 'type'        => $f['type'],
                 'coordinates' => json_decode($f['coordinates'], true),
-                'properties'  => !empty($f['properties']) ? json_decode($f['properties'], true) : [],
-                'style'       => !empty($f['style']) ? json_decode($f['style'], true) : [],
+                'properties'  => $props,
+                'style'       => $style,
                 'color'       => $f['color'],
+                'radius'      => $radius,
                 'createdBy'   => $f['createdBy'],
                 'updatedAt'   => $f['updatedAt']
             ];
@@ -510,7 +521,21 @@ switch ($action) {
         $stmtDel->execute([$projectId, $since]);
         $deletedIds = $stmtDel->fetchAll(PDO::FETCH_COLUMN);
 
-        // 3. Metadados do projeto
+        // 3. Camadas do projeto (para sincronizar novas camadas criadas por outros operadores)
+        $stmtLayers = $pdo->prepare("
+            SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at
+            FROM cm_layers
+            WHERE project_id = ?
+            ORDER BY order_idx ASC
+        ");
+        $stmtLayers->execute([$projectId]);
+        $layers = $stmtLayers->fetchAll();
+        foreach ($layers as &$l) {
+            $l['visible'] = (bool)$l['visible'];
+            $l['opacity'] = (float)$l['opacity'];
+        }
+
+        // 4. Metadados do projeto
         $stmtProj = $pdo->prepare("SELECT name, basemap, feature_count, updated_at FROM cm_projects WHERE id = ?");
         $stmtProj->execute([$projectId]);
         $projectMeta = $stmtProj->fetch();
@@ -520,6 +545,7 @@ switch ($action) {
             'serverTime'   => date('Y-m-d H:i:s'),
             'upserted'     => $upserted,
             'deleted'      => $deletedIds,
+            'layers'       => $layers,
             'project'      => $projectMeta
         ]);
         exit;
@@ -594,8 +620,9 @@ switch ($action) {
                 }
             }
 
-            // Feições - Upsert Não-Destrutivo (Blindagem contra Lost Update de outros operadores)
+            // Feições - Upsert Não-Destrutivo com soft-delete para feições removidas
             if (isset($body['features']) && is_array($body['features'])) {
+                $currentIds = [];
                 $stmtFeat = $pdo->prepare("
                     INSERT INTO cm_features (id, project_id, layer_id, name, geom_type, coordinates, properties, style, color, created_by, deleted, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())
@@ -612,6 +639,12 @@ switch ($action) {
                 ");
                 foreach ($body['features'] as $f) {
                     if (empty($f['id'])) continue;
+                    $currentIds[] = $f['id'];
+                    $props = !empty($f['properties']) ? (is_array($f['properties']) ? $f['properties'] : json_decode($f['properties'], true)) : [];
+                    if (!empty($f['radius'])) {
+                        $props['radius'] = (float)$f['radius'];
+                    }
+
                     $stmtFeat->execute([
                         $f['id'],
                         $projectId,
@@ -619,11 +652,25 @@ switch ($action) {
                         $f['name'] ?? 'Feição',
                         $f['type'] ?? 'Polygon',
                         json_encode($f['coordinates'] ?? [], JSON_UNESCAPED_UNICODE),
-                        json_encode($f['properties'] ?? [], JSON_UNESCAPED_UNICODE),
+                        json_encode($props, JSON_UNESCAPED_UNICODE),
                         json_encode($f['style'] ?? [], JSON_UNESCAPED_UNICODE),
                         $f['color'] ?? '#00E08A',
                         $f['createdBy'] ?? 'Operador'
                     ]);
+                }
+
+                // Marca como deleted = 1 quaisquer feições antigas que não constam mais neste salvamento
+                if (!empty($currentIds)) {
+                    $placeholders = implode(',', array_fill(0, count($currentIds), '?'));
+                    $stmtDelMissing = $pdo->prepare("
+                        UPDATE cm_features 
+                        SET deleted = 1, updated_at = NOW() 
+                        WHERE project_id = ? AND deleted = 0 AND id NOT IN ($placeholders)
+                    ");
+                    $stmtDelMissing->execute(array_merge([$projectId], $currentIds));
+                } else {
+                    $stmtDelAll = $pdo->prepare("UPDATE cm_features SET deleted = 1, updated_at = NOW() WHERE project_id = ?");
+                    $stmtDelAll->execute([$projectId]);
                 }
             }
 
@@ -689,7 +736,7 @@ switch ($action) {
         http_response_code(400);
         echo json_encode([
             'error'           => 'Ação não informada ou desconhecida.',
-            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'save_all', 'log_audit']
+            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'log_audit']
         ]);
         exit;
 }

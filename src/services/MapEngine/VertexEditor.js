@@ -15,6 +15,10 @@ export class VertexEditor {
   }
 
   startEditing(feature, onFeatureUpdated) {
+    if (!feature) return;
+    if (feature.locked) {
+      return;
+    }
     this.stopEditing();
     this.editingFeature = feature;
     this.onFeatureUpdatedCallback = onFeatureUpdated;

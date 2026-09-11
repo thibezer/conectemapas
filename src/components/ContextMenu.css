@@ -1,0 +1,174 @@
+/* ==========================================================================
+   ConecteMapas - ContextMenu Styles (SRP Encapsulated)
+   Menu de Contexto do Botão Direito (CAD & GIS Context Menu)
+   ========================================================================== */
+
+.cm-context-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 230px;
+  max-width: 290px;
+  background: rgba(20, 20, 26, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.35);
+  padding: 5px;
+  font-family: var(--cm-fonte, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  font-size: 12px;
+  color: #e1e1e6;
+  user-select: none;
+  animation: cmCtxFadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+@keyframes cmCtxFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.cm-ctx-header {
+  padding: 6px 10px 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 4px;
+}
+
+.cm-ctx-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: #ffffff;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-ctx-badge {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+.cm-ctx-subtitle {
+  font-size: 10.5px;
+  color: var(--cm-text-muted, #888899);
+  font-family: var(--cm-fonte-mono, monospace);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-ctx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cm-ctx-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: #c9c9d4;
+  transition: all 0.1s ease;
+  outline: none;
+}
+
+.cm-ctx-item:hover, .cm-ctx-item:focus {
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+  transform: translateX(1px);
+}
+
+.cm-ctx-item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-ctx-icon {
+  font-size: 13px;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cm-ctx-text {
+  font-size: 11.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-ctx-shortcut {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: var(--cm-fonte-mono, monospace);
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.cm-ctx-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 3px 4px;
+}
+
+.cm-ctx-item.cm-ctx-danger {
+  color: #f87171;
+}
+
+.cm-ctx-item.cm-ctx-danger:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+}
+
+.cm-ctx-submenu-wrap {
+  position: relative;
+}
+
+.cm-ctx-submenu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 4px;
+  min-width: 180px;
+  background: rgba(20, 20, 26, 0.98);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  padding: 5px;
+}
+
+.cm-ctx-submenu-wrap:hover .cm-ctx-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}

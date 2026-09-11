@@ -97,11 +97,11 @@ export class LayerTreeRenderer {
             }
 
             const allFeatsSelected = layerFeatures.length > 0 && layerFeatures.every(f => panel.selectedFeatureIds.has(f.id));
-            const someFeatsSelected = layerFeatures.some(f => panel.selectedFeatureIds.has(f.id));
+            const isActiveLayer = panel.activeLayerId === layer.id;
 
             return `
             <div class="cm-ai-layer-group" data-layer-id="${safeId}" draggable="true">
-              <div class="cm-ai-layer-row ${!isVisible ? 'hidden-layer' : ''}" data-layer-row="${safeId}">
+              <div class="cm-ai-layer-row ${!isVisible ? 'hidden-layer' : ''} ${isActiveLayer ? 'active-drawing-layer' : ''}" data-layer-row="${safeId}" style="--layer-active-color: ${safeColor};">
                 <div class="cm-ai-col cm-ai-col-drag" title="Arrastar para reordenar Z-Index">⠿</div>
                 <div class="cm-ai-col cm-ai-col-eye" data-layer-eye="${safeId}" title="${isVisible ? 'Ocultar Camada' : 'Exibir Camada'}">
                   ${isVisible ? `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>` : '✕'}
@@ -113,11 +113,12 @@ export class LayerTreeRenderer {
                 <div class="cm-ai-col cm-ai-col-chevron" data-layer-expand="${safeId}">
                   <span class="cm-ai-chevron-icon ${isExpanded ? 'open' : ''}">▶</span>
                 </div>
-                <div class="cm-ai-col cm-ai-col-name" data-layer-name-trigger="${safeId}" title="Duplo clique para renomear">
+                <div class="cm-ai-col cm-ai-col-name" data-layer-name-trigger="${safeId}" title="Clique para ativar camada de desenho | Duplo clique para renomear">
                   ${panel.editingLayerId === layer.id ? `
                     <input type="text" class="cm-inline-rename-input" data-inline-layer-input="${safeId}" value="${safeName}" />
                   ` : `
                     <span class="cm-ai-name-text">${safeName}</span>
+                    ${isActiveLayer ? `<span class="cm-ai-active-badge" title="Camada ativa para novos desenhos">✏️ Ativa</span>` : ''}
                     <span class="cm-ai-count-chip">${layerFeatures.length}</span>
                   `}
                 </div>

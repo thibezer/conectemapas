@@ -187,7 +187,10 @@ export class ProjectActionsController {
     };
 
     app.layers.push(newLayer);
-    StorageService.saveLayer(newLayer);
+    StorageService.saveLayer(newLayer, app.projectId);
+    if (app.collabHub) {
+      app.collabHub.notifyLayerCreated(newLayer);
+    }
     if (app.layerPanel) {
       app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
     }
@@ -199,10 +202,14 @@ export class ProjectActionsController {
     }
     app.saveMetadata();
 
+    if (typeof app.setActiveLayer === 'function') {
+      app.setActiveLayer(newLayer.id);
+    }
+
     UIToast.notificar({
       tipo: 'sucesso',
       titulo: 'Camada Criada',
-      mensagem: `Camada "${name}" criada com sucesso.`,
+      mensagem: `Camada "${name}" criada e definida como ativa para novos desenhos.`,
       duracao: 3000
     });
   }
@@ -235,12 +242,20 @@ export class ProjectActionsController {
       }
     });
 
-    StorageService.deleteLayer(layerId, remainingLayer.id);
+    StorageService.deleteLayer(layerId, remainingLayer.id, app.projectId);
+    if (app.collabHub) {
+      app.collabHub.notifyLayerDeleted(layerId);
+    }
     if (movedFeatures.length > 0) {
-      StorageService.queueFeaturesBulkUpsert(movedFeatures);
+      StorageService.queueFeaturesBulkUpsert(movedFeatures, app.projectId);
     }
 
     app.layers = app.layers.filter(l => l.id !== layerId);
+
+    if (app.activeLayerId === layerId && typeof app.setActiveLayer === 'function') {
+      app.setActiveLayer(remainingLayer.id);
+    }
+
     app.refreshMapAndTable();
     if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
     app.saveMetadata(false);
@@ -257,12 +272,15 @@ export class ProjectActionsController {
     app.projectName = template.title;
     app.layers = [...template.layers];
     app.features = [];
+    if (typeof app.setActiveLayer === 'function' && app.layers.length > 0) {
+      app.setActiveLayer(app.layers[0].id);
+    }
     app.mapEngine.map.setView(template.center, template.zoom);
     app.refreshMapAndTable();
     app.layerPanel.updateLayers(app.getLayersWithCounts());
     app.newFeatureModal.updateLayers(app.layers);
-    StorageService.saveFeaturesBatch([]);
-    StorageService.saveLayersBatch(app.layers);
+    StorageService.saveFeaturesBatch([], app.projectId);
+    StorageService.saveLayersBatch(app.layers, app.projectId);
     app.saveMetadata(true);
 
     UIToast.notificar({
