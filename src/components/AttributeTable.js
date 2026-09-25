@@ -22,36 +22,36 @@ export class AttributeTable {
     container.innerHTML = `
       <div class="cm-bottom-table-container ${this.isCollapsed ? 'collapsed' : ''}" id="cm-bottom-table-wrapper" style="height: 260px;">
         <div class="cm-bottom-table-bar" id="cm-bottom-table-header">
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span id="cm-attribute-table-title" style="font-size: 13px; font-weight: 600; color: var(--cm-text);">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="cm-attribute-table-title" style="font-size: 12px; font-weight: 600; color: var(--cm-text); line-height: 1;">
               📊 Tabela de Atributos & Geometrias (${this.features.length})
             </span>
-            <span style="font-size: 11px; color: var(--cm-text-muted);">
+            <span style="font-size: 10.5px; color: var(--cm-text-muted); line-height: 1;">
               Clique na barra para ${this.isCollapsed ? 'expandir' : 'recolher'}
             </span>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 12px;" onclick="event.stopPropagation()">
+          <div style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation()">
             <!-- Controles de Paginação Virtualizada (P2) -->
-            <div id="cm-table-pagination-controls" style="display: flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);">
-              <button id="cm-btn-prev-page" title="Página anterior" style="background: transparent; border: none; color: var(--cm-text); cursor: pointer; font-size: 11px; padding: 2px 4px; border-radius: 3px;">◀</button>
-              <span id="cm-table-page-indicator" style="font-size: 11px; color: var(--cm-text-muted); font-variant-numeric: tabular-nums; min-width: 70px; text-align: center;">Pág. 1 / 1</span>
-              <button id="cm-btn-next-page" title="Próxima página" style="background: transparent; border: none; color: var(--cm-text); cursor: pointer; font-size: 11px; padding: 2px 4px; border-radius: 3px;">▶</button>
+            <div id="cm-table-pagination-controls" style="display: flex; align-items: center; gap: 4px; background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); height: 22px; box-sizing: border-box;">
+              <button id="cm-btn-prev-page" title="Página anterior" style="background: transparent; border: none; color: var(--cm-text); cursor: pointer; font-size: 10px; padding: 0 3px; line-height: 1;">◀</button>
+              <span id="cm-table-page-indicator" style="font-size: 10.5px; color: var(--cm-text-muted); font-variant-numeric: tabular-nums; min-width: 65px; text-align: center; line-height: 1;">Pág. 1 / 1</span>
+              <button id="cm-btn-next-page" title="Próxima página" style="background: transparent; border: none; color: var(--cm-text); cursor: pointer; font-size: 10px; padding: 0 3px; line-height: 1;">▶</button>
             </div>
 
             <ui-campo-texto 
               id="cm-table-search-input" 
               placeholder="Buscar feição... (Ctrl+K)" 
-              style="width: 200px; --ui-campo-altura: 26px; --ui-altura-minima: 26px; margin-bottom: 0;">
+              style="width: 190px; --ui-campo-altura: 22px; --ui-altura-minima: 22px; margin-bottom: 0;">
             </ui-campo-texto>
 
-            <button id="cm-btn-toggle-table" style="background: transparent; border: none; color: var(--cm-text); cursor: pointer; font-size: 13px; font-weight: 500;">
+            <button id="cm-btn-toggle-table" style="background: transparent; border: none; color: var(--cm-text); cursor: pointer; font-size: 11px; font-weight: 500; padding: 2px 6px;">
               ${this.isCollapsed ? '▲ Expandir' : '▼ Recolher'}
             </button>
           </div>
         </div>
 
-        <div class="cm-bottom-table-content" id="cm-bottom-table-body" style="display: ${this.isCollapsed ? 'none' : 'block'}; height: calc(100% - 36px);">
+        <div class="cm-bottom-table-content" id="cm-bottom-table-body" style="display: ${this.isCollapsed ? 'none' : 'block'}; height: calc(100% - 30px);">
           <ui-tabela densidade="compacta" id="cm-attribute-ui-table" style="width: 100%; height: 100%;"></ui-tabela>
         </div>
       </div>
@@ -110,13 +110,13 @@ export class AttributeTable {
     const visibleData = filtered.slice(startIndex, endIndex);
 
     const columns = [
-      { id: 'tipo', rotulo: 'Tipo', ordenavel: true, largura: '100px' },
-      { id: 'nome', rotulo: 'Nome da Feição', ordenavel: true },
-      { id: 'camada', rotulo: 'Camada', ordenavel: true },
-      { id: 'dimensao', rotulo: 'Dimensão / Coordenadas' },
-      { id: 'categoria', rotulo: 'Categoria' },
-      { id: 'autor', rotulo: 'Autor', ordenavel: true },
-      { id: 'data', rotulo: 'Criado em' }
+      { id: 'tipo', rotulo: 'Tipo', ordenavel: true, largura: '85px' },
+      { id: 'nome', rotulo: 'Nome da Feição', ordenavel: true, largura: '160px' },
+      { id: 'camada', rotulo: 'Camada', ordenavel: true, largura: '110px' },
+      { id: 'dimensao', rotulo: 'Dimensão / Coordenadas', largura: '150px' },
+      { id: 'categoria', rotulo: 'Categoria', largura: '100px' },
+      { id: 'autor', rotulo: 'Autor', ordenavel: true, largura: '90px' },
+      { id: 'data', rotulo: 'Criado em', largura: '90px' }
     ];
 
     const rows = visibleData.map(f => {
@@ -150,6 +150,7 @@ export class AttributeTable {
 
     tableEl.colunas = columns;
     tableEl.dados = rows;
+    this.applyMinimalRowHeight(tableEl);
 
     // Atualiza indicadores de paginação e título
     const titleEl = document.getElementById('cm-attribute-table-title');
@@ -179,6 +180,95 @@ export class AttributeTable {
     }
   }
 
+  applyMinimalRowHeight(tableEl) {
+    if (!tableEl) return;
+    
+    // Força cálculo virtual de 18px para altura mínima absoluta (estilo GIS/CAD)
+    tableEl.getRowHeight = () => 18;
+
+    const UITabelaClass = window.customElements?.get('ui-tabela');
+    if (UITabelaClass && !UITabelaClass.prototype._cmPatched) {
+      const orig = UITabelaClass.prototype.getRowHeight;
+      UITabelaClass.prototype.getRowHeight = function() {
+        if (this.id === 'cm-attribute-ui-table' || this.hasAttribute('minimal-rows') || this.getAttribute('densidade') === 'compacta') {
+          return 18;
+        }
+        return orig ? orig.call(this) : 18;
+      };
+      UITabelaClass.prototype._cmPatched = true;
+    }
+
+    if (tableEl.shadowRoot) {
+      let style = tableEl.shadowRoot.getElementById('cm-tabela-minimal-density');
+      if (!style) {
+        style = document.createElement('style');
+        style.id = 'cm-tabela-minimal-density';
+        tableEl.shadowRoot.appendChild(style);
+      }
+      style.textContent = `
+        .ui-tabela {
+          font-size: 10.5px !important;
+          line-height: 1.15 !important;
+        }
+        .ui-tabela-container {
+          border-radius: 4px !important;
+          max-height: 100% !important;
+        }
+        .ui-tabela thead th {
+          padding: 1px 6px !important;
+          height: 20px !important;
+          min-height: 20px !important;
+          max-height: 20px !important;
+          font-size: 10px !important;
+          line-height: 1.1 !important;
+          box-sizing: border-box !important;
+        }
+        .ui-tabela tbody td {
+          padding: 0 6px !important;
+          height: 18px !important;
+          min-height: 18px !important;
+          max-height: 18px !important;
+          font-size: 10.5px !important;
+          line-height: 18px !important;
+          box-sizing: border-box !important;
+        }
+        .ui-tabela tbody tr {
+          height: 18px !important;
+          min-height: 18px !important;
+          max-height: 18px !important;
+        }
+        .ui-tabela__virtual-spacer td {
+          padding: 0 !important;
+          border: none !important;
+          height: inherit !important;
+        }
+        .ui-tabela__cell-content {
+          height: 18px !important;
+          line-height: 18px !important;
+        }
+        .ui-tabela__header-content {
+          height: 18px !important;
+        }
+        .ui-tabela__header-text {
+          margin-right: 6px !important;
+        }
+        .ui-tabela__sort-icon,
+        .ui-tabela__header-icon {
+          width: 14px !important;
+          min-width: 14px !important;
+          max-width: 14px !important;
+        }
+        .ui-tabela__resizer {
+          height: 20px !important;
+        }
+      `;
+
+      if (typeof tableEl.renderBody === 'function') {
+        tableEl.renderBody();
+      }
+    }
+  }
+
   selectFeature(featId) {
     if (!featId) return;
     const index = this.features.findIndex(f => f.id === featId);
@@ -202,7 +292,11 @@ export class AttributeTable {
     if (btn) btn.innerHTML = this.isCollapsed ? '▲ Expandir' : '▼ Recolher';
 
     if (!this.isCollapsed) {
-      setTimeout(() => this.updateTableData(), 50);
+      setTimeout(() => {
+        this.updateTableData();
+        const table = document.getElementById('cm-attribute-ui-table');
+        if (table) this.applyMinimalRowHeight(table);
+      }, 50);
     }
   }
 

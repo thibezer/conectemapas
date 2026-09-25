@@ -248,8 +248,14 @@ export class LayerPanel {
     }
     if (Array.isArray(features)) {
       this.features = features;
+      if (this.selectedFeatureIds && this.selectedFeatureIds.size > 0) {
+        const validIds = new Set(features.map(f => f.id));
+        for (const id of this.selectedFeatureIds) {
+          if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
+        }
+      }
     }
-    this.updateContent();
+    if (this.activeTab === 'layers') this.updateContent();
   }
 
   updateAuditLog(auditLog = []) {
@@ -290,20 +296,6 @@ export class LayerPanel {
     }
   }
 
-  updateLayers(layers, features = null) {
-    this.layers = layers;
-    if (features) {
-      this.features = features;
-      if (this.selectedFeatureIds && this.selectedFeatureIds.size > 0) {
-        const validIds = new Set(features.map(f => f.id));
-        for (const id of this.selectedFeatureIds) {
-          if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
-        }
-      }
-    }
-    if (this.activeTab === 'layers') this.updateContent();
-  }
-
   updateFeatures(features) {
     this.features = features;
     if (this.selectedFeatureIds && this.selectedFeatureIds.size > 0) {
@@ -313,11 +305,6 @@ export class LayerPanel {
       }
     }
     if (this.activeTab === 'layers') this.updateContent();
-  }
-
-  updateAuditLog(log) {
-    this.auditLog = log;
-    if (this.activeTab === 'collab') this.updateContent();
   }
 
   addChatMessage(msg) {

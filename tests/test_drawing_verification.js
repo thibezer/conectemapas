@@ -63,7 +63,33 @@ const featPonto = normalizeFeature({
 assert.strictEqual(featPonto.type, 'Point');
 assert.strictEqual(featPonto.locked, false);
 assert(featPonto.style.strokeColor);
-console.log('✔ Normalização de feição pontual testada com sucesso.');
+assert.deepStrictEqual(featPonto.coordinates, [-23.7661, -53.3206]);
+
+// Teste de normalização de coordenadas {lat, lng} para tuplas [lat, lng]
+const featObjCoords = normalizeFeature({
+  id: 'feat-obj-1',
+  type: 'Point',
+  coordinates: { lat: -23.7661, lng: -53.3206 },
+  name: 'Ponto com objeto lat/lng'
+});
+assert(Array.isArray(featObjCoords.coordinates), 'Coordenadas devem ser convertidas para tupla');
+assert.strictEqual(featObjCoords.coordinates[0], -23.7661);
+assert.strictEqual(featObjCoords.coordinates[1], -53.3206);
+
+const featPolyObj = normalizeFeature({
+  id: 'feat-poly-obj',
+  type: 'Polygon',
+  coordinates: [
+    { lat: -23.76, lng: -53.32 },
+    { lat: -23.77, lng: -53.32 },
+    { lat: -23.77, lng: -53.31 }
+  ],
+  name: 'Polígono com array de objetos'
+});
+assert(Array.isArray(featPolyObj.coordinates[0]), 'Vértices do polígono devem ser tuplas numéricas');
+assert.strictEqual(featPolyObj.coordinates[0][0], -23.76);
+assert.strictEqual(featPolyObj.coordinates[0][1], -53.32);
+console.log('✔ Normalização de coordenadas Leaflet {lat, lng} para tuplas [lat, lng] testada com 100% de sucesso.');
 
 // 3. Teste de detecção de proximidade em pixels (Simulação de Snapping e Duplo-clique)
 const p1 = { x: 100, y: 100 };

@@ -3,6 +3,7 @@
    Modal para exportação e importação de formatos GIS:
    ESRI Shapefile (os 5 arquivos .shp, .dbf, .prj, .shx, .cpg e .zip), GeoJSON, KML, GPX, CSV
    ========================================================================== */
+import './ImportExportModal.css';
 
 export class ImportExportModal {
   constructor(options = {}) {
@@ -128,19 +129,19 @@ export class ImportExportModal {
                   Composição Cartográfica na Imagem:
                 </span>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px; color: var(--cm-text);">
-                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                  <label for="cm-png-scalebar" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
                     <input type="checkbox" id="cm-png-scalebar" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
                     <span>📏 Régua de Escala</span>
                   </label>
-                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                  <label for="cm-png-north" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
                     <input type="checkbox" id="cm-png-north" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
                     <span>🧭 Rosa dos Ventos (Norte)</span>
                   </label>
-                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                  <label for="cm-png-titleblock" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
                     <input type="checkbox" id="cm-png-titleblock" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
                     <span>📋 Carimbo & Datum SIRGAS</span>
                   </label>
-                  <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                  <label for="cm-png-legend" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
                     <input type="checkbox" id="cm-png-legend" checked style="accent-color: var(--cm-primary); cursor: pointer;" />
                     <span>🏷️ Legenda das Camadas</span>
                   </label>

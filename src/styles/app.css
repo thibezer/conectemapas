@@ -25,7 +25,7 @@
   position: relative;
   overflow: hidden;
   width: 100%;
-  height: calc(100vh - 42px);
+  height: calc(100vh - 30px);
 }
 
 /* Map Container */
@@ -266,16 +266,16 @@
 }
 
 .cm-bottom-table-container.collapsed {
-  height: 36px !important;
+  height: 30px !important;
 }
 
 .cm-bottom-table-bar {
-  height: 36px;
-  min-height: 36px;
+  height: 30px;
+  min-height: 30px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
+  padding: 0 12px;
   cursor: pointer;
   background: rgba(0, 0, 0, 0.3);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
@@ -284,7 +284,7 @@
 .cm-bottom-table-content {
   flex: 1;
   overflow: auto;
-  padding: 8px 16px;
+  padding: 4px 8px;
 }
 
 /* --------------------------------------------------------------------------
@@ -322,7 +322,7 @@
 /* HUD Overlay */
 .cm-map-hud {
   position: absolute;
-  bottom: 46px;
+  bottom: 40px;
   left: 16px;
   z-index: 400;
   display: flex;

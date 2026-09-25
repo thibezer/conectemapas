@@ -4,9 +4,9 @@
    ========================================================================== */
 
 .cm-header {
-  height: 42px;
-  min-height: 42px;
-  max-height: 42px;
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
   background: var(--cm-glass-bg, rgba(17, 17, 20, 0.95));
   backdrop-filter: var(--cm-glass-blur, blur(12px));
   -webkit-backdrop-filter: var(--cm-glass-blur, blur(12px));
@@ -14,7 +14,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px;
+  padding: 0 8px;
   z-index: 1000;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
@@ -23,15 +23,15 @@
 .cm-header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .cm-logo {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 12px;
   color: var(--cm-text, #e1e1e6);
   letter-spacing: -0.2px;
   text-decoration: none;
@@ -40,8 +40,8 @@
 }
 
 .cm-logo svg {
-  width: 20px;
-  height: 20px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 
@@ -55,11 +55,11 @@
 .cm-project-title-wrapper {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.04);
-  padding: 2px 8px;
-  height: 28px;
-  border-radius: var(--ui-raio-borda, 6px);
+  padding: 0 6px;
+  height: 22px;
+  border-radius: var(--ui-raio-borda, 4px);
   border: 1px solid rgba(255, 255, 255, 0.08);
   transition: all 0.15s ease;
 }
@@ -74,11 +74,11 @@
   background: transparent;
   border: none;
   color: var(--cm-text, #e1e1e6);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   font-family: inherit;
   outline: none;
-  width: 200px;
+  width: 170px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -86,13 +86,13 @@
 }
 
 .cm-project-title-input:focus {
-  width: 260px;
+  width: 230px;
 }
 
 .cm-sync-badge {
-  font-size: 10px;
-  padding: 2px 6px;
-  height: 18px;
+  font-size: 9px;
+  padding: 1px 5px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
   line-height: 1;
@@ -102,24 +102,24 @@
 .cm-header-center {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .cm-collaborators-list {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .cm-collaborators-list ui-avatar {
   cursor: pointer;
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   transition: transform 0.15s ease;
 }
 
 .cm-collaborators-list ui-avatar:hover {
-  transform: translateY(-2px) scale(1.1);
+  transform: translateY(-1px) scale(1.1);
   z-index: 10;
 }
 
@@ -127,27 +127,32 @@
 .cm-header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
 
-/* Estilização dos Botões da Barra Superior para altura compacta e sem quebras */
+/* Estilização dos Botões da Barra Superior para altura compacta (22px) em barra de 30px */
 .cm-header-btn {
-  height: 28px !important;
-  font-size: 12px !important;
+  height: 22px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
   white-space: nowrap !important;
   display: inline-flex !important;
   align-items: center !important;
-  gap: 6px !important;
+  gap: 4px !important;
+  padding: 0 !important;
   cursor: pointer;
 }
 
 .cm-header-btn svg {
-  width: 14px;
-  height: 14px;
+  shape-rendering: geometricPrecision;
+  vertical-align: middle;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
 }
 
 .cm-header-right ui-botao-primario {
-  height: 28px;
+  height: 22px;
   display: inline-block;
+  --ui-botao-altura: 22px;
 }

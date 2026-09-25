@@ -1,0 +1,16 @@
+/* ==========================================================================
+   ConecteMapas - NewFeatureModal Styles
+   Isolamento SRP para Modal de Criação de Feições
+   ========================================================================== */
+
+.cm-new-feature-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cm-new-feature-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

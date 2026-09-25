@@ -77,7 +77,7 @@ export class ProjectActionsController {
   static async handleImport(app, content, fileName, options = {}) {
     try {
       UIToast.notificar({
-        tipo: 'info',
+        tipo: 'informativo',
         titulo: 'Processando Arquivo',
         mensagem: `Lendo geometrias e atributos de "${fileName}"...`,
         duracao: 2500

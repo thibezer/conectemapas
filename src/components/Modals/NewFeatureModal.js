@@ -2,7 +2,7 @@
    ConecteMapas - NewFeatureModal Component
    Modal de criação e configuração inicial de nova feição vetorial
    ========================================================================== */
-
+import './NewFeatureModal.css';
 import { normalizeFeature } from '../../services/MockData.js';
 
 export class NewFeatureModal {

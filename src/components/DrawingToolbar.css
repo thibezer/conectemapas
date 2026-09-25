@@ -14,7 +14,9 @@
   background: var(--cm-glass-bg, rgba(17, 17, 20, 0.94));
   backdrop-filter: var(--cm-glass-blur, blur(14px));
   -webkit-backdrop-filter: var(--cm-glass-blur, blur(14px));
-  padding: 4px;
+  padding: 3px;
+  width: 40px;
+  box-sizing: border-box;
   border-radius: var(--ui-raio-borda, 8px);
   border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
   box-shadow: var(--cm-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.5));

@@ -250,7 +250,11 @@ switch ($action) {
             $coords = json_decode($f['coordinates'], true);
             $props = !empty($f['properties']) ? json_decode($f['properties'], true) : [];
             $style = !empty($f['style']) ? json_decode($f['style'], true) : [];
+            if (!is_array($coords)) $coords = [];
+            if (!is_array($props)) $props = [];
+            if (!is_array($style)) $style = [];
             $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
+            $visible = isset($props['visible']) ? (bool)$props['visible'] : true;
             $features[] = [
                 'id'          => $f['id'],
                 'layerId'     => $f['layerId'],
@@ -261,6 +265,7 @@ switch ($action) {
                 'style'       => $style,
                 'color'       => $f['color'],
                 'radius'      => $radius,
+                'visible'     => $visible,
                 'createdBy'   => $f['createdBy'],
                 'createdAt'   => $f['createdAt']
             ];
@@ -327,7 +332,7 @@ switch ($action) {
                     center_lat = VALUES(center_lat),
                     center_lng = VALUES(center_lng),
                     zoom = VALUES(zoom),
-                    feature_count = VALUES(feature_count),
+                    feature_count = (SELECT COUNT(*) FROM cm_features WHERE project_id = VALUES(id) AND deleted = 0),
                     updated_at = NOW()
             ");
             $stmtProj->execute([
@@ -394,19 +399,31 @@ switch ($action) {
         $body = getJsonBody();
         $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
         $toUpsert = isset($body['toUpsert']) && is_array($body['toUpsert']) ? $body['toUpsert'] : [];
-        $toDelete = isset($body['toDelete']) && is_array($body['toDelete']) ? $body['toDelete'] : [];
+        $rawDelete = isset($body['toDelete']) && is_array($body['toDelete']) ? $body['toDelete'] : [];
+        $toDelete = [];
+        foreach ($rawDelete as $delItem) {
+            if (is_string($delItem) || is_numeric($delItem)) {
+                $trimmed = trim((string)$delItem);
+                if ($trimmed !== '') $toDelete[] = $trimmed;
+            } elseif (is_array($delItem) && !empty($delItem['id'])) {
+                $toDelete[] = trim((string)$delItem['id']);
+            }
+        }
 
         $pdo->beginTransaction();
         try {
-            // 1. Exclusão Lógica com Tombstones (Soft-Delete com registro de updated_at para outros clientes)
+            // 1. Exclusão Lógica com Tombstones em lotes seguros de até 500 itens
             if (!empty($toDelete)) {
-                $placeholders = implode(',', array_fill(0, count($toDelete), '?'));
-                $stmtDel = $pdo->prepare("
-                    UPDATE cm_features 
-                    SET deleted = 1, updated_at = NOW() 
-                    WHERE project_id = ? AND id IN ($placeholders)
-                ");
-                $stmtDel->execute(array_merge([$projectId], $toDelete));
+                $chunks = array_chunk($toDelete, 500);
+                foreach ($chunks as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $stmtDel = $pdo->prepare("
+                        UPDATE cm_features 
+                        SET deleted = 1, updated_at = NOW() 
+                        WHERE project_id = ? AND id IN ($placeholders)
+                    ");
+                    $stmtDel->execute(array_merge([$projectId], $chunk));
+                }
             }
 
             // 2. Insere ou Atualiza feições modificadas (marca deleted = 0)
@@ -431,6 +448,9 @@ switch ($action) {
                     $props = !empty($feat['properties']) ? (is_array($feat['properties']) ? $feat['properties'] : json_decode($feat['properties'], true)) : [];
                     if (!empty($feat['radius'])) {
                         $props['radius'] = (float)$feat['radius'];
+                    }
+                    if (isset($feat['visible'])) {
+                        $props['visible'] = (bool)$feat['visible'];
                     }
 
                     $stmtUpsert->execute([
@@ -479,7 +499,10 @@ switch ($action) {
     // --------------------------------------------------------------------------
     case 'pull_changes':
         $projectId = !empty($_GET['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_GET['projectId']) : 'projeto_padrao';
-        $since = !empty($_GET['since']) ? trim($_GET['since']) : '1970-01-01 00:00:00';
+        $rawSince = isset($_GET['since']) ? trim($_GET['since']) : '';
+        $since = (!empty($rawSince) && $rawSince !== 'undefined' && $rawSince !== 'null' && strtotime($rawSince) !== false)
+            ? $rawSince 
+            : '1970-01-01 00:00:00';
 
         // 1. Feições adicionadas ou alteradas por outros clientes
         $stmtUpsert = $pdo->prepare("
@@ -493,19 +516,25 @@ switch ($action) {
         $rawUpserted = $stmtUpsert->fetchAll();
         $upserted = [];
         foreach ($rawUpserted as $f) {
+            $coords = json_decode($f['coordinates'], true);
             $props = !empty($f['properties']) ? json_decode($f['properties'], true) : [];
             $style = !empty($f['style']) ? json_decode($f['style'], true) : [];
+            if (!is_array($coords)) $coords = [];
+            if (!is_array($props)) $props = [];
+            if (!is_array($style)) $style = [];
             $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
+            $visible = isset($props['visible']) ? (bool)$props['visible'] : true;
             $upserted[] = [
                 'id'          => $f['id'],
                 'layerId'     => $f['layerId'],
                 'name'        => $f['name'],
                 'type'        => $f['type'],
-                'coordinates' => json_decode($f['coordinates'], true),
+                'coordinates' => $coords,
                 'properties'  => $props,
                 'style'       => $style,
                 'color'       => $f['color'],
                 'radius'      => $radius,
+                'visible'     => $visible,
                 'createdBy'   => $f['createdBy'],
                 'updatedAt'   => $f['updatedAt']
             ];
@@ -644,6 +673,9 @@ switch ($action) {
                     if (!empty($f['radius'])) {
                         $props['radius'] = (float)$f['radius'];
                     }
+                    if (isset($f['visible'])) {
+                        $props['visible'] = (bool)$f['visible'];
+                    }
 
                     $stmtFeat->execute([
                         $f['id'],
@@ -659,18 +691,31 @@ switch ($action) {
                     ]);
                 }
 
-                // Marca como deleted = 1 quaisquer feições antigas que não constam mais neste salvamento
-                if (!empty($currentIds)) {
-                    $placeholders = implode(',', array_fill(0, count($currentIds), '?'));
-                    $stmtDelMissing = $pdo->prepare("
-                        UPDATE cm_features 
-                        SET deleted = 1, updated_at = NOW() 
-                        WHERE project_id = ? AND deleted = 0 AND id NOT IN ($placeholders)
-                    ");
-                    $stmtDelMissing->execute(array_merge([$projectId], $currentIds));
-                } else {
-                    $stmtDelAll = $pdo->prepare("UPDATE cm_features SET deleted = 1, updated_at = NOW() WHERE project_id = ?");
-                    $stmtDelAll->execute([$projectId]);
+                // Identifica de forma eficiente e segura feições ativas no banco que foram excluídas neste salvamento
+                // (Substitui NOT IN massivo por diferença em memória O(N), imune a estouro de placeholders)
+                $stmtExisting = $pdo->prepare("SELECT id FROM cm_features WHERE project_id = ? AND deleted = 0");
+                $stmtExisting->execute([$projectId]);
+                $existingActiveIds = $stmtExisting->fetchAll(PDO::FETCH_COLUMN);
+
+                $currentIdSet = array_flip($currentIds);
+                $idsToMarkDeleted = [];
+                foreach ($existingActiveIds as $existId) {
+                    if (!isset($currentIdSet[$existId])) {
+                        $idsToMarkDeleted[] = $existId;
+                    }
+                }
+
+                if (!empty($idsToMarkDeleted)) {
+                    $delChunks = array_chunk($idsToMarkDeleted, 500);
+                    foreach ($delChunks as $delBatch) {
+                        $placeholders = implode(',', array_fill(0, count($delBatch), '?'));
+                        $stmtDelMissing = $pdo->prepare("
+                            UPDATE cm_features 
+                            SET deleted = 1, updated_at = NOW() 
+                            WHERE project_id = ? AND deleted = 0 AND id IN ($placeholders)
+                        ");
+                        $stmtDelMissing->execute(array_merge([$projectId], $delBatch));
+                    }
                 }
             }
 
@@ -715,6 +760,11 @@ switch ($action) {
             $stmt = $pdo->prepare("
                 INSERT INTO cm_audit (id, project_id, action, detail, user_name, timestamp)
                 VALUES (?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    action = VALUES(action),
+                    detail = VALUES(detail),
+                    user_name = VALUES(user_name),
+                    timestamp = VALUES(timestamp)
             ");
             $stmt->execute([
                 $auditId,

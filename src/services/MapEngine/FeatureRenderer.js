@@ -157,8 +157,17 @@ export class FeatureRenderer {
         this.map.removeLayer(group);
       }
     }
-    // Reavalia culling e clusters de pontos visíveis
-    this.updateViewportCulling();
+
+    if (!isVisible) {
+      this.engine.renderedFeatures.forEach((leafLayer, featId) => {
+        if (leafLayer._cmLayerId === layerId) {
+          this.removeSingleFeature(featId);
+        }
+      });
+    }
+
+    // Reavalia culling e clusters de pontos visíveis com forceRefresh
+    this.updateViewportCulling(true);
   }
 
   /**
@@ -300,6 +309,10 @@ export class FeatureRenderer {
     if (idx >= 0) this.allFeatures[idx] = feat;
     else this.allFeatures.push(feat);
 
+    if (this.engine && this.engine.spatialIndex) {
+      this.engine.spatialIndex.update(feat);
+    }
+
     const bounds = this.map ? this.map.getBounds() : null;
     const isVisibleInViewport = bounds ? this.engine.spatialIndex.intersects(feat, bounds, 0.20) : true;
 
@@ -321,6 +334,9 @@ export class FeatureRenderer {
     this.featureMap.delete(featId);
     const idx = this.allFeatures.findIndex(f => f.id === featId);
     if (idx >= 0) this.allFeatures.splice(idx, 1);
+    if (this.engine && this.engine.spatialIndex) {
+      this.engine.spatialIndex.remove(featId);
+    }
     this.removeSingleFeature(featId);
   }
 
@@ -453,9 +469,11 @@ export class FeatureRenderer {
         }
       });
 
-      // 6. Remove do Leaflet feições que saíram do campo de visão (Culling Exit)
+      // 6. Remove do Leaflet feições que saíram do campo de visão (Culling Exit) ou que estão ocultas
       this.engine.renderedFeatures.forEach((layer, featId) => {
-        if (!visibleIdSet.has(featId) || clusteredPointIdSet.has(featId)) {
+        const featObj = this.featureMap.get(featId);
+        const isHidden = featObj && (featObj.visible === false || this.layerMap.get(featObj.layerId)?.visible === false);
+        if (!visibleIdSet.has(featId) || clusteredPointIdSet.has(featId) || isHidden) {
           this.removeSingleFeature(featId);
         }
       });

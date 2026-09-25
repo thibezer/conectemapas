@@ -641,11 +641,7 @@ class ConecteMapasApp {
         const feat = this.features.find(f => f.id === featureId);
         if (feat) {
           feat.visible = isVisible;
-          if (isVisible) {
-            this.mapEngine.updateFeature(feat, this.layers);
-          } else {
-            this.mapEngine.removeFeature(feat.id);
-          }
+          this.mapEngine.updateFeature(feat, this.layers);
           this.saveFeature(feat);
         }
       },

@@ -11,11 +11,32 @@ export const DEFAULT_LAYERS = [
   { id: 'layer-anotacoes', name: 'Anotações & Alertas', color: '#ec4899', visible: true, opacity: 1, locked: false }
 ];
 
+export function normalizeCoordinates(coords, type) {
+  if (!coords) return coords;
+  if (type === 'Point' || type === 'Circle') {
+    if (typeof coords === 'object' && !Array.isArray(coords) && coords.lat !== undefined) {
+      return [Number(coords.lat), Number(coords.lng)];
+    }
+    if (Array.isArray(coords) && coords.length >= 2) {
+      return [Number(coords[0]), Number(coords[1])];
+    }
+    return coords;
+  }
+  if ((type === 'Polygon' || type === 'LineString') && Array.isArray(coords)) {
+    if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+      return coords.map(ring => ring.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt));
+    }
+    return coords.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt);
+  }
+  return coords;
+}
+
 export function normalizeFeature(feat) {
   if (!feat) return feat;
   const defaultColor = feat.color || '#00E08A';
   return {
     ...feat,
+    coordinates: normalizeCoordinates(feat.coordinates, feat.type),
     locked: feat.locked === true,
     style: {
       fillColor: feat.style?.fillColor || defaultColor,
