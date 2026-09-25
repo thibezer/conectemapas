@@ -7,6 +7,44 @@
   gap: 8px;
 }
 
+.cm-properties-panel-wrapper {
+  margin-top: 2px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  background: var(--cm-bg-sidebar, #131417);
+}
+
+ui-tabela-propriedades {
+  display: block;
+  width: 100%;
+}
+
+.cm-inspector-empty-state {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--cm-text-muted, rgba(255, 255, 255, 0.5));
+}
+
+.cm-inspector-empty-icon {
+  font-size: 32px;
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+
+.cm-inspector-empty-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--cm-text, #ffffff);
+  margin-bottom: 6px;
+}
+
+.cm-inspector-empty-desc {
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .cm-inspector-header-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));

@@ -5,6 +5,8 @@
 
 import { FeatureInspectorRenderer } from './FeatureInspectorRenderer.js';
 import { FeatureInspectorEvents } from './FeatureInspectorEvents.js';
+import 'ui-components-kit';
+import { UITabelaPropriedades } from 'ui-components-kit';
 
 export class FeatureInspectorTab {
   static render(panel) {

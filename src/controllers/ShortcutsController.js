@@ -118,18 +118,13 @@ export class ShortcutsController {
       // Save: Ctrl+S / Cmd+S
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        const btnSave = document.getElementById('btn-save-inspector');
-        if (btnSave) {
-          btnSave.click();
-        } else {
-          app.saveState(true, { featuresChanged: true });
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Projeto Salvo (Ctrl+S)',
-            mensagem: `${app.features.length} feições gravadas no banco de dados local.`,
-            duracao: 2500
-          });
-        }
+        app.saveState(true, { featuresChanged: true });
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Projeto Salvo (Ctrl+S)',
+          mensagem: `${app.features.length} feições gravadas no banco de dados local.`,
+          duracao: 2500
+        });
       }
       // Navegação Master-Detail Workbench (J / K / Setas)
       else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
