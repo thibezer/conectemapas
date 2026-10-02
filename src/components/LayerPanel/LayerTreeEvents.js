@@ -108,16 +108,27 @@ export class LayerTreeEvents {
     };
 
     if (inputSearch) {
-      inputSearch.addEventListener('input', (e) => {
-        applySearchFilter(e.target.value);
-      });
+      const handleSearch = (e) => {
+        const val = e.detail?.value !== undefined ? e.detail.value : (e.target.value || '');
+        applySearchFilter(val);
+      };
+      inputSearch.addEventListener('input', handleSearch);
+      inputSearch.addEventListener('ui-input', handleSearch);
+      inputSearch.addEventListener('change', handleSearch);
     }
 
     if (btnClearSearch) {
       btnClearSearch.addEventListener('click', () => {
-        if (inputSearch) inputSearch.value = '';
+        if (inputSearch) {
+          inputSearch.value = '';
+          if (typeof inputSearch.setAttribute === 'function') {
+            inputSearch.setAttribute('value', '');
+          }
+        }
         applySearchFilter('');
-        if (inputSearch) inputSearch.focus();
+        if (inputSearch && typeof inputSearch.focus === 'function') {
+          inputSearch.focus();
+        }
       });
     }
 

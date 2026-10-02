@@ -138,6 +138,8 @@ export class AttributeTable {
         dim = f.properties?.['Área (ha)'] || f.properties?.areaCalculada || `${Array.isArray(f.coordinates) ? f.coordinates.length : 0} nós`;
       } else if (f.type === 'Circle') {
         dim = `Raio: ${f.radius || 500}m`;
+      } else if (f.type === 'Text') {
+        dim = f.properties?.text || f.name || 'Rótulo';
       }
 
       return {

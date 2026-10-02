@@ -34,7 +34,7 @@ export class SpatialIndex {
       }
     };
 
-    if (type === 'Point') {
+    if (type === 'Point' || type === 'Text') {
       const c = rawCoords;
       if (c && typeof c === 'object' && !Array.isArray(c)) {
         expand(c.lat ?? c.latitude, c.lng ?? c.longitude);

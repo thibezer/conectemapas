@@ -118,20 +118,14 @@ export class LayerPanel {
     this.container.innerHTML = `
       <aside class="cm-sidebar" id="cm-sidebar-panel" aria-label="Painel de Camadas e Ferramentas">
         <div class="cm-sidebar-header">
-          <div class="cm-sidebar-tabs">
-            <button class="cm-sidebar-tab-btn ${this.activeTab === 'layers' ? 'active' : ''}" data-tab="layers">
-              🗂️ Camadas
-            </button>
-            <button class="cm-sidebar-tab-btn ${this.activeTab === 'inspector' ? 'active' : ''}" data-tab="inspector">
-              🔍 Inspeção
-            </button>
-            <button class="cm-sidebar-tab-btn ${this.activeTab === 'collab' ? 'active' : ''}" data-tab="collab">
-              💬 Equipe
-            </button>
-          </div>
-          <button class="cm-sidebar-toggle-btn" id="btn-collapse-sidebar" title="Recolher Painel Lateral">
+          <ui-segmented id="cm-sidebar-segmented" tamanho="sm" valor="${this.activeTab}" style="flex: 1; margin-right: 4px;">
+            <span valor="layers">🗂️ Camadas</span>
+            <span valor="inspector">🔍 Inspeção</span>
+            <span valor="collab">💬 Equipe</span>
+          </ui-segmented>
+          <ui-botao-primario inline variante="ghost" id="btn-collapse-sidebar" title="Recolher Painel Lateral" style="height: 24px; width: 24px; padding: 0; min-width: 24px; font-size: 11px;">
             ❯
-          </button>
+          </ui-botao-primario>
         </div>
         <div class="cm-sidebar-body" id="cm-sidebar-tab-content">
           ${this.renderTabContent()}
@@ -159,24 +153,40 @@ export class LayerPanel {
   updateContent() {
     const body = document.getElementById('cm-sidebar-tab-content');
     if (body) {
-      body.innerHTML = this.renderTabContent();
-      this.bindTabEvents();
+      const existingUiCamadas = body.querySelector('#cm-ui-camadas');
+      if (this.activeTab === 'layers' && existingUiCamadas) {
+        // Se o Web Component já está montado, sincroniza dados sem destruição do DOM
+        if (typeof existingUiCamadas.definirCamadas === 'function') {
+          existingUiCamadas.definirCamadas(this.layers, this.features);
+        }
+      } else {
+        body.innerHTML = this.renderTabContent();
+        this.bindTabEvents();
+      }
     }
 
-    document.querySelectorAll('.cm-sidebar-tab-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.getAttribute('data-tab') === this.activeTab);
-    });
+    const segmented = this.container?.querySelector('#cm-sidebar-segmented');
+    if (segmented && (segmented.valor !== this.activeTab && segmented.value !== this.activeTab)) {
+      segmented.valor = this.activeTab;
+      segmented.value = this.activeTab;
+    }
   }
 
   bindEvents() {
     if (!this.container) return;
 
-    this.container.querySelectorAll('.cm-sidebar-tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this.activeTab = btn.getAttribute('data-tab');
-        this.updateContent();
-      });
-    });
+    const segmented = this.container.querySelector('#cm-sidebar-segmented');
+    if (segmented) {
+      const handleTabChange = (e) => {
+        const novoValor = e.detail?.valor || e.target.value || e.target.valor;
+        if (novoValor && novoValor !== this.activeTab) {
+          this.activeTab = novoValor;
+          this.updateContent();
+        }
+      };
+      segmented.addEventListener('ui-change', handleTabChange);
+      segmented.addEventListener('change', handleTabChange);
+    }
 
     const btnCollapse = this.container.querySelector('#btn-collapse-sidebar');
     const btnExpand = this.container.querySelector('#btn-expand-sidebar');
@@ -210,24 +220,38 @@ export class LayerPanel {
   }
 
   setSelectedFeature(feat, switchTab = false) {
+    const featId = feat?.id || null;
+    const currentId = this.selectedFeature?.id || null;
+    if (featId === currentId && !switchTab) return;
+
     this.selectedFeature = feat;
+    this.selectedFeatureIds.clear();
     if (feat) {
-      this.selectedFeatureIds.clear();
       this.selectedFeatureIds.add(feat.id);
       if (switchTab) {
         this.activeTab = 'inspector';
       }
-    } else {
-      this.selectedFeatureIds.clear();
     }
-    this.updateContent();
+
+    const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
+    if (uiCamadas && typeof uiCamadas.selecionarFeicoes === 'function') {
+      uiCamadas.selecionarFeicoes(Array.from(this.selectedFeatureIds), false);
+    }
+
+    if (this.activeTab === 'inspector' || switchTab) {
+      this.updateContent();
+    }
   }
 
   setSelectedFeatures(features = [], switchTab = false) {
+    const newIds = (features || []).filter(f => f && f.id).map(f => f.id);
+    const currentIds = Array.from(this.selectedFeatureIds);
+    if (currentIds.length === newIds.length && newIds.every(id => this.selectedFeatureIds.has(id)) && !switchTab) {
+      return;
+    }
+
     this.selectedFeatureIds.clear();
-    (features || []).forEach(f => {
-      if (f && f.id) this.selectedFeatureIds.add(f.id);
-    });
+    newIds.forEach(id => this.selectedFeatureIds.add(id));
     if (features && features.length === 1) {
       this.selectedFeature = features[0];
       if (switchTab) {
@@ -236,7 +260,27 @@ export class LayerPanel {
     } else {
       this.selectedFeature = null;
     }
-    this.updateContent();
+
+    const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
+    if (uiCamadas && typeof uiCamadas.selecionarFeicoes === 'function') {
+      uiCamadas.selecionarFeicoes(Array.from(this.selectedFeatureIds), false);
+    }
+
+    if (this.activeTab === 'inspector' || switchTab) {
+      this.updateContent();
+    }
+  }
+
+  setActiveLayerId(layerId) {
+    if (!layerId || this.activeLayerId === layerId) return;
+    this.activeLayerId = layerId;
+    const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
+    if (uiCamadas && uiCamadas.camadaAtivaId !== layerId) {
+      uiCamadas.camadaAtivaId = layerId;
+      if (typeof uiCamadas.sincronizarCamadaAtivaDOM === 'function') {
+        uiCamadas.sincronizarCamadaAtivaDOM();
+      }
+    }
   }
 
   updateLayers(layers = [], features = null) {
@@ -257,44 +301,28 @@ export class LayerPanel {
         }
       }
     }
-    if (this.activeTab === 'layers') this.updateContent();
+
+    const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
+    if (uiCamadas && typeof uiCamadas.definirCamadas === 'function') {
+      uiCamadas.definirCamadas(this.layers, this.features);
+      if (this.activeLayerId && uiCamadas.camadaAtivaId !== this.activeLayerId) {
+        uiCamadas.camadaAtivaId = this.activeLayerId;
+      }
+      if (this.currentBasemap && uiCamadas.mapaBaseAtivo !== this.currentBasemap) {
+        uiCamadas.mapaBaseAtivo = this.currentBasemap;
+      }
+      if (this.selectedFeatureIds && typeof uiCamadas.selecionarFeicoes === 'function') {
+        uiCamadas.selecionarFeicoes(Array.from(this.selectedFeatureIds), false);
+      }
+    } else if (this.activeTab === 'layers') {
+      this.updateContent();
+    }
   }
 
   updateAuditLog(auditLog = []) {
     this.auditLog = auditLog || [];
     if (this.activeTab === 'collab') {
       this.updateContent();
-    }
-  }
-
-  setActiveLayerId(layerId) {
-    this.activeLayerId = layerId;
-    if (this.activeTab === 'layers' && this.container) {
-      const rows = this.container.querySelectorAll('.cm-ai-layer-row');
-      rows.forEach(row => {
-        const rowLayerId = row.getAttribute('data-layer-row');
-        const isActive = rowLayerId === layerId;
-        row.classList.toggle('active-drawing-layer', isActive);
-
-        const nameCol = row.querySelector('.cm-ai-col-name');
-        if (nameCol) {
-          const existingBadge = nameCol.querySelector('.cm-ai-active-badge');
-          if (isActive && !existingBadge) {
-            const badge = document.createElement('span');
-            badge.className = 'cm-ai-active-badge';
-            badge.title = 'Camada ativa para novos desenhos';
-            badge.textContent = '✏️ Ativa';
-            const countChip = nameCol.querySelector('.cm-ai-count-chip');
-            if (countChip) {
-              nameCol.insertBefore(badge, countChip);
-            } else {
-              nameCol.appendChild(badge);
-            }
-          } else if (!isActive && existingBadge) {
-            existingBadge.remove();
-          }
-        }
-      });
     }
   }
 
@@ -306,7 +334,12 @@ export class LayerPanel {
         if (!validIds.has(id)) this.selectedFeatureIds.delete(id);
       }
     }
-    if (this.activeTab === 'layers') this.updateContent();
+    const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
+    if (uiCamadas && typeof uiCamadas.definirFeicoes === 'function') {
+      uiCamadas.definirFeicoes(this.features);
+    } else if (this.activeTab === 'layers') {
+      this.updateContent();
+    }
   }
 
   addChatMessage(msg) {

@@ -24,6 +24,7 @@ import { ProjectTemplatesModal } from './components/Modals/ProjectTemplatesModal
 import { NewFeatureModal } from './components/Modals/NewFeatureModal.js';
 import { NewLayerModal } from './components/Modals/NewLayerModal.js';
 import { PrintComposerModal } from './components/PrintComposer/PrintComposerModal.js';
+import { TextPromptModal } from './components/Modals/TextPromptModal.js';
 
 import { ContextMenu } from './components/ContextMenu.js';
 import { SelectionHUD } from './components/SelectionHUD.js';
@@ -54,6 +55,7 @@ class ConecteMapasApp {
     this.layerPanel = null;
     this.attributeTable = null;
     this.newFeatureModal = null;
+    this.textPromptModal = null;
     this.newLayerModal = null;
     this.printComposerModal = null;
 
@@ -144,6 +146,7 @@ class ConecteMapasApp {
             if (this.drawingToolbar) this.drawingToolbar.setActiveLayer(curActive);
             if (this.layerPanel) this.layerPanel.setActiveLayerId(curActive.id);
             if (this.newFeatureModal) this.newFeatureModal.setActiveLayerId(curActive.id);
+            if (this.textPromptModal) this.textPromptModal.setActiveLayerId(curActive.id);
           }
         }
         if (Array.isArray(saved.auditLog) && saved.auditLog.length > 0) {
@@ -166,6 +169,7 @@ class ConecteMapasApp {
           this.refreshMapAndTable(true);
           if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
           if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
+          if (this.textPromptModal) this.textPromptModal.updateLayers(this.layers);
           if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
         }
       }
@@ -221,6 +225,7 @@ class ConecteMapasApp {
             this.refreshMapAndTable(true);
             if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
             if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
+            if (this.textPromptModal) this.textPromptModal.updateLayers(this.layers);
             if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
             if (this.mapEngine && this.features.length > 0) {
               setTimeout(() => this.mapEngine.fitAllFeatures(), 300);
@@ -451,6 +456,14 @@ class ConecteMapasApp {
       onFeatureCreated: (rawFeature) => {
         FeatureSyncController.handleDrawingCompleted(this, rawFeature);
       },
+      onFeatureUpdated: (updatedFeature) => {
+        FeatureSyncController.updateFeature(this, updatedFeature);
+      },
+      onTextPromptRequested: (latlng) => {
+        if (this.textPromptModal) {
+          this.textPromptModal.openWithLocation(latlng);
+        }
+      },
       onContextMenu: (data) => {
         if (this.contextMenu) {
           this.contextMenu.open(data);
@@ -506,6 +519,9 @@ class ConecteMapasApp {
     }
     if (this.newFeatureModal && typeof this.newFeatureModal.setActiveLayerId === 'function') {
       this.newFeatureModal.setActiveLayerId(layer.id);
+    }
+    if (this.textPromptModal && typeof this.textPromptModal.setActiveLayerId === 'function') {
+      this.textPromptModal.setActiveLayerId(layer.id);
     }
 
     if (notify) {
@@ -778,6 +794,19 @@ class ConecteMapasApp {
     });
     this.newFeatureModal.render(document.getElementById('new-feature-modal-mount'));
 
+    this.textPromptModal = new TextPromptModal({
+      layers: this.layers,
+      activeLayerId: this.activeLayerId,
+      onSave: (newFeature) => {
+        FeatureSyncController.handleDrawingCompleted(this, newFeature);
+        if (this.mapEngine) this.mapEngine.setTool('select');
+      },
+      onCancel: () => {
+        if (this.mapEngine) this.mapEngine.setTool('select');
+      }
+    });
+    this.textPromptModal.render(document.getElementById('text-prompt-modal-mount'));
+
     this.newLayerModal = new NewLayerModal({
       onSave: (layerData) => ProjectActionsController.createLayer(this, layerData)
     });
@@ -920,6 +949,7 @@ class ConecteMapasApp {
       line: 'Linha / Rota (L)',
       polygon: 'Polígono / Área (A)',
       circle: 'Buffer Circular (C)',
+      text: 'Texto / Rótulo no Mapa (T)',
       measure: 'Régua de Medição (M)'
     };
     return names[tool] || tool;

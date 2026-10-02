@@ -25,6 +25,10 @@ export class DrawingEngine {
     this._cumulativeMeasureDistance = 0;
     this._activeSnapLatLng = null;
     this.activeDrawingLayer = null;
+
+    // Camadas de Cotas e Polígono da Régua de Medição
+    this.measureSegmentsLayer = L.layerGroup().addTo(this.map);
+    this.measurePolygonLayer = null;
   }
 
   setActiveDrawingLayer(layer) {
@@ -69,12 +73,71 @@ export class DrawingEngine {
       this.measureTooltip = null;
       this._measureTextEl = null;
     }
+    if (this.measureSegmentsLayer) {
+      this.measureSegmentsLayer.clearLayers();
+    }
+    if (this.measurePolygonLayer) {
+      this.map.removeLayer(this.measurePolygonLayer);
+      this.measurePolygonLayer = null;
+    }
     this.updateDrawingHUD();
   }
 
   renderVertexHandles() {
     if (!this.vertexMarkers) return;
     this.vertexMarkers.clearLayers();
+    if (this.measureSegmentsLayer) {
+      this.measureSegmentsLayer.clearLayers();
+    }
+
+    // Régua de Medição: Vértices numerados (P1, P2...) e cotas nos trechos
+    if (this.activeTool === 'measure') {
+      this.drawingPoints.forEach((pt, index) => {
+        const markerIcon = L.divIcon({
+          className: 'cm-measure-vertex-divicon',
+          html: `<div class="cm-measure-vertex-marker">${index + 1}</div>`,
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        });
+        const marker = L.marker(pt, { icon: markerIcon, interactive: false });
+        this.vertexMarkers.addLayer(marker);
+
+        if (index > 0) {
+          const prevPt = this.drawingPoints[index - 1];
+          const segDist = this.engine.calculateDistance(prevPt, pt);
+          const segDistText = segDist > 1000 ? `${(segDist / 1000).toFixed(2)} km` : `${segDist.toFixed(1)} m`;
+          const midPt = [(prevPt[0] + pt[0]) / 2, (prevPt[1] + pt[1]) / 2];
+
+          const badgeIcon = L.divIcon({
+            className: 'cm-measure-segment-divicon',
+            html: `<div class="cm-measure-segment-badge">${segDistText}</div>`,
+            iconSize: null,
+            iconAnchor: [0, 0]
+          });
+          const badgeMarker = L.marker(midPt, { icon: badgeIcon, interactive: false });
+          this.measureSegmentsLayer.addLayer(badgeMarker);
+        }
+      });
+
+      // Se tiver 3 ou mais pontos, exibe polígono translúcido preenchendo a área medida
+      if (this.drawingPoints.length >= 3) {
+        if (!this.measurePolygonLayer) {
+          this.measurePolygonLayer = L.polygon(this.drawingPoints, {
+            color: '#f59e0b',
+            fillColor: '#f59e0b',
+            fillOpacity: 0.16,
+            weight: 1.5,
+            dashArray: '4, 4'
+          }).addTo(this.map);
+        } else {
+          this.measurePolygonLayer.setLatLngs(this.drawingPoints);
+        }
+      } else if (this.measurePolygonLayer) {
+        this.map.removeLayer(this.measurePolygonLayer);
+        this.measurePolygonLayer = null;
+      }
+      return;
+    }
 
     this.drawingPoints.forEach((pt, index) => {
       const isFirst = index === 0 && (this.activeTool === 'polygon' || this.activeTool === 'pen-select');
@@ -116,8 +179,58 @@ export class DrawingEngine {
       document.body.appendChild(hud);
     }
 
-    if (this.activeTool === 'select' || (this.drawingPoints.length === 0 && this.activeTool !== 'point')) {
+    if (this.activeTool === 'select' || (this.drawingPoints.length === 0 && this.activeTool !== 'point' && this.activeTool !== 'text')) {
       hud.style.display = 'none';
+      return;
+    }
+
+    if (this.activeTool === 'text') {
+      hud.style.display = 'flex';
+      hud.innerHTML = `
+        <span class="cm-cad-hud-pulse" style="background: #38bdf8;"></span>
+        <span><strong>Texto / Rótulo:</strong> Clique no mapa na posição onde deseja inserir a anotação</span>
+        <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> cancela</span>
+      `;
+      return;
+    }
+
+    if (this.activeTool === 'measure') {
+      hud.style.display = 'flex';
+      const count = this.drawingPoints.length;
+      const totalDist = this._cumulativeMeasureDistance || this.engine.calculatePolylineLength(this.drawingPoints);
+      const distFormatted = totalDist > 1000 ? `${(totalDist / 1000).toFixed(2)} km` : `${totalDist.toFixed(1)} m`;
+      let areaInfo = '';
+      if (count >= 3) {
+        const areaM2 = this.engine.calculatePolygonArea(this.drawingPoints);
+        const ha = (areaM2 / 10000).toFixed(2);
+        areaInfo = ` • Área Delimitada: <strong>${ha} ha</strong> (${areaM2.toFixed(0)} m²)`;
+      }
+
+      hud.innerHTML = `
+        <span class="cm-cad-hud-pulse" style="background: #fbbf24;"></span>
+        <span><strong>Régua de Medição:</strong> ${count} ponto(s) | Distância: <strong>${distFormatted}</strong>${areaInfo}</span>
+        <span class="cm-cad-hud-hint">• <strong>[Enter]</strong> fixa cota</span>
+        <span class="cm-cad-hud-hint">• <strong>[Ctrl+Z]</strong> desfaz</span>
+        <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> limpa</span>
+        ${count >= 2 ? `<button id="btn-cad-finish" class="cm-cad-finish-btn" style="background: #f59e0b; color: #000;">📌 Fixar Medição</button>` : ''}
+        <button id="btn-cad-clear" class="cm-cad-finish-btn" style="background: rgba(255,255,255,0.18); color: #fff;">✕ Limpar</button>
+      `;
+
+      const finishBtn = hud.querySelector('#btn-cad-finish');
+      if (finishBtn) {
+        finishBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.finalizeCurrentDrawing();
+        });
+      }
+      const clearBtn = hud.querySelector('#btn-cad-clear');
+      if (clearBtn) {
+        clearBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.resetDrawingState();
+          this.setTool('select');
+        });
+      }
       return;
     }
 
@@ -129,7 +242,6 @@ export class DrawingEngine {
     if (this.activeTool === 'polygon') { toolName = 'Polígono'; minPts = 3; }
     if (this.activeTool === 'pen-select') { toolName = 'Caneta de Seleção'; minPts = 3; }
     if (this.activeTool === 'circle') { toolName = 'Círculo'; minPts = 1; }
-    if (this.activeTool === 'measure') { toolName = 'Medição'; minPts = 2; }
 
     const canFinish = count >= minPts;
 
@@ -268,8 +380,43 @@ export class DrawingEngine {
       });
       return true;
     } else if (this.activeTool === 'measure' && this.drawingPoints.length >= 2) {
+      const totalDist = this.engine.calculatePolylineLength(this.drawingPoints);
+      const distFormatted = totalDist > 1000 ? `${(totalDist / 1000).toFixed(2)} km` : `${totalDist.toFixed(1)} m`;
+      const coords = [...this.drawingPoints];
+      const segs = this.engine.calculateSegments(coords);
+      const segText = segs.map((s, i) => `T${i+1}: ${s.distance > 1000 ? (s.distance/1000).toFixed(2)+'km' : s.distance.toFixed(1)+'m'}`).join(', ');
+
+      let areaM2 = 0;
+      let areaText = '';
+      if (coords.length >= 3) {
+        areaM2 = this.engine.calculatePolygonArea(coords);
+        areaText = `${(areaM2 / 10000).toFixed(2)} ha`;
+      }
+
       this.resetDrawingState();
       this.setTool('select');
+
+      this.engine.onFeatureCreated({
+        type: 'LineString',
+        coordinates: coords,
+        name: `Medição (${distFormatted})`,
+        category: 'Medição & Cotas',
+        layerId,
+        color: '#f59e0b',
+        properties: {
+          'Extensão Total': distFormatted,
+          'Vértices': coords.length,
+          'Trechos': segText,
+          ...(areaM2 > 0 ? { 'Área Delimitada': areaText, 'Área (m²)': areaM2.toFixed(1) + ' m²' } : {})
+        },
+        style: {
+          strokeColor: '#f59e0b',
+          strokeWidth: 3,
+          strokeDashArray: '6, 4',
+          showLabel: true,
+          labelField: 'extensao'
+        }
+      });
       return true;
     }
     return false;
@@ -355,7 +502,12 @@ export class DrawingEngine {
     const activeColor = this.activeDrawingLayer?.color || '#00E08A';
     const activeLayerId = this.activeDrawingLayer?.id;
 
-    if (this.activeTool === 'point') {
+    if (this.activeTool === 'text') {
+      if (this.engine && typeof this.engine.onTextPromptRequested === 'function') {
+        this.engine.onTextPromptRequested(latlng);
+      }
+      return;
+    } else if (this.activeTool === 'point') {
       this.resetDrawingState();
       this.setTool('select');
       this.engine.onFeatureCreated({
@@ -572,37 +724,59 @@ export class DrawingEngine {
 
   updateMeasureTooltip(latlng, currentLatLng = null) {
     let distanceMeters = 0;
+    let segmentMeters = 0;
+    let bearing = null;
+    let areaM2 = 0;
+
     if (currentLatLng && this.drawingPoints.length > 0) {
       const lastFixedPoint = this.drawingPoints[this.drawingPoints.length - 1];
-      distanceMeters = this._cumulativeMeasureDistance + this.engine.calculateDistance(lastFixedPoint, currentLatLng);
+      segmentMeters = this.engine.calculateDistance(lastFixedPoint, currentLatLng);
+      distanceMeters = this._cumulativeMeasureDistance + segmentMeters;
+      bearing = this.engine.calculateBearing(lastFixedPoint, currentLatLng);
+
+      if (this.drawingPoints.length >= 2) {
+        areaM2 = this.engine.calculatePolygonArea([...this.drawingPoints, currentLatLng]);
+      }
     } else {
       distanceMeters = this._cumulativeMeasureDistance || this.engine.calculatePolylineLength(this.drawingPoints);
     }
 
-    const distText = distanceMeters > 1000 
+    const totalDistText = distanceMeters > 1000 
       ? `${(distanceMeters / 1000).toFixed(2)} km`
       : `${distanceMeters.toFixed(1)} m`;
 
-    if (!this.measureTooltip) {
-      const container = document.createElement('div');
-      container.className = 'cm-measure-tooltip-box';
-      container.style.cssText = 'background: rgba(0,0,0,0.85); color: #ffb86c; font-family: monospace; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid #ffb86c; white-space: nowrap;';
-      container.innerHTML = `📏 Distância: <span class="cm-measure-text">${distText}</span>`;
-      this._measureTextEl = container.querySelector('.cm-measure-text');
+    const segmentDistText = segmentMeters > 1000 
+      ? `${(segmentMeters / 1000).toFixed(2)} km` 
+      : `${segmentMeters.toFixed(1)} m`;
 
+    let bearingText = '';
+    if (bearing !== null) {
+      const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      const dirIdx = Math.round(bearing / 45) % 8;
+      bearingText = `${bearing.toFixed(1)}° ${dirs[dirIdx]}`;
+    }
+
+    const tooltipHtml = `
+      <div class="cm-measure-tooltip-box">
+        <div>📏 Trecho: <strong style="color: #fbbf24;">${segmentDistText}</strong></div>
+        <div>📍 Total: <strong style="color: #60a5fa;">${totalDistText}</strong></div>
+        ${bearingText ? `<div>🧭 Azimute: <strong style="color: #34d399;">${bearingText}</strong></div>` : ''}
+        ${areaM2 > 0 ? `<div>📐 Área: <strong style="color: #a78bfa;">${(areaM2/10000).toFixed(2)} ha</strong></div>` : ''}
+      </div>
+    `;
+
+    if (!this.measureTooltip) {
       this.measureTooltip = L.popup({
         closeButton: false,
-        offset: [0, -10],
+        offset: [0, -12],
         className: 'cm-measure-popup'
       })
       .setLatLng(latlng)
-      .setContent(container)
+      .setContent(tooltipHtml)
       .openOn(this.map);
     } else {
       this.measureTooltip.setLatLng(latlng);
-      if (this._measureTextEl) {
-        this._measureTextEl.textContent = distText;
-      }
+      this.measureTooltip.setContent(tooltipHtml);
     }
   }
 
@@ -614,6 +788,19 @@ export class DrawingEngine {
         this.map.removeLayer(this.vertexMarkers);
       }
       this.vertexMarkers = null;
+    }
+    if (this.measureSegmentsLayer) {
+      this.measureSegmentsLayer.clearLayers();
+      if (this.map && this.map.hasLayer(this.measureSegmentsLayer)) {
+        this.map.removeLayer(this.measureSegmentsLayer);
+      }
+      this.measureSegmentsLayer = null;
+    }
+    if (this.measurePolygonLayer) {
+      if (this.map && this.map.hasLayer(this.measurePolygonLayer)) {
+        this.map.removeLayer(this.measurePolygonLayer);
+      }
+      this.measurePolygonLayer = null;
     }
     const hud = document.getElementById('cm-cad-hud');
     if (hud) hud.remove();

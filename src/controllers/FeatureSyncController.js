@@ -46,6 +46,9 @@ export class FeatureSyncController {
       } else if (rawFeature.type === 'Circle') {
         defaultName = `Buffer (${rawFeature.radius || 500}m)`;
         defaultCat = 'Raio de Cobertura';
+      } else if (rawFeature.type === 'Text') {
+        defaultName = rawFeature.properties?.text || `Texto #${num}`;
+        defaultCat = 'Anotação / Rótulo';
       } else {
         defaultName = `Feição #${num}`;
       }

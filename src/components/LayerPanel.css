@@ -33,16 +33,16 @@
 }
 
 .cm-sidebar-header {
-  height: 28px;
-  min-height: 28px;
-  max-height: 28px;
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px;
+  padding: 2px 6px;
   border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
-  background: rgba(0, 0, 0, 0.25);
-  gap: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  gap: 4px;
 }
 
 .cm-sidebar-toggle-btn {
@@ -134,6 +134,12 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.cm-sidebar-body:has(#cm-ui-camadas) {
+  padding: 0;
+  overflow: hidden;
+  gap: 0;
 }
 
 .cm-sidebar-section-header {

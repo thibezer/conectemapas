@@ -340,4 +340,204 @@ export class SpatialAlgorithms {
     }
     return dd;
   }
+
+  /**
+   * Testa se um segmento de reta (lat1, lng1) -> (lat2, lng2) intersecta ou está contido em uma caixa delimitadora.
+   * Algoritmo paramétrico Liang-Barsky (precisão exata O(1)).
+   */
+  static segmentIntersectsBox(lat1, lng1, lat2, lng2, south, north, west, east) {
+    // 1. Se qualquer vértice estiver dentro da caixa
+    if ((lat1 >= south && lat1 <= north && lng1 >= west && lng1 <= east) ||
+        (lat2 >= south && lat2 <= north && lng2 >= west && lng2 <= east)) {
+      return true;
+    }
+
+    // 2. Rejeição rápida se ambos os vértices estiverem inteiramente de um mesmo lado externo
+    if ((lat1 < south && lat2 < south) ||
+        (lat1 > north && lat2 > north) ||
+        (lng1 < west && lng2 < west) ||
+        (lng1 > east && lng2 > east)) {
+      return false;
+    }
+
+    // 3. Recorte paramétrico Liang-Barsky
+    const dLng = lng2 - lng1;
+    const dLat = lat2 - lat1;
+    const p = [-dLng, dLng, -dLat, dLat];
+    const q = [lng1 - west, east - lng1, lat1 - south, north - lat1];
+
+    let u1 = 0;
+    let u2 = 1;
+
+    for (let i = 0; i < 4; i++) {
+      if (p[i] === 0) {
+        if (q[i] < 0) return false;
+      } else {
+        const t = q[i] / p[i];
+        if (p[i] < 0) {
+          if (t > u2) return false;
+          if (t > u1) u1 = t;
+        } else {
+          if (t < u1) return false;
+          if (t < u2) u2 = t;
+        }
+      }
+    }
+
+    return u1 <= u2;
+  }
+
+  /**
+   * Testa se um ponto [lat, lng] está contido em um anel de polígono (Ray Casting / Jordan Curve)
+   */
+  static isPointInPolygon(point, ring) {
+    if (!point || !Array.isArray(ring) || ring.length < 3) return false;
+    const y = point[0], x = point[1];
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const ptI = ring[i];
+      const ptJ = ring[j];
+      if (!ptI || !ptJ) continue;
+      const yi = ptI[0], xi = ptI[1];
+      const yj = ptJ[0], xj = ptJ[1];
+      const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  /**
+   * Testa interseção geométrica exata (Narrow-Phase) entre uma feição e um LatLngBounds
+   * Impede falsos positivos causados pelo Axis-Aligned Bounding Box (AABB).
+   * @param {Object} feat Feição a ser testada
+   * @param {Object} bounds LatLngBounds
+   * @param {Object} [map] Instância Leaflet (opcional para teste de tolerância visual de marcadores)
+   * @param {Object} [pixelBox] { minX, minY, maxX, maxY } (opcional)
+   * @returns {boolean}
+   */
+  static featureIntersectsBounds(feat, bounds, map = null, pixelBox = null) {
+    if (!feat || !bounds) return false;
+
+    const south = typeof bounds.getSouth === 'function' ? bounds.getSouth() : (bounds.minLat ?? bounds.south);
+    const north = typeof bounds.getNorth === 'function' ? bounds.getNorth() : (bounds.maxLat ?? bounds.north);
+    const west = typeof bounds.getWest === 'function' ? bounds.getWest() : (bounds.minLng ?? bounds.west);
+    const east = typeof bounds.getEast === 'function' ? bounds.getEast() : (bounds.maxLng ?? bounds.east);
+
+    const type = feat.type || feat.geometry?.type || 'Point';
+    const coords = feat.coordinates || feat.geometry?.coordinates;
+    if (!coords) return false;
+
+    const getPointLatLng = (c) => {
+      if (!c) return null;
+      if (Array.isArray(c) && c.length >= 2) return [Number(c[0]), Number(c[1])];
+      if (typeof c === 'object') return [Number(c.lat ?? c.latitude), Number(c.lng ?? c.longitude)];
+      return null;
+    };
+
+    if (type === 'Point' || type === 'Text') {
+      const pt = getPointLatLng(coords);
+      if (!pt || isNaN(pt[0]) || isNaN(pt[1])) return false;
+
+      // 1. Verificação geográfica direta
+      if (pt[0] >= south && pt[0] <= north && pt[1] >= west && pt[1] <= east) {
+        return true;
+      }
+
+      // 2. Se a caixa na tela tocar o ícone visual do marcador
+      if (map && pixelBox && typeof map.latLngToContainerPoint === 'function') {
+        try {
+          const screenPt = map.latLngToContainerPoint(pt);
+          const iconSize = feat.style?.markerSize ? Number(feat.style.markerSize) : 24;
+          const radius = Math.max(6, iconSize / 2);
+          const iconTouchesBox = !(
+            screenPt.x + radius < pixelBox.minX ||
+            screenPt.x - radius > pixelBox.maxX ||
+            screenPt.y + radius < pixelBox.minY ||
+            screenPt.y - radius > pixelBox.maxY
+          );
+          if (iconTouchesBox) return true;
+        } catch (_) {}
+      }
+
+      return false;
+    }
+
+    if (type === 'Circle') {
+      const center = getPointLatLng(coords);
+      if (!center || isNaN(center[0]) || isNaN(center[1])) return false;
+      const radiusMeters = Number(feat.radius) || 500;
+
+      // Ponto na caixa mais próximo do centro do círculo
+      const closestLat = Math.max(south, Math.min(north, center[0]));
+      const closestLng = Math.max(west, Math.min(east, center[1]));
+      const dist = this.pointDistance(center, [closestLat, closestLng]);
+
+      return dist <= radiusMeters;
+    }
+
+    if (type === 'LineString' && Array.isArray(coords)) {
+      const lines = (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) ? coords : [coords];
+
+      for (const line of lines) {
+        if (!Array.isArray(line) || line.length < 2) continue;
+        for (let i = 0; i < line.length - 1; i++) {
+          const p1 = getPointLatLng(line[i]);
+          const p2 = getPointLatLng(line[i + 1]);
+          if (!p1 || !p2) continue;
+          if (p1[0] === p2[0] && p1[1] === p2[1]) continue;
+          if (this.segmentIntersectsBox(p1[0], p1[1], p2[0], p2[1], south, north, west, east)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    if (type === 'Polygon' && Array.isArray(coords)) {
+      let rings = [];
+      if (Array.isArray(coords[0]) && Array.isArray(coords[0][0]) && Array.isArray(coords[0][0][0])) {
+        rings = coords.flat(1);
+      } else if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+        rings = coords;
+      } else {
+        rings = [coords];
+      }
+
+      const boxCenter = [(south + north) / 2, (west + east) / 2];
+
+      for (const rawRing of rings) {
+        if (!Array.isArray(rawRing) || rawRing.length < 3) continue;
+        const ring = rawRing.map(getPointLatLng).filter(Boolean);
+        if (ring.length < 3) continue;
+
+        // 1. Algum vértice do polígono está dentro da caixa de seleção?
+        for (const pt of ring) {
+          if (pt[0] >= south && pt[0] <= north && pt[1] >= west && pt[1] <= east) {
+            return true;
+          }
+        }
+
+        // 2. Alguma aresta do polígono cruza as bordas da caixa de seleção?
+        for (let i = 0; i < ring.length; i++) {
+          const next = (i + 1) % ring.length;
+          const p1 = ring[i];
+          const p2 = ring[next];
+          if (p1[0] === p2[0] && p1[1] === p2[1]) continue;
+          if (this.segmentIntersectsBox(p1[0], p1[1], p2[0], p2[1], south, north, west, east)) {
+            return true;
+          }
+        }
+
+        // 3. A caixa de seleção está inteiramente contida dentro do anel do polígono?
+        if (this.isPointInPolygon(boxCenter, ring)) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    return false;
+  }
 }
+

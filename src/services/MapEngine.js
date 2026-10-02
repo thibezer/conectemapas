@@ -8,6 +8,8 @@ import { DrawingEngine } from './MapEngine/DrawingEngine.js';
 import { VertexEditor } from './MapEngine/VertexEditor.js';
 import { FeatureRenderer } from './MapEngine/FeatureRenderer.js';
 import { SpatialIndex } from './SpatialIndex.js';
+import { SpatialAlgorithms } from './SpatialAlgorithms.js';
+import { GeometryVersionManager } from './GeometryVersionManager.js';
 
 export class MapEngine {
   constructor(containerId, options = {}) {
@@ -27,11 +29,13 @@ export class MapEngine {
     this.spatialIndex = new SpatialIndex();
 
     this.onFeatureCreated = options.onFeatureCreated || (() => {});
+    this.onFeatureUpdated = options.onFeatureUpdated || (() => {});
     this.onFeatureSelected = options.onFeatureSelected || (() => {});
     this.onFeaturesSelected = options.onFeaturesSelected || (() => {});
     this.onCursorMove = options.onCursorMove || (() => {});
     this.onToolChange = options.onToolChange || (() => {});
     this.onContextMenu = options.onContextMenu || (() => {});
+    this.onTextPromptRequested = options.onTextPromptRequested || (() => {});
 
     this.selectedFeatureId = null;
     this.selectedFeatureIds = new Set();
@@ -252,7 +256,7 @@ export class MapEngine {
         const dx = e.clientX - this._boxSelectStart.x;
         const dy = e.clientY - this._boxSelectStart.y;
 
-        if (!this._isBoxSelecting && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+        if (!this._isBoxSelecting && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
           this._isBoxSelecting = true;
           if (!this._selectionBoxEl) {
             this._selectionBoxEl = document.createElement('div');
@@ -299,8 +303,9 @@ export class MapEngine {
           const nw = this.map.containerPointToLatLng([minX, minY]);
           const se = this.map.containerPointToLatLng([maxX, maxY]);
           const boxBounds = L.latLngBounds(nw, se);
+          const pixelBox = { minX, minY, maxX, maxY };
 
-          const matchedFeatures = this.findFeaturesInBounds(boxBounds);
+          const matchedFeatures = this.findFeaturesInBounds(boxBounds, pixelBox);
           this.handleBoxSelectionResult(matchedFeatures, this._boxSelectModifiers);
 
           this._selectionBoxEl.remove();
@@ -476,7 +481,7 @@ export class MapEngine {
     this.featureRenderer.removeFeature(featId);
   }
 
-  findFeaturesInBounds(bounds) {
+  findFeaturesInBounds(bounds, pixelBox = null) {
     if (!bounds || !this.featureRenderer) return [];
 
     const validLayers = new Set(
@@ -485,6 +490,7 @@ export class MapEngine {
         .map(l => l.id)
     );
 
+    const allFeatures = this.featureRenderer.allFeatures || [];
     const candidates = this.spatialIndex.query(bounds, 0) || [];
     const results = [];
     const seen = new Set();
@@ -493,7 +499,17 @@ export class MapEngine {
       if (!feat || !feat.id || seen.has(feat.id)) return;
       if (feat.visible === false || !validLayers.has(feat.layerId)) return;
 
-      if (this.spatialIndex.intersects(feat, bounds, 0)) {
+      // Salvaguarda: Não seleciona geometrias prévias ocultas se houver geometria oficial ativa
+      const shouldRender = GeometryVersionManager.shouldRenderFeature(
+        feat,
+        allFeatures,
+        this.showPreviewGeometries,
+        this.individualPreviewToggles
+      );
+      if (!shouldRender) return;
+
+      // Narrow-Phase Geometric Testing: Exige toque/interseção geométrica real
+      if (SpatialAlgorithms.featureIntersectsBounds(feat, bounds, this.map, pixelBox)) {
         seen.add(feat.id);
         results.push(feat);
       }

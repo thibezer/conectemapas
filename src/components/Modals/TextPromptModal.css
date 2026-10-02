@@ -1,0 +1,61 @@
+/* ==========================================================================
+   ConecteMapas - TextPromptModal Styling
+   ========================================================================== */
+
+.cm-text-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--cm-text, #f1f5f9);
+}
+
+.cm-text-style-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.cm-color-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.cm-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+}
+
+.cm-color-swatch:hover {
+  transform: scale(1.18);
+}
+
+.cm-color-swatch.active {
+  border-color: #ffffff;
+  transform: scale(1.15);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+}
+
+.cm-text-preview-box {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 54px;
+  background-image: 
+    linear-gradient(45deg, #181920 25%, transparent 25%), 
+    linear-gradient(-45deg, #181920 25%, transparent 25%), 
+    linear-gradient(45deg, transparent 75%, #181920 75%), 
+    linear-gradient(-45deg, transparent 75%, #181920 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}

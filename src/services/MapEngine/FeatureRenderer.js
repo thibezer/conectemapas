@@ -685,6 +685,7 @@ export class FeatureRenderer {
         existingLayer._cmFeature = feat;
 
         existingLayer.on('click', (e) => {
+          if (this.engine._justBoxSelected) return;
           if (this.engine.activeTool !== 'select') {
             if (this.engine.drawingEngine) {
               this.engine.drawingEngine.handleClick(e);
@@ -773,7 +774,7 @@ export class FeatureRenderer {
 
   normalizeCoordinates(feat) {
     let coords = feat.coordinates;
-    if (feat.type === 'Point' && coords && coords.lat !== undefined) {
+    if ((feat.type === 'Point' || feat.type === 'Text') && coords && coords.lat !== undefined) {
       return [coords.lat, coords.lng];
     } else if ((feat.type === 'Polygon' || feat.type === 'LineString') && Array.isArray(coords)) {
       const openRing = (pts) => {
@@ -802,7 +803,38 @@ export class FeatureRenderer {
   createLeafletLayer(feat, coords, style, isSelected = false) {
     const paneName = this.getOrCreateLayerPane(feat.layerId).paneName;
 
-    if (feat.type === 'Point' && coords) {
+    if (feat.type === 'Text' && coords) {
+      const text = feat.properties?.text || feat.name || 'Texto';
+      const fontSize = feat.style?.fontSize || 13;
+      const textColor = feat.style?.textColor || '#ffffff';
+      const bgColor = feat.style?.backgroundColor || 'rgba(15, 23, 42, 0.88)';
+      const borderColor = isSelected ? '#38bdf8' : (feat.style?.borderColor || 'rgba(255, 255, 255, 0.25)');
+      const haloClass = feat.style?.halo ? 'cm-map-text-halo' : '';
+
+      const html = `<div class="cm-map-text-badge ${haloClass} ${isSelected ? 'cm-map-text-selected' : ''}" style="font-size: ${fontSize}px; color: ${textColor}; background: ${bgColor}; border-color: ${borderColor};">${this.escapeHtml(text)}</div>`;
+      const icon = L.divIcon({
+        className: 'cm-map-text-container',
+        html,
+        iconSize: null,
+        iconAnchor: [0, 0]
+      });
+
+      const marker = L.marker(coords, {
+        icon,
+        draggable: true,
+        pane: paneName
+      });
+
+      marker.on('dragend', (e) => {
+        const newPos = e.target.getLatLng();
+        feat.coordinates = [newPos.lat, newPos.lng];
+        if (this.engine.onFeatureUpdated) {
+          this.engine.onFeatureUpdated(feat);
+        }
+      });
+
+      return marker;
+    } else if (feat.type === 'Point' && coords) {
       const isCustomSvgIcon = ['tower', 'tree', 'warning', 'water', 'boundary'].includes(style.markerIcon);
       if (!isCustomSvgIcon) {
         // Canvas CircleMarker de alta performance (Zero nós DOM adicionais)
@@ -873,7 +905,24 @@ export class FeatureRenderer {
       layer._cmLayerId = feat.layerId;
     }
 
-    if (feat.type === 'Point' && coords) {
+    if (feat.type === 'Text' && coords) {
+      layer.setLatLng(coords);
+      const text = feat.properties?.text || feat.name || 'Texto';
+      const fontSize = feat.style?.fontSize || 13;
+      const textColor = feat.style?.textColor || '#ffffff';
+      const bgColor = feat.style?.backgroundColor || 'rgba(15, 23, 42, 0.88)';
+      const borderColor = isSelected ? '#38bdf8' : (feat.style?.borderColor || 'rgba(255, 255, 255, 0.25)');
+      const haloClass = feat.style?.halo ? 'cm-map-text-halo' : '';
+
+      const html = `<div class="cm-map-text-badge ${haloClass} ${isSelected ? 'cm-map-text-selected' : ''}" style="font-size: ${fontSize}px; color: ${textColor}; background: ${bgColor}; border-color: ${borderColor};">${this.escapeHtml(text)}</div>`;
+      const icon = L.divIcon({
+        className: 'cm-map-text-container',
+        html,
+        iconSize: null,
+        iconAnchor: [0, 0]
+      });
+      layer.setIcon(icon);
+    } else if (feat.type === 'Point' && coords) {
       if (layer instanceof L.CircleMarker) {
         layer.setLatLng(coords);
         const radius = Math.max(5, Math.round((style.markerSize || 24) / 3.2));
@@ -1028,6 +1077,8 @@ export class FeatureRenderer {
       dimensionInfo = `<div>Raio: <strong>${feat.radius} m</strong></div>`;
     } else if (feat.type === 'Point') {
       dimensionInfo = `<div>Coordenadas: <strong>${feat.coordinates[0].toFixed(5)}, ${feat.coordinates[1].toFixed(5)}</strong></div>`;
+    } else if (feat.type === 'Text') {
+      dimensionInfo = `<div>Rótulo: <strong>${this.escapeHtml(feat.properties?.text || feat.name)}</strong></div>`;
     }
 
     const safeName = this.escapeHtml(feat.name || 'Sem nome');

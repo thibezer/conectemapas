@@ -23,7 +23,7 @@ function openRingIfNeeded(pts) {
 
 export function normalizeCoordinates(coords, type) {
   if (!coords) return coords;
-  if (type === 'Point' || type === 'Circle') {
+  if (type === 'Point' || type === 'Circle' || type === 'Text') {
     if (typeof coords === 'object' && !Array.isArray(coords) && coords.lat !== undefined) {
       return [Number(coords.lat), Number(coords.lng)];
     }

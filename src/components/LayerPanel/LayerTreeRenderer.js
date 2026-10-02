@@ -51,30 +51,39 @@ export class LayerTreeRenderer {
     }
 
     return `
-      <!-- Toolbar Superior da Árvore de Camadas (Estilo Illustrator) -->
+      <!-- Toolbar Superior da Árvore de Camadas (UI Componentes) -->
       <div class="cm-tree-toolbar">
         <div class="cm-tree-title-group">
           <span class="cm-tree-section-title">CAMADAS</span>
-          <span class="cm-tree-count-badge">${panel.layers.length}</span>
+          <ui-badge variante="primario" tamanho="sm">${panel.layers.length}</ui-badge>
         </div>
         <div class="cm-tree-actions">
-          <button id="btn-toggle-all-vis" class="cm-tree-action-btn" title="${allVisible ? 'Ocultar Todas as Camadas' : 'Exibir Todas as Camadas'}">
+          <ui-botao-primario inline variante="ghost" id="btn-toggle-all-vis" title="${allVisible ? 'Ocultar Todas as Camadas' : 'Exibir Todas as Camadas'}" style="height: 22px; padding: 0 5px; font-size: 11px;">
             ${allVisible ? '👁️' : '🚫'}
-          </button>
-          <button id="btn-toggle-all-expand" class="cm-tree-action-btn" title="${allExpanded ? 'Recolher Todos os Grupos' : 'Expandir Todos os Grupos'}">
+          </ui-botao-primario>
+          <ui-botao-primario inline variante="ghost" id="btn-toggle-all-expand" title="${allExpanded ? 'Recolher Todos os Grupos' : 'Expandir Todos os Grupos'}" style="height: 22px; padding: 0 5px; font-size: 11px;">
             ${allExpanded ? '📁' : '📂'}
-          </button>
-          <button id="btn-add-layer" class="cm-tree-btn-new" title="Adicionar nova camada vetorial">
+          </ui-botao-primario>
+          <ui-botao-primario inline variante="primary" id="btn-add-layer" title="Adicionar nova camada vetorial" style="height: 22px; padding: 0 7px; font-size: 10.5px; font-weight: 600;">
             + Camada
-          </button>
+          </ui-botao-primario>
         </div>
       </div>
 
-      <!-- Barra de Busca Rápida de Camadas / Elementos -->
-      <div class="cm-tree-search-wrapper">
-        <span class="cm-tree-search-icon">🔍</span>
-        <input type="text" class="cm-tree-search-input" id="input-layer-search" placeholder="Buscar camada ou feição..." value="${panel.escapeHtml(panel.searchQuery || '')}" />
-        ${panel.searchQuery ? `<button class="cm-tree-search-clear" id="btn-clear-layer-search" title="Limpar busca">×</button>` : ''}
+      <!-- Barra de Busca Rápida com ui-campo-texto -->
+      <div class="cm-tree-search-wrapper" style="display: flex; gap: 4px; align-items: center; margin: 4px 0 6px 0;">
+        <ui-campo-texto 
+          id="input-layer-search" 
+          placeholder="Buscar camada ou feição..." 
+          tipo="text" 
+          value="${panel.escapeHtml(panel.searchQuery || '')}"
+          style="flex: 1; --ui-campo-altura: 26px; --ui-altura-minima: 26px; font-size: 11.5px;">
+        </ui-campo-texto>
+        ${panel.searchQuery ? `
+          <ui-botao-primario inline variante="ghost" id="btn-clear-layer-search" title="Limpar busca" style="height: 26px; padding: 0 6px; font-size: 11px;">
+            ✕
+          </ui-botao-primario>
+        ` : ''}
       </div>
 
       <!-- Estrutura Unificada da Árvore + Rodapé Illustrator -->
@@ -121,13 +130,13 @@ export class LayerTreeRenderer {
                     <input type="text" class="cm-inline-rename-input" data-inline-layer-input="${safeId}" value="${safeName}" />
                   ` : `
                     <span class="cm-ai-name-text">${safeName}</span>
-                    ${isActiveLayer ? `<span class="cm-ai-active-badge" title="Camada ativa para novos desenhos">✏️ Ativa</span>` : ''}
-                    <span class="cm-ai-count-chip">${layerFeatures.length}</span>
+                    ${isActiveLayer ? `<ui-badge variante="sucesso" style="font-size: 9.5px; padding: 1px 5px;">✏️ Ativa</ui-badge>` : ''}
+                    <ui-badge variante="neutro" style="font-size: 9.5px; padding: 1px 5px;">${layerFeatures.length}</ui-badge>
                   `}
                 </div>
                 <div class="cm-ai-col cm-ai-col-actions">
-                  <button class="cm-ai-micro-btn" data-layer-fit="${safeId}" title="Enquadrar camada no mapa">🎯</button>
-                  <button class="cm-ai-micro-btn ${isSettingsOpen ? 'active' : ''}" data-layer-settings="${safeId}" title="Opacidade e configurações">⚙️</button>
+                  <ui-botao-primario inline variante="ghost" data-layer-fit="${safeId}" title="Enquadrar camada no mapa" style="height: 20px; width: 20px; padding: 0; min-width: 20px; font-size: 10px;">🎯</ui-botao-primario>
+                  <ui-botao-primario inline variante="ghost" class="${isSettingsOpen ? 'active' : ''}" data-layer-settings="${safeId}" title="Opacidade e configurações" style="height: 20px; width: 20px; padding: 0; min-width: 20px; font-size: 10px;">⚙️</ui-botao-primario>
                 </div>
                 <div class="cm-ai-col cm-ai-col-target" data-layer-target="${safeId}" title="Selecionar todas as feições deste grupo">
                   <div class="cm-ai-target-circle ${allFeatsSelected ? 'selected' : (someFeatsSelected ? 'partial' : '')}"></div>
@@ -142,10 +151,10 @@ export class LayerTreeRenderer {
                     <input type="color" data-layer-color-picker="${safeId}" value="${safeColor}" class="cm-ai-drawer-color" />
                     <span class="cm-ai-drawer-label" style="margin-left: 8px;">Opacidade:</span>
                     <input type="range" min="0.1" max="1" step="0.05" value="${layer.opacity !== undefined ? layer.opacity : 1}" data-layer-opacity-slider="${safeId}" class="cm-ai-drawer-slider" />
-                    <span class="cm-ai-drawer-badge" id="badge-op-${safeId}">${Math.round((layer.opacity !== undefined ? layer.opacity : 1) * 100)}%</span>
+                    <ui-badge variante="primario" id="badge-op-${safeId}" style="font-size: 10px;">${Math.round((layer.opacity !== undefined ? layer.opacity : 1) * 100)}%</ui-badge>
                   </div>
                   <div class="cm-ai-drawer-row" style="margin-top: 6px;">
-                    <button class="cm-ai-drawer-btn-danger" data-delete-layer="${safeId}">🗑️ Excluir Camada</button>
+                    <ui-botao-primario inline variante="destrutivo" data-delete-layer="${safeId}" style="height: 24px; font-size: 10.5px; padding: 0 8px;">🗑️ Excluir Camada</ui-botao-primario>
                   </div>
                 </div>
               ` : ''}
@@ -192,18 +201,18 @@ export class LayerTreeRenderer {
                             ${(() => {
                               const status = GeometryVersionManager.getFeatureStatus(feat);
                               if (status === 'oficial') {
-                                return `<span class="cm-geom-tag official" title="Geometria Oficial">OFICIAL</span>`;
+                                return `<ui-badge variante="sucesso" style="font-size: 9px; padding: 1px 4px;" title="Geometria Oficial">OFICIAL</ui-badge>`;
                               } else if (status === 'previa') {
                                 const hasOficial = GeometryVersionManager.hasOfficialGeometry(feat, panel.features);
                                 const isDefault = !hasOficial;
-                                return `<span class="cm-geom-tag preview ${isDefault ? 'default' : ''}" title="${isDefault ? 'Geometria Prévia (Padrão no mapa - Sem Oficial)' : 'Geometria Prévia (Exibida sob demanda)'}">PRÉVIA${isDefault ? ' ★' : ''}</span>`;
+                                return `<ui-badge variante="alerta" style="font-size: 9px; padding: 1px 4px;" title="${isDefault ? 'Geometria Prévia (Padrão no mapa - Sem Oficial)' : 'Geometria Prévia (Exibida sob demanda)'}">PRÉVIA${isDefault ? ' ★' : ''}</ui-badge>`;
                               }
                               return '';
                             })()}
                           `}
                         </div>
                         <div class="cm-ai-col cm-ai-col-actions">
-                          <button class="cm-ai-micro-btn" data-feat-fit="${featId}" title="Enquadrar no mapa">🎯</button>
+                          <ui-botao-primario inline variante="ghost" data-feat-fit="${featId}" title="Enquadrar no mapa" style="height: 18px; width: 18px; padding: 0; min-width: 18px; font-size: 9px;">🎯</ui-botao-primario>
                         </div>
                         <div class="cm-ai-col cm-ai-col-target" data-feat-target="${featId}" title="Selecionar feição">
                           <div class="cm-ai-target-circle ${isFeatSelected ? 'selected' : ''}"></div>
@@ -227,20 +236,20 @@ export class LayerTreeRenderer {
           }).join('')}
         </div>
 
-        <!-- Rodapé Estilo Adobe Illustrator -->
+        <!-- Rodapé Estilo Adobe Illustrator (UI Componentes) -->
         <div class="cm-ai-tree-footer">
           <div class="cm-ai-footer-left">
-            <span class="cm-ai-footer-count">${hasSelection ? selectedFeaturesList.length : panel.layers.length}</span>
+            <ui-badge variante="primario" style="margin-right: 4px;">${hasSelection ? selectedFeaturesList.length : panel.layers.length}</ui-badge>
             <span class="cm-ai-footer-label">${hasSelection ? (selectedFeaturesList.length > 1 ? 'selecionados' : 'selecionado') : 'camadas'}</span>
             ${bulkMetricStr ? `<span class="cm-ai-footer-metric">• ${bulkMetricStr}</span>` : ''}
           </div>
           <div class="cm-ai-footer-right">
-            <button class="cm-ai-footer-btn ${!hasSelection ? 'disabled' : ''}" id="btn-footer-vis" title="Alternar visibilidade coletiva" ${!hasSelection ? 'disabled' : ''}>
+            <ui-botao-primario inline variante="ghost" class="${!hasSelection ? 'disabled' : ''}" id="btn-footer-vis" title="Alternar visibilidade coletiva" style="height: 22px; width: 22px; padding: 0; min-width: 22px;" ${!hasSelection ? 'disabled' : ''}>
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-            </button>
-            <button class="cm-ai-footer-btn ${!hasSelection ? 'disabled' : ''}" id="btn-footer-lock" title="Alternar bloqueio coletivo" ${!hasSelection ? 'disabled' : ''}>
+            </ui-botao-primario>
+            <ui-botao-primario inline variante="ghost" class="${!hasSelection ? 'disabled' : ''}" id="btn-footer-lock" title="Alternar bloqueio coletivo" style="height: 22px; width: 22px; padding: 0; min-width: 22px;" ${!hasSelection ? 'disabled' : ''}>
               <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-            </button>
+            </ui-botao-primario>
             <div class="cm-ai-footer-color-wrapper ${!hasSelection ? 'disabled' : ''}" title="Alterar cor dos selecionados">
               <input type="color" id="input-footer-color" value="#00E08A" class="cm-ai-footer-color" ${!hasSelection ? 'disabled' : ''} />
             </div>
@@ -250,13 +259,13 @@ export class LayerTreeRenderer {
                 ${panel.layers.map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
               </select>
             </div>
-            <button class="cm-ai-footer-btn" id="btn-footer-new-layer" title="Criar Nova Camada">
+            <ui-botao-primario inline variante="primary" id="btn-footer-new-layer" title="Criar Nova Camada" style="height: 22px; width: 22px; padding: 0; min-width: 22px;">
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
-            </button>
-            <button class="cm-ai-footer-btn ${!hasSelection ? 'disabled' : ''}" id="btn-footer-del" title="Excluir selecionados" ${!hasSelection ? 'disabled' : ''}>
+            </ui-botao-primario>
+            <ui-botao-primario inline variante="destrutivo" class="${!hasSelection ? 'disabled' : ''}" id="btn-footer-del" title="Excluir selecionados" style="height: 22px; width: 22px; padding: 0; min-width: 22px;" ${!hasSelection ? 'disabled' : ''}>
               <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            </button>
-            ${hasSelection ? `<button class="cm-ai-footer-btn" id="btn-footer-clear" title="Limpar seleção">✕</button>` : ''}
+            </ui-botao-primario>
+            ${hasSelection ? `<ui-botao-primario inline variante="ghost" id="btn-footer-clear" title="Limpar seleção" style="height: 22px; padding: 0 6px; font-size: 11px;">✕</ui-botao-primario>` : ''}
           </div>
         </div>
       </div>

@@ -75,13 +75,20 @@ export class DrawingToolbar {
         tipo: 'ferramenta'
       },
       {
+        id: 'text',
+        rotulo: 'Texto / Rótulo no Mapa',
+        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+        atalho: 'T',
+        tipo: 'ferramenta'
+      },
+      {
         id: 'sep-2',
         tipo: 'separador'
       },
       {
         id: 'measure',
-        rotulo: 'Régua de Medição em Tempo Real',
-        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        rotulo: 'Régua de Medição (Distância & Área)',
+        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.12 6.4-6.4-6.4a2 2 0 0 0-2.83 0L2.4 9.49a2 2 0 0 0 0 2.83l6.4 6.4a2 2 0 0 0 2.83 0l9.49-9.49a2 2 0 0 0 0-2.83Z"/><line x1="7.5" y1="10.5" x2="6" y2="9"/><line x1="10.5" y1="13.5" x2="9" y2="12"/><line x1="13.5" y1="16.5" x2="12" y2="15"/><line x1="16.5" y1="19.5" x2="15" y2="18"/></svg>',
         atalho: 'M',
         tipo: 'ferramenta'
       },

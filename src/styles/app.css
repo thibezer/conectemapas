@@ -388,3 +388,101 @@ path.cm-feature-selected {
   }
 }
 
+/* ==========================================================================
+   Rótulos e Textos Georreferenciados no Mapa (GIS Text Labels)
+   ========================================================================== */
+.cm-map-text-container {
+  background: transparent !important;
+  border: none !important;
+}
+
+.cm-map-text-badge {
+  font-family: var(--cm-fonte, 'Inter', sans-serif);
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  white-space: nowrap;
+  user-select: none;
+  cursor: move;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  display: inline-block;
+  line-height: 1.25;
+}
+
+.cm-map-text-badge:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.85);
+}
+
+.cm-map-text-selected {
+  border-color: #38bdf8 !important;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.4), 0 0 16px rgba(56, 189, 248, 0.8) !important;
+  transform: scale(1.1) !important;
+  z-index: 1000 !important;
+}
+
+.cm-map-text-halo {
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 5px #000, 0 0 8px #000;
+}
+
+/* ==========================================================================
+   Régua de Medição Profissional & Cotas Topográficas
+   ========================================================================== */
+.cm-measure-segment-badge {
+  background: rgba(15, 23, 42, 0.92);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.6);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: var(--cm-fonte-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.7);
+  pointer-events: none;
+  display: inline-block;
+  line-height: 1.2;
+}
+
+.cm-measure-vertex-marker {
+  width: 22px;
+  height: 22px;
+  background: #f59e0b;
+  color: #0b0b0d;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  font-family: var(--cm-fonte-mono, monospace);
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.85);
+  pointer-events: none;
+}
+
+.cm-measure-tooltip-box {
+  background: rgba(15, 17, 21, 0.94);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(245, 158, 11, 0.7);
+  border-radius: 6px;
+  padding: 6px 12px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.7);
+  font-family: var(--cm-fonte, 'Inter', sans-serif);
+  color: #f1f5f9;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.cm-measure-hud-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
