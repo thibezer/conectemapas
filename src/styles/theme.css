@@ -3,7 +3,7 @@
    Baseado no ecossistema thibezer/Componentes-UI
    ========================================================================== */
 
-@import "ui-components-kit/style.css";
+/* ui-components-kit/style.css é importado via JS em src/main.js para compatibilidade com Vite */
 @import "leaflet/dist/leaflet.css";
 @import "./PointCluster.css";
 
