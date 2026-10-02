@@ -3,7 +3,7 @@
    Plataforma Colaborativa de Mapeamento com thibezer/Componentes-UI
    ========================================================================== */
 
-import 'ui-components-kit/style.css';
+// Nota: ui-components-kit/style.css é importado como arquivo local em src/styles/ui-components-kit.css
 import 'ui-components-kit';
 import { UIToast } from 'ui-components-kit';
 
