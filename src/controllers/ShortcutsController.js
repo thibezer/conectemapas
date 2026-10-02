@@ -126,6 +126,28 @@ export class ShortcutsController {
           duracao: 2500
         });
       }
+      // Selecionar Tudo: Ctrl+A / Cmd+A
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        const visibleFeats = app.features.filter(f => {
+          if (f.visible === false) return false;
+          const layer = app.layers.find(l => l.id === f.layerId);
+          return !layer || layer.visible !== false;
+        });
+        const ids = visibleFeats.map(f => f.id);
+        if (app.mapEngine) {
+          app.mapEngine.selectFeatures(ids);
+        }
+        if (app.layerPanel) {
+          app.layerPanel.setSelectedFeatures(visibleFeats, false);
+        }
+        UIToast.notificar({
+          tipo: 'informativo',
+          titulo: 'Seleção Total (Ctrl+A)',
+          mensagem: `${visibleFeats.length} feições selecionadas.`,
+          duracao: 1800
+        });
+      }
       // Navegação Master-Detail Workbench (J / K / Setas)
       else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
         if (e.key === 'j' || e.key === 'ArrowDown') {
@@ -141,11 +163,32 @@ export class ShortcutsController {
           if (app.mapEngine) {
             app.mapEngine.clearSelection();
           }
-        } else if (e.key === 'Delete') {
-          if (app.layerPanel && app.layerPanel.selectedFeature) {
+          if (app.layerPanel) {
+            app.layerPanel.selectedFeatureIds.clear();
+            app.layerPanel.selectedFeature = null;
+            app.layerPanel.updateContent();
+          }
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          // Exclusão rápida pelo teclado
+          const hudFeats = app.selectionHUD?.selectedFeatures || [];
+          const panelSelectedIds = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
+          
+          if (hudFeats.length > 1) {
             e.preventDefault();
-            if (typeof app.deleteFeature === 'function') {
-              app.deleteFeature(app.layerPanel.selectedFeature.id);
+            const ids = hudFeats.map(f => f.id);
+            if (app.layerPanel && typeof app.layerPanel.onBulkDelete === 'function') {
+              app.layerPanel.onBulkDelete(ids);
+            }
+          } else if (panelSelectedIds.length > 1) {
+            e.preventDefault();
+            if (app.layerPanel && typeof app.layerPanel.onBulkDelete === 'function') {
+              app.layerPanel.onBulkDelete(panelSelectedIds);
+            }
+          } else {
+            const singleFeat = hudFeats[0] || app.layerPanel?.selectedFeature || (panelSelectedIds.length === 1 ? app.features.find(f => f.id === panelSelectedIds[0]) : null);
+            if (singleFeat && typeof app.deleteFeature === 'function') {
+              e.preventDefault();
+              app.deleteFeature(singleFeat.id);
             }
           }
         }

@@ -19,6 +19,7 @@ export class HeaderBar {
     this.onProjectNameChange = options.onProjectNameChange || (() => {});
     this.onSaveProject = options.onSaveProject || (() => {});
     this.onOpenPrintComposer = options.onOpenPrintComposer || (() => {});
+    this.onToggleGeometryVersion = options.onToggleGeometryVersion || (() => {});
     this.container = null;
   }
 
@@ -90,6 +91,21 @@ export class HeaderBar {
                 <polyline points="7 3 7 8 15 8"/>
               </svg>
               <span>Salvar</span>
+            </div>
+          </ui-botao-primario>
+
+          <ui-botao-primario 
+            inline 
+            id="btn-toggle-geom-version" 
+            variante="secundario" 
+            title="Alternar Modo de Geometria: Oficial (Padrão) vs Prévias Solicitadas">
+            <div class="cm-header-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                <polyline points="2 17 12 22 22 17"/>
+                <polyline points="2 12 12 17 22 12"/>
+              </svg>
+              <span id="cm-geom-version-text">Geometria: Oficial</span>
             </div>
           </ui-botao-primario>
 
@@ -246,6 +262,28 @@ export class HeaderBar {
       btnComposer.addEventListener('click', () => {
         this.onOpenPrintComposer();
       });
+    }
+
+    const btnGeomVersion = this.container.querySelector('#btn-toggle-geom-version');
+    if (btnGeomVersion) {
+      btnGeomVersion.addEventListener('click', () => {
+        this.onToggleGeometryVersion();
+      });
+    }
+  }
+
+  /**
+   * Atualiza dinamicamente o estado visual do botão de modo de geometria
+   * @param {boolean} isShowingPreviews
+   */
+  updateGeometryVersionMode(isShowingPreviews) {
+    const textEl = document.getElementById('cm-geom-version-text');
+    const btn = document.getElementById('btn-toggle-geom-version');
+    if (textEl) {
+      textEl.textContent = isShowingPreviews ? 'Geometria: Prévia' : 'Geometria: Oficial';
+    }
+    if (btn) {
+      btn.setAttribute('variante', isShowingPreviews ? 'aviso' : 'secundario');
     }
   }
 }

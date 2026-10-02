@@ -202,6 +202,12 @@ export class LayerTreeEvents {
         if (ids.length === 0) return;
         panel.onBulkDelete(ids);
         panel.selectedFeatureIds.clear();
+        panel.selectedFeature = null;
+        if (typeof panel.onFeaturesSelect === 'function') {
+          panel.onFeaturesSelect([]);
+        } else if (typeof panel.onFeatureSelect === 'function') {
+          panel.onFeatureSelect(null);
+        }
         panel.updateContent();
       });
     }
@@ -210,6 +216,12 @@ export class LayerTreeEvents {
     if (btnFooterClear) {
       btnFooterClear.addEventListener('click', () => {
         panel.selectedFeatureIds.clear();
+        panel.selectedFeature = null;
+        if (typeof panel.onFeaturesSelect === 'function') {
+          panel.onFeaturesSelect([]);
+        } else if (typeof panel.onFeatureSelect === 'function') {
+          panel.onFeatureSelect(null);
+        }
         panel.updateContent();
       });
     }
@@ -330,6 +342,13 @@ export class LayerTreeEvents {
           panel.lastClickedFeatureId = layerFeats[layerFeats.length - 1].id;
         }
         panel.updateContent();
+
+        const selectedFeats = panel.features.filter(f => panel.selectedFeatureIds.has(f.id));
+        if (typeof panel.onFeaturesSelect === 'function') {
+          panel.onFeaturesSelect(selectedFeats);
+        } else if (typeof panel.onFeatureSelect === 'function') {
+          panel.onFeatureSelect(selectedFeats[0] || null);
+        }
       });
     });
 
@@ -395,6 +414,9 @@ export class LayerTreeEvents {
     document.querySelectorAll('[data-feat-select]').forEach(node => {
       node.addEventListener('click', (e) => {
         if (panel.editingFeatureId) return;
+        if (e.target.closest('[data-feat-eye], [data-feat-lock], [data-feat-fit], [data-feat-target], input, button')) {
+          return;
+        }
         const featId = node.getAttribute('data-feat-select');
         const isShift = e.shiftKey;
         const isCtrl = e.ctrlKey || e.metaKey;
@@ -402,12 +424,24 @@ export class LayerTreeEvents {
         if (isShift || isCtrl) {
           panel.handleItemSelection(featId, isShift, isCtrl);
           panel.updateContent();
+          const selectedFeats = panel.features.filter(f => panel.selectedFeatureIds.has(f.id));
+          if (typeof panel.onFeaturesSelect === 'function') {
+            panel.onFeaturesSelect(selectedFeats);
+          } else if (typeof panel.onFeatureSelect === 'function') {
+            panel.onFeatureSelect(selectedFeats[0] || null);
+          }
         } else {
           const feat = panel.features.find(f => f.id === featId);
           if (feat) {
-            panel.setSelectedFeature(feat);
-            panel.onFeatureSelect(feat);
-            panel.onFitFeature(feat.id);
+            panel.selectedFeatureIds.clear();
+            panel.selectedFeatureIds.add(feat.id);
+            panel.selectedFeature = feat;
+            panel.lastClickedFeatureId = feat.id;
+            panel.updateContent();
+
+            if (typeof panel.onFeatureSelect === 'function') {
+              panel.onFeatureSelect(feat);
+            }
           }
         }
       });
@@ -419,6 +453,12 @@ export class LayerTreeEvents {
         const featId = target.getAttribute('data-feat-target');
         panel.handleItemSelection(featId, e.shiftKey, e.ctrlKey || e.metaKey);
         panel.updateContent();
+        const selectedFeats = panel.features.filter(f => panel.selectedFeatureIds.has(f.id));
+        if (typeof panel.onFeaturesSelect === 'function') {
+          panel.onFeaturesSelect(selectedFeats);
+        } else if (typeof panel.onFeatureSelect === 'function') {
+          panel.onFeatureSelect(selectedFeats[0] || null);
+        }
       });
     });
 

@@ -4,9 +4,9 @@
    ========================================================================== */
 
 .cm-header {
-  height: 30px;
-  min-height: 30px;
-  max-height: 30px;
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
   background: var(--cm-glass-bg, rgba(17, 17, 20, 0.95));
   backdrop-filter: var(--cm-glass-blur, blur(12px));
   -webkit-backdrop-filter: var(--cm-glass-blur, blur(12px));
@@ -14,9 +14,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  padding: 0 10px;
   z-index: 1000;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
 }
 
 /* --- Lado Esquerdo: Logo, Título e Status --- */
@@ -127,32 +128,36 @@
 .cm-header-right {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
-/* Estilização dos Botões da Barra Superior para altura compacta (22px) em barra de 30px */
+/* Estilização dos Botões da Barra Superior para altura compacta (26px) em barra de 38px */
 .cm-header-btn {
-  height: 22px !important;
+  height: 26px !important;
   font-size: 11px !important;
   line-height: 1 !important;
   white-space: nowrap !important;
   display: inline-flex !important;
   align-items: center !important;
-  gap: 4px !important;
-  padding: 0 !important;
+  gap: 5px !important;
+  padding: 0 4px !important;
   cursor: pointer;
 }
 
 .cm-header-btn svg {
   shape-rendering: geometricPrecision;
   vertical-align: middle;
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
 }
 
 .cm-header-right ui-botao-primario {
-  height: 22px;
-  display: inline-block;
-  --ui-botao-altura: 22px;
+  height: 26px;
+  display: inline-flex;
+  --ui-campo-altura: 26px;
+  --ui-altura-campo: 26px;
+  --ui-altura-minima: 22px;
+  --ui-touch-target-min: 26px;
+  --ui-raio-borda: 5px;
 }

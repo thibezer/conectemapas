@@ -5,6 +5,7 @@
 
 import './ContextMenu.css';
 import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
+import { GeometryVersionManager } from '../services/GeometryVersionManager.js';
 import { UIToast } from 'ui-components-kit';
 
 export class ContextMenu {
@@ -139,6 +140,22 @@ export class ContextMenu {
           </div>
           <span class="cm-ctx-shortcut">Ctrl+D</span>
         </div>
+
+        ${(() => {
+          const allFeatures = this.app.features || [];
+          const featStatus = GeometryVersionManager.getFeatureStatus(feat);
+          const linkedFeat = GeometryVersionManager.findLinkedFeature(feat, allFeatures);
+          if (!linkedFeat) return '';
+          return `
+            <div class="cm-ctx-item" data-action="toggle-geometry-version">
+              <div class="cm-ctx-item-left">
+                <span class="cm-ctx-icon">🔄</span>
+                <span class="cm-ctx-text">${featStatus === 'oficial' ? 'Exibir Geometria Prévia' : 'Exibir Geometria Oficial'}</span>
+              </div>
+              <span class="cm-ctx-shortcut">Alt+V</span>
+            </div>
+          `;
+        })()}
 
         <div class="cm-ctx-submenu-wrap">
           <div class="cm-ctx-item" data-action="move-layer-trigger">
@@ -311,6 +328,10 @@ export class ContextMenu {
           const clone = SpatialAlgorithms.duplicateWithOffset(feat, 30);
           if (clone) {
             this.app.newFeatureModal?.openWithFeature(clone);
+          }
+        } else if (action === 'toggle-geometry-version' && feat) {
+          if (typeof this.app.toggleFeatureGeometryVersion === 'function') {
+            this.app.toggleFeatureGeometryVersion(feat.id);
           }
         } else if (action === 'set-layer' && feat) {
           const targetLayerId = item.getAttribute('data-layer-id');

@@ -11,6 +11,7 @@ import { StorageService } from './services/StorageService.js';
 import { DEFAULT_LAYERS, normalizeFeature } from './services/MockData.js';
 import { CollaborationHub } from './services/CollaborationHub.js';
 import { MapEngine } from './services/MapEngine.js';
+import { GeometryVersionManager } from './services/GeometryVersionManager.js';
 
 import { HeaderBar } from './components/HeaderBar.js';
 import { DrawingToolbar } from './components/DrawingToolbar.js';
@@ -170,12 +171,22 @@ class ConecteMapasApp {
       }
 
       // Sincronização Inteligente com a Nuvem (Hostinger MySQL)
-      // Se o usuário entrou por link compartilhado (?project=...) OU se o banco local está vazio (novo visitante/dispositivo)
-      const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-      const isExplicitProject = urlParams && urlParams.has('project');
-      const isLocalEmpty = !this.features || this.features.length === 0;
+      // Verifica se o dispositivo atual já possui dados deste projeto em cache local
+      const hasLocalProjectData = saved && (
+        (Array.isArray(saved.features) && saved.features.length > 0) ||
+        (Array.isArray(saved.layers) && saved.layers.length > 0) ||
+        saved.updatedAt
+      );
 
-      if (isExplicitProject || isLocalEmpty) {
+      // Primeiro comita quaisquer deltas ou exclusões locais pendentes que não foram confirmados antes do reload
+      try {
+        await StorageService.commitDeltas();
+      } catch (e) {
+        console.warn('[ConecteMapas] Commit de deltas pendentes no boot:', e);
+      }
+
+      if (!hasLocalProjectData) {
+        // Dispositivo ou visitante novo sem dados locais para este projeto: carrega snapshot inicial da nuvem
         const cloudData = await StorageService.loadProjectFromCloud(this.projectId);
         if (cloudData && cloudData.exists) {
           let updated = false;
@@ -193,7 +204,10 @@ class ConecteMapasApp {
           }
 
           if (Array.isArray(cloudData.features)) {
-            this.features = cloudData.features.map(normalizeFeature);
+            // Filtra feições que tenham tombstones locais para evitar ressuscitação
+            this.features = cloudData.features
+              .filter(f => !StorageService.hasLocalTombstone(f.id, this.projectId))
+              .map(normalizeFeature);
             updated = true;
           }
 
@@ -212,7 +226,7 @@ class ConecteMapasApp {
               setTimeout(() => this.mapEngine.fitAllFeatures(), 300);
             }
 
-            // Grava cópia local no IndexedDB/LocalStorage desse visitante para cache rápido (sem reenviar para a nuvem)
+            // Grava cópia local no IndexedDB/LocalStorage desse visitante para cache rápido
             StorageService.saveMetadata({
               id: this.projectId,
               name: this.projectName,
@@ -231,7 +245,7 @@ class ConecteMapasApp {
           }
         }
       } else {
-        // Dispositivo já possui feições em cache local: busca deltas e tombstones ocorridos desde a última sessão
+        // Dispositivo já possui feições em cache local: busca apenas deltas e tombstones ocorridos desde a última sessão
         try {
           const deltaChanges = await StorageService.pullChangesFromCloud(this.projectId);
           if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
@@ -313,7 +327,7 @@ class ConecteMapasApp {
   saveFeature(feature) {
     if (feature) {
       StorageService.saveFeature(feature, this.projectId);
-      this.saveMetadata(false);
+      this.saveMetadata(true);
     }
   }
 
@@ -323,7 +337,7 @@ class ConecteMapasApp {
   removeFeature(featureId) {
     if (featureId) {
       StorageService.deleteFeature(featureId);
-      this.saveMetadata(false);
+      this.saveMetadata(true);
     }
   }
 
@@ -554,6 +568,9 @@ class ConecteMapasApp {
         if (this.printComposerModal) {
           this.printComposerModal.open(this.projectName, this.layers, this.features, this.currentBasemap);
         }
+      },
+      onToggleGeometryVersion: () => {
+        this.toggleGlobalGeometryVersion();
       }
     });
     this.headerBar.render(document.getElementById('header-mount'));
@@ -600,7 +617,7 @@ class ConecteMapasApp {
         this.layers = [...newLayers];
         this.mapEngine.reorderLayers(this.layers);
         StorageService.saveLayersBatch(this.layers, this.projectId);
-        this.saveMetadata();
+        this.saveMetadata(true);
         UIToast.notificar({ tipo: 'informativo', titulo: 'Sobreposição Atualizada', mensagem: 'Ordem das camadas e Z-Index reordenados.', duracao: 1800 });
       },
       onLayerOpacityChange: (layerId, opacity) => {
@@ -610,7 +627,7 @@ class ConecteMapasApp {
           this.mapEngine.setLayerOpacity(layerId, opacity);
           StorageService.saveLayer(layer, this.projectId);
           if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
-          this.saveMetadata();
+          this.saveMetadata(true);
         }
       },
       onLayerRename: (layerId, newName) => {
@@ -619,7 +636,7 @@ class ConecteMapasApp {
           layer.name = newName;
           StorageService.saveLayer(layer, this.projectId);
           if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
-          this.saveMetadata();
+          this.saveMetadata(true);
           UIToast.notificar({ tipo: 'sucesso', titulo: 'Camada Renomeada', mensagem: `Nome alterado para "${newName}".`, duracao: 2000 });
         }
       },
@@ -630,7 +647,7 @@ class ConecteMapasApp {
           this.mapEngine.setLayerColor(layerId, newColor);
           StorageService.saveLayer(layer, this.projectId);
           if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
-          this.saveMetadata();
+          this.saveMetadata(true);
         }
       },
 
@@ -646,7 +663,25 @@ class ConecteMapasApp {
         }
       },
       onFeatureSelect: (feature) => {
+        if (!feature) {
+          if (this.mapEngine) this.mapEngine.clearSelection();
+          return;
+        }
+        if (this.mapEngine) this.mapEngine.selectFeature(feature.id);
         if (this.attributeTable) this.attributeTable.selectFeature(feature.id);
+      },
+      onFeaturesSelect: (features) => {
+        const ids = (features || []).map(f => f.id);
+        if (this.mapEngine) this.mapEngine.selectFeatures(ids);
+        if (features && features.length > 0 && this.attributeTable) {
+          this.attributeTable.selectFeature(features[0].id);
+        }
+      },
+      onFeaturesReorder: (newFeatures) => {
+        this.features = [...newFeatures];
+        this.refreshMapAndTable();
+        StorageService.queueFeaturesBulkUpsert(this.features);
+        this.saveMetadata(false);
       },
       onFeatureLockToggle: (featureId, isLocked) => {
         const feat = this.features.find(f => f.id === featureId);
@@ -702,7 +737,8 @@ class ConecteMapasApp {
         const feat = this.features.find(f => f.id === featureId);
         if (feat) {
           this.mapEngine.zoomToFeature(featureId);
-          this.layerPanel.setSelectedFeature(feat);
+          this.mapEngine.selectFeature(featureId);
+          this.layerPanel.setSelectedFeature(feat, false);
         }
       },
       onDelete: (featureId) => FeatureSyncController.deleteFeature(this, featureId)
@@ -763,11 +799,13 @@ class ConecteMapasApp {
       container: document.querySelector('.cm-workspace') || document.body,
       onInspect: (feature) => {
         if (this.layerPanel) {
-          this.layerPanel.setSelectedFeature(feature);
-          const sidebar = document.getElementById('sidebar');
+          this.layerPanel.setSelectedFeature(feature, true);
+          const sidebar = document.getElementById('cm-sidebar-panel');
           if (sidebar && sidebar.classList.contains('collapsed')) {
             sidebar.classList.remove('collapsed');
           }
+          const btnExpand = document.getElementById('btn-expand-sidebar');
+          if (btnExpand) btnExpand.style.display = 'none';
         }
       },
       onZoom: (features) => {
@@ -777,13 +815,13 @@ class ConecteMapasApp {
         }
       },
       onOpenTable: (features) => {
-        const bottomPanel = document.getElementById('bottom-panel');
-        if (bottomPanel && !bottomPanel.classList.contains('open')) {
-          const toggleBtn = document.getElementById('btn-toggle-table');
-          if (toggleBtn) toggleBtn.click();
-        }
-        if (this.attributeTable && features.length > 0) {
-          this.attributeTable.selectFeature(features[0].id);
+        if (this.attributeTable) {
+          if (this.attributeTable.isCollapsed) {
+            this.attributeTable.toggleCollapse();
+          }
+          if (features.length > 0) {
+            this.attributeTable.selectFeature(features[0].id);
+          }
         }
       },
       onDelete: (features) => {
@@ -792,12 +830,17 @@ class ConecteMapasApp {
           this.deleteFeature(features[0].id);
         } else {
           const ids = features.map(f => f.id);
-          this.layerPanel?.options?.onBulkDelete?.(ids);
+          this.layerPanel?.onBulkDelete?.(ids);
         }
       },
       onClear: () => {
         if (this.mapEngine) {
           this.mapEngine.clearSelection();
+        }
+        if (this.layerPanel) {
+          this.layerPanel.selectedFeatureIds.clear();
+          this.layerPanel.selectedFeature = null;
+          this.layerPanel.updateContent();
         }
       }
     });
@@ -872,6 +915,7 @@ class ConecteMapasApp {
   getToolName(tool) {
     const names = {
       select: 'Navegar e Selecionar (V)',
+      'pen-select': 'Caneta de Seleção Poligonal (Q)',
       point: 'Marco / Ponto (P)',
       line: 'Linha / Rota (L)',
       polygon: 'Polígono / Área (A)',
@@ -895,6 +939,50 @@ class ConecteMapasApp {
 
   createFeaturesBatch(featureList, options = {}) {
     return FeatureSyncController.createFeaturesBatch(this, featureList, options);
+  }
+
+  toggleGlobalGeometryVersion() {
+    const isShowingPreviews = this.mapEngine.toggleGlobalShowPreviews();
+    if (this.headerBar) {
+      this.headerBar.updateGeometryVersionMode(isShowingPreviews);
+    }
+    UIToast.notificar({
+      tipo: isShowingPreviews ? 'alerta' : 'sucesso',
+      titulo: isShowingPreviews ? 'Modo: Geometrias Prévias' : 'Modo: Geometrias Oficiais (Padrão)',
+      mensagem: isShowingPreviews 
+        ? 'Exibindo geometrias prévias solicitadas (geometrias oficiais vinculadas foram alternadas).' 
+        : 'Exibindo geometrias oficiais como padrão (prévias vinculadas ocultadas).',
+      duracao: 3000
+    });
+    this.refreshMapAndTable();
+  }
+
+  toggleFeatureGeometryVersion(featureId) {
+    if (!featureId) return;
+    const feat = this.features.find(f => f.id === featureId);
+    if (!feat) return;
+
+    const isActive = this.mapEngine.toggleIndividualPreview(featureId);
+    const linked = GeometryVersionManager.findLinkedFeature(feat, this.features);
+
+    // Se estiver ativando a prévia e a feição atual era a oficial, seleciona a prévia
+    let targetToSelect = feat;
+    if (isActive && linked && GeometryVersionManager.isPreview(linked)) {
+      targetToSelect = linked;
+    } else if (!isActive && linked && GeometryVersionManager.isOfficial(linked)) {
+      targetToSelect = linked;
+    }
+
+    this.mapEngine.selectFeature(targetToSelect.id);
+    this.updateSelectionState([targetToSelect]);
+    this.refreshMapAndTable();
+
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: 'Geometria Alternada',
+      mensagem: `Exibindo: "${targetToSelect.name}" (${GeometryVersionManager.getFeatureStatus(targetToSelect) === 'oficial' ? 'Oficial' : 'Prévia'}).`,
+      duracao: 2500
+    });
   }
 }
 

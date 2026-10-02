@@ -14,7 +14,11 @@ export class AttributeTable {
     this.pageSize = 50; // Janela ideal de alta densidade sem sobrecarga de DOM
     this.currentPage = 1;
 
-    this.onRowClick = options.onRowClick || (() => {});
+    const rawSelect = options.onRowClick || options.onSelect || (() => {});
+    this.onRowClick = (feat) => {
+      if (!feat) return;
+      rawSelect(feat.id, feat);
+    };
     this.onDelete = options.onDelete || (() => {});
   }
 

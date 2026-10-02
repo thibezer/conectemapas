@@ -198,6 +198,13 @@ switch ($action) {
         echo json_encode(['projects' => $list]);
         exit;
 
+    case 'get_feature':
+        $featId = isset($_GET['id']) ? trim($_GET['id']) : '';
+        $stmtF = $pdo->prepare("SELECT * FROM cm_features WHERE id = ?");
+        $stmtF->execute([$featId]);
+        echo json_encode(['feature' => $stmtF->fetch(PDO::FETCH_ASSOC)]);
+        exit;
+
     // --------------------------------------------------------------------------
     // ACTION: LOAD (Carregar Projeto Completo)
     // --------------------------------------------------------------------------
@@ -332,7 +339,7 @@ switch ($action) {
                     center_lat = VALUES(center_lat),
                     center_lng = VALUES(center_lng),
                     zoom = VALUES(zoom),
-                    feature_count = (SELECT COUNT(*) FROM cm_features WHERE project_id = VALUES(id) AND deleted = 0),
+                    feature_count = VALUES(feature_count),
                     updated_at = NOW()
             ");
             $stmtProj->execute([
@@ -348,31 +355,33 @@ switch ($action) {
 
             // Se houver camadas, grava/atualiza
             if (isset($body['layers']) && is_array($body['layers'])) {
-                $stmtLayer = $pdo->prepare("
+                $stmtCheck = $pdo->prepare("SELECT id FROM cm_layers WHERE id = ?");
+                $stmtUpdate = $pdo->prepare("
+                    UPDATE cm_layers 
+                    SET project_id = ?, name = ?, color = ?, type = ?, visible = ?, opacity = ?, order_idx = ?, updated_at = NOW()
+                    WHERE id = ?
+                ");
+                $stmtInsert = $pdo->prepare("
                     INSERT INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                    ON DUPLICATE KEY UPDATE
-                        name = VALUES(name),
-                        color = VALUES(color),
-                        type = VALUES(type),
-                        visible = VALUES(visible),
-                        opacity = VALUES(opacity),
-                        order_idx = VALUES(order_idx),
-                        updated_at = NOW()
                 ");
 
                 foreach ($body['layers'] as $idx => $layer) {
                     if (empty($layer['id'])) continue;
-                    $stmtLayer->execute([
-                        $layer['id'],
-                        $projectId,
-                        $layer['name'] ?? 'Camada',
-                        $layer['color'] ?? '#00E08A',
-                        $layer['type'] ?? 'custom',
-                        isset($layer['visible']) && !$layer['visible'] ? 0 : 1,
-                        isset($layer['opacity']) ? (float)$layer['opacity'] : 1.0,
-                        $layer['order'] ?? $idx
-                    ]);
+                    $lid = $layer['id'];
+                    $lname = $layer['name'] ?? 'Camada';
+                    $lcolor = $layer['color'] ?? '#00E08A';
+                    $ltype = $layer['type'] ?? 'custom';
+                    $lvis = isset($layer['visible']) && !$layer['visible'] ? 0 : 1;
+                    $lopac = isset($layer['opacity']) ? (float)$layer['opacity'] : 1.0;
+                    $lord = $layer['order'] ?? $idx;
+
+                    $stmtCheck->execute([$lid]);
+                    if ($stmtCheck->fetch()) {
+                        $stmtUpdate->execute([$projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $lid]);
+                    } else {
+                        $stmtInsert->execute([$lid, $projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord]);
+                    }
                 }
             }
 
@@ -443,6 +452,8 @@ switch ($action) {
                         updated_at = NOW()
                 ");
 
+                $upsertCount = 0;
+                $upsertErrors = [];
                 foreach ($toUpsert as $feat) {
                     if (empty($feat['id'])) continue;
                     $props = !empty($feat['properties']) ? (is_array($feat['properties']) ? $feat['properties'] : json_decode($feat['properties'], true)) : [];
@@ -453,7 +464,7 @@ switch ($action) {
                         $props['visible'] = (bool)$feat['visible'];
                     }
 
-                    $stmtUpsert->execute([
+                    $resEx = $stmtUpsert->execute([
                         $feat['id'],
                         $projectId,
                         $feat['layerId'] ?? 'layer-default',
@@ -465,6 +476,12 @@ switch ($action) {
                         $feat['color'] ?? '#00E08A',
                         $feat['createdBy'] ?? 'Operador'
                     ]);
+
+                    if ($resEx) {
+                        $upsertCount++;
+                    } else {
+                        $upsertErrors[] = ['id' => $feat['id'], 'error' => $stmtUpsert->errorInfo()];
+                    }
                 }
             }
 
@@ -482,8 +499,9 @@ switch ($action) {
                 'success'    => true,
                 'serverTime' => date('Y-m-d H:i:s'),
                 'synced'     => [
-                    'upserted' => count($toUpsert),
-                    'deleted'  => count($toDelete)
+                    'upserted' => $upsertCount,
+                    'deleted'  => count($toDelete),
+                    'errors'   => $upsertErrors
                 ]
             ]);
             exit;
@@ -622,30 +640,33 @@ switch ($action) {
 
             // Camadas (Upsert sem truncar)
             if (isset($body['layers']) && is_array($body['layers'])) {
-                $stmtLayer = $pdo->prepare("
+                $stmtCheckL = $pdo->prepare("SELECT id FROM cm_layers WHERE id = ?");
+                $stmtUpdateL = $pdo->prepare("
+                    UPDATE cm_layers 
+                    SET project_id = ?, name = ?, color = ?, type = ?, visible = ?, opacity = ?, order_idx = ?, updated_at = NOW()
+                    WHERE id = ?
+                ");
+                $stmtInsertL = $pdo->prepare("
                     INSERT INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                    ON DUPLICATE KEY UPDATE
-                        name = VALUES(name),
-                        color = VALUES(color),
-                        type = VALUES(type),
-                        visible = VALUES(visible),
-                        opacity = VALUES(opacity),
-                        order_idx = VALUES(order_idx),
-                        updated_at = NOW()
                 ");
+
                 foreach ($body['layers'] as $idx => $l) {
                     if (empty($l['id'])) continue;
-                    $stmtLayer->execute([
-                        $l['id'],
-                        $projectId,
-                        $l['name'] ?? 'Camada',
-                        $l['color'] ?? '#00E08A',
-                        $l['type'] ?? 'custom',
-                        isset($l['visible']) && !$l['visible'] ? 0 : 1,
-                        isset($l['opacity']) ? (float)$l['opacity'] : 1.0,
-                        $l['order'] ?? $idx
-                    ]);
+                    $lid = $l['id'];
+                    $lname = $l['name'] ?? 'Camada';
+                    $lcolor = $l['color'] ?? '#00E08A';
+                    $ltype = $l['type'] ?? 'custom';
+                    $lvis = isset($l['visible']) && !$l['visible'] ? 0 : 1;
+                    $lopac = isset($l['opacity']) ? (float)$l['opacity'] : 1.0;
+                    $lord = $l['order'] ?? $idx;
+
+                    $stmtCheckL->execute([$lid]);
+                    if ($stmtCheckL->fetch()) {
+                        $stmtUpdateL->execute([$projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $lid]);
+                    } else {
+                        $stmtInsertL->execute([$lid, $projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord]);
+                    }
                 }
             }
 

@@ -160,8 +160,8 @@ export class GeoJsonConverter {
         });
       } else if (geomType === 'Polygon') {
         const coords = feat.geometry.coordinates.length > 1
-          ? feat.geometry.coordinates.map(ring => ring.map(c => [c[1], c[0]]))
-          : feat.geometry.coordinates[0].map(c => [c[1], c[0]]);
+          ? feat.geometry.coordinates.map(ring => GeoJsonConverter.openRing(ring))
+          : GeoJsonConverter.openRing(feat.geometry.coordinates[0]);
         features.push({
           id,
           name,
@@ -176,7 +176,7 @@ export class GeoJsonConverter {
           createdAt: props.createdAt || new Date().toISOString()
         });
       } else if (geomType === 'MultiPolygon') {
-        const coords = feat.geometry.coordinates.map(poly => poly[0].map(c => [c[1], c[0]]));
+        const coords = feat.geometry.coordinates.map(poly => GeoJsonConverter.openRing(poly[0]));
         features.push({
           id,
           name,
@@ -194,5 +194,24 @@ export class GeoJsonConverter {
     });
 
     return { features };
+  }
+
+  /**
+   * Converte coordenadas [lng, lat] de um LinearRing para [lat, lng]
+   * e garante anel aberto (remove o vértice de fechamento duplicado se houver).
+   * @param {Array<[number, number]>} ring
+   * @returns {Array<[number, number]>}
+   */
+  static openRing(ring) {
+    if (!Array.isArray(ring)) return [];
+    const coords = ring.map(c => [c[1], c[0]]);
+    if (coords.length > 2) {
+      const first = coords[0];
+      const last = coords[coords.length - 1];
+      if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+        return coords.slice(0, -1);
+      }
+    }
+    return coords;
   }
 }

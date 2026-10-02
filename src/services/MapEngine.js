@@ -35,12 +35,54 @@ export class MapEngine {
 
     this.selectedFeatureId = null;
     this.selectedFeatureIds = new Set();
+    this._justBoxSelected = false;
+
+    // Controle de Exibição de Geometrias Oficiais vs Prévias
+    this.showPreviewGeometries = false;
+    this.individualPreviewToggles = new Set();
 
     this.initMap();
     this.drawingEngine = new DrawingEngine(this);
     this.vertexEditor = new VertexEditor(this);
     this.featureRenderer = new FeatureRenderer(this);
     this.bindEvents();
+  }
+
+  setGlobalShowPreviews(showPreviews) {
+    this.showPreviewGeometries = !!showPreviews;
+    if (this.featureRenderer) {
+      this.featureRenderer.updateViewportCulling(true);
+    }
+  }
+
+  toggleGlobalShowPreviews() {
+    this.showPreviewGeometries = !this.showPreviewGeometries;
+    if (this.featureRenderer) {
+      this.featureRenderer.updateViewportCulling(true);
+    }
+    return this.showPreviewGeometries;
+  }
+
+  toggleIndividualPreview(featureId) {
+    if (!featureId) return false;
+    let isActive = false;
+    if (this.individualPreviewToggles.has(featureId)) {
+      this.individualPreviewToggles.delete(featureId);
+      isActive = false;
+    } else {
+      this.individualPreviewToggles.add(featureId);
+      isActive = true;
+    }
+    if (this.featureRenderer) {
+      this.featureRenderer.updateViewportCulling(true);
+    }
+    return isActive;
+  }
+
+  isFeaturePreviewActive(feat) {
+    if (!feat) return false;
+    if (this.showPreviewGeometries) return true;
+    return this.individualPreviewToggles.has(feat.id);
   }
 
   initMap() {
@@ -263,6 +305,8 @@ export class MapEngine {
 
           this._selectionBoxEl.remove();
           this._selectionBoxEl = null;
+          this._justBoxSelected = true;
+          setTimeout(() => { this._justBoxSelected = false; }, 250);
         }
 
         this._isBoxSelecting = false;
@@ -296,14 +340,13 @@ export class MapEngine {
       if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
         this.drawingEngine.handleClick(e);
       } else if (this.activeTool === 'select') {
+        if (this._justBoxSelected) {
+          this._justBoxSelected = false;
+          return;
+        }
         // Se clicou em área vazia do mapa (não em uma feição e não foi drag de seleção)
         if (!e.originalEvent || !e.originalEvent._cmFeatureClicked) {
           this.clearSelection();
-          if (this.onFeaturesSelected) {
-            this.onFeaturesSelected([]);
-          } else if (this.onFeatureSelected) {
-            this.onFeatureSelected(null);
-          }
         }
       }
     });
@@ -460,6 +503,8 @@ export class MapEngine {
   }
 
   handleBoxSelectionResult(matchedFeatures, { shift = false, ctrl = false } = {}) {
+    const prevSelectedIds = new Set(this.selectedFeatureIds);
+
     if (shift || ctrl) {
       matchedFeatures.forEach(f => this.selectedFeatureIds.add(f.id));
     } else {
@@ -472,7 +517,7 @@ export class MapEngine {
       : null;
 
     if (this.featureRenderer) {
-      this.featureRenderer.updateViewportCulling();
+      this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
     }
 
     if (this.onFeaturesSelected) {
@@ -482,11 +527,12 @@ export class MapEngine {
   }
 
   selectFeatures(featureIds = []) {
+    const prevSelectedIds = new Set(this.selectedFeatureIds);
     this.selectedFeatureIds.clear();
     (featureIds || []).forEach(id => this.selectedFeatureIds.add(id));
     this.selectedFeatureId = featureIds.length === 1 ? featureIds[0] : null;
     if (this.featureRenderer) {
-      this.featureRenderer.updateViewportCulling();
+      this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
     }
     const selectedList = this.getSelectedFeatures();
     if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
@@ -494,13 +540,38 @@ export class MapEngine {
   }
 
   selectFeature(featureId) {
+    const prevSelectedIds = new Set(this.selectedFeatureIds);
     this.selectedFeatureId = featureId;
     if (this.selectedFeatureIds) {
       this.selectedFeatureIds.clear();
       if (featureId) this.selectedFeatureIds.add(featureId);
     }
     if (this.featureRenderer) {
-      this.featureRenderer.updateViewportCulling();
+      this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
+    }
+    const selectedList = this.getSelectedFeatures();
+    if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
+    if (this.onFeatureSelected) this.onFeatureSelected(selectedList[0] || null);
+  }
+
+  toggleFeatureSelection(featureId) {
+    if (!featureId) return;
+    if (!this.selectedFeatureIds) {
+      this.selectedFeatureIds = new Set();
+    }
+    const prevSelectedIds = new Set(this.selectedFeatureIds);
+    if (this.selectedFeatureIds.has(featureId)) {
+      this.selectedFeatureIds.delete(featureId);
+    } else {
+      this.selectedFeatureIds.add(featureId);
+    }
+
+    this.selectedFeatureId = this.selectedFeatureIds.size === 1
+      ? Array.from(this.selectedFeatureIds)[0]
+      : null;
+
+    if (this.featureRenderer) {
+      this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
     }
     const selectedList = this.getSelectedFeatures();
     if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
@@ -508,12 +579,13 @@ export class MapEngine {
   }
 
   clearSelection() {
+    const prevSelectedIds = new Set(this.selectedFeatureIds);
     this.selectedFeatureId = null;
     if (this.selectedFeatureIds) {
       this.selectedFeatureIds.clear();
     }
     if (this.featureRenderer) {
-      this.featureRenderer.updateViewportCulling();
+      this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, new Set());
     }
     if (this.onFeaturesSelected) this.onFeaturesSelected([]);
     if (this.onFeatureSelected) this.onFeatureSelected(null);
@@ -540,9 +612,11 @@ export class MapEngine {
     }
     const bounds = L.latLngBounds([]);
     features.forEach(f => {
-      const raw = this.featureRenderer.normalizeCoordinates(f);
-      if (f.type === 'Point' && raw) bounds.extend(raw);
-      else if (Array.isArray(raw)) bounds.extend(raw.flat(2));
+      const bbox = SpatialIndex.computeBounds(f);
+      if (bbox) {
+        bounds.extend([bbox.minLat, bbox.minLng]);
+        bounds.extend([bbox.maxLat, bbox.maxLng]);
+      }
     });
     if (bounds.isValid() && this.map) {
       this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });

@@ -67,7 +67,15 @@ export class ShapefileWriter {
 
         partsList.forEach(part => {
           partOffsets.push(allPoints.length);
-          part.forEach(pt => allPoints.push(pt));
+          const ring = [...part];
+          if (isPoly && ring.length > 0) {
+            const first = ring[0];
+            const last = ring[ring.length - 1];
+            if (first && last && (Math.abs(first[0] - last[0]) > 1e-7 || Math.abs(first[1] - last[1]) > 1e-7)) {
+              ring.push(first);
+            }
+          }
+          ring.forEach(pt => allPoints.push(pt));
         });
 
         const numPoints = allPoints.length;

@@ -11,6 +11,16 @@ export const DEFAULT_LAYERS = [
   { id: 'layer-anotacoes', name: 'Anotações & Alertas', color: '#ec4899', visible: true, opacity: 1, locked: false }
 ];
 
+function openRingIfNeeded(pts) {
+  if (!Array.isArray(pts) || pts.length < 3) return pts;
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+    return pts.slice(0, -1);
+  }
+  return pts;
+}
+
 export function normalizeCoordinates(coords, type) {
   if (!coords) return coords;
   if (type === 'Point' || type === 'Circle') {
@@ -24,9 +34,17 @@ export function normalizeCoordinates(coords, type) {
   }
   if ((type === 'Polygon' || type === 'LineString') && Array.isArray(coords)) {
     if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-      return coords.map(ring => ring.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt));
+      const mapped = coords.map(ring => ring.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt));
+      if (type === 'Polygon') {
+        return mapped.map(openRingIfNeeded);
+      }
+      return mapped;
     }
-    return coords.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt);
+    const mapped = coords.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt);
+    if (type === 'Polygon') {
+      return openRingIfNeeded(mapped);
+    }
+    return mapped;
   }
   return coords;
 }
@@ -132,12 +150,13 @@ export const DEFAULT_FEATURES = [
     createdAt: new Date(Date.now() - 3600000 * 6).toISOString()
   },
 
-  // Quadra de Loteamento (Polígono)
+  // Quadra de Loteamento (Oficial)
   {
     id: 'feat-quadra-a',
     name: 'Quadra Residencial Q-07',
     layerId: 'layer-zoneamento',
     type: 'Polygon',
+    status: 'oficial',
     coordinates: [
       [-15.8030, -47.8590],
       [-15.7995, -47.8550],
@@ -145,9 +164,11 @@ export const DEFAULT_FEATURES = [
       [-15.8080, -47.8550]
     ],
     category: 'Zoneamento Urbano',
-    color: '#3b82f6',
-    description: 'Área destinada ao desdobro de 24 lotes unifamiliares de 450m².',
+    color: '#10b981',
+    description: 'Área oficial homologada e registrada para desdobro de 24 lotes unifamiliares de 450m².',
     properties: {
+      status_geodesico: 'oficial',
+      codigo_imovel: 'Q07-RES',
       areaCalculada: '28,12 ha',
       perimetro: '2.140,80 m',
       zoneamento: 'ZR-2 (Residencial Baixa Densidade)',
@@ -155,6 +176,60 @@ export const DEFAULT_FEATURES = [
     },
     createdBy: 'Thiago',
     createdAt: new Date(Date.now() - 3600000 * 2).toISOString()
+  },
+
+  // Traçado Prévio da Quadra (Prévia vinculada à Oficial - Exibida só sob demanda)
+  {
+    id: 'feat-quadra-a-previa',
+    name: 'Quadra Q-07 (Estudo Prévio)',
+    layerId: 'layer-zoneamento',
+    type: 'Polygon',
+    status: 'previa',
+    coordinates: [
+      [-15.8032, -47.8595],
+      [-15.7992, -47.8552],
+      [-15.8043, -47.8507],
+      [-15.8083, -47.8547]
+    ],
+    category: 'Zoneamento Urbano',
+    color: '#f59e0b',
+    description: 'Estudo prévio de geometria anterior ao levantamento RTK. Oculto por padrão quando há oficial.',
+    properties: {
+      status_geodesico: 'previa',
+      linkedId: 'feat-quadra-a',
+      codigo_imovel: 'Q07-RES',
+      areaCalculada: '29,40 ha',
+      perimetro: '2.185,10 m',
+      observacao: 'Geometria preliminar. Só exibida se solicitada pelo usuário.'
+    },
+    createdBy: 'Carlos Topógrafo',
+    createdAt: new Date(Date.now() - 3600000 * 5).toISOString()
+  },
+
+  // Gleba Nova (Prévia SEM Oficial - Aparece como padrão no mapa!)
+  {
+    id: 'feat-gleba-previa',
+    name: 'Gleba Expansão Sul (Anteprojeto)',
+    layerId: 'layer-zoneamento',
+    type: 'Polygon',
+    status: 'previa',
+    coordinates: [
+      [-15.8110, -47.8650],
+      [-15.8080, -47.8610],
+      [-15.8125, -47.8580],
+      [-15.8150, -47.8620]
+    ],
+    category: 'Zoneamento Urbano',
+    color: '#06b6d4',
+    description: 'Geometria prévia sem versão oficial cadastrada. Exibida como padrão no mapa.',
+    properties: {
+      status_geodesico: 'previa',
+      areaCalculada: '19,85 ha',
+      perimetro: '1.780,00 m',
+      observacao: 'Não possui geometria oficial cadastrada. Visível por padrão.'
+    },
+    createdBy: 'Thiago',
+    createdAt: new Date(Date.now() - 3600000 * 1).toISOString()
   },
 
   // Rota de Vistoria / Eixo Viário (Linha)

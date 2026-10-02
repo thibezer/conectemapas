@@ -77,7 +77,7 @@ export class DrawingEngine {
     this.vertexMarkers.clearLayers();
 
     this.drawingPoints.forEach((pt, index) => {
-      const isFirst = index === 0 && this.activeTool === 'polygon';
+      const isFirst = index === 0 && (this.activeTool === 'polygon' || this.activeTool === 'pen-select');
       const marker = L.circleMarker(pt, {
         radius: isFirst ? 6 : 4.5,
         color: isFirst ? '#00E08A' : '#ffffff',
@@ -127,6 +127,7 @@ export class DrawingEngine {
     let minPts = 2;
     if (this.activeTool === 'line') { toolName = 'Linha'; minPts = 2; }
     if (this.activeTool === 'polygon') { toolName = 'Polígono'; minPts = 3; }
+    if (this.activeTool === 'pen-select') { toolName = 'Caneta de Seleção'; minPts = 3; }
     if (this.activeTool === 'circle') { toolName = 'Círculo'; minPts = 1; }
     if (this.activeTool === 'measure') { toolName = 'Medição'; minPts = 2; }
 
@@ -165,6 +166,80 @@ export class DrawingEngine {
         layerId,
         color
       });
+      return true;
+    } else if (this.activeTool === 'pen-select' && this.drawingPoints.length >= 3) {
+      const polyCoords = [...this.drawingPoints];
+      this.resetDrawingState();
+      this.setTool('select');
+
+      // Algoritmo Ray-Casting para detectar quais feições estão dentro do polígono
+      const isPointInside = (pt, vs) => {
+        if (!pt || !Array.isArray(pt) || pt.length < 2) return false;
+        const x = pt[1], y = pt[0];
+        let inside = false;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+          const xi = vs[i][1], yi = vs[i][0];
+          const xj = vs[j][1], yj = vs[j][0];
+          const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+          if (intersect) inside = !inside;
+        }
+        return inside;
+      };
+
+      const allFeatures = (this.engine.featureRenderer && this.engine.featureRenderer.allFeatures) || [];
+      const selectedIds = [];
+
+      allFeatures.forEach(feat => {
+        if (!feat || !feat.coordinates) return;
+        if (feat.visible === false) return;
+        const layerConfig = this.engine.featureRenderer?.layerMap?.get(feat.layerId);
+        if (layerConfig && layerConfig.visible === false) return;
+
+        if (feat.type === 'Point' || feat.type === 'Circle') {
+          const pt = Array.isArray(feat.coordinates) 
+            ? feat.coordinates 
+            : [feat.coordinates.lat ?? feat.coordinates.latitude, feat.coordinates.lng ?? feat.coordinates.longitude];
+          if (isPointInside(pt, polyCoords)) {
+            selectedIds.push(feat.id);
+          }
+        } else if ((feat.type === 'LineString' || feat.type === 'Polygon') && Array.isArray(feat.coordinates)) {
+          const coordsList = feat.type === 'Polygon'
+            ? (Array.isArray(feat.coordinates[0]) && Array.isArray(feat.coordinates[0][0]) ? feat.coordinates[0] : feat.coordinates)
+            : feat.coordinates;
+
+          // Normaliza vértices para [lat, lng]
+          const normalizedCoords = coordsList.map(c => {
+            if (Array.isArray(c)) return c;
+            if (c && typeof c === 'object') return [c.lat ?? c.latitude, c.lng ?? c.longitude];
+            return null;
+          }).filter(Boolean);
+
+          // Verifica se algum vértice da feição está dentro do lasso
+          const temPontoDentro = normalizedCoords.some(c => isPointInside(c, polyCoords));
+
+          // Para polígonos: calcula centróide real e verifica se está dentro do lasso
+          // Isso evita falsos positivos (selecionar polígonos grandes que apenas tocam o lasso)
+          let centroDentro = false;
+          if (feat.type === 'Polygon' && normalizedCoords.length >= 3) {
+            let cLat = 0, cLng = 0;
+            for (const c of normalizedCoords) {
+              cLat += c[0];
+              cLng += c[1];
+            }
+            const centroid = [cLat / normalizedCoords.length, cLng / normalizedCoords.length];
+            centroDentro = isPointInside(centroid, polyCoords);
+          }
+
+          if (temPontoDentro || centroDentro) {
+            selectedIds.push(feat.id);
+          }
+        }
+
+      });
+
+      if (typeof this.engine.selectFeatures === 'function') {
+        this.engine.selectFeatures(selectedIds);
+      }
       return true;
     } else if (this.activeTool === 'polygon' && this.drawingPoints.length >= 3) {
       const coords = [...this.drawingPoints];
@@ -303,6 +378,30 @@ export class DrawingEngine {
         this.tempLayer.setLatLngs(this.drawingPoints);
       }
       this.updateDrawingHUD();
+    } else if (this.activeTool === 'pen-select') {
+      // Se clicou no primeiro vértice para fechar com 3+ pontos
+      if (this.drawingPoints.length >= 3 && this._activeSnapLatLng && 
+          this._activeSnapLatLng[0] === this.drawingPoints[0][0] && 
+          this._activeSnapLatLng[1] === this.drawingPoints[0][1]) {
+        this.finalizeCurrentDrawing();
+        return;
+      }
+
+      this.drawingPoints.push(latlng);
+      this._previewPoints = [...this.drawingPoints, latlng];
+      this.renderVertexHandles();
+      if (!this.tempLayer) {
+        this.tempLayer = L.polygon(this.drawingPoints, {
+          color: '#00f5a0',
+          fillColor: '#00f5a0',
+          fillOpacity: 0.22,
+          weight: 2,
+          dashArray: '3, 3'
+        }).addTo(this.map);
+      } else {
+        this.tempLayer.setLatLngs(this.drawingPoints);
+      }
+      this.updateDrawingHUD();
     } else if (this.activeTool === 'polygon') {
       // Se clicou no primeiro vértice para fechar com 3+ pontos
       if (this.drawingPoints.length >= 3 && this._activeSnapLatLng && 
@@ -424,7 +523,8 @@ export class DrawingEngine {
 
     if (this.activeTool === 'line') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
-    } else if (this.activeTool === 'polygon') {
+    } else if (this.activeTool === 'pen-select' || this.activeTool === 'polygon') {
+      // Apenas atualiza o preview visual — NÃO modifica drawingPoints aqui
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
     } else if (this.activeTool === 'measure') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);

@@ -4,6 +4,16 @@
    e normalização em lote de geometrias fora da thread principal.
    ========================================================================== */
 
+function openRingIfNeeded(pts) {
+  if (!Array.isArray(pts) || pts.length < 3) return pts;
+  const first = pts[0];
+  const last = pts[pts.length - 1];
+  if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+    return pts.slice(0, -1);
+  }
+  return pts;
+}
+
 function normalizeCoordinates(coords, type) {
   if (!coords) return coords;
   if (type === 'Point' || type === 'Circle') {
@@ -17,9 +27,17 @@ function normalizeCoordinates(coords, type) {
   }
   if ((type === 'Polygon' || type === 'LineString') && Array.isArray(coords)) {
     if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-      return coords.map(ring => ring.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt));
+      const mapped = coords.map(ring => ring.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt));
+      if (type === 'Polygon') {
+        return mapped.map(openRingIfNeeded);
+      }
+      return mapped;
     }
-    return coords.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt);
+    const mapped = coords.map(pt => (pt && typeof pt === 'object' && !Array.isArray(pt) && pt.lat !== undefined) ? [Number(pt.lat), Number(pt.lng)] : pt);
+    if (type === 'Polygon') {
+      return openRingIfNeeded(mapped);
+    }
+    return mapped;
   }
   return coords;
 }

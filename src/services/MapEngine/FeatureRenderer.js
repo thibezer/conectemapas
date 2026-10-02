@@ -1,6 +1,8 @@
 import L from 'leaflet';
 import { GeometrySimplifier } from '../GeometrySimplifier.js';
 import { PointClusterEngine } from './PointClusterEngine.js';
+import { GeometryVersionManager } from '../GeometryVersionManager.js';
+import { SpatialIndex } from '../SpatialIndex.js';
 
 export class FeatureRenderer {
   constructor(mapEngine) {
@@ -315,8 +317,14 @@ export class FeatureRenderer {
 
     const bounds = this.map ? this.map.getBounds() : null;
     const isVisibleInViewport = bounds ? this.engine.spatialIndex.intersects(feat, bounds, 0.20) : true;
+    const shouldRender = GeometryVersionManager.shouldRenderFeature(
+      feat,
+      this.allFeatures,
+      this.engine.showPreviewGeometries,
+      this.engine.individualPreviewToggles
+    );
 
-    if (isVisibleInViewport && feat.visible !== false) {
+    if (isVisibleInViewport && feat.visible !== false && shouldRender) {
       this.renderSingleFeature(feat, layers);
     } else {
       this.removeSingleFeature(feat.id);
@@ -379,6 +387,15 @@ export class FeatureRenderer {
         if (feat.visible === false) return;
         const layerConfig = this.layerMap.get(feat.layerId);
         if (layerConfig && layerConfig.visible === false) return;
+
+        // Regra de Negócio: Geometria Oficial vs Prévia
+        const shouldRender = GeometryVersionManager.shouldRenderFeature(
+          feat,
+          this.allFeatures,
+          this.engine.showPreviewGeometries,
+          this.engine.individualPreviewToggles
+        );
+        if (!shouldRender) return;
 
         if (feat.type === 'Point') {
           visiblePoints.push(feat);
@@ -472,7 +489,17 @@ export class FeatureRenderer {
       // 6. Remove do Leaflet feições que saíram do campo de visão (Culling Exit) ou que estão ocultas
       this.engine.renderedFeatures.forEach((layer, featId) => {
         const featObj = this.featureMap.get(featId);
-        const isHidden = featObj && (featObj.visible === false || this.layerMap.get(featObj.layerId)?.visible === false);
+        const shouldRender = featObj ? GeometryVersionManager.shouldRenderFeature(
+          featObj,
+          this.allFeatures,
+          this.engine.showPreviewGeometries,
+          this.engine.individualPreviewToggles
+        ) : true;
+        const isHidden = featObj && (
+          featObj.visible === false || 
+          !shouldRender || 
+          this.layerMap.get(featObj.layerId)?.visible === false
+        );
         if (!visibleIdSet.has(featId) || clusteredPointIdSet.has(featId) || isHidden) {
           this.removeSingleFeature(featId);
         }
@@ -481,9 +508,34 @@ export class FeatureRenderer {
   }
 
   /**
+   * Re-renderiza APENAS as feições que mudaram de estado de seleção.
+   * Muito mais eficiente que forceRefresh=true no updateViewportCulling,
+   * pois toca somente as K feições afetadas em O(K) em vez de todo o viewport.
+   *
+   * @param {Set<string>} prevSelectedIds - IDs que estavam selecionados antes
+   * @param {Set<string>} nextSelectedIds - IDs que estão selecionados agora
+   */
+  refreshSelectionVisuals(prevSelectedIds = new Set(), nextSelectedIds = new Set()) {
+    // União de todos os IDs que mudaram de estado (saíram ou entraram na seleção)
+    const toRefresh = new Set([...prevSelectedIds, ...nextSelectedIds]);
+    if (toRefresh.size === 0) return;
+
+    toRefresh.forEach(id => {
+      const feat = this.featureMap.get(id);
+      if (!feat) return;
+      if (feat.visible === false) return;
+      const layerConfig = this.layerMap.get(feat.layerId);
+      if (layerConfig && layerConfig.visible === false) return;
+      // Força re-render desta feição individualmente com o novo estado de seleção
+      this.renderSingleFeature(feat);
+    });
+  }
+
+  /**
    * Renderiza ou atualiza o marcador visual de Cluster
    */
   renderClusterMarker(cluster) {
+
     let marker = this.renderedClusters.get(cluster.id);
 
     if (!marker) {
@@ -642,8 +694,12 @@ export class FeatureRenderer {
           if (e && e.originalEvent) {
             e.originalEvent._cmFeatureClicked = true;
           }
-          this.engine.selectFeature(feat.id);
-          this.engine.onFeatureSelected(feat);
+          const isMulti = e && e.originalEvent && (e.originalEvent.shiftKey || e.originalEvent.ctrlKey || e.originalEvent.metaKey);
+          if (isMulti) {
+            this.engine.toggleFeatureSelection(feat.id);
+          } else {
+            this.engine.selectFeature(feat.id);
+          }
         });
 
         existingLayer.on('contextmenu', (e) => {
@@ -720,10 +776,22 @@ export class FeatureRenderer {
     if (feat.type === 'Point' && coords && coords.lat !== undefined) {
       return [coords.lat, coords.lng];
     } else if ((feat.type === 'Polygon' || feat.type === 'LineString') && Array.isArray(coords)) {
+      const openRing = (pts) => {
+        if (!Array.isArray(pts) || pts.length < 3) return pts;
+        const first = pts[0];
+        const last = pts[pts.length - 1];
+        if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+          return pts.slice(0, -1);
+        }
+        return pts;
+      };
+
       if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-        return coords.map(ring => ring.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt));
+        const mapped = coords.map(ring => ring.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt));
+        return feat.type === 'Polygon' ? mapped.map(openRing) : mapped;
       } else {
-        return coords.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt);
+        const mapped = coords.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt);
+        return feat.type === 'Polygon' ? openRing(mapped) : mapped;
       }
     } else if (feat.type === 'Circle' && coords && coords.lat !== undefined) {
       return [coords.lat, coords.lng];
@@ -986,29 +1054,122 @@ export class FeatureRenderer {
   }
 
   zoomToFeature(featureId) {
-    const layer = this.engine.renderedFeatures.get(featureId);
-    if (!layer) return;
-    if (layer.getBounds) {
-      this.map.fitBounds(layer.getBounds(), { padding: [60, 60], maxZoom: 17 });
-    } else if (layer.getLatLng) {
-      this.map.flyTo(layer.getLatLng(), 17, { duration: 1 });
+    if (!featureId) return;
+    const feat = this.featureMap.get(featureId) || (this.allFeatures || []).find(f => f.id === featureId);
+    if (!feat) return;
+
+    // Se a camada da feição ou a própria feição estiverem ocultas, reativa a visibilidade
+    const layerConfig = this.layerMap.get(feat.layerId);
+    if (layerConfig && layerConfig.visible === false) {
+      layerConfig.visible = true;
+      if (this.engine.setLayerVisibility) {
+        this.engine.setLayerVisibility(feat.layerId, true);
+      }
     }
-    layer.openPopup();
+    if (feat.visible === false) {
+      feat.visible = true;
+      if (this.engine.updateFeature) {
+        this.engine.updateFeature(feat);
+      }
+    }
+
+    // Calcula os limites reais matematicamente direto da geometria
+    const bbox = SpatialIndex.computeBounds(feat);
+    if (!bbox) return;
+
+    // Garante a renderização gráfica da feição mesmo que estivesse fora do viewport culling
+    this.renderSingleFeature(feat);
+
+    const isSinglePoint = (bbox.minLat === bbox.maxLat && bbox.minLng === bbox.maxLng) ||
+                          (Math.abs(bbox.maxLat - bbox.minLat) < 0.00002 && Math.abs(bbox.maxLng - bbox.minLng) < 0.00002);
+
+    let moved = false;
+    const onMoveEnd = () => {
+      if (moved) return;
+      moved = true;
+      this.updateViewportCulling(true);
+      const layer = this.engine.renderedFeatures.get(featureId);
+      if (layer && typeof layer.openPopup === 'function') {
+        try { layer.openPopup(); } catch (e) {}
+      }
+    };
+
+    this.map.once('moveend', onMoveEnd);
+    setTimeout(() => {
+      this.map.off('moveend', onMoveEnd);
+      onMoveEnd();
+    }, 750);
+
+    if (isSinglePoint) {
+      // Ponto único ou marco
+      const centerLat = (bbox.minLat + bbox.maxLat) / 2;
+      const centerLng = (bbox.minLng + bbox.maxLng) / 2;
+      const targetZoom = Math.max(this.map.getZoom(), 17);
+      this.map.flyTo([centerLat, centerLng], targetZoom, { duration: 0.6 });
+    } else {
+      // Polígono, linha ou feição com extensão espacial
+      const bounds = L.latLngBounds([bbox.minLat, bbox.minLng], [bbox.maxLat, bbox.maxLng]);
+      if (bounds.isValid()) {
+        this.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 18, animate: true });
+      }
+    }
   }
 
   fitAllFeatures() {
-    const allLayers = [];
-    this.engine.renderedFeatures.forEach(layer => allLayers.push(layer));
-    if (allLayers.length > 0) {
-      const group = L.featureGroup(allLayers);
-      this.map.fitBounds(group.getBounds(), { padding: [50, 50], maxZoom: 18 });
+    const bounds = L.latLngBounds([]);
+    const features = this.allFeatures || [];
+    let count = 0;
+    features.forEach(f => {
+      if (f.visible === false) return;
+      const layerConfig = this.layerMap.get(f.layerId);
+      if (layerConfig && layerConfig.visible === false) return;
+      const bbox = SpatialIndex.computeBounds(f);
+      if (bbox) {
+        bounds.extend([bbox.minLat, bbox.minLng]);
+        bounds.extend([bbox.maxLat, bbox.maxLng]);
+        count++;
+      }
+    });
+    if (count === 0 || !bounds.isValid() || !this.map) return;
+
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    if (ne.equals(sw) || (Math.abs(ne.lat - sw.lat) < 0.00002 && Math.abs(ne.lng - sw.lng) < 0.00002)) {
+      this.map.flyTo([ne.lat, ne.lng], Math.max(this.map.getZoom(), 17), { duration: 0.6 });
+    } else {
+      this.map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18, animate: true });
     }
   }
 
   fitLayer(layerId) {
-    const group = this.engine.featureLayers.get(layerId);
-    if (group && group.getLayers().length > 0) {
-      this.map.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 18 });
+    if (!layerId) return;
+    const layerConfig = this.layerMap.get(layerId);
+    if (layerConfig && layerConfig.visible === false) {
+      layerConfig.visible = true;
+      if (this.engine.setLayerVisibility) {
+        this.engine.setLayerVisibility(layerId, true);
+      }
+    }
+    const bounds = L.latLngBounds([]);
+    const features = this.allFeatures || [];
+    let count = 0;
+    features.forEach(f => {
+      if (f.layerId !== layerId || f.visible === false) return;
+      const bbox = SpatialIndex.computeBounds(f);
+      if (bbox) {
+        bounds.extend([bbox.minLat, bbox.minLng]);
+        bounds.extend([bbox.maxLat, bbox.maxLng]);
+        count++;
+      }
+    });
+    if (count === 0 || !bounds.isValid() || !this.map) return;
+
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    if (ne.equals(sw) || (Math.abs(ne.lat - sw.lat) < 0.00002 && Math.abs(ne.lng - sw.lng) < 0.00002)) {
+      this.map.flyTo([ne.lat, ne.lng], Math.max(this.map.getZoom(), 17), { duration: 0.6 });
+    } else {
+      this.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 18, animate: true });
     }
   }
 

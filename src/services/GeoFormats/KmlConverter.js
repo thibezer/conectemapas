@@ -44,12 +44,20 @@ export class KmlConverter {
         const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
         if (isMulti) {
           const polys = f.coordinates.map(ring => {
-            const coordsStr = ring.map(c => `${c[1]},${c[0]},0`).join(' ');
+            const r = [...ring];
+            if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
+              r.push([r[0][0], r[0][1]]);
+            }
+            const coordsStr = r.map(c => `${c[1]},${c[0]},0`).join(' ');
             return `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coordsStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
           }).join('');
           geomKML = `<MultiGeometry>${polys}</MultiGeometry>`;
         } else {
-          const coordsStr = f.coordinates.map(c => `${c[1]},${c[0]},0`).join(' ');
+          const r = [...f.coordinates];
+          if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
+            r.push([r[0][0], r[0][1]]);
+          }
+          const coordsStr = r.map(c => `${c[1]},${c[0]},0`).join(' ');
           geomKML = `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coordsStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
         }
       }
@@ -141,10 +149,19 @@ export class KmlConverter {
         });
       } else if (poly) {
         const rawCoords = poly.textContent.trim().split(/\s+/);
-        const coords = rawCoords.map(tuple => {
+        let coords = rawCoords.map(tuple => {
           const parts = tuple.split(',');
           return [parseFloat(parts[1]), parseFloat(parts[0])];
         }).filter(c => !isNaN(c[0]) && !isNaN(c[1]));
+
+        // Garante anel aberto para polígonos: remove vértice de fechamento duplicado se presente
+        if (coords.length > 2) {
+          const first = coords[0];
+          const last = coords[coords.length - 1];
+          if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+            coords = coords.slice(0, -1);
+          }
+        }
 
         features.push({
           id,

@@ -68,7 +68,16 @@ export class VertexEditor {
     }
 
     if ((isPoly || isLine) && Array.isArray(feat.coordinates)) {
-      const coords = [...feat.coordinates];
+      let coords = [...feat.coordinates];
+      // Salvaguarda defensiva para polígonos: se o anel vier fechado (com duplicata final), remove o duplicado
+      if (isPoly && coords.length > 2) {
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+          coords = coords.slice(0, -1);
+          feat.coordinates = [...coords];
+        }
+      }
       const count = coords.length;
 
       // 1. Cria manipuladores de vértices existentes

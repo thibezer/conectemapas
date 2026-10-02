@@ -44,8 +44,9 @@ export class LayerPanel {
     this.onFeatureToggle = options.onFeatureToggle || (() => {});
     this.onFeatureSelect = options.onFeatureSelect || (() => {});
     this.onFeatureLockToggle = options.onFeatureLockToggle || (() => {});
-    this.onBulkUpdate = options.onBulkUpdate || (() => {});
     this.onBulkDelete = options.onBulkDelete || (() => {});
+    this.onFeaturesReorder = options.onFeaturesReorder || (() => {});
+    this.onFeaturesSelect = options.onFeaturesSelect || (() => {});
 
     this.onBasemapChange = options.onBasemapChange || (() => {});
     this.onAddLayer = options.onAddLayer || (() => {});
@@ -208,31 +209,32 @@ export class LayerPanel {
     }
   }
 
-  setSelectedFeature(feat) {
+  setSelectedFeature(feat, switchTab = false) {
     this.selectedFeature = feat;
     if (feat) {
       this.selectedFeatureIds.clear();
       this.selectedFeatureIds.add(feat.id);
-      this.activeTab = 'inspector';
+      if (switchTab) {
+        this.activeTab = 'inspector';
+      }
     } else {
       this.selectedFeatureIds.clear();
     }
     this.updateContent();
   }
 
-  setSelectedFeatures(features = []) {
+  setSelectedFeatures(features = [], switchTab = false) {
     this.selectedFeatureIds.clear();
     (features || []).forEach(f => {
       if (f && f.id) this.selectedFeatureIds.add(f.id);
     });
     if (features && features.length === 1) {
       this.selectedFeature = features[0];
-      this.activeTab = 'inspector';
+      if (switchTab) {
+        this.activeTab = 'inspector';
+      }
     } else {
       this.selectedFeature = null;
-      if (features && features.length > 0) {
-        this.activeTab = 'layers';
-      }
     }
     this.updateContent();
   }

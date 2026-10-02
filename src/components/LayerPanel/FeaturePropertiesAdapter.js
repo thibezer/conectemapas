@@ -6,6 +6,7 @@
 
 import { SpatialAlgorithms } from '../../services/SpatialAlgorithms.js';
 import { GeoFormats } from '../../services/GeoFormats.js';
+import { GeometryVersionManager } from '../../services/GeometryVersionManager.js';
 import { UIToast } from 'ui-components-kit';
 
 export class FeaturePropertiesAdapter {
@@ -137,6 +138,34 @@ export class FeaturePropertiesAdapter {
           tipo: 'booleano',
           valor: feat.visible !== false
         },
+        {
+          id: 'status_geodesico',
+          rotulo: 'Status Geodésico',
+          tipo: 'selecao',
+          valor: GeometryVersionManager.getFeatureStatus(feat) || 'comum',
+          somenteLeitura: isLocked,
+          opcoes: [
+            { id: 'oficial', rotulo: '🟢 Oficial (Homologada)' },
+            { id: 'previa', rotulo: '🟡 Prévia (Proposta / Rascunho)' },
+            { id: 'comum', rotulo: '⚪ Padrão / Neutro' }
+          ]
+        },
+        ...(GeometryVersionManager.findLinkedFeature(feat, panel.app?.features || []) ? [
+          {
+            id: 'linked_feature_info',
+            rotulo: 'Versão Vinculada',
+            tipo: 'readonly',
+            valor: `${GeometryVersionManager.findLinkedFeature(feat, panel.app?.features || []).name || 'Elemento'} (${GeometryVersionManager.getFeatureStatus(GeometryVersionManager.findLinkedFeature(feat, panel.app?.features || [])) === 'oficial' ? '🟢 Oficial' : '🟡 Prévia'})`
+          }
+        ] : []),
+        ...(GeometryVersionManager.getFeatureStatus(feat) === 'previa' && !GeometryVersionManager.hasOfficialGeometry(feat, panel.app?.features || []) ? [
+          {
+            id: 'previa_aviso_info',
+            rotulo: 'Modo de Exibição',
+            tipo: 'readonly',
+            valor: '🟡 Padrão (Sem Oficial Cadastrada)'
+          }
+        ] : []),
         {
           id: 'id',
           rotulo: 'Identificador (ID)',
@@ -490,7 +519,46 @@ export class FeaturePropertiesAdapter {
     });
 
     // --- Categoria 5: Operações Espaciais & CAD ---
-    const acoesProps = [
+    const allFeatures = panel.app?.features || [];
+    const featStatus = GeometryVersionManager.getFeatureStatus(feat);
+    const linkedFeat = GeometryVersionManager.findLinkedFeature(feat, allFeatures);
+    const hasOfficial = GeometryVersionManager.hasOfficialGeometry(feat, allFeatures);
+
+    const acoesProps = [];
+
+    // Ações de Alternância de Versão Geométrica
+    if (linkedFeat) {
+      if (featStatus === 'oficial') {
+        acoesProps.push({
+          id: 'acao_alternar_versao_previa',
+          rotulo: 'Versão Geométrica',
+          tipo: 'acao',
+          valor: 'Prévia',
+          rotuloAcao: '🔄 Exibir Geometria Prévia',
+          dica: `Alterna a visualização no mapa para a versão prévia ("${linkedFeat.name || 'Prévia'}")`
+        });
+      } else if (featStatus === 'previa') {
+        acoesProps.push({
+          id: 'acao_alternar_versao_oficial',
+          rotulo: 'Versão Geométrica',
+          tipo: 'acao',
+          valor: 'Oficial',
+          rotuloAcao: '🔄 Exibir Geometria Oficial',
+          dica: `Alterna a visualização no mapa para a versão oficial ("${linkedFeat.name || 'Oficial'}")`
+        });
+      }
+    } else if (featStatus === 'previa' && !hasOfficial) {
+      acoesProps.push({
+        id: 'acao_promover_oficial',
+        rotulo: 'Versão Geométrica',
+        tipo: 'acao',
+        valor: 'Promover',
+        rotuloAcao: '⭐️ Tornar Geometria Oficial',
+        dica: 'Define esta geometria como a versão oficial definitiva'
+      });
+    }
+
+    acoesProps.push(
       {
         id: 'acao_enquadrar',
         rotulo: 'Localização',
@@ -515,7 +583,7 @@ export class FeaturePropertiesAdapter {
         rotuloAcao: '📑 Duplicar Feição (+30m)',
         dica: 'Cria uma cópia do elemento deslocada em 30 metros'
       }
-    ];
+    );
 
     if (isPoly || isLine) {
       acoesProps.push({
@@ -683,6 +751,24 @@ export class FeaturePropertiesAdapter {
           if (Array.isArray(updated.customAttributes) && updated.customAttributes[idx]) {
             updated.customAttributes[idx].value = novoValor;
           }
+        } else if (propId === 'status_geodesico') {
+          const s = novoValor === 'comum' ? null : novoValor;
+          updated.status = s;
+          if (!updated.properties) updated.properties = {};
+          if (s) {
+            updated.properties.status = s;
+          } else {
+            delete updated.properties.status;
+          }
+          if (panel.app && typeof panel.app.refreshMapAndTable === 'function') {
+            panel.app.refreshMapAndTable();
+          }
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Status Atualizado',
+            mensagem: `Status alterado para "${novoValor === 'oficial' ? 'Oficial' : (novoValor === 'previa' ? 'Prévia' : 'Padrão')}".`,
+            duracao: 2000
+          });
         }
         break;
     }
@@ -701,6 +787,34 @@ export class FeaturePropertiesAdapter {
     if (!feat) return;
 
     switch (acaoId) {
+      case 'acao_alternar_versao_previa':
+      case 'acao_alternar_versao_oficial':
+        if (panel.app && typeof panel.app.toggleFeatureGeometryVersion === 'function') {
+          panel.app.toggleFeatureGeometryVersion(feat.id);
+        }
+        break;
+
+      case 'acao_promover_oficial': {
+        const updated = {
+          ...feat,
+          status: 'oficial',
+          properties: { ...(feat.properties || {}), status: 'oficial' }
+        };
+        panel.selectedFeature = updated;
+        panel.onFeatureUpdate(updated);
+        panel.updateContent();
+        if (panel.app && typeof panel.app.refreshMapAndTable === 'function') {
+          panel.app.refreshMapAndTable();
+        }
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Promovido a Oficial',
+          mensagem: `A feição "${feat.name}" agora é a Geometria Oficial.`,
+          duracao: 2500
+        });
+        break;
+      }
+
       case 'acao_enquadrar':
         panel.onFitFeature(feat.id);
         break;

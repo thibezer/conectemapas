@@ -15,49 +15,60 @@ export class SpatialIndex {
   }
 
   static computeBounds(feat) {
-    if (!feat || !feat.coordinates) return null;
+    if (!feat) return null;
+    const rawCoords = feat.coordinates || feat.geometry?.coordinates;
+    const type = feat.type || feat.geometry?.type || 'Point';
+    if (!rawCoords) return null;
 
     let minLat = Infinity, maxLat = -Infinity;
     let minLng = Infinity, maxLng = -Infinity;
 
     const expand = (lat, lng) => {
-      if (typeof lat === 'number' && typeof lng === 'number' && !isNaN(lat) && !isNaN(lng)) {
-        if (lat < minLat) minLat = lat;
-        if (lat > maxLat) maxLat = lat;
-        if (lng < minLng) minLng = lng;
-        if (lng > maxLng) maxLng = lng;
+      const nLat = Number(lat);
+      const nLng = Number(lng);
+      if (!isNaN(nLat) && !isNaN(nLng) && isFinite(nLat) && isFinite(nLng)) {
+        if (nLat < minLat) minLat = nLat;
+        if (nLat > maxLat) maxLat = nLat;
+        if (nLng < minLng) minLng = nLng;
+        if (nLng > maxLng) maxLng = nLng;
       }
     };
 
-    if (feat.type === 'Point') {
-      const c = feat.coordinates;
-      if (c.lat !== undefined && c.lng !== undefined) {
-        expand(c.lat, c.lng);
+    if (type === 'Point') {
+      const c = rawCoords;
+      if (c && typeof c === 'object' && !Array.isArray(c)) {
+        expand(c.lat ?? c.latitude, c.lng ?? c.longitude);
       } else if (Array.isArray(c) && c.length >= 2) {
         expand(c[0], c[1]);
       }
-    } else if (feat.type === 'Circle') {
-      const c = feat.coordinates;
-      const lat = c.lat !== undefined ? c.lat : c[0];
-      const lng = c.lng !== undefined ? c.lng : c[1];
-      const rDeg = (feat.radius || 500) / 111320;
-      minLat = lat - rDeg; maxLat = lat + rDeg;
-      minLng = lng - rDeg; maxLng = lng + rDeg;
-    } else if (Array.isArray(feat.coordinates)) {
+    } else if (type === 'Circle') {
+      const c = rawCoords;
+      const lat = (c && typeof c === 'object' && !Array.isArray(c)) ? (c.lat ?? c.latitude) : (Array.isArray(c) ? c[0] : null);
+      const lng = (c && typeof c === 'object' && !Array.isArray(c)) ? (c.lng ?? c.longitude) : (Array.isArray(c) ? c[1] : null);
+      const rDeg = (Number(feat.radius) || 500) / 111320;
+      if (lat !== null && lng !== null) {
+        expand(Number(lat) - rDeg, Number(lng) - rDeg);
+        expand(Number(lat) + rDeg, Number(lng) + rDeg);
+      }
+    } else if (Array.isArray(rawCoords)) {
       const scanPoints = (coords) => {
-        if (!Array.isArray(coords)) return;
-        if (typeof coords[0] === 'number') {
+        if (!Array.isArray(coords) || coords.length === 0) return;
+        if (typeof coords[0] === 'number' || (typeof coords[0] === 'string' && !isNaN(Number(coords[0])))) {
           expand(coords[0], coords[1]);
-        } else if (coords[0] && coords[0].lat !== undefined) {
-          coords.forEach(p => expand(p.lat, p.lng));
+        } else if (coords[0] && typeof coords[0] === 'object' && !Array.isArray(coords[0])) {
+          coords.forEach(p => {
+            if (p) expand(p.lat ?? p.latitude, p.lng ?? p.longitude);
+          });
         } else if (Array.isArray(coords[0])) {
           coords.forEach(sub => scanPoints(sub));
         }
       };
-      scanPoints(feat.coordinates);
+      scanPoints(rawCoords);
     }
 
-    if (minLat === Infinity) return null;
+    if (minLat === Infinity || maxLat === -Infinity || minLng === Infinity || maxLng === -Infinity) {
+      return null;
+    }
     return { minLat, minLng, maxLat, maxLng };
   }
 

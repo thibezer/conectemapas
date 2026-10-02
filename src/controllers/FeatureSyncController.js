@@ -476,6 +476,9 @@ export class FeatureSyncController {
     if (Array.isArray(upserted) && upserted.length > 0) {
       for (const rawFeat of upserted) {
         if (!rawFeat || !rawFeat.id) continue;
+        // Se a feição foi excluída localmente, ignora o upsert remoto (evita ressuscitação)
+        if (StorageService.hasLocalTombstone(rawFeat.id, app.projectId)) continue;
+
         // Se o operador local estiver ativamente desenhando, adia para não interromper a precisão de clique
         if (app.mapEngine && app.mapEngine.isDrawing) continue;
 

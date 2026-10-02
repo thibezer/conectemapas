@@ -368,12 +368,62 @@
 }
 
 .cm-ai-feat-row {
+  position: relative;
   background: #161619;
   font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cm-ai-feat-row:hover {
+  background: #1c1c20;
 }
 
 .cm-ai-feat-row.selected-row {
-  background: rgba(59, 130, 246, 0.22) !important;
+  background: rgba(56, 189, 248, 0.18) !important;
+  outline: 1px solid rgba(56, 189, 248, 0.5) !important;
+  outline-offset: -1px;
+}
+
+/* Indicadores de Drag & Drop para Camadas e Feições */
+.cm-ai-layer-row.dragging,
+.cm-ai-feat-row.dragging {
+  opacity: 0.4;
+  background: rgba(56, 189, 248, 0.15) !important;
+}
+
+.cm-ai-layer-row.cm-drop-above::before,
+.cm-ai-feat-row.cm-drop-above::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.cm-ai-layer-row.cm-drop-below::after,
+.cm-ai-feat-row.cm-drop-below::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #38bdf8;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.cm-ai-layer-row.cm-drop-into {
+  background: rgba(56, 189, 248, 0.22) !important;
+  outline: 2px dashed #38bdf8 !important;
+  outline-offset: -2px;
 }
 
 .cm-ai-feat-row.hidden-row, .cm-ai-layer-row.hidden-layer {
@@ -576,5 +626,38 @@
 /* Ocultação cirúrgica em tempo real para busca rápida */
 .cm-search-hidden {
   display: none !important;
+}
+
+/* Badges de Versão de Geometria na Árvore */
+.cm-geom-tag {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  user-select: none;
+  line-height: 1.1;
+  display: inline-block;
+}
+
+.cm-geom-tag.official {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.cm-geom-tag.preview {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.cm-geom-tag.preview.default {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
 }
 

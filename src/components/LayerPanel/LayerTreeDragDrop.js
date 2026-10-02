@@ -99,10 +99,19 @@ export class LayerTreeDragDrop {
     let draggedLayerId = null;
     let draggedFeatId = null;
 
-    document.querySelectorAll('.cm-ai-layer-group[draggable="true"]').forEach(layerGroup => {
-      const layerId = layerGroup.getAttribute('data-layer-id');
+    const clearAllDragClasses = () => {
+      document.querySelectorAll('.cm-ai-layer-row, .cm-ai-feat-row, .cm-ai-layer-group').forEach(el => {
+        el.classList.remove('dragging', 'cm-drop-above', 'cm-drop-below', 'cm-drop-into');
+      });
+    };
 
-      layerGroup.addEventListener('dragstart', (e) => {
+    // -------------------------------------------------------------------------
+    // 1. DRAG AND DROP DE CAMADAS (Reordenação de Camadas / Z-Index)
+    // -------------------------------------------------------------------------
+    document.querySelectorAll('.cm-ai-layer-row[draggable="true"]').forEach(layerRow => {
+      const layerId = layerRow.getAttribute('data-layer-id');
+
+      layerRow.addEventListener('dragstart', (e) => {
         if (e.target.closest('input, button, select') || panel.editingLayerId || panel.editingFeatureId) {
           e.preventDefault();
           return;
@@ -111,31 +120,34 @@ export class LayerTreeDragDrop {
         draggedLayerId = layerId;
         e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'layer', id: layerId }));
         e.dataTransfer.effectAllowed = 'move';
-        layerGroup.classList.add('dragging');
+        layerRow.classList.add('dragging');
       });
 
-      layerGroup.addEventListener('dragover', (e) => {
+      layerRow.addEventListener('dragover', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         e.dataTransfer.dropEffect = 'move';
+
         if (draggedType === 'layer') {
           if (draggedLayerId === layerId) return;
-          const rect = layerGroup.getBoundingClientRect();
+          const rect = layerRow.getBoundingClientRect();
           const isTop = (e.clientY - rect.top) < (rect.height / 2);
-          layerGroup.classList.toggle('cm-drop-above', isTop);
-          layerGroup.classList.toggle('cm-drop-below', !isTop);
+          layerRow.classList.toggle('cm-drop-above', isTop);
+          layerRow.classList.toggle('cm-drop-below', !isTop);
         } else if (draggedType === 'feature') {
-          layerGroup.classList.add('cm-drop-into');
+          layerRow.classList.add('cm-drop-into');
         }
       });
 
-      layerGroup.addEventListener('dragleave', () => {
-        layerGroup.classList.remove('cm-drop-above', 'cm-drop-below', 'cm-drop-into');
+      layerRow.addEventListener('dragleave', () => {
+        layerRow.classList.remove('cm-drop-above', 'cm-drop-below', 'cm-drop-into');
       });
 
-      layerGroup.addEventListener('drop', (e) => {
+      layerRow.addEventListener('drop', (e) => {
         e.preventDefault();
-        const dropAbove = layerGroup.classList.contains('cm-drop-above');
-        layerGroup.classList.remove('cm-drop-above', 'cm-drop-below', 'cm-drop-into');
+        e.stopPropagation();
+        const dropAbove = layerRow.classList.contains('cm-drop-above');
+        clearAllDragClasses();
 
         if (draggedType === 'layer') {
           if (!draggedLayerId || draggedLayerId === layerId) return;
@@ -157,6 +169,9 @@ export class LayerTreeDragDrop {
           if (feat && targetLayer && feat.layerId !== layerId) {
             feat.layerId = layerId;
             panel.onFeatureUpdate(feat);
+            if (typeof panel.onFeaturesReorder === 'function') {
+              panel.onFeaturesReorder(panel.features);
+            }
             UIToast.notificar({
               tipo: 'sucesso',
               titulo: 'Feição Movida',
@@ -168,38 +183,113 @@ export class LayerTreeDragDrop {
         }
       });
 
-      layerGroup.addEventListener('dragend', () => {
+      layerRow.addEventListener('dragend', () => {
         draggedType = null;
         draggedLayerId = null;
         draggedFeatId = null;
-        document.querySelectorAll('.cm-ai-layer-group').forEach(el => {
-          el.classList.remove('dragging', 'cm-drop-above', 'cm-drop-below', 'cm-drop-into');
-        });
-        document.querySelectorAll('.cm-ai-feat-row').forEach(el => el.classList.remove('dragging'));
+        clearAllDragClasses();
       });
     });
 
+    // -------------------------------------------------------------------------
+    // 2. DRAG AND DROP DE FEIÇÕES (Reordenação interna e entre camadas)
+    // -------------------------------------------------------------------------
     document.querySelectorAll('.cm-ai-feat-row[draggable="true"]').forEach(featRow => {
       const featId = featRow.getAttribute('data-feat-row');
+      const featLayerId = featRow.getAttribute('data-feat-layer');
+
       featRow.addEventListener('dragstart', (e) => {
-        e.stopPropagation();
         if (e.target.closest('input, button, select') || panel.editingLayerId || panel.editingFeatureId) {
           e.preventDefault();
           return;
         }
+        e.stopPropagation();
         draggedType = 'feature';
         draggedFeatId = featId;
-        e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'feature', id: featId }));
+        draggedLayerId = featLayerId;
+        e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'feature', id: featId, layerId: featLayerId }));
         e.dataTransfer.effectAllowed = 'move';
         featRow.classList.add('dragging');
+      });
+
+      featRow.addEventListener('dragover', (e) => {
+        if (draggedType !== 'feature' || draggedFeatId === featId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+
+        const rect = featRow.getBoundingClientRect();
+        const isTop = (e.clientY - rect.top) < (rect.height / 2);
+        featRow.classList.toggle('cm-drop-above', isTop);
+        featRow.classList.toggle('cm-drop-below', !isTop);
+      });
+
+      featRow.addEventListener('dragleave', () => {
+        featRow.classList.remove('cm-drop-above', 'cm-drop-below');
+      });
+
+      featRow.addEventListener('drop', (e) => {
+        if (draggedType !== 'feature' || !draggedFeatId || draggedFeatId === featId) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const dropAbove = featRow.classList.contains('cm-drop-above');
+        clearAllDragClasses();
+
+        const srcIdx = panel.features.findIndex(f => f.id === draggedFeatId);
+        if (srcIdx === -1) return;
+
+        const targetFeat = panel.features.find(f => f.id === featId);
+        if (!targetFeat) return;
+
+        const [movedFeat] = panel.features.splice(srcIdx, 1);
+        const originalLayerId = movedFeat.layerId;
+        const targetLayerId = targetFeat.layerId;
+
+        // Se moveu para camada diferente, atualiza o layerId
+        const layerChanged = originalLayerId !== targetLayerId;
+        if (layerChanged) {
+          movedFeat.layerId = targetLayerId;
+        }
+
+        let targetIdx = panel.features.findIndex(f => f.id === featId);
+        if (targetIdx === -1) {
+          panel.features.push(movedFeat);
+        } else {
+          panel.features.splice(dropAbove ? targetIdx : targetIdx + 1, 0, movedFeat);
+        }
+
+        if (layerChanged) {
+          panel.onFeatureUpdate(movedFeat);
+          const targetLayerObj = panel.layers.find(l => l.id === targetLayerId);
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Feição Movida',
+            mensagem: `"${movedFeat.name}" transferida para a camada "${targetLayerObj?.name || 'Alvo'}".`,
+            duracao: 2000
+          });
+        } else {
+          UIToast.notificar({
+            tipo: 'informativo',
+            titulo: 'Ordem Alterada',
+            mensagem: `"${movedFeat.name}" reposicionada na lista.`,
+            duracao: 1500
+          });
+        }
+
+        if (typeof panel.onFeaturesReorder === 'function') {
+          panel.onFeaturesReorder(panel.features);
+        }
+
+        panel.updateContent();
       });
 
       featRow.addEventListener('dragend', (e) => {
         e.stopPropagation();
         draggedType = null;
         draggedFeatId = null;
-        featRow.classList.remove('dragging');
-        document.querySelectorAll('.cm-ai-layer-group').forEach(el => el.classList.remove('cm-drop-into'));
+        draggedLayerId = null;
+        clearAllDragClasses();
       });
     });
   }

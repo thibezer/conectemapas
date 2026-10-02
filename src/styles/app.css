@@ -25,7 +25,7 @@
   position: relative;
   overflow: hidden;
   width: 100%;
-  height: calc(100vh - 30px);
+  height: calc(100vh - 38px);
 }
 
 /* Map Container */

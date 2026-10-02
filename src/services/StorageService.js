@@ -54,6 +54,76 @@ function yieldToMain() {
   });
 }
 
+const TOMBSTONES_KEY_PREFIX = 'cm_tombstones_';
+const PENDING_DELTAS_KEY_PREFIX = 'cm_pending_deltas_';
+
+function _getLocalTombstones(projectId = null) {
+  if (typeof localStorage === 'undefined') return new Set();
+  try {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    const raw = localStorage.getItem(TOMBSTONES_KEY_PREFIX + projId);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function _addLocalTombstone(featureId, projectId = null) {
+  if (!featureId || typeof localStorage === 'undefined') return;
+  try {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    const set = _getLocalTombstones(projId);
+    set.add(featureId);
+    const arr = Array.from(set);
+    if (arr.length > 2000) arr.splice(0, arr.length - 2000);
+    localStorage.setItem(TOMBSTONES_KEY_PREFIX + projId, JSON.stringify(arr));
+  } catch {}
+}
+
+function _removeLocalTombstone(featureId, projectId = null) {
+  if (!featureId || typeof localStorage === 'undefined') return;
+  try {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    const set = _getLocalTombstones(projId);
+    if (set.has(featureId)) {
+      set.delete(featureId);
+      localStorage.setItem(TOMBSTONES_KEY_PREFIX + projId, JSON.stringify(Array.from(set)));
+    }
+  } catch {}
+}
+
+function _persistPendingDeltas(projectId = null) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    const payload = {
+      dirty: Array.from(_dirtyFeatures.values()),
+      deleted: Array.from(_deletedFeatureIds)
+    };
+    localStorage.setItem(PENDING_DELTAS_KEY_PREFIX + projId, JSON.stringify(payload));
+  } catch {}
+}
+
+function _loadPendingDeltas(projectId = null) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    const raw = localStorage.getItem(PENDING_DELTAS_KEY_PREFIX + projId);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (Array.isArray(data.dirty)) {
+      for (const feat of data.dirty) {
+        if (feat && feat.id) _dirtyFeatures.set(feat.id, feat);
+      }
+    }
+    if (Array.isArray(data.deleted)) {
+      for (const id of data.deleted) {
+        if (id) _deletedFeatureIds.add(id);
+      }
+    }
+  } catch {}
+}
+
 export class StorageService {
   /**
    * Define o ID do projeto ativo globalmente para isolamento estrito de dados
@@ -457,16 +527,34 @@ export class StorageService {
     this.commitDeltasDebounced(350);
   }
 
-  static queueFeaturesBulkDelete(featureIds) {
+  static async queueFeaturesBulkDelete(featureIds, projectId = null) {
     if (!Array.isArray(featureIds) || featureIds.length === 0) return;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
     for (let i = 0; i < featureIds.length; i++) {
       const id = featureIds[i];
       if (id) {
         _dirtyFeatures.delete(id);
         _deletedFeatureIds.add(id);
+        _addLocalTombstone(id, projId);
       }
     }
-    this.commitDeltasDebounced(350);
+    _persistPendingDeltas(projId);
+
+    // Remove imediatamente do IndexedDB local em tempo real
+    try {
+      const db = await this.getDB();
+      if (db) {
+        const tx = db.transaction(STORE_FEATURES, 'readwrite');
+        const store = tx.objectStore(STORE_FEATURES);
+        for (const id of featureIds) {
+          store.delete(id);
+        }
+      }
+    } catch (e) {
+      console.warn('[StorageService] Erro ao deletar lote do IndexedDB:', e);
+    }
+
+    this.commitDeltasDebounced(100);
   }
 
   static commitDeltasDebounced(delayMs = 350) {
@@ -586,12 +674,50 @@ export class StorageService {
     if (toUpsert.length > 0) this.queueFeaturesBulkUpsert(toUpsert, projId);
   }
 
-  static async saveFeature(feature, projectId = null) {
-    this.queueFeatureUpsert(feature, projectId);
+  static hasLocalTombstone(featureId, projectId = null) {
+    const set = _getLocalTombstones(projectId);
+    return set.has(featureId);
   }
 
-  static async deleteFeature(featureId) {
-    this.queueFeatureDelete(featureId);
+  static async saveFeature(feature, projectId = null) {
+    if (!feature || !feature.id) return;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    _removeLocalTombstone(feature.id, projId);
+    this.queueFeatureUpsert(feature, projId);
+
+    // Gravação direta e síncrona no IndexedDB para persistência em tempo real imediata
+    try {
+      const db = await this.getDB();
+      if (db) {
+        const compacted = GeoCompressor.compactFeatureForStorage(feature);
+        const tx = db.transaction(STORE_FEATURES, 'readwrite');
+        tx.objectStore(STORE_FEATURES).put({ ...compacted, projectId: projId });
+      }
+    } catch (e) {
+      console.warn('[StorageService] Erro ao gravar feição no IndexedDB:', e);
+    }
+  }
+
+  static async deleteFeature(featureId, projectId = null) {
+    if (!featureId) return;
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    _dirtyFeatures.delete(featureId);
+    _deletedFeatureIds.add(featureId);
+    _addLocalTombstone(featureId, projId);
+    _persistPendingDeltas(projId);
+
+    // Exclusão direta e imediata do IndexedDB para tempo real garantido
+    try {
+      const db = await this.getDB();
+      if (db) {
+        const tx = db.transaction(STORE_FEATURES, 'readwrite');
+        tx.objectStore(STORE_FEATURES).delete(featureId);
+      }
+    } catch (e) {
+      console.warn('[StorageService] Erro ao deletar feição no IndexedDB:', e);
+    }
+
+    this.commitDeltasDebounced(100);
   }
 
   static async saveFeaturesBatch(features, projectId = null) {
@@ -1051,7 +1177,8 @@ export class StorageService {
       const res = await fetch(`${CLOUD_API_URL}?action=save_metadata`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        keepalive: true
       });
 
       if (res.ok) {
@@ -1088,7 +1215,8 @@ export class StorageService {
       const res = await fetch(`${CLOUD_API_URL}?action=sync_deltas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        keepalive: true
       });
 
       if (res.ok) {
@@ -1099,6 +1227,7 @@ export class StorageService {
         _cloudStatus.connected = true;
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
+        _persistPendingDeltas(projId);
       }
     } catch (err) {
       console.warn('[StorageService] Falha ao sincronizar deltas com Hostinger MySQL:', err);

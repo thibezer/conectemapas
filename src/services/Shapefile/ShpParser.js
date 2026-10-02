@@ -104,8 +104,13 @@ export class ShpParser {
         for (let p = 0; p < numParts; p++) {
           const start = parts[p];
           const end = (p + 1 < numParts) ? parts[p + 1] : allPoints.length;
-          const ring = allPoints.slice(start, end);
+          let ring = allPoints.slice(start, end);
           if (ring.length >= 3) {
+            const first = ring[0];
+            const last = ring[ring.length - 1];
+            if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+              ring = ring.slice(0, -1);
+            }
             rings.push(ring);
           }
         }
