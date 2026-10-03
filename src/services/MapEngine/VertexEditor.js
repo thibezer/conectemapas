@@ -16,14 +16,22 @@ export class VertexEditor {
     this.onFeatureUpdatedCallback = null;
   }
 
+  isEditing() {
+    return Boolean(this.editingFeature);
+  }
+
   startEditing(feature, onFeatureUpdated) {
-    if (!feature) return;
-    if (feature.locked) {
-      return;
+    if (!feature || feature.locked) return;
+    if (this.editHandlesLayer) {
+      this.editHandlesLayer.clearLayers();
     }
-    this.stopEditing();
     this.editingFeature = feature;
     this.onFeatureUpdatedCallback = onFeatureUpdated;
+
+    // Oculta SelectionHUD enquanto estiver editando vértices para evitar qualquer sobreposição
+    const selHud = document.getElementById('cm-selection-hud');
+    if (selHud) selHud.style.display = 'none';
+
     this.renderEditHandles();
     this.updateHUD();
   }
@@ -37,6 +45,12 @@ export class VertexEditor {
     const hud = document.getElementById('cm-vertex-edit-hud');
     if (hud) {
       hud.style.display = 'none';
+    }
+
+    // Restaura a barra de seleção se houver elemento selecionado no motor
+    if (this.engine?.selectedFeatureId || (this.engine?.selectedFeatureIds && this.engine.selectedFeatureIds.size > 0)) {
+      const selHud = document.getElementById('cm-selection-hud');
+      if (selHud) selHud.style.display = 'flex';
     }
   }
 
@@ -250,12 +264,15 @@ export class VertexEditor {
   }
 
   updateHUD() {
+    const container = document.querySelector('.cm-workspace') || document.body;
     let hud = document.getElementById('cm-vertex-edit-hud');
     if (!hud) {
       hud = document.createElement('div');
       hud.id = 'cm-vertex-edit-hud';
-      hud.className = 'cm-cad-hud';
-      document.body.appendChild(hud);
+      hud.className = 'cm-cad-hud cm-vertex-hud';
+      container.appendChild(hud);
+    } else if (hud.parentElement !== container) {
+      container.appendChild(hud);
     }
 
     if (!this.editingFeature) {

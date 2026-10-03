@@ -13,7 +13,8 @@ export class LayerTreeTab {
         id="cm-ui-camadas" 
         style="width: 100%; height: 100%; display: flex; flex-direction: column;"
         mapa-base-ativo="${panel.currentBasemap || 'satelite'}"
-        camada-ativa="${panel.activeLayerId || (panel.layers[0]?.id || '')}">
+        camada-ativa="${panel.activeLayerId || (panel.layers[0]?.id || '')}"
+        mostrar-mapas-base="false">
       </ui-camadas>
     `;
   }

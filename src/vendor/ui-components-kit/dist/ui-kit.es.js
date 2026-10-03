@@ -1,22 +1,23 @@
 /* empty css               */
 import { U as c, a as d } from "./ui-botao-BShEouvi.js";
-import { A as m, L as p, a as u, R as I, U, b as T, c as S, d as E, e as g, f as C, g as f, h as x, r as A } from "./ui-switch-W18u8gSi.js";
-import { A as L, S as P, U as O, a as R, b as z, c as M, d as D, e as h, t as v } from "./ui-segmented-CyKEXKY5.js";
+import { A as m, L as p, a as I, R as u, U, b as T, c as S, d as E, e as g, f as C, g as f, h as x, r as A } from "./ui-switch-W18u8gSi.js";
+import { A as L, S as P, U as O, a as R, b as M, c as z, d as B, e as D, t as h } from "./ui-segmented-CyKEXKY5.js";
 import { A as F, U as _, c as y, s as w, a as q, b as G } from "./ui-campo-texto-DtDPg-b9.js";
 import { U as V, a as H, b as k } from "./ui-paleta-ferramentas-mR2hv1Jk.js";
 import { U as J, a as K, b as W, c as Q, d as X, e as Z } from "./ui-badge-92yelKls.js";
 import { U as $ } from "./ui-card-BJ8SmvVf.js";
 import { U as ra, a as ea, b as oa, r as sa } from "./ui-modal-BOwB37dZ.js";
-import { U as ia, a as na, b as ca, c as da, d as la, e as ma, f as pa, g as ua, h as Ia, i as Ua, j as Ta, o as Sa } from "./ui-skeleton-Dof4I4xz.js";
+import { U as ia, a as na, b as ca, c as da, d as la, e as ma, f as pa, g as Ia, h as ua, i as Ua, j as Ta, o as Sa } from "./ui-skeleton-Dof4I4xz.js";
 import { I as ga, U as Ca, a as fa } from "./ui-toast-3t4yHnGr.js";
-import { G as Aa, T as ba, a as La, b as Pa, U as Oa, c as Ra, d as za, e as Ma, f as Da, g as ha, h as va, i as Ba, j as Fa, k as _a, l as ya, m as wa, n as qa, o as Ga, p as Na, q as Va, r as Ha, s as ka, t as ja, u as Ja, v as Ka, w as Wa, x as Qa, y as Xa, z as Za, A as Ya, B as $a, C as ar, D as rr, E as er, F as or, H as sr, I as tr, J as ir, K as nr, L as cr, M as dr, N as lr, O as mr, P as pr, Q as ur, R as Ir, S as Ur, V as Tr, W as Sr } from "./ui-tabela-propriedades-BRR_zhDN.js";
+import { G as Aa, T as ba, a as La, b as Pa, U as Oa, c as Ra, d as Ma, e as za, f as Ba, g as Da, h as ha, i as va, j as Fa, k as _a, l as ya, m as wa, n as qa, o as Ga, p as Na, q as Va, r as Ha, s as ka, t as ja, u as Ja, v as Ka, w as Wa, x as Qa, y as Xa, z as Za, A as Ya, B as $a, C as ar, D as rr, E as er, F as or, H as sr, I as tr, J as ir, K as nr, L as cr, M as dr, N as lr, O as mr, P as pr, Q as Ir, R as ur, S as Ur, V as Tr, W as Sr } from "./ui-tabela-propriedades-BRR_zhDN.js";
 import { ICONES_FERRAMENTAS as gr } from "./tools.es.js";
-import { CamadasDragDropManager as fr, ICONES as xr, MAPAS_BASE_PADRAO as Ar, UICamadas as br, UILayerPanel as Lr, UIPainelCamadas as Pr, calcularAreaPoligono as Or, calcularComprimentoLinha as Rr, calcularDistanciaPontos as zr, carregarEstadoPersistido as Mr, escapeHtml as Dr, formatarMetricaFeicoes as hr, gerarChaveStorage as vr, limparEstadoPersistido as Br, reidratarCamadasComOverrides as Fr, renderizarArvoreCamadas as _r, renderizarGridMapasBase as yr, renderizarRodapeAcoes as wr, renderizarThumbGeometria as qr, salvarEstadoPersistido as Gr } from "./camadas.es.js";
+import { CamadasDragDropManager as fr, ICONES as xr, MAPAS_BASE_PADRAO as Ar, UICamadas as br, UILayerPanel as Lr, UIPainelCamadas as Pr, calcularAreaPoligono as Or, calcularComprimentoLinha as Rr, calcularDistanciaPontos as Mr, carregarEstadoPersistido as zr, escapeHtml as Br, formatarMetricaFeicoes as Dr, gerarChaveStorage as hr, limparEstadoPersistido as vr, reidratarCamadasComOverrides as Fr, renderizarArvoreCamadas as _r, renderizarGridMapasBase as yr, renderizarRodapeAcoes as wr, renderizarThumbGeometria as qr, salvarEstadoPersistido as Gr } from "./camadas.es.js";
+import { UIMapaBase as Vr, UISeletorMapaBase as Hr } from "./seletor-mapa-base.es.js";
 import { i as r } from "./zero-js-triggers-BYGj-lCC.js";
-import { U as Vr } from "./zero-js-triggers-BYGj-lCC.js";
-import { L as kr } from "./listener-bag-DQgv7OON.js";
-import { c as Jr, o as Kr } from "./leaflet-loader-Cjcdgj5R.js";
-import { S as Qr, d as Xr, i as Zr } from "./ssr-safe-5cWfJP-s.js";
+import { U as jr } from "./zero-js-triggers-BYGj-lCC.js";
+import { L as Kr } from "./listener-bag-DQgv7OON.js";
+import { c as Qr, o as Xr } from "./leaflet-loader-Cjcdgj5R.js";
+import { S as Yr, d as $r, i as ae } from "./ssr-safe-5cWfJP-s.js";
 const s = () => import("./mapa.es.js"), t = () => import("./canvas.es.js");
 if (typeof document < "u") {
   const a = () => {
@@ -35,11 +36,11 @@ export {
   ga as ICONES_ALERTA,
   gr as ICONES_FERRAMENTAS,
   p as ListaFlutuantePosicionamento,
-  u as ListaFlutuanteTeclado,
-  kr as ListenerBag,
+  I as ListaFlutuanteTeclado,
+  Kr as ListenerBag,
   Ar as MAPAS_BASE_PADRAO,
-  I as RadioGrupoRegistry,
-  Qr as SafeHTMLElement,
+  u as RadioGrupoRegistry,
+  Yr as SafeHTMLElement,
   P as SegmentedIndicadorController,
   ba as TabelaOrquestradorDados,
   La as TabelaRemotaController,
@@ -49,7 +50,7 @@ export {
   J as UIBadge,
   c as UIBotao,
   d as UIBotaoPrimario,
-  Vr as UIBus,
+  jr as UIBus,
   br as UICamadas,
   _ as UICampoTexto,
   $ as UICard,
@@ -63,6 +64,7 @@ export {
   W as UIKpi,
   Lr as UILayerPanel,
   T as UIListaFlutuante,
+  Vr as UIMapaBase,
   Q as UIMetrica,
   ea as UIModal,
   Pr as UIPainelCamadas,
@@ -72,8 +74,9 @@ export {
   S as UIRadio,
   k as UIRibbon,
   R as UISegmented,
-  z as UISegmento,
+  M as UISegmento,
   E as UISelect,
+  Hr as UISeletorMapaBase,
   ma as UISheet,
   pa as UISkeleton,
   X as UIStat,
@@ -81,29 +84,29 @@ export {
   Oa as UITabela,
   Ra as UITabelaPropriedades,
   Z as UITag,
-  M as UITexto,
+  z as UITexto,
   fa as UIToast,
   C as UIToggle,
-  ua as UITooltip,
-  za as abrirPopoverRedimensionamento,
-  Ma as alternarCategoria,
-  Da as alternarDirecaoOrdenacao,
+  Ia as UITooltip,
+  Ma as abrirPopoverRedimensionamento,
+  za as alternarCategoria,
+  Ba as alternarDirecaoOrdenacao,
   oa as aplicarInertForaDoModal,
-  ha as aplicarOrdenacaoTabela,
-  va as atualizarCampoVisual,
+  Da as aplicarOrdenacaoTabela,
+  ha as atualizarCampoVisual,
   f as atualizarEstadoSelecaoLista,
-  Ia as atualizarScrollLockDrawer,
-  Ba as avaliarExpressaoMatematica,
+  ua as atualizarScrollLockDrawer,
+  va as avaliarExpressaoMatematica,
   Or as calcularAreaPoligono,
   Rr as calcularComprimentoLinha,
-  zr as calcularDistanciaPontos,
-  Mr as carregarEstadoPersistido,
-  Jr as carregarLeaflet,
+  Mr as calcularDistanciaPontos,
+  zr as carregarEstadoPersistido,
+  Qr as carregarLeaflet,
   t as carregarModuloCanvas,
   s as carregarModuloMapa,
   Fa as colapsarTodasCategorias,
   _a as conectarPainelControles,
-  D as criarBotaoOpcao,
+  B as criarBotaoOpcao,
   ya as criarControladorSplitter,
   wa as criarEditorAcao,
   qa as criarEditorBooleano,
@@ -119,9 +122,9 @@ export {
   Qa as criarLinhaPropriedade,
   y as criarTemplateCampoTexto,
   x as criarTemplateListaFlutuante,
-  h as criarTemplateSegmented,
-  Xr as definirCustomElement,
-  Dr as escapeHtml,
+  D as criarTemplateSegmented,
+  $r as definirCustomElement,
+  Br as escapeHtml,
   Xa as executarOrquestracaoCorpo,
   Za as executarOrquestracaoHeader,
   Ya as executarRedimensionamentoColuna,
@@ -129,8 +132,8 @@ export {
   ar as expandirTodasCategorias,
   rr as focarProximoEditor,
   er as formatWidth,
-  hr as formatarMetricaFeicoes,
-  vr as gerarChaveStorage,
+  Dr as formatarMetricaFeicoes,
+  hr as gerarChaveStorage,
   Ua as gerenciarTabTrap,
   or as getAlignmentClass,
   sr as getRowHeight,
@@ -138,13 +141,13 @@ export {
   ir as inicializarScrollVirtualizacao,
   nr as iniciarRedimensionamentoColuna,
   r as initZeroJSTriggers,
-  Zr as isBrowser,
+  ae as isBrowser,
   Ta as isTopMostDrawer,
-  Br as limparEstadoPersistido,
+  vr as limparEstadoPersistido,
   cr as localizarIndiceItem,
   dr as montarEstruturaDOM,
   Sa as obterElementosFocaveis,
-  Kr as obterLeafletSincrono,
+  Xr as obterLeafletSincrono,
   lr as orquestrarEstruturaInicial,
   Fr as reidratarCamadasComOverrides,
   sa as removerInertForaDoModal,
@@ -152,10 +155,10 @@ export {
   mr as renderizarCategoriasETree,
   pr as renderizarCorpoTabela,
   yr as renderizarGridMapasBase,
-  ur as renderizarHeaderTabela,
+  Ir as renderizarHeaderTabela,
   A as renderizarItensLista,
   wr as renderizarRodapeAcoes,
-  Ir as renderizarSeletorTipos,
+  ur as renderizarSeletorTipos,
   qr as renderizarThumbGeometria,
   Gr as salvarEstadoPersistido,
   Ur as sincronizarAtributosTabela,
@@ -164,5 +167,5 @@ export {
   G as sincronizarLabelEPlaceholder,
   Tr as sincronizarPainelControles,
   Sr as tratarMudancaAtributoTabela,
-  v as tratarTecladoSegmented
+  h as tratarTecladoSegmented
 };

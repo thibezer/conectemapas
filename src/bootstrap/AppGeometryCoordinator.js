@@ -44,7 +44,13 @@ export class AppGeometryCoordinator {
     const list = Array.isArray(features) ? features : (features ? [features] : []);
 
     if (app.selectionHUD) {
-      app.selectionHUD.update(list, app.layers);
+      const isVertexEditing = Boolean(app.mapEngine?.vertexEditor?.isEditing?.());
+      const isDrawing = Boolean(app.mapEngine?.activeTool && app.mapEngine.activeTool !== 'select');
+      if (isVertexEditing || isDrawing) {
+        app.selectionHUD.hide();
+      } else {
+        app.selectionHUD.update(list, app.layers);
+      }
     }
 
     if (app.layerPanel) {

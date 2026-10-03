@@ -130,6 +130,8 @@ export class AppBootstrapSync {
             app.currentBasemap = cloudData.project.basemap;
             if (app.mapEngine) app.mapEngine.setBaseLayer(app.currentBasemap);
             if (app.layerPanel) app.layerPanel.currentBasemap = app.currentBasemap;
+            const seletor = document.getElementById('cm-seletor-mapa-base');
+            if (seletor) seletor.mapaBaseAtivo = app.currentBasemap;
           }
 
           if (updated) {

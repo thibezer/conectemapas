@@ -32,16 +32,31 @@ export class SelectionHUD {
   }
 
   init() {
+    const container = document.querySelector('.cm-workspace') || this.container || document.body;
     let el = document.getElementById('cm-selection-hud');
     if (!el) {
       el = document.createElement('div');
       el.id = 'cm-selection-hud';
       el.className = 'cm-selection-hud';
       el.style.display = 'none';
-      this.container.appendChild(el);
+      container.appendChild(el);
+    } else if (el.parentElement !== container) {
+      container.appendChild(el);
     }
     this.element = el;
     this.bindEvents();
+  }
+
+  hide() {
+    if (this.element) {
+      this.element.style.display = 'none';
+    }
+  }
+
+  show() {
+    if (this.element && this.selectedFeatures.length > 0) {
+      this.element.style.display = 'flex';
+    }
   }
 
   /**
@@ -55,6 +70,16 @@ export class SelectionHUD {
     if (!this.element) return;
 
     if (this.selectedFeatures.length === 0) {
+      this.element.style.display = 'none';
+      return;
+    }
+
+    // Salvaguarda: Se o editor de vértices ou desenho CAD estiver ativo, mantém o SelectionHUD oculto
+    const vertexHud = document.getElementById('cm-vertex-edit-hud');
+    const cadHud = document.getElementById('cm-cad-hud');
+    const isVertexActive = vertexHud && vertexHud.style.display !== 'none';
+    const isCadActive = cadHud && cadHud.style.display !== 'none';
+    if (isVertexActive || isCadActive) {
       this.element.style.display = 'none';
       return;
     }
@@ -153,7 +178,9 @@ export class SelectionHUD {
       btnEditNodes.addEventListener('click', (e) => {
         e.stopPropagation();
         if (this.selectedFeatures.length > 0) {
-          this.onEditVertices(this.selectedFeatures[0]);
+          const feat = this.selectedFeatures[0];
+          this.element.style.display = 'none';
+          this.onEditVertices(feat);
         }
       });
     }

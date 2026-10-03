@@ -322,6 +322,20 @@ export class AppComponentsBuilder {
     });
     app.layerPanel.render(document.getElementById('layer-panel-mount'));
 
+    // Conexão do Seletor Flutuante de Mapa Base
+    const seletorMapaBase = document.getElementById('cm-seletor-mapa-base');
+    if (seletorMapaBase) {
+      if (app.currentBasemap) seletorMapaBase.mapaBaseAtivo = app.currentBasemap;
+      seletorMapaBase.addEventListener('ui-mapa-base-alterado', (e) => {
+        const novoBasemap = e.detail?.mapaBaseId;
+        if (novoBasemap && app.currentBasemap !== novoBasemap) {
+          app.currentBasemap = novoBasemap;
+          app.mapEngine.setBaseLayer(novoBasemap);
+          app.saveMetadata();
+        }
+      });
+    }
+
     app.attributeTable = new AttributeTable({
       layers: app.layers,
       features: app.features,

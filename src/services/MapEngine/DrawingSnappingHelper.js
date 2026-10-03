@@ -47,18 +47,25 @@ export class DrawingSnappingHelper {
   }
 
   static updateDrawingHUD(activeTool, drawingPoints, cumulativeDist, engine, onFinish, onClear) {
+    const container = document.querySelector('.cm-workspace') || document.body;
     let hud = document.getElementById('cm-cad-hud');
     if (!hud) {
       hud = document.createElement('div');
       hud.id = 'cm-cad-hud';
       hud.className = 'cm-cad-hud';
-      document.body.appendChild(hud);
+      container.appendChild(hud);
+    } else if (hud.parentElement !== container) {
+      container.appendChild(hud);
     }
 
     if (activeTool === 'select' || (drawingPoints.length === 0 && activeTool !== 'point' && activeTool !== 'text')) {
       hud.style.display = 'none';
       return;
     }
+
+    // Oculta SelectionHUD enquanto ferramentas de desenho CAD estiverem ativas
+    const selHud = document.getElementById('cm-selection-hud');
+    if (selHud) selHud.style.display = 'none';
 
     if (activeTool === 'text') {
       hud.style.display = 'flex';
