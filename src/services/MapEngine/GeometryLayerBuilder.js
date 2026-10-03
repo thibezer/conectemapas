@@ -9,34 +9,62 @@ import { FeaturePopupBuilder } from './FeaturePopupBuilder.js';
 import { FeatureGeometryUtils } from './FeatureGeometryUtils.js';
 
 export class GeometryLayerBuilder {
-  static getOrCreateLayerPane(map, createdPaneNames, layerId) {
-    const paneName = `cm-layer-pane-${layerId}`;
+  static getSubPaneType(type) {
+    if (type === 'Polygon' || type === 'Circle') return 'poly';
+    if (type === 'LineString') return 'line';
+    if (type === 'Point') return 'point';
+    if (type === 'Text') return 'text';
+    return 'poly';
+  }
+
+  static getOrCreateLayerPane(map, createdPaneNames, layerId, type = 'poly') {
+    const subType = this.getSubPaneType(type);
+    const paneName = `cm-pane-${layerId}-${subType}`;
     let pane = map ? map.getPane(paneName) : null;
     if (!pane && map) {
       pane = map.createPane(paneName);
-      createdPaneNames.add(paneName);
+      if (createdPaneNames) createdPaneNames.add(paneName);
     }
     return { paneName, pane };
   }
 
   static removeLayerPane(map, createdPaneNames, layerId) {
-    const paneName = `cm-layer-pane-${layerId}`;
-    const pane = map ? map.getPane(paneName) : null;
-    if (pane && pane.parentNode) {
-      pane.parentNode.removeChild(pane);
+    const types = ['poly', 'line', 'point', 'text'];
+    types.forEach(t => {
+      const paneName = `cm-pane-${layerId}-${t}`;
+      const pane = map ? map.getPane(paneName) : null;
+      if (pane && pane.parentNode) {
+        pane.parentNode.removeChild(pane);
+      }
+      if (createdPaneNames) createdPaneNames.delete(paneName);
+    });
+    const legacyName = `cm-layer-pane-${layerId}`;
+    const legacyPane = map ? map.getPane(legacyName) : null;
+    if (legacyPane && legacyPane.parentNode) {
+      legacyPane.parentNode.removeChild(legacyPane);
     }
-    createdPaneNames.delete(paneName);
+    if (createdPaneNames) createdPaneNames.delete(legacyName);
   }
 
   static updateLayerZIndexes(map, createdPaneNames, layers) {
+    if (!map) return;
     const layerList = layers || [];
     const total = layerList.length;
     layerList.forEach((layer, index) => {
-      const { pane } = this.getOrCreateLayerPane(map, createdPaneNames, layer.id);
-      if (pane) {
-        const zIndex = 410 + (total - index) * 5;
-        pane.style.zIndex = String(zIndex);
-      }
+      // zIndex base: camadas do topo da árvore de camadas ficam com maior prioridade visual
+      const baseZ = 410 + (total - 1 - index) * 10;
+      
+      const poly = this.getOrCreateLayerPane(map, createdPaneNames, layer.id, 'Polygon').pane;
+      if (poly) poly.style.zIndex = String(baseZ);
+
+      const line = this.getOrCreateLayerPane(map, createdPaneNames, layer.id, 'LineString').pane;
+      if (line) line.style.zIndex = String(baseZ + 2);
+
+      const point = this.getOrCreateLayerPane(map, createdPaneNames, layer.id, 'Point').pane;
+      if (point) point.style.zIndex = String(baseZ + 4);
+
+      const text = this.getOrCreateLayerPane(map, createdPaneNames, layer.id, 'Text').pane;
+      if (text) text.style.zIndex = String(baseZ + 6);
     });
   }
 
@@ -208,6 +236,7 @@ export class GeometryLayerBuilder {
     }
     if (layer._icon) {
       layer._icon.classList.toggle('cm-feature-selected-marker', isSelected);
+      layer._icon.classList.toggle('cm-marker-selected', isSelected);
     }
   }
 }

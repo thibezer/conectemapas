@@ -17,24 +17,38 @@ export class ViewportCullingManager {
       const zoomChanged = renderer._lastCullingZoom !== currentZoom;
       renderer._lastCullingZoom = currentZoom;
 
-      const visibleFeats = renderer.engine.spatialIndex.query(bounds, 0.20);
-      const visibleIdSet = new Set(visibleFeats.map(f => f.id));
+      const totalFeats = renderer.allFeatures.length;
+      const isSmallDataset = totalFeats <= 300;
 
+      // Para datasets pequenos (<=300 feições), mantém todos os vetores carregados para
+      // eliminar pop-in e piscamento ao arrastar o mapa. Para datasets massivos, usa buffer de 75%.
+      const queryResults = isSmallDataset
+        ? renderer.allFeatures
+        : renderer.engine.spatialIndex.query(bounds, 0.75);
+
+      const visibleIdSet = new Set(queryResults.map(f => f.id));
+
+      const selectedIdSet = new Set();
       if (renderer.engine.vertexEditor?.editingFeature?.id) {
+        selectedIdSet.add(renderer.engine.vertexEditor.editingFeature.id);
         visibleIdSet.add(renderer.engine.vertexEditor.editingFeature.id);
       }
       if (renderer.engine.selectedFeatureId) {
+        selectedIdSet.add(renderer.engine.selectedFeatureId);
         visibleIdSet.add(renderer.engine.selectedFeatureId);
       }
       if (renderer.engine.selectedFeatureIds && renderer.engine.selectedFeatureIds.size > 0) {
-        renderer.engine.selectedFeatureIds.forEach(id => visibleIdSet.add(id));
+        renderer.engine.selectedFeatureIds.forEach(id => {
+          selectedIdSet.add(id);
+          visibleIdSet.add(id);
+        });
       }
 
       const visibleVectors = [];
       const visiblePoints = [];
 
-      visibleFeats.forEach(feat => {
-        if (feat.visible === false) return;
+      queryResults.forEach(feat => {
+        if (!feat || feat.visible === false || feat.is_deleted || feat._deleted || feat.deleted_at) return;
         const layerConfig = renderer.layerMap.get(feat.layerId);
         if (layerConfig && layerConfig.visible === false) return;
 
@@ -55,16 +69,30 @@ export class ViewportCullingManager {
 
       visibleVectors.forEach(feat => {
         const isRendered = renderer.engine.renderedFeatures.has(feat.id);
-        if (isRendered && !zoomChanged && !forceRefresh) return;
+        // Se já está renderizado e o zoom não altera a geometria simplificada (zoom >= 12), evita re-render desnecessário
+        if (isRendered && !forceRefresh) {
+          if (!zoomChanged || currentZoom >= 12) return;
+        }
         renderer.renderSingleFeature(feat);
       });
 
+      // Pontos selecionados ou em edição NUNCA devem ser ocultados dentro de bolhas de cluster
+      const pointsToCluster = [];
+      const prioritySingles = [];
+      visiblePoints.forEach(p => {
+        if (selectedIdSet.has(p.id)) {
+          prioritySingles.push(p);
+        } else {
+          pointsToCluster.push(p);
+        }
+      });
+
       let pointsChanged = false;
-      if (!renderer._lastVisiblePointIds || renderer._lastVisiblePointIds.length !== visiblePoints.length) {
+      if (!renderer._lastVisiblePointIds || renderer._lastVisiblePointIds.length !== pointsToCluster.length) {
         pointsChanged = true;
       } else {
-        for (let i = 0; i < visiblePoints.length; i++) {
-          if (visiblePoints[i].id !== renderer._lastVisiblePointIds[i]) {
+        for (let i = 0; i < pointsToCluster.length; i++) {
+          if (pointsToCluster[i].id !== renderer._lastVisiblePointIds[i]) {
             pointsChanged = true;
             break;
           }
@@ -79,15 +107,15 @@ export class ViewportCullingManager {
 
       let clusters, singles;
       if (!needsClusterRecompute) {
-        clusters = renderer._cachedClusters;
-        singles = renderer._cachedSingles;
+        clusters = renderer._cachedClusters || [];
+        singles = [...prioritySingles, ...(renderer._cachedSingles || [])];
       } else {
-        const computed = renderer.clusterEngine.computeClusters(visiblePoints, renderer.map);
+        const computed = renderer.clusterEngine.computeClusters(pointsToCluster, renderer.map);
         clusters = computed.clusters;
-        singles = computed.singles;
-        renderer._cachedClusters = clusters;
-        renderer._cachedSingles = singles;
-        renderer._lastVisiblePointIds = visiblePoints.map(p => p.id);
+        singles = [...prioritySingles, ...computed.singles];
+        renderer._cachedClusters = computed.clusters;
+        renderer._cachedSingles = computed.singles;
+        renderer._lastVisiblePointIds = pointsToCluster.map(p => p.id);
         renderer._lastClusterRevision = renderer._clusterRevision;
         renderer._lastClusterZoom = currentZoom;
       }
@@ -108,7 +136,8 @@ export class ViewportCullingManager {
       });
 
       clusteredPointIdSet.forEach(featId => {
-        if (renderer.engine.renderedFeatures.has(featId)) {
+        // Nunca remove feição pontual se ela estiver selecionada
+        if (!selectedIdSet.has(featId) && renderer.engine.renderedFeatures.has(featId)) {
           renderer.removeSingleFeature(featId);
         }
       });
@@ -129,10 +158,14 @@ export class ViewportCullingManager {
         ) : true;
         const isHidden = featObj && (
           featObj.visible === false || 
+          featObj.is_deleted ||
+          featObj._deleted ||
+          featObj.deleted_at ||
           !shouldRender || 
           renderer.layerMap.get(featObj.layerId)?.visible === false
         );
-        if (!visibleIdSet.has(featId) || clusteredPointIdSet.has(featId) || isHidden) {
+        const isClustered = clusteredPointIdSet.has(featId) && !selectedIdSet.has(featId);
+        if (!visibleIdSet.has(featId) || isClustered || isHidden) {
           renderer.removeSingleFeature(featId);
         }
       });

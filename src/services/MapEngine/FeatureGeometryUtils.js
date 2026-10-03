@@ -41,10 +41,30 @@ export class FeatureGeometryUtils {
   }
 
   static normalizeCoordinates(feat) {
+    if (!feat || !feat.coordinates) return null;
     let coords = feat.coordinates;
-    if ((feat.type === 'Point' || feat.type === 'Text') && coords && coords.lat !== undefined) {
-      return [coords.lat, coords.lng];
-    } else if ((feat.type === 'Polygon' || feat.type === 'LineString') && Array.isArray(coords)) {
+
+    const toLatLng = (pt) => {
+      if (!pt) return null;
+      let lat = null, lng = null;
+      if (Array.isArray(pt) && pt.length >= 2) {
+        lat = Number(pt[0]);
+        lng = Number(pt[1]);
+      } else if (typeof pt === 'object') {
+        lat = Number(pt.lat ?? pt.latitude);
+        lng = Number(pt.lng ?? pt.longitude);
+      }
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        return [lat, lng];
+      }
+      return null;
+    };
+
+    if (feat.type === 'Point' || feat.type === 'Text' || feat.type === 'Circle') {
+      return toLatLng(coords);
+    }
+
+    if ((feat.type === 'Polygon' || feat.type === 'LineString') && Array.isArray(coords)) {
       const openRing = (pts) => {
         if (!Array.isArray(pts) || pts.length < 3) return pts;
         const first = pts[0];
@@ -56,14 +76,18 @@ export class FeatureGeometryUtils {
       };
 
       if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-        const mapped = coords.map(ring => ring.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt));
-        return feat.type === 'Polygon' ? mapped.map(openRing) : mapped;
+        const mapped = coords.map(ring => {
+          if (!Array.isArray(ring)) return [];
+          const validRing = ring.map(toLatLng).filter(Boolean);
+          return feat.type === 'Polygon' ? openRing(validRing) : validRing;
+        }).filter(r => r.length >= (feat.type === 'Polygon' ? 3 : 2));
+        return mapped.length > 0 ? mapped : null;
       } else {
-        const mapped = coords.map(pt => (pt && pt.lat !== undefined) ? [pt.lat, pt.lng] : pt);
-        return feat.type === 'Polygon' ? openRing(mapped) : mapped;
+        const mapped = coords.map(toLatLng).filter(Boolean);
+        const processed = feat.type === 'Polygon' ? openRing(mapped) : mapped;
+        const minPoints = feat.type === 'Polygon' ? 3 : 2;
+        return processed.length >= minPoints ? processed : null;
       }
-    } else if (feat.type === 'Circle' && coords && coords.lat !== undefined) {
-      return [coords.lat, coords.lng];
     }
     return coords;
   }

@@ -43,8 +43,8 @@ export class FeatureRenderer {
     this._createdPaneNames = new Set();
   }
 
-  getOrCreateLayerPane(layerId) {
-    return GeometryLayerBuilder.getOrCreateLayerPane(this.map, this._createdPaneNames, layerId);
+  getOrCreateLayerPane(layerId, type = 'poly') {
+    return GeometryLayerBuilder.getOrCreateLayerPane(this.map, this._createdPaneNames, layerId, type);
   }
 
   removeLayerPane(layerId) {
@@ -83,10 +83,9 @@ export class FeatureRenderer {
     });
 
     this.allLayers.forEach(layer => {
-      const { paneName } = this.getOrCreateLayerPane(layer.id);
       let group = this.engine.featureLayers.get(layer.id);
       if (!group) {
-        group = L.featureGroup([], { pane: paneName });
+        group = L.featureGroup([]);
         if (layer.visible !== false) {
           group.addTo(this.map);
         }
@@ -285,7 +284,7 @@ export class FeatureRenderer {
     }
 
     if (!existingLayer) {
-      const { paneName } = this.getOrCreateLayerPane(feat.layerId);
+      const { paneName } = this.getOrCreateLayerPane(feat.layerId, feat.type);
       existingLayer = GeometryLayerBuilder.createLeafletLayer(feat, coords, style, isSelected, paneName, (f) => {
         if (this.engine.onFeatureUpdated) this.engine.onFeatureUpdated(f);
       });
@@ -313,11 +312,14 @@ export class FeatureRenderer {
         });
 
         if (existingLayer._path) existingLayer._path.classList.toggle('cm-feature-selected', isSelected);
-        if (existingLayer._icon) existingLayer._icon.classList.toggle('cm-feature-selected-marker', isSelected);
+        if (existingLayer._icon) {
+          existingLayer._icon.classList.toggle('cm-feature-selected-marker', isSelected);
+          existingLayer._icon.classList.toggle('cm-marker-selected', isSelected);
+        }
 
         let targetGroup = this.engine.featureLayers.get(feat.layerId);
         if (!targetGroup) {
-          targetGroup = L.featureGroup([], { pane: paneName });
+          targetGroup = L.featureGroup([]);
           if (layerConfig.visible !== false) targetGroup.addTo(this.map);
           this.engine.featureLayers.set(feat.layerId, targetGroup);
         }
@@ -331,8 +333,7 @@ export class FeatureRenderer {
         if (oldGroup && oldGroup.hasLayer(existingLayer)) oldGroup.removeLayer(existingLayer);
         let targetGroup = this.engine.featureLayers.get(feat.layerId);
         if (!targetGroup) {
-          const { paneName } = this.getOrCreateLayerPane(feat.layerId);
-          targetGroup = L.featureGroup([], { pane: paneName });
+          targetGroup = L.featureGroup([]);
           if (layerConfig.visible !== false) targetGroup.addTo(this.map);
           this.engine.featureLayers.set(feat.layerId, targetGroup);
         }

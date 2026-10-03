@@ -24,6 +24,16 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
   - Isso evita condições de corrida (*race condition*) onde a limpeza tardia apagava a feição definitiva recém-renderizada.
 - **Visibilidade de Camadas**:
   - Grupos de camadas (`L.featureGroup`) devem ser anexados ao mapa quando `layer.visible !== false`.
+- **Hierarquia de Empilhamento e Sub-Panes GIS (`GeometryLayerBuilder`)**:
+  - Cada camada do projeto aloca 4 sub-panes distintas com z-index crescente: `poly` (base), `line` (+2), `point` (+4) e `text` (+6).
+  - Isso garante que polígonos nunca sobreponham ou engulam pontos, linhas e textos nem no Canvas nem no SVG.
+- **Anti-Flickering e Culling Inteligente (`ViewportCullingManager`)**:
+  - Para projetos de até 300 feições, mantém todos os vetores carregados no mapa, eliminando completamente pop-in ou piscadeiras em pan/zoom.
+  - Para projetos grandes (>300), aplica buffer espacial de 75% em torno da viewport.
+  - Feições pontuais selecionadas ou em edição nunca são recolhidas para dentro de bolhas de cluster, permanecendo visíveis e destacadas individualmente.
+- **Sanitização de Coordenadas (`FeatureGeometryUtils`)**:
+  - Coordenadas com `NaN` ou `Infinity` são descartadas defensivamente.
+  - Polígonos exigem mínimo de 3 vértices válidos e linhas mínimo de 2; geometrias degeneradas são rejeitadas antes de instanciar camadas Leaflet.
 
 ---
 
