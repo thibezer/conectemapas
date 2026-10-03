@@ -2,6 +2,10 @@
 # ConecteMapas - Configuração de Produção Apache / LiteSpeed (Hostinger)
 # ==============================================================================
 
+# 0. Índice Padrão e Opções de Diretório
+DirectoryIndex index.html index.php
+Options -Indexes +FollowSymLinks
+
 # 1. Forçar Conexão Segura HTTPS
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -9,10 +13,15 @@
   RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 </IfModule>
 
-# 2. Proteção de Arquivos Sensíveis de Configuração
+# 2. Proteção de Arquivos Sensíveis de Configuração (Apache 2.4 & LiteSpeed)
 <FilesMatch "^(db_config\.php|\.env|\.sql|\.git|\.cm_schema_version)">
-  Order allow,deny
-  Deny from all
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
 </FilesMatch>
 
 # 3. SPA Fallback (Roteamento de Aplicação de Página Única)
@@ -23,7 +32,7 @@
   RewriteRule ^api\.php$ - [L]
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule . index.html [L]
+  RewriteRule ^ index.html [L]
 </IfModule>
 
 # 3. Tipos MIME Modernos
