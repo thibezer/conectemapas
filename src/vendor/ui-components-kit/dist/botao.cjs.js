@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});;/* empty css                 */const o=require("./ui-botao-DF1yuUUD.cjs");exports.UIBotao=o.UIBotao;exports.UIBotaoPrimario=o.UIBotaoPrimario;

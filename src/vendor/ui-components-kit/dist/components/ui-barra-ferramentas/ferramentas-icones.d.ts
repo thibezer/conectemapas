@@ -1,0 +1,24 @@
+export declare const ICONES_FERRAMENTAS: {
+    readonly selecionar: string;
+    readonly mover: string;
+    readonly mao: string;
+    readonly zoom: string;
+    readonly linha: string;
+    readonly polilinha: string;
+    readonly retangulo: string;
+    readonly circulo: string;
+    readonly arco: string;
+    readonly ponto: string;
+    readonly texto: string;
+    readonly caneta: string;
+    readonly medir: string;
+    readonly camadas: string;
+    readonly grade: string;
+    readonly desfazer: string;
+    readonly refazer: string;
+    readonly colar: string;
+    readonly copiar: string;
+    readonly negrito: string;
+    readonly italico: string;
+};
+export type NomeIconeFerramenta = keyof typeof ICONES_FERRAMENTAS;

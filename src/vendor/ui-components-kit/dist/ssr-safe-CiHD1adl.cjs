@@ -1,0 +1,1 @@
+"use strict";const t=typeof window<"u"&&typeof document<"u",s=typeof HTMLElement<"u"?HTMLElement:class{};function o(e,n){typeof customElements<"u"&&!customElements.get(e)&&customElements.define(e,n)}exports.SafeHTMLElement=s;exports.definirCustomElement=o;exports.isBrowser=t;

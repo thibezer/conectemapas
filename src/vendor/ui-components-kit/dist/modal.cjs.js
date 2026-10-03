@@ -1,0 +1,1 @@
+"use strict";Object.defineProperty(exports,Symbol.toStringTag,{value:"Module"});;/* empty css                 */const o=require("./ui-modal-d6pDZ4tB.cjs");exports.UIDialog=o.UIDialog;exports.UIModal=o.UIModal;exports.aplicarInertForaDoModal=o.aplicarInertForaDoModal;exports.removerInertForaDoModal=o.removerInertForaDoModal;

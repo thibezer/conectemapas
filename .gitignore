@@ -6,9 +6,13 @@ node_modules/
 .pnp.js
 
 # Build output
-dist/
-dist-ssr/
+/dist/
+/dist-ssr/
 *.local
+
+# Vendor unignore (deve vir após as regras de dist)
+!src/vendor/
+!src/vendor/**
 
 # Environment variables & database credentials
 .env
