@@ -1,10 +1,19 @@
 /* ==========================================================================
    ConecteMapas - DrawingEngine
-   Responsabilidade Única: Ferramentas CAD de desenho vetorial (Ponto, Linha,
-   Polígono, Círculo, Medição), HUD dinâmico e buffers temporários.
+   Responsabilidade Única: Máquina de estados CAD e ferramentas de vetorização.
+   Decomposição Modular (SRP / SOLID):
+   - DrawingMeasureHelper: Cotas, segmentos e tooltips de medição
+   - DrawingSnappingHelper: Atração magnética e HUD de desenho
+   - DrawingPenSelectHelper: Seleção espacial por lasso poligonal
+   - DrawingShapeFinalizer: Conversão de buffers CAD em feições definitivas
+   - DrawingClickHandler: Roteamento de cliques interativos do mapa
    ========================================================================== */
 
 import L from 'leaflet';
+import { DrawingMeasureHelper } from './DrawingMeasureHelper.js';
+import { DrawingSnappingHelper } from './DrawingSnappingHelper.js';
+import { DrawingShapeFinalizer } from './DrawingShapeFinalizer.js';
+import { DrawingClickHandler } from './DrawingClickHandler.js';
 
 export class DrawingEngine {
   constructor(mapEngine) {
@@ -19,14 +28,12 @@ export class DrawingEngine {
     this.snapMarker = null;
     this.lastCircleRadius = null;
 
-    // Otimizações de mousemove & memória (Item 9)
     this._previewPoints = [];
     this._lastMoveLatLng = null;
     this._cumulativeMeasureDistance = 0;
     this._activeSnapLatLng = null;
     this.activeDrawingLayer = null;
 
-    // Camadas de Cotas e Polígono da Régua de Medição
     this.measureSegmentsLayer = L.layerGroup().addTo(this.map);
     this.measurePolygonLayer = null;
   }
@@ -90,52 +97,15 @@ export class DrawingEngine {
       this.measureSegmentsLayer.clearLayers();
     }
 
-    // Régua de Medição: Vértices numerados (P1, P2...) e cotas nos trechos
     if (this.activeTool === 'measure') {
-      this.drawingPoints.forEach((pt, index) => {
-        const markerIcon = L.divIcon({
-          className: 'cm-measure-vertex-divicon',
-          html: `<div class="cm-measure-vertex-marker">${index + 1}</div>`,
-          iconSize: [22, 22],
-          iconAnchor: [11, 11]
-        });
-        const marker = L.marker(pt, { icon: markerIcon, interactive: false });
-        this.vertexMarkers.addLayer(marker);
-
-        if (index > 0) {
-          const prevPt = this.drawingPoints[index - 1];
-          const segDist = this.engine.calculateDistance(prevPt, pt);
-          const segDistText = segDist > 1000 ? `${(segDist / 1000).toFixed(2)} km` : `${segDist.toFixed(1)} m`;
-          const midPt = [(prevPt[0] + pt[0]) / 2, (prevPt[1] + pt[1]) / 2];
-
-          const badgeIcon = L.divIcon({
-            className: 'cm-measure-segment-divicon',
-            html: `<div class="cm-measure-segment-badge">${segDistText}</div>`,
-            iconSize: null,
-            iconAnchor: [0, 0]
-          });
-          const badgeMarker = L.marker(midPt, { icon: badgeIcon, interactive: false });
-          this.measureSegmentsLayer.addLayer(badgeMarker);
-        }
-      });
-
-      // Se tiver 3 ou mais pontos, exibe polígono translúcido preenchendo a área medida
-      if (this.drawingPoints.length >= 3) {
-        if (!this.measurePolygonLayer) {
-          this.measurePolygonLayer = L.polygon(this.drawingPoints, {
-            color: '#f59e0b',
-            fillColor: '#f59e0b',
-            fillOpacity: 0.16,
-            weight: 1.5,
-            dashArray: '4, 4'
-          }).addTo(this.map);
-        } else {
-          this.measurePolygonLayer.setLatLngs(this.drawingPoints);
-        }
-      } else if (this.measurePolygonLayer) {
-        this.map.removeLayer(this.measurePolygonLayer);
-        this.measurePolygonLayer = null;
-      }
+      this.measurePolygonLayer = DrawingMeasureHelper.renderMeasureHandles(
+        this.drawingPoints,
+        this.vertexMarkers,
+        this.measureSegmentsLayer,
+        this.measurePolygonLayer,
+        this.map,
+        this.engine
+      );
       return;
     }
 
@@ -171,255 +141,21 @@ export class DrawingEngine {
   }
 
   updateDrawingHUD() {
-    let hud = document.getElementById('cm-cad-hud');
-    if (!hud) {
-      hud = document.createElement('div');
-      hud.id = 'cm-cad-hud';
-      hud.className = 'cm-cad-hud';
-      document.body.appendChild(hud);
-    }
-
-    if (this.activeTool === 'select' || (this.drawingPoints.length === 0 && this.activeTool !== 'point' && this.activeTool !== 'text')) {
-      hud.style.display = 'none';
-      return;
-    }
-
-    if (this.activeTool === 'text') {
-      hud.style.display = 'flex';
-      hud.innerHTML = `
-        <span class="cm-cad-hud-pulse" style="background: #38bdf8;"></span>
-        <span><strong>Texto / Rótulo:</strong> Clique no mapa na posição onde deseja inserir a anotação</span>
-        <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> cancela</span>
-      `;
-      return;
-    }
-
-    if (this.activeTool === 'measure') {
-      hud.style.display = 'flex';
-      const count = this.drawingPoints.length;
-      const totalDist = this._cumulativeMeasureDistance || this.engine.calculatePolylineLength(this.drawingPoints);
-      const distFormatted = totalDist > 1000 ? `${(totalDist / 1000).toFixed(2)} km` : `${totalDist.toFixed(1)} m`;
-      let areaInfo = '';
-      if (count >= 3) {
-        const areaM2 = this.engine.calculatePolygonArea(this.drawingPoints);
-        const ha = (areaM2 / 10000).toFixed(2);
-        areaInfo = ` • Área Delimitada: <strong>${ha} ha</strong> (${areaM2.toFixed(0)} m²)`;
+    DrawingSnappingHelper.updateDrawingHUD(
+      this.activeTool,
+      this.drawingPoints,
+      this._cumulativeMeasureDistance,
+      this.engine,
+      () => this.finalizeCurrentDrawing(),
+      () => {
+        this.resetDrawingState();
+        this.setTool('select');
       }
-
-      hud.innerHTML = `
-        <span class="cm-cad-hud-pulse" style="background: #fbbf24;"></span>
-        <span><strong>Régua de Medição:</strong> ${count} ponto(s) | Distância: <strong>${distFormatted}</strong>${areaInfo}</span>
-        <span class="cm-cad-hud-hint">• <strong>[Enter]</strong> fixa cota</span>
-        <span class="cm-cad-hud-hint">• <strong>[Ctrl+Z]</strong> desfaz</span>
-        <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> limpa</span>
-        ${count >= 2 ? `<button id="btn-cad-finish" class="cm-cad-finish-btn" style="background: #f59e0b; color: #000;">📌 Fixar Medição</button>` : ''}
-        <button id="btn-cad-clear" class="cm-cad-finish-btn" style="background: rgba(255,255,255,0.18); color: #fff;">✕ Limpar</button>
-      `;
-
-      const finishBtn = hud.querySelector('#btn-cad-finish');
-      if (finishBtn) {
-        finishBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.finalizeCurrentDrawing();
-        });
-      }
-      const clearBtn = hud.querySelector('#btn-cad-clear');
-      if (clearBtn) {
-        clearBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.resetDrawingState();
-          this.setTool('select');
-        });
-      }
-      return;
-    }
-
-    hud.style.display = 'flex';
-    const count = this.drawingPoints.length;
-    let toolName = 'Forma';
-    let minPts = 2;
-    if (this.activeTool === 'line') { toolName = 'Linha'; minPts = 2; }
-    if (this.activeTool === 'polygon') { toolName = 'Polígono'; minPts = 3; }
-    if (this.activeTool === 'pen-select') { toolName = 'Caneta de Seleção'; minPts = 3; }
-    if (this.activeTool === 'circle') { toolName = 'Círculo'; minPts = 1; }
-
-    const canFinish = count >= minPts;
-
-    hud.innerHTML = `
-      <span class="cm-cad-hud-pulse"></span>
-      <span><strong>${toolName}:</strong> ${count} vértice(s) adicionado(s)</span>
-      <span class="cm-cad-hud-hint">• <strong>[Enter]</strong> ou <strong>[Espaço]</strong> conclui</span>
-      <span class="cm-cad-hud-hint">• <strong>[Ctrl+Z]</strong> ou <strong>[Botão Direito]</strong> desfaz</span>
-      <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> cancela</span>
-      ${canFinish ? `<button id="btn-cad-finish" class="cm-cad-finish-btn">✔ Concluir Forma</button>` : ''}
-    `;
-
-    const finishBtn = hud.querySelector('#btn-cad-finish');
-    if (finishBtn) {
-      finishBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.finalizeCurrentDrawing();
-      });
-    }
+    );
   }
 
   finalizeCurrentDrawing() {
-    const layerId = this.activeDrawingLayer ? this.activeDrawingLayer.id : undefined;
-    const color = this.activeDrawingLayer ? this.activeDrawingLayer.color : undefined;
-
-    if (this.activeTool === 'line' && this.drawingPoints.length >= 2) {
-      const coords = [...this.drawingPoints];
-      this.resetDrawingState();
-      this.setTool('select');
-
-      this.engine.onFeatureCreated({
-        type: 'LineString',
-        coordinates: coords,
-        layerId,
-        color
-      });
-      return true;
-    } else if (this.activeTool === 'pen-select' && this.drawingPoints.length >= 3) {
-      const polyCoords = [...this.drawingPoints];
-      this.resetDrawingState();
-      this.setTool('select');
-
-      // Algoritmo Ray-Casting para detectar quais feições estão dentro do polígono
-      const isPointInside = (pt, vs) => {
-        if (!pt || !Array.isArray(pt) || pt.length < 2) return false;
-        const x = pt[1], y = pt[0];
-        let inside = false;
-        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-          const xi = vs[i][1], yi = vs[i][0];
-          const xj = vs[j][1], yj = vs[j][0];
-          const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
-          if (intersect) inside = !inside;
-        }
-        return inside;
-      };
-
-      const allFeatures = (this.engine.featureRenderer && this.engine.featureRenderer.allFeatures) || [];
-      const selectedIds = [];
-
-      allFeatures.forEach(feat => {
-        if (!feat || !feat.coordinates) return;
-        if (feat.visible === false) return;
-        const layerConfig = this.engine.featureRenderer?.layerMap?.get(feat.layerId);
-        if (layerConfig && layerConfig.visible === false) return;
-
-        if (feat.type === 'Point' || feat.type === 'Circle') {
-          const pt = Array.isArray(feat.coordinates) 
-            ? feat.coordinates 
-            : [feat.coordinates.lat ?? feat.coordinates.latitude, feat.coordinates.lng ?? feat.coordinates.longitude];
-          if (isPointInside(pt, polyCoords)) {
-            selectedIds.push(feat.id);
-          }
-        } else if ((feat.type === 'LineString' || feat.type === 'Polygon') && Array.isArray(feat.coordinates)) {
-          const coordsList = feat.type === 'Polygon'
-            ? (Array.isArray(feat.coordinates[0]) && Array.isArray(feat.coordinates[0][0]) ? feat.coordinates[0] : feat.coordinates)
-            : feat.coordinates;
-
-          // Normaliza vértices para [lat, lng]
-          const normalizedCoords = coordsList.map(c => {
-            if (Array.isArray(c)) return c;
-            if (c && typeof c === 'object') return [c.lat ?? c.latitude, c.lng ?? c.longitude];
-            return null;
-          }).filter(Boolean);
-
-          // Verifica se algum vértice da feição está dentro do lasso
-          const temPontoDentro = normalizedCoords.some(c => isPointInside(c, polyCoords));
-
-          // Para polígonos: calcula centróide real e verifica se está dentro do lasso
-          // Isso evita falsos positivos (selecionar polígonos grandes que apenas tocam o lasso)
-          let centroDentro = false;
-          if (feat.type === 'Polygon' && normalizedCoords.length >= 3) {
-            let cLat = 0, cLng = 0;
-            for (const c of normalizedCoords) {
-              cLat += c[0];
-              cLng += c[1];
-            }
-            const centroid = [cLat / normalizedCoords.length, cLng / normalizedCoords.length];
-            centroDentro = isPointInside(centroid, polyCoords);
-          }
-
-          if (temPontoDentro || centroDentro) {
-            selectedIds.push(feat.id);
-          }
-        }
-
-      });
-
-      if (typeof this.engine.selectFeatures === 'function') {
-        this.engine.selectFeatures(selectedIds);
-      }
-      return true;
-    } else if (this.activeTool === 'polygon' && this.drawingPoints.length >= 3) {
-      const coords = [...this.drawingPoints];
-      this.resetDrawingState();
-      this.setTool('select');
-
-      this.engine.onFeatureCreated({
-        type: 'Polygon',
-        coordinates: coords,
-        layerId,
-        color
-      });
-      return true;
-    } else if (this.activeTool === 'circle' && this.drawingPoints.length >= 1 && this.lastCircleRadius && this.lastCircleRadius >= 2) {
-      const center = this.drawingPoints[0];
-      const radius = Math.round(this.lastCircleRadius);
-      this.resetDrawingState();
-      this.setTool('select');
-
-      this.engine.onFeatureCreated({
-        type: 'Circle',
-        coordinates: center,
-        radius,
-        layerId,
-        color
-      });
-      return true;
-    } else if (this.activeTool === 'measure' && this.drawingPoints.length >= 2) {
-      const totalDist = this.engine.calculatePolylineLength(this.drawingPoints);
-      const distFormatted = totalDist > 1000 ? `${(totalDist / 1000).toFixed(2)} km` : `${totalDist.toFixed(1)} m`;
-      const coords = [...this.drawingPoints];
-      const segs = this.engine.calculateSegments(coords);
-      const segText = segs.map((s, i) => `T${i+1}: ${s.distance > 1000 ? (s.distance/1000).toFixed(2)+'km' : s.distance.toFixed(1)+'m'}`).join(', ');
-
-      let areaM2 = 0;
-      let areaText = '';
-      if (coords.length >= 3) {
-        areaM2 = this.engine.calculatePolygonArea(coords);
-        areaText = `${(areaM2 / 10000).toFixed(2)} ha`;
-      }
-
-      this.resetDrawingState();
-      this.setTool('select');
-
-      this.engine.onFeatureCreated({
-        type: 'LineString',
-        coordinates: coords,
-        name: `Medição (${distFormatted})`,
-        category: 'Medição & Cotas',
-        layerId,
-        color: '#f59e0b',
-        properties: {
-          'Extensão Total': distFormatted,
-          'Vértices': coords.length,
-          'Trechos': segText,
-          ...(areaM2 > 0 ? { 'Área Delimitada': areaText, 'Área (m²)': areaM2.toFixed(1) + ' m²' } : {})
-        },
-        style: {
-          strokeColor: '#f59e0b',
-          strokeWidth: 3,
-          strokeDashArray: '6, 4',
-          showLabel: true,
-          labelField: 'extensao'
-        }
-      });
-      return true;
-    }
-    return false;
+    return DrawingShapeFinalizer.finalize(this);
   }
 
   undoLastVertex() {
@@ -453,174 +189,18 @@ export class DrawingEngine {
   }
 
   findNearbyVertex(mouseLatLng, maxPixelDistance = 14) {
-    if (!this.map || !mouseLatLng) return null;
-    const mousePt = this.map.latLngToContainerPoint(mouseLatLng);
-
-    // 1. Prioridade: Primeiro ponto do polígono em desenho (para fechamento fácil e perfeito)
-    if (this.activeTool === 'polygon' && this.drawingPoints.length >= 3) {
-      const firstPt = this.drawingPoints[0];
-      const p1 = this.map.latLngToContainerPoint(firstPt);
-      if (Math.hypot(mousePt.x - p1.x, mousePt.y - p1.y) <= maxPixelDistance) {
-        return firstPt;
-      }
-    }
-
-    // 2. Vértices de feições visíveis no viewport
-    if (this.engine.featureRenderer && this.engine.featureRenderer.allFeatures) {
-      const bounds = this.map.getBounds();
-      const visibleFeatures = this.engine.spatialIndex 
-        ? this.engine.spatialIndex.query(bounds, 0.05)
-        : this.engine.featureRenderer.allFeatures;
-
-      for (const feat of visibleFeatures) {
-        if (!feat || feat.visible === false) continue;
-        if (feat.type === 'Point' && feat.coordinates) {
-          const pt = [feat.coordinates[0], feat.coordinates[1]];
-          const p = this.map.latLngToContainerPoint(pt);
-          if (Math.hypot(mousePt.x - p.x, mousePt.y - p.y) <= maxPixelDistance) {
-            return pt;
-          }
-        } else if ((feat.type === 'LineString' || feat.type === 'Polygon') && Array.isArray(feat.coordinates)) {
-          for (const vertex of feat.coordinates) {
-            if (!vertex) continue;
-            const pt = (vertex.lat !== undefined) ? [vertex.lat, vertex.lng] : vertex;
-            const p = this.map.latLngToContainerPoint(pt);
-            if (Math.hypot(mousePt.x - p.x, mousePt.y - p.y) <= maxPixelDistance) {
-              return pt;
-            }
-          }
-        }
-      }
-    }
-
-    return null;
+    return DrawingSnappingHelper.findNearbyVertex(
+      this.map,
+      mouseLatLng,
+      this.activeTool,
+      this.drawingPoints,
+      this.engine,
+      maxPixelDistance
+    );
   }
 
   handleClick(e) {
-    const rawLatLng = [e.latlng.lat, e.latlng.lng];
-    const latlng = this._activeSnapLatLng || rawLatLng;
-    const activeColor = this.activeDrawingLayer?.color || '#00E08A';
-    const activeLayerId = this.activeDrawingLayer?.id;
-
-    if (this.activeTool === 'text') {
-      if (this.engine && typeof this.engine.onTextPromptRequested === 'function') {
-        this.engine.onTextPromptRequested(latlng);
-      }
-      return;
-    } else if (this.activeTool === 'point') {
-      this.resetDrawingState();
-      this.setTool('select');
-      this.engine.onFeatureCreated({
-        type: 'Point',
-        coordinates: latlng,
-        layerId: activeLayerId,
-        color: activeColor
-      });
-    } else if (this.activeTool === 'line') {
-      this.drawingPoints.push(latlng);
-      this._previewPoints = [...this.drawingPoints, latlng];
-      this.renderVertexHandles();
-      if (!this.tempLayer) {
-        this.tempLayer = L.polyline(this.drawingPoints, {
-          color: activeColor,
-          weight: 3,
-          dashArray: '4, 4'
-        }).addTo(this.map);
-      } else {
-        this.tempLayer.setLatLngs(this.drawingPoints);
-      }
-      this.updateDrawingHUD();
-    } else if (this.activeTool === 'pen-select') {
-      // Se clicou no primeiro vértice para fechar com 3+ pontos
-      if (this.drawingPoints.length >= 3 && this._activeSnapLatLng && 
-          this._activeSnapLatLng[0] === this.drawingPoints[0][0] && 
-          this._activeSnapLatLng[1] === this.drawingPoints[0][1]) {
-        this.finalizeCurrentDrawing();
-        return;
-      }
-
-      this.drawingPoints.push(latlng);
-      this._previewPoints = [...this.drawingPoints, latlng];
-      this.renderVertexHandles();
-      if (!this.tempLayer) {
-        this.tempLayer = L.polygon(this.drawingPoints, {
-          color: '#00f5a0',
-          fillColor: '#00f5a0',
-          fillOpacity: 0.22,
-          weight: 2,
-          dashArray: '3, 3'
-        }).addTo(this.map);
-      } else {
-        this.tempLayer.setLatLngs(this.drawingPoints);
-      }
-      this.updateDrawingHUD();
-    } else if (this.activeTool === 'polygon') {
-      // Se clicou no primeiro vértice para fechar com 3+ pontos
-      if (this.drawingPoints.length >= 3 && this._activeSnapLatLng && 
-          this._activeSnapLatLng[0] === this.drawingPoints[0][0] && 
-          this._activeSnapLatLng[1] === this.drawingPoints[0][1]) {
-        this.finalizeCurrentDrawing();
-        return;
-      }
-
-      this.drawingPoints.push(latlng);
-      this._previewPoints = [...this.drawingPoints, latlng];
-      this.renderVertexHandles();
-      if (!this.tempLayer) {
-        this.tempLayer = L.polygon(this.drawingPoints, {
-          color: activeColor,
-          fillColor: activeColor,
-          fillOpacity: 0.35,
-          weight: 2,
-          dashArray: '4, 4'
-        }).addTo(this.map);
-      } else {
-        this.tempLayer.setLatLngs(this.drawingPoints);
-      }
-      this.updateDrawingHUD();
-    } else if (this.activeTool === 'circle') {
-      if (this.drawingPoints.length === 0) {
-        this.drawingPoints.push(latlng);
-        this._previewPoints = [...this.drawingPoints, latlng];
-        this.renderVertexHandles();
-        this.updateDrawingHUD();
-      } else {
-        const center = this.drawingPoints[0];
-        const radius = this.engine.calculateDistance(center, latlng);
-        if (radius < 2) {
-          return;
-        }
-        this.resetDrawingState();
-        this.setTool('select');
-        this.engine.onFeatureCreated({
-          type: 'Circle',
-          coordinates: center,
-          radius: Math.round(radius),
-          layerId: activeLayerId,
-          color: activeColor
-        });
-      }
-    } else if (this.activeTool === 'measure') {
-      if (this.drawingPoints.length > 0) {
-        const prev = this.drawingPoints[this.drawingPoints.length - 1];
-        this._cumulativeMeasureDistance += this.engine.calculateDistance(prev, latlng);
-      } else {
-        this._cumulativeMeasureDistance = 0;
-      }
-      this.drawingPoints.push(latlng);
-      this._previewPoints = [...this.drawingPoints, latlng];
-      this.renderVertexHandles();
-      if (!this.tempLayer) {
-        this.tempLayer = L.polyline(this.drawingPoints, {
-          color: '#ffb86c',
-          weight: 3
-        }).addTo(this.map);
-      } else {
-        this.tempLayer.setLatLngs(this.drawingPoints);
-      }
-      this.updateMeasureTooltip(e.latlng);
-      this.updateDrawingHUD();
-    }
+    DrawingClickHandler.handleClick(this, e);
   }
 
   handleMouseMove(e) {
@@ -629,7 +209,6 @@ export class DrawingEngine {
     const lat = e.latlng.lat;
     const lng = e.latlng.lng;
 
-    // Filtro de micro-movimento: evita disparar atualizações SVG para variações sub-pixel
     if (this._lastMoveLatLng) {
       if (Math.abs(this._lastMoveLatLng.lat - lat) < 1e-6 && Math.abs(this._lastMoveLatLng.lng - lng) < 1e-6) {
         return;
@@ -637,7 +216,6 @@ export class DrawingEngine {
     }
     this._lastMoveLatLng = { lat, lng };
 
-    // Snapping Magnético inteligente
     const snapped = this.findNearbyVertex(e.latlng, 14);
     if (snapped) {
       this._activeSnapLatLng = snapped;
@@ -661,22 +239,17 @@ export class DrawingEngine {
       }
     }
 
-    if (this.drawingPoints.length === 0) return;
-    if (this.activeTool === 'point') return;
+    if (this.drawingPoints.length === 0 || this.activeTool === 'point') return;
 
     const currentLatLng = this._activeSnapLatLng || [lat, lng];
 
-    // Reutilização do array de preview in-place sem alocação contínua de memória
     if (this._previewPoints.length !== this.drawingPoints.length + 1) {
       this._previewPoints = [...this.drawingPoints, currentLatLng];
     } else {
       this._previewPoints[this._previewPoints.length - 1] = currentLatLng;
     }
 
-    if (this.activeTool === 'line') {
-      if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
-    } else if (this.activeTool === 'pen-select' || this.activeTool === 'polygon') {
-      // Apenas atualiza o preview visual — NÃO modifica drawingPoints aqui
+    if (this.activeTool === 'line' || this.activeTool === 'pen-select' || this.activeTool === 'polygon') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
     } else if (this.activeTool === 'measure') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
@@ -711,8 +284,7 @@ export class DrawingEngine {
       if (this.map) {
         const pLast = this.map.latLngToContainerPoint(last);
         const pPrev = this.map.latLngToContainerPoint(prev);
-        const distPx = Math.hypot(pLast.x - pPrev.x, pLast.y - pPrev.y);
-        if (distPx < 16) {
+        if (Math.hypot(pLast.x - pPrev.x, pLast.y - pPrev.y) < 16) {
           this.drawingPoints.pop();
         }
       } else if (this.engine.calculateDistance(last, prev) < 2) {
@@ -723,61 +295,15 @@ export class DrawingEngine {
   }
 
   updateMeasureTooltip(latlng, currentLatLng = null) {
-    let distanceMeters = 0;
-    let segmentMeters = 0;
-    let bearing = null;
-    let areaM2 = 0;
-
-    if (currentLatLng && this.drawingPoints.length > 0) {
-      const lastFixedPoint = this.drawingPoints[this.drawingPoints.length - 1];
-      segmentMeters = this.engine.calculateDistance(lastFixedPoint, currentLatLng);
-      distanceMeters = this._cumulativeMeasureDistance + segmentMeters;
-      bearing = this.engine.calculateBearing(lastFixedPoint, currentLatLng);
-
-      if (this.drawingPoints.length >= 2) {
-        areaM2 = this.engine.calculatePolygonArea([...this.drawingPoints, currentLatLng]);
-      }
-    } else {
-      distanceMeters = this._cumulativeMeasureDistance || this.engine.calculatePolylineLength(this.drawingPoints);
-    }
-
-    const totalDistText = distanceMeters > 1000 
-      ? `${(distanceMeters / 1000).toFixed(2)} km`
-      : `${distanceMeters.toFixed(1)} m`;
-
-    const segmentDistText = segmentMeters > 1000 
-      ? `${(segmentMeters / 1000).toFixed(2)} km` 
-      : `${segmentMeters.toFixed(1)} m`;
-
-    let bearingText = '';
-    if (bearing !== null) {
-      const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-      const dirIdx = Math.round(bearing / 45) % 8;
-      bearingText = `${bearing.toFixed(1)}° ${dirs[dirIdx]}`;
-    }
-
-    const tooltipHtml = `
-      <div class="cm-measure-tooltip-box">
-        <div>📏 Trecho: <strong style="color: #fbbf24;">${segmentDistText}</strong></div>
-        <div>📍 Total: <strong style="color: #60a5fa;">${totalDistText}</strong></div>
-        ${bearingText ? `<div>🧭 Azimute: <strong style="color: #34d399;">${bearingText}</strong></div>` : ''}
-        ${areaM2 > 0 ? `<div>📐 Área: <strong style="color: #a78bfa;">${(areaM2/10000).toFixed(2)} ha</strong></div>` : ''}
-      </div>
-    `;
-
-    if (!this.measureTooltip) {
-      this.measureTooltip = L.popup({
-        closeButton: false,
-        offset: [0, -12],
-        className: 'cm-measure-popup'
-      })
-      .setLatLng(latlng)
-      .setContent(tooltipHtml)
-      .openOn(this.map);
-    } else {
-      this.measureTooltip.setLatLng(latlng);
-      this.measureTooltip.setContent(tooltipHtml);
-    }
+    this.measureTooltip = DrawingMeasureHelper.updateMeasureTooltip(
+      this.map,
+      this.measureTooltip,
+      latlng,
+      this.drawingPoints,
+      currentLatLng,
+      this._cumulativeMeasureDistance,
+      this.engine
+    );
   }
 
   destroy() {

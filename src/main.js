@@ -3,41 +3,26 @@
    Plataforma Colaborativa de Mapeamento com thibezer/Componentes-UI
    ========================================================================== */
 
-// Nota: ui-components-kit/style.css é importado como arquivo local em src/styles/ui-components-kit.css
 import 'ui-components-kit';
 import { UIToast } from 'ui-components-kit';
 
 import { StorageService } from './services/StorageService.js';
-import { DEFAULT_LAYERS, normalizeFeature } from './services/MockData.js';
+import { DEFAULT_LAYERS } from './services/MockData.js';
 import { CollaborationHub } from './services/CollaborationHub.js';
-import { MapEngine } from './services/MapEngine.js';
-import { GeometryVersionManager } from './services/GeometryVersionManager.js';
 
-import { HeaderBar } from './components/HeaderBar.js';
-import { DrawingToolbar } from './components/DrawingToolbar.js';
-import { LayerPanel } from './components/LayerPanel.js';
-import { AttributeTable } from './components/AttributeTable.js';
-
-import { ShareModal } from './components/Modals/ShareModal.js';
-import { ImportExportModal } from './components/Modals/ImportExportModal.js';
-import { ProjectTemplatesModal } from './components/Modals/ProjectTemplatesModal.js';
-import { NewFeatureModal } from './components/Modals/NewFeatureModal.js';
-import { NewLayerModal } from './components/Modals/NewLayerModal.js';
-import { PrintComposerModal } from './components/PrintComposer/PrintComposerModal.js';
-import { TextPromptModal } from './components/Modals/TextPromptModal.js';
-
-import { ContextMenu } from './components/ContextMenu.js';
-import { SelectionHUD } from './components/SelectionHUD.js';
-
-import { ProjectActionsController } from './controllers/ProjectActionsController.js';
-import { ShortcutsController } from './controllers/ShortcutsController.js';
 import { FeatureSyncController } from './controllers/FeatureSyncController.js';
+import { ShortcutsController } from './controllers/ShortcutsController.js';
+
+import { AppBootstrapSync } from './bootstrap/AppBootstrapSync.js';
+import { AppComponentsBuilder } from './bootstrap/AppComponentsBuilder.js';
+import { AppGeometryCoordinator } from './bootstrap/AppGeometryCoordinator.js';
 
 class ConecteMapasApp {
   constructor() {
     const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     this.projectId = (urlParams && urlParams.get('project')) ? urlParams.get('project') : 'projeto_padrao';
     StorageService.setCurrentProjectId(this.projectId);
+
     this.projectName = 'Levantamento Topográfico - Umuarama';
     this.layers = [...DEFAULT_LAYERS];
     this.activeLayerId = this.layers[0]?.id || 'layer-topografia';
@@ -58,6 +43,7 @@ class ConecteMapasApp {
     this.textPromptModal = null;
     this.newLayerModal = null;
     this.printComposerModal = null;
+    this.shareModal = null;
 
     this.historyUndo = [];
     this.historyRedo = [];
@@ -67,19 +53,19 @@ class ConecteMapasApp {
   }
 
   init() {
-    this.loadState();
+    AppBootstrapSync.loadState(this);
     this.initCollaboration();
-    this.initMap();
-    this.initComponents();
-    this.updateHUD();
-    this.loadStateAsync();
+    AppComponentsBuilder.initMap(this);
+    AppComponentsBuilder.initComponents(this);
+    AppGeometryCoordinator.updateHUD(this);
+    AppBootstrapSync.loadStateAsync(this);
 
-    // Sincronização e Diagnóstico do Banco de Dados MySQL na Hostinger
     StorageService.onCloudStatusChange(() => {
-      this._updateSyncChip();
+      AppBootstrapSync.updateSyncChip(this);
     });
+
     StorageService.checkCloudConnection().then((status) => {
-      this._updateSyncChip();
+      AppBootstrapSync.updateSyncChip(this);
       if (status && status.connected) {
         UIToast.notificar({
           tipo: 'sucesso',
@@ -100,279 +86,28 @@ class ConecteMapasApp {
     }, 500);
   }
 
+  initCollaboration() {
+    this.collabHub = new CollaborationHub(null, (type, data) => {
+      FeatureSyncController.handleCollabEvent(this, type, data);
+    }, this.projectId, StorageService.getClientId());
+  }
+
   loadState() {
-    const saved = StorageService.loadCurrentProject();
-    if (saved && (!saved.id || saved.id === this.projectId)) {
-      if (saved.name) {
-        this.projectName = (saved.name === 'Levantamento Planialtimétrico - Brasília')
-          ? 'Levantamento Topográfico - Umuarama'
-          : saved.name;
-      }
-      if (Array.isArray(saved.layers) && saved.layers.length > 0) {
-        this.layers = saved.layers;
-        if (!this.layers.some(l => l.id === this.activeLayerId)) {
-          this.activeLayerId = this.layers[0].id;
-        }
-      }
-      if (Array.isArray(saved.features)) {
-        this.features = saved.features.map(normalizeFeature);
-      }
-      if (Array.isArray(saved.auditLog)) this.auditLog = saved.auditLog;
-      if (saved.basemap) this.currentBasemap = saved.basemap;
-    } else {
-      this.features = [];
-      this.auditLog.push({
-        id: 'aud_init',
-        action: 'Projeto inicializado',
-        user: 'Sistema',
-        timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-      });
-    }
+    AppBootstrapSync.loadState(this);
   }
 
-  async loadStateAsync() {
-    try {
-      const saved = await StorageService.loadCurrentProjectAsync(this.projectId);
-      if (saved) {
-        if (saved.name) this.projectName = saved.name;
-        if (Array.isArray(saved.layers) && saved.layers.length > 0) {
-          this.layers = saved.layers;
-          if (!this.layers.some(l => l.id === this.activeLayerId)) {
-            this.activeLayerId = this.layers[0].id;
-          }
-          const curActive = this.layers.find(l => l.id === this.activeLayerId) || this.layers[0];
-          if (curActive) {
-            if (this.mapEngine) this.mapEngine.setActiveDrawingLayer(curActive);
-            if (this.drawingToolbar) this.drawingToolbar.setActiveLayer(curActive);
-            if (this.layerPanel) this.layerPanel.setActiveLayerId(curActive.id);
-            if (this.newFeatureModal) this.newFeatureModal.setActiveLayerId(curActive.id);
-            if (this.textPromptModal) this.textPromptModal.setActiveLayerId(curActive.id);
-          }
-        }
-        if (Array.isArray(saved.auditLog) && saved.auditLog.length > 0) {
-          this.auditLog = saved.auditLog;
-          if (this.layerPanel) this.layerPanel.updateAuditLog(this.auditLog);
-        }
-
-        if (Array.isArray(saved.features)) {
-          const TEST_MOCK_IDS = new Set(['feat-m01', 'feat-m02', 'feat-app-01', 'feat-quadra-a', 'feat-rota-01', 'feat-buffer-01']);
-          const cleanedFeatures = saved.features.filter(f => {
-            if (TEST_MOCK_IDS.has(f.id)) {
-              StorageService.deleteFeature(f.id);
-              return false;
-            }
-            return true;
-          });
-
-          // Respeita a Regra 1 do GEMINI.md: Array.isArray(saved.features) pode ser [] se o projeto estiver limpo
-          this.features = cleanedFeatures.map(normalizeFeature);
-          this.refreshMapAndTable(true);
-          if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
-          if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
-          if (this.textPromptModal) this.textPromptModal.updateLayers(this.layers);
-          if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
-        }
-      }
-
-      // Sincronização Inteligente com a Nuvem (Hostinger MySQL)
-      // Verifica se o dispositivo atual já possui dados deste projeto em cache local
-      const hasLocalProjectData = saved && (
-        (Array.isArray(saved.features) && saved.features.length > 0) ||
-        (Array.isArray(saved.layers) && saved.layers.length > 0) ||
-        saved.updatedAt
-      );
-
-      // Primeiro comita quaisquer deltas ou exclusões locais pendentes que não foram confirmados antes do reload
-      try {
-        await StorageService.commitDeltas();
-      } catch (e) {
-        console.warn('[ConecteMapas] Commit de deltas pendentes no boot:', e);
-      }
-
-      if (!hasLocalProjectData) {
-        // Dispositivo ou visitante novo sem dados locais para este projeto: carrega snapshot inicial da nuvem
-        const cloudData = await StorageService.loadProjectFromCloud(this.projectId);
-        if (cloudData && cloudData.exists) {
-          let updated = false;
-
-          if (cloudData.project && cloudData.project.name) {
-            this.projectName = cloudData.project.name;
-            const titleInput = document.getElementById('cm-project-name-input');
-            if (titleInput) titleInput.value = this.projectName;
-            updated = true;
-          }
-
-          if (Array.isArray(cloudData.layers) && cloudData.layers.length > 0) {
-            this.layers = cloudData.layers;
-            updated = true;
-          }
-
-          if (Array.isArray(cloudData.features)) {
-            // Filtra feições que tenham tombstones locais para evitar ressuscitação
-            this.features = cloudData.features
-              .filter(f => !StorageService.hasLocalTombstone(f.id, this.projectId))
-              .map(normalizeFeature);
-            updated = true;
-          }
-
-          if (cloudData.project && cloudData.project.basemap) {
-            this.currentBasemap = cloudData.project.basemap;
-            if (this.mapEngine) this.mapEngine.setBaseLayer(this.currentBasemap);
-            if (this.layerPanel) this.layerPanel.currentBasemap = this.currentBasemap;
-          }
-
-          if (updated) {
-            this.refreshMapAndTable(true);
-            if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
-            if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
-            if (this.textPromptModal) this.textPromptModal.updateLayers(this.layers);
-            if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
-            if (this.mapEngine && this.features.length > 0) {
-              setTimeout(() => this.mapEngine.fitAllFeatures(), 300);
-            }
-
-            // Grava cópia local no IndexedDB/LocalStorage desse visitante para cache rápido
-            StorageService.saveMetadata({
-              id: this.projectId,
-              name: this.projectName,
-              basemap: this.currentBasemap,
-              layers: this.layers,
-              featureCount: this.features.length
-            });
-            StorageService.applyRemoteChangesLocally(this.features, [], this.projectId);
-
-            UIToast.notificar({
-              tipo: 'sucesso',
-              titulo: 'Projeto Carregado da Nuvem',
-              mensagem: `Sincronizadas ${this.features.length} feições do banco Hostinger (${cloudData.project?.name || 'Projeto'}).`,
-              duracao: 4000
-            });
-          }
-        }
-      } else {
-        // Dispositivo já possui feições em cache local: busca apenas deltas e tombstones ocorridos desde a última sessão
-        try {
-          const deltaChanges = await StorageService.pullChangesFromCloud(this.projectId);
-          if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
-            FeatureSyncController.applyRemoteDeltas(this, deltaChanges);
-          }
-        } catch (e) {
-          console.warn('[ConecteMapas] Falha no pull de deltas inicial:', e);
-        }
-      }
-    } catch (err) {
-      console.warn('[ConecteMapas] Erro na hidratação do projeto:', err);
-    } finally {
-      this._isStorageHydrated = true;
-      this._updateSyncChip();
-      this.startCloudSyncLoop();
-    }
+  loadStateAsync() {
+    return AppBootstrapSync.loadStateAsync(this);
   }
 
-  /**
-   * Sincronização colaborativa quase em tempo real (estilo Canva) sobre PHP/MySQL.
-   * - Pull a cada ~1 s com a aba visível (cursor de revisão: nenhuma alteração é perdida)
-   * - Páginas extras buscadas imediatamente quando o servidor indica 'hasMore'
-   * - Backoff exponencial em falhas; pausa com a aba oculta; retoma na hora ao voltar
-   * - Cada ciclo publica a presença (cursor) deste operador e recebe a dos demais
-   */
   startCloudSyncLoop() {
-    const ACTIVE_INTERVAL_MS = 1000;
-    const HIDDEN_INTERVAL_MS = 5000;
-    const MAX_BACKOFF_MS = 15000;
-
-    if (this._cloudSyncTimer) {
-      clearTimeout(this._cloudSyncTimer);
-    }
-    this._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
-
-    const schedule = (delay) => {
-      if (this._cloudSyncTimer) clearTimeout(this._cloudSyncTimer);
-      this._cloudSyncTimer = setTimeout(tick, delay);
-    };
-
-    const tick = async () => {
-      this._cloudSyncTimer = null;
-      if (this._cloudSyncRunning) return;
-
-      // Aba oculta ou sem internet: não consulta (visibilitychange/online retomam na hora)
-      if ((typeof document !== 'undefined' && document.hidden) ||
-          (typeof navigator !== 'undefined' && !navigator.onLine)) {
-        schedule(HIDDEN_INTERVAL_MS);
-        return;
-      }
-      // Durante um clique de vetorização não re-renderiza o mapa (precisão do desenho)
-      if (this.mapEngine && this.mapEngine.isDrawing) {
-        schedule(ACTIVE_INTERVAL_MS);
-        return;
-      }
-
-      this._cloudSyncRunning = true;
-      let nextDelay = ACTIVE_INTERVAL_MS;
-      try {
-        // Reenvia primeiro o que ficou pendente por falha de rede
-        if (StorageService.hasPendingOfflineDeltas()) {
-          StorageService.flushPendingOfflineDeltas(this.projectId);
-        }
-
-        const user = this.collabHub ? this.collabHub.currentUser : null;
-        const presence = user ? {
-          name: user.displayName || user.name,
-          color: user.color,
-          lat: this._lastCursorLatLng ? this._lastCursorLatLng.lat : undefined,
-          lng: this._lastCursorLatLng ? this._lastCursorLatLng.lng : undefined
-        } : null;
-
-        const changes = await StorageService.pullChangesFromCloud(this.projectId, presence);
-        if (!changes) {
-          this._cloudSyncBackoff = Math.min((this._cloudSyncBackoff || ACTIVE_INTERVAL_MS) * 2, MAX_BACKOFF_MS);
-          nextDelay = this._cloudSyncBackoff;
-        } else {
-          this._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
-
-          const hasUpserted = changes.upserted.length > 0;
-          const hasDeleted = changes.deleted.length > 0;
-          const hasLayers = changes.layers.length > 0;
-          if (hasUpserted || hasDeleted || hasLayers) {
-            const changed = FeatureSyncController.applyRemoteDeltas(this, changes);
-            if (changed) {
-              this._updateSyncChip();
-            }
-          }
-          if (changes.presence) {
-            FeatureSyncController.applyRemotePresence(this, changes.presence);
-          }
-          if (changes.hasMore) {
-            nextDelay = 0;
-          }
-        }
-      } catch (err) {
-        // Polling tolerante a falhas efêmeras de rede
-        nextDelay = ACTIVE_INTERVAL_MS * 2;
-      } finally {
-        this._cloudSyncRunning = false;
-        schedule(nextDelay);
-      }
-    };
-
-    if (!this._cloudSyncWakeBound && typeof document !== 'undefined') {
-      this._cloudSyncWakeBound = true;
-      const wake = () => {
-        if (!document.hidden) {
-          this._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
-          schedule(0);
-        }
-      };
-      document.addEventListener('visibilitychange', wake);
-      if (typeof window !== 'undefined') window.addEventListener('online', wake);
-    }
-
-    schedule(0);
+    AppBootstrapSync.startCloudSyncLoop(this);
   }
 
-  /**
-   * Salva apenas metadados e camadas (O(1), < 5 KB) sem tocar no dataset de feições
-   */
+  _updateSyncChip() {
+    AppBootstrapSync.updateSyncChip(this);
+  }
+
   saveMetadata(isImmediate = false) {
     const payload = {
       id: this.projectId,
@@ -391,9 +126,6 @@ class ConecteMapasApp {
     this._updateSyncChip();
   }
 
-  /**
-   * Grava uma feição individual no IndexedDB O(1) sem serialização global
-   */
   saveFeature(feature) {
     if (feature) {
       StorageService.saveFeature(feature, this.projectId);
@@ -401,9 +133,6 @@ class ConecteMapasApp {
     }
   }
 
-  /**
-   * Remove uma feição individual do IndexedDB O(1)
-   */
   removeFeature(featureId) {
     if (featureId) {
       StorageService.deleteFeature(featureId);
@@ -412,17 +141,23 @@ class ConecteMapasApp {
   }
 
   deleteFeature(featureId) {
-    FeatureSyncController.deleteFeature(this, featureId);
+    return FeatureSyncController.deleteFeature(this, featureId);
+  }
+
+  updateFeature(updatedFeature) {
+    return FeatureSyncController.updateFeature(this, updatedFeature);
+  }
+
+  createFeature(rawFeature, options = {}) {
+    return FeatureSyncController.createFeature(this, rawFeature, options);
+  }
+
+  createFeaturesBatch(featureList, options = {}) {
+    return FeatureSyncController.createFeaturesBatch(this, featureList, options);
   }
 
   saveState(isImmediate = false, options = { featuresChanged: true }) {
-    if (options.featuresChanged === false) {
-      this.saveMetadata(isImmediate);
-      return;
-    }
-
-    // Salvaguarda: Não sobrescreve feições em lote se a hidratação inicial do IndexedDB ainda não concluiu
-    if (!this._isStorageHydrated) {
+    if (options.featuresChanged === false || !this._isStorageHydrated) {
       this.saveMetadata(isImmediate);
       return;
     }
@@ -441,132 +176,11 @@ class ConecteMapasApp {
     } else {
       StorageService.saveProjectDebounced(payload, 350);
     }
-
     this._updateSyncChip();
-  }
-
-  _updateSyncChip() {
-    const syncChip = document.getElementById('cm-sync-chip');
-    if (!syncChip) return;
-
-    const cloud = StorageService.getCloudStatus();
-    if (cloud.syncing) {
-      syncChip.setAttribute('variante', 'alerta');
-      syncChip.textContent = `● Sincronizando com Hostinger MySQL...`;
-      syncChip.title = `Gravando alterações em tempo real no banco u941736878_conectemapas`;
-    } else if (cloud.connected) {
-      syncChip.setAttribute('variante', 'sucesso');
-      syncChip.textContent = `● MySQL Hostinger: Conectado (${cloud.latencyMs || 0}ms)`;
-      syncChip.title = `Banco: ${cloud.database} | ${this.features.length} feições ativas | Clique para verificar conexão`;
-    } else if (cloud.error) {
-      syncChip.setAttribute('variante', 'informativo');
-      syncChip.textContent = `● Salvo Localmente (${this.features.length} feições no IndexedDB)`;
-      syncChip.title = `Banco local ativo. Nuvem em reconexão: ${cloud.error}`;
-    } else {
-      syncChip.setAttribute('variante', 'sucesso');
-      syncChip.textContent = `● Salvo (${this.features.length} feições no IndexedDB)`;
-      syncChip.title = `Persistência ativa`;
-    }
-
-    if (!syncChip._hasCloudClickHandler) {
-      syncChip._hasCloudClickHandler = true;
-      syncChip.style.cursor = 'pointer';
-      syncChip.addEventListener('click', () => {
-        StorageService.checkCloudConnection().then((st) => {
-          if (st.connected) {
-            UIToast.notificar({
-              tipo: 'sucesso',
-              titulo: 'Diagnóstico Hostinger MySQL',
-              mensagem: `Conexão ativa com o banco "${st.database}" no servidor ${st.server}. Latência: ${st.latencyMs}ms. Versão MySQL: ${st.mysqlVersion || '8.0'}.`,
-              duracao: 5000
-            });
-          } else {
-            UIToast.notificar({
-              tipo: 'alerta',
-              titulo: 'Status Hostinger MySQL',
-              mensagem: `Modo local ativo. Falha na conexão com a nuvem: ${st.error || 'Servidor inacessível'}. Suas edições permanecem 100% salvas no IndexedDB local.`,
-              duracao: 5000
-            });
-          }
-        });
-      });
-    }
   }
 
   flushSaveState() {
     this.saveState(true);
-  }
-
-  initCollaboration() {
-    this.collabHub = new CollaborationHub(null, (type, data) => {
-      FeatureSyncController.handleCollabEvent(this, type, data);
-    }, this.projectId, StorageService.getClientId());
-  }
-
-  initMap() {
-    if (this.mapEngine) {
-      this.mapEngine.destroy();
-      this.mapEngine = null;
-    }
-
-    this.mapEngine = new MapEngine('map-viewport', {
-      center: [-23.7661, -53.3206],
-      zoom: 14,
-      initialBasemap: this.currentBasemap,
-      onToolChange: (tool) => {
-        if (this.drawingToolbar) {
-          this.drawingToolbar.setActiveTool(tool);
-        }
-      },
-      onFeatureCreated: (rawFeature) => {
-        FeatureSyncController.handleDrawingCompleted(this, rawFeature);
-      },
-      onFeatureUpdated: (updatedFeature) => {
-        FeatureSyncController.updateFeature(this, updatedFeature);
-      },
-      onTextPromptRequested: (latlng) => {
-        if (this.textPromptModal) {
-          this.textPromptModal.openWithLocation(latlng);
-        }
-      },
-      onContextMenu: (data) => {
-        if (this.contextMenu) {
-          this.contextMenu.open(data);
-        }
-      },
-      onFeatureSelected: (feature) => {
-        this.updateSelectionState(feature ? [feature] : []);
-      },
-      onFeaturesSelected: (features) => {
-        this.updateSelectionState(features || []);
-      },
-      onCursorMove: (latlng) => {
-        if (!latlng) return;
-        this._lastCursorLatLng = latlng;
-        if (this.collabHub) {
-          this.collabHub.sendCursorPosition([latlng.lat, latlng.lng]);
-        }
-        const latSpan = document.getElementById('hud-latlng');
-        if (latSpan) {
-          latSpan.textContent = `Lat: ${latlng.lat.toFixed(5)} | Lng: ${latlng.lng.toFixed(5)}`;
-        }
-      }
-    });
-
-    this.mapEngine.setBaseLayer(this.currentBasemap);
-    this.mapEngine.renderFeatures(this.features, this.layers);
-
-    const initialActive = this.layers.find(l => l.id === this.activeLayerId) || this.layers[0];
-    if (initialActive && this.mapEngine) {
-      this.mapEngine.setActiveDrawingLayer(initialActive);
-    }
-
-    this.mapEngine.map.on('zoomend', () => {
-      const zoomSpan = document.getElementById('hud-zoom');
-      if (zoomSpan && this.mapEngine.map) {
-        zoomSpan.textContent = `Zoom: ${this.mapEngine.map.getZoom()}`;
-      }
-    });
   }
 
   setActiveLayer(layerId, notify = true) {
@@ -574,21 +188,11 @@ class ConecteMapasApp {
     if (!layer) return;
     this.activeLayerId = layer.id;
 
-    if (this.layerPanel && typeof this.layerPanel.setActiveLayerId === 'function') {
-      this.layerPanel.setActiveLayerId(layer.id);
-    }
-    if (this.mapEngine && typeof this.mapEngine.setActiveDrawingLayer === 'function') {
-      this.mapEngine.setActiveDrawingLayer(layer);
-    }
-    if (this.drawingToolbar && typeof this.drawingToolbar.setActiveLayer === 'function') {
-      this.drawingToolbar.setActiveLayer(layer);
-    }
-    if (this.newFeatureModal && typeof this.newFeatureModal.setActiveLayerId === 'function') {
-      this.newFeatureModal.setActiveLayerId(layer.id);
-    }
-    if (this.textPromptModal && typeof this.textPromptModal.setActiveLayerId === 'function') {
-      this.textPromptModal.setActiveLayerId(layer.id);
-    }
+    if (this.layerPanel?.setActiveLayerId) this.layerPanel.setActiveLayerId(layer.id);
+    if (this.mapEngine?.setActiveDrawingLayer) this.mapEngine.setActiveDrawingLayer(layer);
+    if (this.drawingToolbar?.setActiveLayer) this.drawingToolbar.setActiveLayer(layer);
+    if (this.newFeatureModal?.setActiveLayerId) this.newFeatureModal.setActiveLayerId(layer.id);
+    if (this.textPromptModal?.setActiveLayerId) this.textPromptModal.setActiveLayerId(layer.id);
 
     if (notify) {
       UIToast.notificar({
@@ -598,349 +202,6 @@ class ConecteMapasApp {
         duracao: 2200
       });
     }
-  }
-
-  initComponents() {
-    this.headerBar = new HeaderBar({
-      projectName: this.projectName,
-      collaborators: this.collabHub.getActiveCollaboratorsList(),
-      onProjectNameChange: (newName) => {
-        this.projectName = newName;
-        this.saveMetadata(true);
-        UIToast.notificar({ tipo: 'sucesso', titulo: 'Projeto Renomeado', mensagem: `Nome atualizado para "${newName}".`, duracao: 2500 });
-      },
-      onSaveProject: async () => {
-        this.saveState(true, { featuresChanged: true });
-        
-        UIToast.notificar({ 
-          tipo: 'info', 
-          titulo: 'Sincronizando Nuvem', 
-          mensagem: `Gravando ${this.features.length} feições no MySQL Hostinger...`, 
-          duracao: 2500 
-        });
-
-        const cloudRes = await StorageService.saveProjectToCloud({
-          id: this.projectId || 'projeto_padrao',
-          name: this.projectName,
-          basemap: this.currentBasemap,
-          layers: this.layers,
-          features: this.features,
-          center: this.mapEngine && this.mapEngine.map ? [this.mapEngine.map.getCenter().lat, this.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
-          zoom: this.mapEngine && this.mapEngine.map ? this.mapEngine.map.getZoom() : 14
-        });
-
-        if (cloudRes && cloudRes.success) {
-          UIToast.notificar({ 
-            tipo: 'sucesso', 
-            titulo: 'Projeto Salvo na Nuvem!', 
-            mensagem: `${this.features.length} feições sincronizadas com sucesso. Qualquer pessoa com o link poderá visualizar!`, 
-            duracao: 4500 
-          });
-        } else {
-          UIToast.notificar({ 
-            tipo: 'alerta', 
-            titulo: 'Salvo Apenas Localmente', 
-            mensagem: `Salvo no navegador local. Hostinger: ${cloudRes?.error || 'servidor ocupado'}.`, 
-            duracao: 4000 
-          });
-        }
-        this._updateSyncChip();
-      },
-      onOpenPrintComposer: () => {
-        if (this.printComposerModal) {
-          this.printComposerModal.open(this.projectName, this.layers, this.features, this.currentBasemap);
-        }
-      },
-      onToggleGeometryVersion: () => {
-        this.toggleGlobalGeometryVersion();
-      }
-    });
-    this.headerBar.render(document.getElementById('header-mount'));
-
-    this.drawingToolbar = new DrawingToolbar({
-      onToolChange: (tool) => {
-        this.mapEngine.setTool(tool);
-        UIToast.notificar({ tipo: 'informativo', titulo: 'Ferramenta Ativa', mensagem: `Modo: ${this.getToolName(tool)}`, duracao: 1500 });
-      },
-      onAction: (action) => {
-        if (action === 'locate') {
-          ProjectActionsController.locateUser(this);
-        } else if (action === 'fit') {
-          this.mapEngine.fitAllFeatures();
-          UIToast.notificar({ tipo: 'informativo', titulo: 'Vista Enquadrada', mensagem: 'Todas as feições foram centralizadas.', duracao: 2000 });
-        }
-      }
-    });
-    this.drawingToolbar.render(document.getElementById('drawing-toolbar-mount'));
-    const initialLayer = this.layers.find(l => l.id === this.activeLayerId) || this.layers[0];
-    if (initialLayer && this.drawingToolbar) {
-      this.drawingToolbar.setActiveLayer(initialLayer);
-    }
-
-    this.layerPanel = new LayerPanel({
-      layers: this.getLayersWithCounts(),
-      features: this.features,
-      activeLayerId: this.activeLayerId,
-      onLayerSelect: (layerId) => this.setActiveLayer(layerId),
-      currentBasemap: this.currentBasemap,
-      auditLog: this.auditLog,
-      chatMessages: this.chatMessages,
-      onLayerToggle: (layerId, isVisible) => {
-        const layer = this.layers.find(l => l.id === layerId);
-        if (layer) {
-          layer.visible = isVisible;
-          this.mapEngine.setLayerVisibility(layerId, isVisible);
-          StorageService.saveLayer(layer, this.projectId);
-          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
-          this.saveMetadata();
-        }
-      },
-      onLayerReorder: (newLayers) => {
-        this.layers = [...newLayers];
-        this.mapEngine.reorderLayers(this.layers);
-        StorageService.saveLayersBatch(this.layers, this.projectId);
-        this.saveMetadata(true);
-        UIToast.notificar({ tipo: 'informativo', titulo: 'Sobreposição Atualizada', mensagem: 'Ordem das camadas e Z-Index reordenados.', duracao: 1800 });
-      },
-      onLayerOpacityChange: (layerId, opacity) => {
-        const layer = this.layers.find(l => l.id === layerId);
-        if (layer) {
-          layer.opacity = opacity;
-          this.mapEngine.setLayerOpacity(layerId, opacity);
-          StorageService.saveLayer(layer, this.projectId);
-          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
-          this.saveMetadata(true);
-        }
-      },
-      onLayerRename: (layerId, newName) => {
-        const layer = this.layers.find(l => l.id === layerId);
-        if (layer) {
-          layer.name = newName;
-          StorageService.saveLayer(layer, this.projectId);
-          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
-          this.saveMetadata(true);
-          UIToast.notificar({ tipo: 'sucesso', titulo: 'Camada Renomeada', mensagem: `Nome alterado para "${newName}".`, duracao: 2000 });
-        }
-      },
-      onLayerColorChange: (layerId, newColor) => {
-        const layer = this.layers.find(l => l.id === layerId);
-        if (layer) {
-          layer.color = newColor;
-          this.mapEngine.setLayerColor(layerId, newColor);
-          StorageService.saveLayer(layer, this.projectId);
-          if (this.collabHub) this.collabHub.notifyLayerUpdated(layer);
-          this.saveMetadata(true);
-        }
-      },
-
-      onLayerDelete: (layerId) => ProjectActionsController.deleteLayer(this, layerId),
-      onLayerFit: (layerId) => this.mapEngine.fitLayer(layerId),
-      onAddLayer: () => ProjectActionsController.openNewLayerModal(this),
-      onFeatureToggle: (featureId, isVisible) => {
-        const feat = this.features.find(f => f.id === featureId);
-        if (feat) {
-          feat.visible = isVisible;
-          this.mapEngine.updateFeature(feat, this.layers);
-          this.saveFeature(feat);
-        }
-      },
-      onFeatureSelect: (feature) => {
-        if (!feature) {
-          if (this.mapEngine) this.mapEngine.clearSelection();
-          return;
-        }
-        if (this.mapEngine) this.mapEngine.selectFeature(feature.id);
-        if (this.attributeTable) this.attributeTable.selectFeature(feature.id);
-      },
-      onFeaturesSelect: (features) => {
-        const ids = (features || []).map(f => f.id);
-        if (this.mapEngine) this.mapEngine.selectFeatures(ids);
-        if (features && features.length > 0 && this.attributeTable) {
-          this.attributeTable.selectFeature(features[0].id);
-        }
-      },
-      onFeaturesReorder: (newFeatures) => {
-        this.features = [...newFeatures];
-        this.refreshMapAndTable();
-        StorageService.queueFeaturesBulkUpsert(this.features);
-        this.saveMetadata(false);
-      },
-      onFeatureLockToggle: (featureId, isLocked) => {
-        const feat = this.features.find(f => f.id === featureId);
-        if (feat) {
-          feat.locked = isLocked;
-          this.saveFeature(feat);
-          UIToast.notificar({ tipo: isLocked ? 'alerta' : 'sucesso', titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada', mensagem: isLocked ? `"${feat.name}" protegida contra edições.` : `"${feat.name}" liberada para edição.`, duracao: 1800 });
-        }
-      },
-      onBulkUpdate: (updatedFeatures) => {
-        this.pushHistory(`Modificação coletiva (${updatedFeatures.length} itens)`);
-        const updateMap = new Map(updatedFeatures.map(f => [f.id, f]));
-        this.features = this.features.map(f => updateMap.get(f.id) || f);
-        this.refreshMapAndTable();
-        StorageService.queueFeaturesBulkUpsert(updatedFeatures);
-        this.saveMetadata(false);
-        UIToast.notificar({ tipo: 'sucesso', titulo: 'Modificação Coletiva', mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`, duracao: 2500 });
-      },
-      onBulkDelete: (featureIds) => {
-        const idSet = new Set(featureIds);
-        this.pushHistory(`Exclusão coletiva (${featureIds.length} itens)`);
-        this.features = this.features.filter(f => !idSet.has(f.id));
-        this.refreshMapAndTable();
-        StorageService.queueFeaturesBulkDelete(featureIds);
-        this.saveMetadata(false);
-        UIToast.notificar({ tipo: 'alerta', titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas. Pressione Ctrl+Z para desfazer.`, duracao: 3000 });
-      },
-      onBasemapChange: (basemapName) => {
-        this.currentBasemap = basemapName;
-        this.mapEngine.setBaseLayer(basemapName);
-        this.saveMetadata();
-      },
-      onAddFeature: (rawFeat) => FeatureSyncController.createFeature(this, rawFeat),
-      onDeleteFeature: (featureId) => FeatureSyncController.deleteFeature(this, featureId),
-      onFeatureUpdate: (updatedFeature) => FeatureSyncController.updateFeature(this, updatedFeature),
-      onFeatureCreate: (newFeature) => FeatureSyncController.createFeature(this, newFeature),
-      onFitFeature: (featureId) => this.mapEngine.zoomToFeature(featureId),
-      onStartVertexEdit: (feature) => {
-        this.mapEngine.startVertexEditing(feature, (updated) => FeatureSyncController.updateFeature(this, updated));
-      },
-      onStopVertexEdit: () => this.mapEngine.stopVertexEditing(),
-      onSendMessage: (text) => {
-        const msg = this.collabHub.sendChatMessage(text);
-        this.layerPanel.addChatMessage(msg);
-      }
-    });
-    this.layerPanel.render(document.getElementById('layer-panel-mount'));
-
-    this.attributeTable = new AttributeTable({
-      layers: this.layers,
-      features: this.features,
-      onSelect: (featureId) => {
-        const feat = this.features.find(f => f.id === featureId);
-        if (feat) {
-          this.mapEngine.zoomToFeature(featureId);
-          this.mapEngine.selectFeature(featureId);
-          this.layerPanel.setSelectedFeature(feat, false);
-        }
-      },
-      onDelete: (featureId) => FeatureSyncController.deleteFeature(this, featureId)
-    });
-    this.attributeTable.render(document.getElementById('attribute-table-mount'));
-
-    this.shareModal = new ShareModal({
-      getProjectId: () => this.projectId || 'projeto_padrao',
-      getProjectName: () => this.projectName,
-      onSyncBeforeShare: async () => {
-        return await StorageService.saveProjectToCloud({
-          id: this.projectId || 'projeto_padrao',
-          name: this.projectName,
-          basemap: this.currentBasemap,
-          layers: this.layers,
-          features: this.features,
-          center: this.mapEngine && this.mapEngine.map ? [this.mapEngine.map.getCenter().lat, this.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
-          zoom: this.mapEngine && this.mapEngine.map ? this.mapEngine.map.getZoom() : 14
-        });
-      }
-    });
-    this.shareModal.render(document.getElementById('share-modal-mount'));
-    new ImportExportModal({
-      onExport: (format, options) => ProjectActionsController.handleExport(this, format, options),
-      onExportImage: (options) => ProjectActionsController.handleExportImage(this, options),
-      onImport: (content, fileName, options) => ProjectActionsController.handleImport(this, content, fileName, options)
-    }).render(document.getElementById('import-export-modal-mount'));
-
-    new ProjectTemplatesModal({
-      onSelectTemplate: (template) => ProjectActionsController.loadTemplate(this, template)
-    }).render(document.getElementById('templates-modal-mount'));
-
-    this.newFeatureModal = new NewFeatureModal({
-      layers: this.layers,
-      activeLayerId: this.activeLayerId,
-      onSave: (newFeature) => FeatureSyncController.createFeature(this, newFeature)
-    });
-    this.newFeatureModal.render(document.getElementById('new-feature-modal-mount'));
-
-    this.textPromptModal = new TextPromptModal({
-      layers: this.layers,
-      activeLayerId: this.activeLayerId,
-      onSave: (newFeature) => {
-        FeatureSyncController.handleDrawingCompleted(this, newFeature);
-        if (this.mapEngine) this.mapEngine.setTool('select');
-      },
-      onCancel: () => {
-        if (this.mapEngine) this.mapEngine.setTool('select');
-      }
-    });
-    this.textPromptModal.render(document.getElementById('text-prompt-modal-mount'));
-
-    this.newLayerModal = new NewLayerModal({
-      onSave: (layerData) => ProjectActionsController.createLayer(this, layerData)
-    });
-    this.newLayerModal.render(document.getElementById('new-layer-modal-mount'));
-
-    this.printComposerModal = new PrintComposerModal({
-      projectName: this.projectName,
-      layers: this.layers,
-      features: this.features,
-      currentBasemap: this.currentBasemap
-    });
-    this.printComposerModal.render(document.getElementById('print-composer-mount'));
-
-    // Menu de Contexto CAD/GIS acionado pelo Botão Direito
-    this.contextMenu = new ContextMenu(this);
-
-    // Barra Flutuante Indicadora de Feições Selecionadas (Selection HUD)
-    this.selectionHUD = new SelectionHUD({
-      container: document.querySelector('.cm-workspace') || document.body,
-      onInspect: (feature) => {
-        if (this.layerPanel) {
-          this.layerPanel.setSelectedFeature(feature, true);
-          const sidebar = document.getElementById('cm-sidebar-panel');
-          if (sidebar && sidebar.classList.contains('collapsed')) {
-            sidebar.classList.remove('collapsed');
-          }
-          const btnExpand = document.getElementById('btn-expand-sidebar');
-          if (btnExpand) btnExpand.style.display = 'none';
-        }
-      },
-      onZoom: (features) => {
-        if (!features || features.length === 0) return;
-        if (this.mapEngine) {
-          this.mapEngine.zoomToFeatures(features);
-        }
-      },
-      onOpenTable: (features) => {
-        if (this.attributeTable) {
-          if (this.attributeTable.isCollapsed) {
-            this.attributeTable.toggleCollapse();
-          }
-          if (features.length > 0) {
-            this.attributeTable.selectFeature(features[0].id);
-          }
-        }
-      },
-      onDelete: (features) => {
-        if (!features || features.length === 0) return;
-        if (features.length === 1) {
-          this.deleteFeature(features[0].id);
-        } else {
-          const ids = features.map(f => f.id);
-          this.layerPanel?.onBulkDelete?.(ids);
-        }
-      },
-      onClear: () => {
-        if (this.mapEngine) {
-          this.mapEngine.clearSelection();
-        }
-        if (this.layerPanel) {
-          this.layerPanel.selectedFeatureIds.clear();
-          this.layerPanel.selectedFeature = null;
-          this.layerPanel.updateContent();
-        }
-      }
-    });
-
-    ShortcutsController.bindGlobalShortcuts(this);
   }
 
   pushHistory(description = '') {
@@ -964,139 +225,27 @@ class ConecteMapasApp {
   }
 
   updateSelectionState(features = []) {
-    const list = Array.isArray(features) ? features : (features ? [features] : []);
-
-    // 1. Atualiza o SelectionHUD flutuante
-    if (this.selectionHUD) {
-      this.selectionHUD.update(list, this.layers);
-    }
-
-    // 2. Sincroniza com o LayerPanel
-    if (this.layerPanel) {
-      if (list.length === 1) {
-        this.layerPanel.setSelectedFeature(list[0]);
-      } else if (list.length > 1) {
-        this.layerPanel.setSelectedFeatures(list);
-      } else {
-        this.layerPanel.setSelectedFeature(null);
-      }
-    }
-
-    // 3. Sincroniza com a Tabela de Atributos
-    if (this.attributeTable && list.length === 1) {
-      this.attributeTable.selectFeature(list[0].id);
-    }
-
-    // 4. Atualiza o contador do HUD inferior
-    this.updateHUD(list.length);
+    AppGeometryCoordinator.updateSelectionState(this, features);
   }
 
   updateHUD(selectedCount = null) {
-    const countSpan = document.getElementById('hud-features-count');
-    if (countSpan) {
-      const total = this.features ? this.features.length : 0;
-      const count = selectedCount !== null 
-        ? selectedCount 
-        : (this.mapEngine?.selectedFeatureIds?.size || (this.mapEngine?.selectedFeatureId ? 1 : 0));
-
-      if (count > 0) {
-        countSpan.innerHTML = `<strong>${total}</strong> Feições Ativas <span style="color: #38bdf8; font-weight: 600;">(${count} selecionada${count > 1 ? 's' : ''})</span>`;
-      } else {
-        countSpan.textContent = `${total} Feições Ativas`;
-      }
-    }
+    AppGeometryCoordinator.updateHUD(this, selectedCount);
   }
 
   setDrawingTool(tool) {
-    if (!this.mapEngine) return;
-    // Salvaguarda GEMINI.md: limpa buffers antes de trocar de ferramenta
-    this.mapEngine.resetDrawingState();
-    this.mapEngine.setTool(tool);
-    if (this.drawingToolbar) {
-      this.drawingToolbar.setActiveTool(tool);
-    }
-    UIToast.notificar({
-      tipo: 'informativo',
-      titulo: 'Ferramenta Ativa',
-      mensagem: `Modo: ${this.getToolName(tool)}`,
-      duracao: 1500
-    });
+    AppGeometryCoordinator.setDrawingTool(this, tool);
   }
 
   getToolName(tool) {
-    const names = {
-      select: 'Navegar e Selecionar (V)',
-      'pen-select': 'Caneta de Seleção Poligonal (Q)',
-      point: 'Marco / Ponto (P)',
-      line: 'Linha / Rota (L)',
-      polygon: 'Polígono / Área (A)',
-      circle: 'Buffer Circular (C)',
-      rectangle: 'Retângulo / BBox (R)',
-      text: 'Texto / Rótulo no Mapa (T)',
-      measure: 'Régua de Medição (M)',
-      'measure-line': 'Régua de Medição (M)'
-    };
-    return names[tool] || tool;
-  }
-
-  deleteFeature(featureId) {
-    return FeatureSyncController.deleteFeature(this, featureId);
-  }
-
-  updateFeature(updatedFeature) {
-    return FeatureSyncController.updateFeature(this, updatedFeature);
-  }
-
-  createFeature(rawFeature, options = {}) {
-    return FeatureSyncController.createFeature(this, rawFeature, options);
-  }
-
-  createFeaturesBatch(featureList, options = {}) {
-    return FeatureSyncController.createFeaturesBatch(this, featureList, options);
+    return AppGeometryCoordinator.getToolName(tool);
   }
 
   toggleGlobalGeometryVersion() {
-    const isShowingPreviews = this.mapEngine.toggleGlobalShowPreviews();
-    if (this.headerBar) {
-      this.headerBar.updateGeometryVersionMode(isShowingPreviews);
-    }
-    UIToast.notificar({
-      tipo: isShowingPreviews ? 'alerta' : 'sucesso',
-      titulo: isShowingPreviews ? 'Modo: Geometrias Prévias' : 'Modo: Geometrias Oficiais (Padrão)',
-      mensagem: isShowingPreviews 
-        ? 'Exibindo geometrias prévias solicitadas (geometrias oficiais vinculadas foram alternadas).' 
-        : 'Exibindo geometrias oficiais como padrão (prévias vinculadas ocultadas).',
-      duracao: 3000
-    });
-    this.refreshMapAndTable();
+    AppGeometryCoordinator.toggleGlobalGeometryVersion(this);
   }
 
   toggleFeatureGeometryVersion(featureId) {
-    if (!featureId) return;
-    const feat = this.features.find(f => f.id === featureId);
-    if (!feat) return;
-
-    const isActive = this.mapEngine.toggleIndividualPreview(featureId);
-    const linked = GeometryVersionManager.findLinkedFeature(feat, this.features);
-
-    // Se estiver ativando a prévia e a feição atual era a oficial, seleciona a prévia
-    let targetToSelect = feat;
-    if (isActive && linked && GeometryVersionManager.isPreview(linked)) {
-      targetToSelect = linked;
-    } else if (!isActive && linked && GeometryVersionManager.isOfficial(linked)) {
-      targetToSelect = linked;
-    }
-
-    this.mapEngine.selectFeature(targetToSelect.id);
-    this.updateSelectionState([targetToSelect]);
-    this.refreshMapAndTable();
-
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Geometria Alternada',
-      mensagem: `Exibindo: "${targetToSelect.name}" (${GeometryVersionManager.getFeatureStatus(targetToSelect) === 'oficial' ? 'Oficial' : 'Prévia'}).`,
-      duracao: 2500
-    });
+    AppGeometryCoordinator.toggleFeatureGeometryVersion(this, featureId);
   }
 }
 
@@ -1119,7 +268,6 @@ window.addEventListener('pagehide', () => {
   }
 });
 
-// Monitoramento de Conectividade em Tempo Real para Operação Web
 window.addEventListener('offline', () => {
   UIToast.notificar({
     tipo: 'alerta',
@@ -1137,4 +285,3 @@ window.addEventListener('online', () => {
     duracao: 4000
   });
 });
-

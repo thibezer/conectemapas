@@ -1,0 +1,367 @@
+/* ==========================================================================
+   ConecteMapas - AppComponentsBuilder
+   Montagem dos componentes de interface e motor cartográfico Leaflet.
+   ========================================================================== */
+
+import { UIToast } from 'ui-components-kit';
+import { MapEngine } from '../services/MapEngine.js';
+import { StorageService } from '../services/StorageService.js';
+
+import { HeaderBar } from '../components/HeaderBar.js';
+import { DrawingToolbar } from '../components/DrawingToolbar.js';
+import { LayerPanel } from '../components/LayerPanel.js';
+import { AttributeTable } from '../components/AttributeTable.js';
+import { ContextMenu } from '../components/ContextMenu.js';
+import { SelectionHUD } from '../components/SelectionHUD.js';
+
+import { ProjectActionsController } from '../controllers/ProjectActionsController.js';
+import { ShortcutsController } from '../controllers/ShortcutsController.js';
+import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
+import { AppModalsBuilder } from './AppModalsBuilder.js';
+
+export class AppComponentsBuilder {
+  static initMap(app) {
+    if (app.mapEngine) {
+      app.mapEngine.destroy();
+      app.mapEngine = null;
+    }
+
+    app.mapEngine = new MapEngine('map-viewport', {
+      center: [-23.7661, -53.3206],
+      zoom: 14,
+      initialBasemap: app.currentBasemap,
+      onToolChange: (tool) => {
+        if (app.drawingToolbar) {
+          app.drawingToolbar.setActiveTool(tool);
+        }
+      },
+      onFeatureCreated: (rawFeature) => {
+        FeatureSyncController.handleDrawingCompleted(app, rawFeature);
+      },
+      onFeatureUpdated: (updatedFeature) => {
+        FeatureSyncController.updateFeature(app, updatedFeature);
+      },
+      onTextPromptRequested: (latlng) => {
+        if (app.textPromptModal) {
+          app.textPromptModal.openWithLocation(latlng);
+        }
+      },
+      onContextMenu: (data) => {
+        if (app.contextMenu) {
+          app.contextMenu.open(data);
+        }
+      },
+      onFeatureSelected: (feature) => {
+        app.updateSelectionState(feature ? [feature] : []);
+      },
+      onFeaturesSelected: (features) => {
+        app.updateSelectionState(features || []);
+      },
+      onCursorMove: (latlng) => {
+        if (!latlng) return;
+        app._lastCursorLatLng = latlng;
+        if (app.collabHub) {
+          app.collabHub.sendCursorPosition([latlng.lat, latlng.lng]);
+        }
+        const latSpan = document.getElementById('hud-latlng');
+        if (latSpan) {
+          latSpan.textContent = `Lat: ${latlng.lat.toFixed(5)} | Lng: ${latlng.lng.toFixed(5)}`;
+        }
+      }
+    });
+
+    app.mapEngine.setBaseLayer(app.currentBasemap);
+    app.mapEngine.renderFeatures(app.features, app.layers);
+
+    const initialActive = app.layers.find(l => l.id === app.activeLayerId) || app.layers[0];
+    if (initialActive && app.mapEngine) {
+      app.mapEngine.setActiveDrawingLayer(initialActive);
+    }
+
+    app.mapEngine.map.on('zoomend', () => {
+      const zoomSpan = document.getElementById('hud-zoom');
+      if (zoomSpan && app.mapEngine.map) {
+        zoomSpan.textContent = `Zoom: ${app.mapEngine.map.getZoom()}`;
+      }
+    });
+  }
+
+  static initComponents(app) {
+    app.headerBar = new HeaderBar({
+      projectName: app.projectName,
+      collaborators: app.collabHub.getActiveCollaboratorsList(),
+      onProjectNameChange: (newName) => {
+        app.projectName = newName;
+        app.saveMetadata(true);
+        UIToast.notificar({ tipo: 'sucesso', titulo: 'Projeto Renomeado', mensagem: `Nome atualizado para "${newName}".`, duracao: 2500 });
+      },
+      onSaveProject: async () => {
+        app.saveState(true, { featuresChanged: true });
+        UIToast.notificar({
+          tipo: 'info',
+          titulo: 'Sincronizando Nuvem',
+          mensagem: `Gravando ${app.features.length} feições no MySQL Hostinger...`,
+          duracao: 2500
+        });
+
+        const cloudRes = await StorageService.saveProjectToCloud({
+          id: app.projectId || 'projeto_padrao',
+          name: app.projectName,
+          basemap: app.currentBasemap,
+          layers: app.layers,
+          features: app.features,
+          center: app.mapEngine?.map ? [app.mapEngine.map.getCenter().lat, app.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
+          zoom: app.mapEngine?.map ? app.mapEngine.map.getZoom() : 14
+        });
+
+        if (cloudRes && cloudRes.success) {
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Projeto Salvo na Nuvem!',
+            mensagem: `${app.features.length} feições sincronizadas com sucesso. Qualquer pessoa com o link poderá visualizar!`,
+            duracao: 4500
+          });
+        } else {
+          UIToast.notificar({
+            tipo: 'alerta',
+            titulo: 'Salvo Apenas Localmente',
+            mensagem: `Salvo no navegador local. Hostinger: ${cloudRes?.error || 'servidor ocupado'}.`,
+            duracao: 4000
+          });
+        }
+        app._updateSyncChip();
+      },
+      onOpenPrintComposer: () => {
+        if (app.printComposerModal) {
+          app.printComposerModal.open(app.projectName, app.layers, app.features, app.currentBasemap);
+        }
+      },
+      onToggleGeometryVersion: () => {
+        app.toggleGlobalGeometryVersion();
+      }
+    });
+    app.headerBar.render(document.getElementById('header-mount'));
+
+    app.drawingToolbar = new DrawingToolbar({
+      onToolChange: (tool) => {
+        app.mapEngine.setTool(tool);
+        UIToast.notificar({ tipo: 'informativo', titulo: 'Ferramenta Ativa', mensagem: `Modo: ${app.getToolName(tool)}`, duracao: 1500 });
+      },
+      onAction: (action) => {
+        if (action === 'locate') {
+          ProjectActionsController.locateUser(app);
+        } else if (action === 'fit') {
+          app.mapEngine.fitAllFeatures();
+          UIToast.notificar({ tipo: 'informativo', titulo: 'Vista Enquadrada', mensagem: 'Todas as feições foram centralizadas.', duracao: 2000 });
+        }
+      }
+    });
+    app.drawingToolbar.render(document.getElementById('drawing-toolbar-mount'));
+
+    const initialLayer = app.layers.find(l => l.id === app.activeLayerId) || app.layers[0];
+    if (initialLayer && app.drawingToolbar) {
+      app.drawingToolbar.setActiveLayer(initialLayer);
+    }
+
+    app.layerPanel = new LayerPanel({
+      layers: app.getLayersWithCounts(),
+      features: app.features,
+      activeLayerId: app.activeLayerId,
+      onLayerSelect: (layerId) => app.setActiveLayer(layerId),
+      currentBasemap: app.currentBasemap,
+      auditLog: app.auditLog,
+      chatMessages: app.chatMessages,
+      onLayerToggle: (layerId, isVisible) => {
+        const layer = app.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.visible = isVisible;
+          app.mapEngine.setLayerVisibility(layerId, isVisible);
+          StorageService.saveLayer(layer, app.projectId);
+          if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
+          app.saveMetadata();
+        }
+      },
+      onLayerReorder: (newLayers) => {
+        app.layers = [...newLayers];
+        app.mapEngine.reorderLayers(app.layers);
+        StorageService.saveLayersBatch(app.layers, app.projectId);
+        app.saveMetadata(true);
+        UIToast.notificar({ tipo: 'informativo', titulo: 'Sobreposição Atualizada', mensagem: 'Ordem das camadas e Z-Index reordenados.', duracao: 1800 });
+      },
+      onLayerOpacityChange: (layerId, opacity) => {
+        const layer = app.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.opacity = opacity;
+          app.mapEngine.setLayerOpacity(layerId, opacity);
+          StorageService.saveLayer(layer, app.projectId);
+          if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
+          app.saveMetadata(true);
+        }
+      },
+      onLayerRename: (layerId, newName) => {
+        const layer = app.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.name = newName;
+          StorageService.saveLayer(layer, app.projectId);
+          if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
+          app.saveMetadata(true);
+          UIToast.notificar({ tipo: 'sucesso', titulo: 'Camada Renomeada', mensagem: `Nome alterado para "${newName}".`, duracao: 2000 });
+        }
+      },
+      onLayerColorChange: (layerId, newColor) => {
+        const layer = app.layers.find(l => l.id === layerId);
+        if (layer) {
+          layer.color = newColor;
+          app.mapEngine.setLayerColor(layerId, newColor);
+          StorageService.saveLayer(layer, app.projectId);
+          if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
+          app.saveMetadata(true);
+        }
+      },
+      onLayerDelete: (layerId) => ProjectActionsController.deleteLayer(app, layerId),
+      onLayerFit: (layerId) => app.mapEngine.fitLayer(layerId),
+      onAddLayer: () => ProjectActionsController.openNewLayerModal(app),
+      onFeatureToggle: (featureId, isVisible) => {
+        const feat = app.features.find(f => f.id === featureId);
+        if (feat) {
+          feat.visible = isVisible;
+          app.mapEngine.updateFeature(feat, app.layers);
+          app.saveFeature(feat);
+        }
+      },
+      onFeatureSelect: (feature) => {
+        if (!feature) {
+          if (app.mapEngine) app.mapEngine.clearSelection();
+          return;
+        }
+        if (app.mapEngine) app.mapEngine.selectFeature(feature.id);
+        if (app.attributeTable) app.attributeTable.selectFeature(feature.id);
+      },
+      onFeaturesSelect: (features) => {
+        const ids = (features || []).map(f => f.id);
+        if (app.mapEngine) app.mapEngine.selectFeatures(ids);
+        if (features && features.length > 0 && app.attributeTable) {
+          app.attributeTable.selectFeature(features[0].id);
+        }
+      },
+      onFeaturesReorder: (newFeatures) => {
+        app.features = [...newFeatures];
+        app.refreshMapAndTable();
+        StorageService.queueFeaturesBulkUpsert(app.features);
+        app.saveMetadata(false);
+      },
+      onFeatureLockToggle: (featureId, isLocked) => {
+        const feat = app.features.find(f => f.id === featureId);
+        if (feat) {
+          feat.locked = isLocked;
+          app.saveFeature(feat);
+          UIToast.notificar({ tipo: isLocked ? 'alerta' : 'sucesso', titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada', mensagem: isLocked ? `"${feat.name}" protegida contra edições.` : `"${feat.name}" liberada para edição.`, duracao: 1800 });
+        }
+      },
+      onBulkUpdate: (updatedFeatures) => {
+        app.pushHistory(`Modificação coletiva (${updatedFeatures.length} itens)`);
+        const updateMap = new Map(updatedFeatures.map(f => [f.id, f]));
+        app.features = app.features.map(f => updateMap.get(f.id) || f);
+        app.refreshMapAndTable();
+        StorageService.queueFeaturesBulkUpsert(updatedFeatures);
+        app.saveMetadata(false);
+        UIToast.notificar({ tipo: 'sucesso', titulo: 'Modificação Coletiva', mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`, duracao: 2500 });
+      },
+      onBulkDelete: (featureIds) => {
+        const idSet = new Set(featureIds);
+        app.pushHistory(`Exclusão coletiva (${featureIds.length} itens)`);
+        app.features = app.features.filter(f => !idSet.has(f.id));
+        app.refreshMapAndTable();
+        StorageService.queueFeaturesBulkDelete(featureIds);
+        app.saveMetadata(false);
+        UIToast.notificar({ tipo: 'alerta', titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas. Pressione Ctrl+Z para desfazer.`, duracao: 3000 });
+      },
+      onBasemapChange: (basemapName) => {
+        app.currentBasemap = basemapName;
+        app.mapEngine.setBaseLayer(basemapName);
+        app.saveMetadata();
+      },
+      onAddFeature: (rawFeat) => FeatureSyncController.createFeature(app, rawFeat),
+      onDeleteFeature: (featureId) => FeatureSyncController.deleteFeature(app, featureId),
+      onFeatureUpdate: (updatedFeature) => FeatureSyncController.updateFeature(app, updatedFeature),
+      onFeatureCreate: (newFeature) => FeatureSyncController.createFeature(app, newFeature),
+      onFitFeature: (featureId) => app.mapEngine.zoomToFeature(featureId),
+      onStartVertexEdit: (feature) => {
+        app.mapEngine.startVertexEditing(feature, (updated) => FeatureSyncController.updateFeature(app, updated));
+      },
+      onStopVertexEdit: () => app.mapEngine.stopVertexEditing(),
+      onSendMessage: (text) => {
+        const msg = app.collabHub.sendChatMessage(text);
+        app.layerPanel.addChatMessage(msg);
+      }
+    });
+    app.layerPanel.render(document.getElementById('layer-panel-mount'));
+
+    app.attributeTable = new AttributeTable({
+      layers: app.layers,
+      features: app.features,
+      onSelect: (featureId) => {
+        const feat = app.features.find(f => f.id === featureId);
+        if (feat) {
+          app.mapEngine.zoomToFeature(featureId);
+          app.mapEngine.selectFeature(featureId);
+          app.layerPanel.setSelectedFeature(feat, false);
+        }
+      },
+      onDelete: (featureId) => FeatureSyncController.deleteFeature(app, featureId)
+    });
+    app.attributeTable.render(document.getElementById('attribute-table-mount'));
+
+    AppModalsBuilder.initModals(app);
+
+    app.contextMenu = new ContextMenu(app);
+
+    app.selectionHUD = new SelectionHUD({
+      container: document.querySelector('.cm-workspace') || document.body,
+      onInspect: (feature) => {
+        if (app.layerPanel) {
+          app.layerPanel.setSelectedFeature(feature, true);
+          const sidebar = document.getElementById('cm-sidebar-panel');
+          if (sidebar && sidebar.classList.contains('collapsed')) {
+            sidebar.classList.remove('collapsed');
+          }
+          const btnExpand = document.getElementById('btn-expand-sidebar');
+          if (btnExpand) btnExpand.style.display = 'none';
+        }
+      },
+      onZoom: (features) => {
+        if (!features || features.length === 0) return;
+        if (app.mapEngine) app.mapEngine.zoomToFeatures(features);
+      },
+      onOpenTable: (features) => {
+        if (app.attributeTable) {
+          if (app.attributeTable.isCollapsed) {
+            app.attributeTable.toggleCollapse();
+          }
+          if (features.length > 0) {
+            app.attributeTable.selectFeature(features[0].id);
+          }
+        }
+      },
+      onDelete: (features) => {
+        if (!features || features.length === 0) return;
+        if (features.length === 1) {
+          app.deleteFeature(features[0].id);
+        } else {
+          const ids = features.map(f => f.id);
+          app.layerPanel?.onBulkDelete?.(ids);
+        }
+      },
+      onClear: () => {
+        if (app.mapEngine) app.mapEngine.clearSelection();
+        if (app.layerPanel) {
+          app.layerPanel.selectedFeatureIds.clear();
+          app.layerPanel.selectedFeature = null;
+          app.layerPanel.updateContent();
+        }
+      }
+    });
+
+    ShortcutsController.bindGlobalShortcuts(app);
+  }
+}
