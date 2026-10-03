@@ -8,6 +8,9 @@ define('CONECTEMAPAS_API', true);
 
 // 1. Headers e Tratamento de CORS
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
@@ -437,17 +440,19 @@ switch ($action) {
 
             // 2. Insere ou Atualiza feições modificadas (marca deleted = 0)
             if (!empty($toUpsert)) {
+                $deletedSet = !empty($toDelete) ? array_flip($toDelete) : [];
+
                 $stmtUpsert = $pdo->prepare("
                     INSERT INTO cm_features (id, project_id, layer_id, name, geom_type, coordinates, properties, style, color, created_by, deleted, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())
                     ON DUPLICATE KEY UPDATE
-                        layer_id = VALUES(layer_id),
-                        name = VALUES(name),
-                        geom_type = VALUES(geom_type),
-                        coordinates = VALUES(coordinates),
-                        properties = VALUES(properties),
-                        style = VALUES(style),
-                        color = VALUES(color),
+                        layer_id = ?,
+                        name = ?,
+                        geom_type = ?,
+                        coordinates = ?,
+                        properties = ?,
+                        style = ?,
+                        color = ?,
                         deleted = 0,
                         updated_at = NOW()
                 ");
@@ -456,6 +461,9 @@ switch ($action) {
                 $upsertErrors = [];
                 foreach ($toUpsert as $feat) {
                     if (empty($feat['id'])) continue;
+                    // Salvaguarda Anti-Zumbi: Não ressuscita feição excluída no mesmo batch
+                    if (isset($deletedSet[$feat['id']])) continue;
+
                     $props = !empty($feat['properties']) ? (is_array($feat['properties']) ? $feat['properties'] : json_decode($feat['properties'], true)) : [];
                     if (!empty($feat['radius'])) {
                         $props['radius'] = (float)$feat['radius'];
@@ -464,17 +472,35 @@ switch ($action) {
                         $props['visible'] = (bool)$feat['visible'];
                     }
 
+                    $featLayerId   = $feat['layerId'] ?? 'layer-default';
+                    $featName      = $feat['name'] ?? 'Feição';
+                    $featType      = $feat['type'] ?? 'Polygon';
+                    $coordsJson    = json_encode($feat['coordinates'] ?? [], JSON_UNESCAPED_UNICODE);
+                    $propsJson     = json_encode($props, JSON_UNESCAPED_UNICODE);
+                    $styleJson     = json_encode($feat['style'] ?? [], JSON_UNESCAPED_UNICODE);
+                    $featColor     = $feat['color'] ?? '#00E08A';
+                    $featCreatedBy = $feat['createdBy'] ?? 'Operador';
+
                     $resEx = $stmtUpsert->execute([
+                        // INSERT params
                         $feat['id'],
                         $projectId,
-                        $feat['layerId'] ?? 'layer-default',
-                        $feat['name'] ?? 'Feição',
-                        $feat['type'] ?? 'Polygon',
-                        json_encode($feat['coordinates'] ?? [], JSON_UNESCAPED_UNICODE),
-                        json_encode($props, JSON_UNESCAPED_UNICODE),
-                        json_encode($feat['style'] ?? [], JSON_UNESCAPED_UNICODE),
-                        $feat['color'] ?? '#00E08A',
-                        $feat['createdBy'] ?? 'Operador'
+                        $featLayerId,
+                        $featName,
+                        $featType,
+                        $coordsJson,
+                        $propsJson,
+                        $styleJson,
+                        $featColor,
+                        $featCreatedBy,
+                        // ON DUPLICATE KEY UPDATE params
+                        $featLayerId,
+                        $featName,
+                        $featType,
+                        $coordsJson,
+                        $propsJson,
+                        $styleJson,
+                        $featColor
                     ]);
 
                     if ($resEx) {

@@ -20,7 +20,7 @@ async function testFullRealtimeCycle() {
   console.log('save_metadata status:', resMeta.status, await resMeta.json());
 
   // 2. Verifica se a camada foi realmente salva com o novo nome
-  const resLoad1 = await fetch(`${url}?action=load&projectId=projeto_padrao`);
+  const resLoad1 = await fetch(`${url}?action=load&projectId=projeto_padrao&_nocache=${Date.now()}`);
   const data1 = await resLoad1.json();
   const topoLayer = data1.layers.find(l => l.id === 'layer-topografia');
   console.log('Nome da camada retornado pelo load:', topoLayer?.name);
@@ -75,7 +75,7 @@ async function testFullRealtimeCycle() {
   });
 
   // 5. Verifica se a transferência persistiu
-  const resLoad2 = await fetch(`${url}?action=load&projectId=projeto_padrao`);
+  const resLoad2 = await fetch(`${url}?action=load&projectId=projeto_padrao&_nocache=${Date.now()}`);
   const data2 = await resLoad2.json();
   const movedFeat = data2.features.find(f => f.id === testFeatId);
   console.log('Feição após transferência:', movedFeat ? { id: movedFeat.id, layerId: movedFeat.layerId, name: movedFeat.name } : 'Não encontrada!');
@@ -97,7 +97,7 @@ async function testFullRealtimeCycle() {
   });
 
   // 7. Verifica se a feição sumiu no load
-  const resLoad3 = await fetch(`${url}?action=load&projectId=projeto_padrao`);
+  const resLoad3 = await fetch(`${url}?action=load&projectId=projeto_padrao&_nocache=${Date.now()}`);
   const data3 = await resLoad3.json();
   const deletedFeat = data3.features.find(f => f.id === testFeatId);
   console.log('Feição encontrada após exclusão?', deletedFeat ? 'SIM (ERRO: RESSUSCITOU)' : 'NÃO (corretamente excluída)');

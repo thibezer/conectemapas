@@ -1314,6 +1314,141 @@ export class FeatureRenderer {
     return segments;
   }
 
+  /**
+   * Atualiza visualmente o destaque (highlight) das feições selecionadas instantaneamente
+   * sem precisar redesenhar o mapa ou disparar eventos de zoom.
+   * @param {Set<string>|Array<string>} prevSelectedIds
+   * @param {Set<string>|Array<string>} newSelectedIds
+   */
+  refreshSelectionVisuals(prevSelectedIds, newSelectedIds) {
+    const prevSet = prevSelectedIds instanceof Set ? prevSelectedIds : new Set(prevSelectedIds || []);
+    const newSet = newSelectedIds instanceof Set ? newSelectedIds : new Set(newSelectedIds || []);
+
+    // Identifica todos os IDs cujo estado de seleção mudou
+    const changedIds = new Set();
+    for (const id of prevSet) {
+      if (!newSet.has(id)) changedIds.add(id);
+    }
+    for (const id of newSet) {
+      if (!prevSet.has(id)) changedIds.add(id);
+    }
+
+    if (changedIds.size === 0) return;
+
+    const bounds = this.map ? this.map.getBounds() : null;
+    let pointClustersNeedRedraw = false;
+
+    // Função interna para aplicar estilo em uma feição
+    const applyVisual = (featId) => {
+      const feat = this.featureMap.get(featId) || (this.allFeatures || []).find(f => f.id === featId);
+      if (!feat) return;
+
+      const layer = this.engine?.renderedFeatures?.get(featId);
+      const isSelected = newSet.has(featId);
+
+      const layerConfig = this.layerMap.get(feat.layerId) || { color: '#00E08A', opacity: 1, visible: true };
+      const defaultColor = feat.color || layerConfig.color || '#00E08A';
+      const layerOpacity = layerConfig.opacity !== undefined ? Number(layerConfig.opacity) : 1;
+      const rawFillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
+      const combinedFillOpacity = Math.max(0, Math.min(1, rawFillOpacity * layerOpacity));
+      const strokeWidth = feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : 2.5;
+
+      if (layer) {
+        if (typeof layer.setStyle === 'function') {
+          // L.Path (Polygon, Polyline, Circle, CircleMarker)
+          const targetColor = isSelected ? '#38bdf8' : (feat.style?.strokeColor || defaultColor);
+          const targetWidth = isSelected ? Math.max(3.8, strokeWidth + 1.8) : strokeWidth;
+          const targetFillOpacity = (isSelected && (feat.type === 'Polygon' || feat.type === 'Circle'))
+            ? Math.min(1, combinedFillOpacity + 0.18)
+            : combinedFillOpacity;
+          const targetFillColor = feat.style?.fillColor || defaultColor;
+
+          layer.setStyle({
+            color: targetColor,
+            weight: targetWidth,
+            fillColor: targetFillColor,
+            fillOpacity: targetFillOpacity
+          });
+
+          if (isSelected && typeof layer.bringToFront === 'function') {
+            layer.bringToFront();
+          }
+        } else if (layer instanceof L.Marker) {
+          // L.Marker (DOM SVG)
+          const el = layer.getElement ? layer.getElement() : layer._icon;
+          if (el) {
+            if (isSelected) {
+              el.classList.add('cm-marker-selected');
+              el.style.filter = 'drop-shadow(0 0 6px #38bdf8)';
+            } else {
+              el.classList.remove('cm-marker-selected');
+              el.style.filter = '';
+            }
+          }
+        }
+      }
+
+      if (feat.type === 'Point') {
+        pointClustersNeedRedraw = true;
+      }
+    };
+
+    // Salvaguarda de Performance para seleções massivas (>150 feições)
+    const changedArr = Array.from(changedIds);
+    if (changedArr.length > 150) {
+      const insideBounds = [];
+      const outsideBounds = [];
+
+      for (const featId of changedArr) {
+        const feat = this.featureMap.get(featId);
+        if (feat && bounds && this._isFeatureInBounds(feat, bounds)) {
+          insideBounds.push(featId);
+        } else {
+          outsideBounds.push(featId);
+        }
+      }
+
+      for (const id of insideBounds) {
+        applyVisual(id);
+      }
+
+      if (outsideBounds.length > 0) {
+        let i = 0;
+        const chunk = 100;
+        const processChunk = () => {
+          const limit = Math.min(i + chunk, outsideBounds.length);
+          for (; i < limit; i++) {
+            applyVisual(outsideBounds[i]);
+          }
+          if (i < outsideBounds.length) {
+            requestAnimationFrame(processChunk);
+          } else if (pointClustersNeedRedraw && this.clusterEngine) {
+            this.clusterEngine.redraw();
+          }
+        };
+        requestAnimationFrame(processChunk);
+      }
+    } else {
+      for (const id of changedArr) {
+        applyVisual(id);
+      }
+      if (pointClustersNeedRedraw && this.clusterEngine) {
+        this.clusterEngine.redraw();
+      }
+    }
+  }
+
+  /**
+   * Helper para checagem rápida de intersecção com a viewport
+   */
+  _isFeatureInBounds(feat, bounds) {
+    if (!feat || !bounds) return true;
+    if (feat.type === 'Point' && Array.isArray(feat.coordinates) && feat.coordinates.length >= 2) {
+      return bounds.contains(L.latLng(feat.coordinates[0], feat.coordinates[1]));
+    }
+    return true;
+  }
+
   destroy() {
     if (this._cullingRaf) {
       cancelAnimationFrame(this._cullingRaf);
