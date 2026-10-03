@@ -148,9 +148,47 @@ export class ShortcutsController {
           duracao: 1800
         });
       }
-      // Navegação Master-Detail Workbench (J / K / Setas)
+      // Busca na Tabela de Atributos: Ctrl+K / Cmd+K
+      else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (app.attributeTable) {
+          if (app.attributeTable.isCollapsed) {
+            app.attributeTable.toggleCollapse();
+          }
+          const searchInput = document.getElementById('cm-table-search-input');
+          if (searchInput) {
+            setTimeout(() => {
+              if (searchInput.shadowRoot) {
+                const inner = searchInput.shadowRoot.querySelector('input');
+                if (inner) inner.focus();
+              } else {
+                searchInput.focus();
+              }
+            }, 60);
+          }
+        }
+      }
+      // Atalhos Simples de Ferramentas CAD e Navegação (Sem modificadores)
       else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-        if (e.key === 'j' || e.key === 'ArrowDown') {
+        const key = e.key.toLowerCase();
+        const toolMap = {
+          v: 'select',
+          q: 'pen-select',
+          p: 'point',
+          l: 'line',
+          a: 'polygon',
+          c: 'circle',
+          r: 'rectangle',
+          m: 'measure-line',
+          t: 'text'
+        };
+
+        if (toolMap[key]) {
+          e.preventDefault();
+          if (typeof app.setDrawingTool === 'function') {
+            app.setDrawingTool(toolMap[key]);
+          }
+        } else if (e.key === 'j' || e.key === 'ArrowDown') {
           e.preventDefault();
           this.navigateFeature(app, 1);
         } else if (e.key === 'k' || e.key === 'ArrowUp') {

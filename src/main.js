@@ -941,6 +941,22 @@ class ConecteMapasApp {
     }
   }
 
+  setDrawingTool(tool) {
+    if (!this.mapEngine) return;
+    // Salvaguarda GEMINI.md: limpa buffers antes de trocar de ferramenta
+    this.mapEngine.resetDrawingState();
+    this.mapEngine.setTool(tool);
+    if (this.drawingToolbar) {
+      this.drawingToolbar.setActiveTool(tool);
+    }
+    UIToast.notificar({
+      tipo: 'informativo',
+      titulo: 'Ferramenta Ativa',
+      mensagem: `Modo: ${this.getToolName(tool)}`,
+      duracao: 1500
+    });
+  }
+
   getToolName(tool) {
     const names = {
       select: 'Navegar e Selecionar (V)',
@@ -949,8 +965,10 @@ class ConecteMapasApp {
       line: 'Linha / Rota (L)',
       polygon: 'Polígono / Área (A)',
       circle: 'Buffer Circular (C)',
+      rectangle: 'Retângulo / BBox (R)',
       text: 'Texto / Rótulo no Mapa (T)',
-      measure: 'Régua de Medição (M)'
+      measure: 'Régua de Medição (M)',
+      'measure-line': 'Régua de Medição (M)'
     };
     return names[tool] || tool;
   }
