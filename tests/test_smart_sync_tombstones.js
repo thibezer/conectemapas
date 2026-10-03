@@ -1,4 +1,13 @@
-// Mock mínimo para Node.js
+const createMockEl = () => ({
+  setAttribute: () => {},
+  getAttribute: () => null,
+  style: {},
+  classList: { add: () => {}, remove: () => {} },
+  textContent: '',
+  addEventListener: () => {},
+  removeEventListener: () => {}
+});
+
 globalThis.window = {
   requestAnimationFrame: (cb) => setTimeout(cb, 0),
   location: { hostname: 'localhost' },
@@ -8,10 +17,14 @@ globalThis.window = {
   removeEventListener: () => {}
 };
 globalThis.document = {
-  createElement: () => ({ setAttribute: () => {}, style: {} }),
+  createElement: createMockEl,
   documentElement: { style: {} },
+  body: { appendChild: () => {} },
   addEventListener: () => {},
-  removeEventListener: () => {}
+  removeEventListener: () => {},
+  getElementById: () => createMockEl(),
+  querySelector: () => createMockEl(),
+  querySelectorAll: () => []
 };
 
 globalThis.HTMLElement = class {};
