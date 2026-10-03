@@ -63,11 +63,27 @@ O ConecteMapas está 100% otimizado para produção web com:
 
 ---
 
-### Método C: Deploy Contínuo com Git (Se o seu plano suportar Git no hPanel)
+### Método C: Deploy Contínuo com Git (Node.js / Vite no hPanel)
 
-1. No hPanel, vá em **Avançado** ➔ **Git**.
-2. Conecte o repositório do GitHub da branch de produção.
-3. Configure o deploy automático para a pasta de destino.
+1. No hPanel da Hostinger, conecte o repositório GitHub (`conectemapas`) na branch `main`.
+2. Nas configurações de **Node.js Web App / Build Settings**:
+   - **Framework / App Type**: `vite`
+   - **Versão do Node.js**: `24` (ou `20`)
+   - **Diretório Raiz (Root Directory)**: deixar em branco (ou `.`)
+   - **Diretório de Saída (Output Directory)**: `dist`
+   - **Script de Build**: `build` (executa `vite build`)
+   - **Arquivo de Entrada (Entry File)**: **DEIXAR EM BRANCO / NULL** (⚠️ Não defina `index.js`, pois o Vite é um SPA estático. Se preenchido, a Hostinger tenta rodar como servidor Node e não copia os arquivos de `dist/` para a `public_html/`).
+3. Com essas configurações, a cada `git push origin main` a Hostinger compila o projeto e sincroniza automaticamente `index.html`, `api.php`, `.htaccess` e `assets/` para a raiz `public_html/`.
+
+---
+
+### Método D: Deploy Direto via Linha de Comando (MCP / Script)
+
+Para efetuar deploy pontual instantâneo sem passar pelo Git:
+```bash
+node pack.js
+```
+O arquivo gerado `dist_YYYYMMDD_HHMMSS.zip` pode ser publicado diretamente via ferramenta MCP `hosting_deploy-static-website` ou enviado pelo Gerenciador de Arquivos.
 
 ---
 
@@ -87,3 +103,27 @@ Após subir os arquivos, abra o site no seu navegador e valide:
 Para obter a máxima velocidade de resposta no Brasil:
 1. **Ativar LiteSpeed Cache**: No hPanel, vá em **Sites** ➔ selecione seu domínio e certifique-se de que o recurso **LiteSpeed** ou **Cache Automático** esteja ativado.
 2. **Versão do SSL**: Verifique se o SSL gratuito da Let's Encrypt / Hostinger está ativo para o seu domínio.
+
+---
+
+## 5. 🛡️ Prevenção do Erro 403 Forbidden e Diagnóstico
+
+Se em qualquer momento o site ou deploy retornar `403 Forbidden`, consulte este checklist:
+
+1. **`entry_file` preenchido no build Node.js**:
+   - No hPanel ou via API, o `entry_file` deve ser sempre **null / vazio**.
+   - Se estiver com `index.js`, o sincronizador da Hostinger não copia `dist/` para `public_html/`. O servidor fica sem `index.html` e o LiteSpeed dispara 403.
+2. **`DirectoryIndex` ausente no `.htaccess`**:
+   - O arquivo `public/.htaccess` deve sempre conter:
+     ```apache
+     DirectoryIndex index.html index.php
+     Options -Indexes +FollowSymLinks
+     ```
+3. **Sintaxe do Apache 2.4 / LiteSpeed**:
+   - Proteger arquivos confidenciais usando `<IfModule mod_authz_core.c> Require all denied </IfModule>`, nunca apenas `Order allow,deny`.
+4. **Nunca colocar arquivos compilados em `public/`**:
+   - A pasta `public/` deve conter apenas `api.php`, `.htaccess`, `manifest.webmanifest`, `favicon.svg` e `db_config.example.php`.
+   - Arquivos `index.html` ou `assets/` dentro de `public/` colidem com o Vite e geram hashes quebrados.
+5. **Fallback do Banco em Nuvem**:
+   - `api.php` possui fallback automático para variáveis de ambiente e banco padrão da Hostinger caso o arquivo local `db_config.php` (ignorado no Git) não esteja presente no servidor.
+

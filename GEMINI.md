@@ -63,3 +63,21 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **`save_all` não poda por padrão**: só marca ausentes como excluídas com `prune: true`, e respeita `baseRev` para não sobrescrever edições de outros operadores.
 - **Presença**: o pull (≈1 s, aba visível) envia nome/cor/cursor e recebe os demais operadores ativos (`cm_presence`). Nomes remotos são sempre escapados antes de ir ao DOM.
 - **Esquema**: ao alterar o DDL, incrementar `CM_SCHEMA_VERSION` em `api.php` (o marcador `.cm_schema_version` evita DDL a cada requisição).
+
+---
+
+## 6. Deploy e Servidor de Produção (Hostinger LiteSpeed / Node.js & Vite)
+- **`entry_file: null` e `app_type: "vite"` nas configurações de build Node.js**:
+  - Aplicações Vite são frontends SPA estáticos. Nas configurações de build do Node.js na Hostinger, o `entry_file` **NUNCA** deve ser configurado (deve ser mantido `null` / `none`).
+  - Se `entry_file` for preenchido (ex: `index.js`), a Hostinger assume tratar-se de um servidor Node contínuo (Express/Nest) e o sincronizador interno não copia os arquivos compilados de `dist/` para a `public_html/`, resultando em `403 Forbidden` por ausência de `index.html`.
+- **Configurações Mandatórias do `.htaccess`**:
+  - `DirectoryIndex index.html index.php` deve sempre constar no início do `.htaccess` para que o LiteSpeed sirva o SPA na raiz sem tentar listagem de diretório.
+  - `Options -Indexes +FollowSymLinks` para segurança e resolução correta de caminhos.
+  - Proteção de arquivos (`db_config.php`, `.env`, `.cm_schema_version`) deve usar sintaxe Apache 2.4 / LiteSpeed (`<IfModule mod_authz_core.c> Require all denied </IfModule>`), evitando diretivas 2.2 isoladas (`Order allow,deny`) que causam comportamentos anômalos.
+  - Regra SPA Rewrite: `RewriteRule ^ index.html [L]`.
+- **Higiene Rígida da Pasta `public/`**:
+  - O Vite copia integralmente o conteúdo da pasta `public/` para a raiz de `dist/`.
+  - **NUNCA** versionar `public/index.html` ou pastas `public/assets/`. O entrypoint do Vite é exclusivamente o `index.html` da raiz do repositório.
+- **Resiliência do Banco de Dados no Deploy (`api.php`)**:
+  - `db_config.php` é ignorado no Git (`.gitignore`). O backend `api.php` deve conter fallback automático para variáveis de ambiente e parâmetros padrão do banco MySQL da Hostinger, impedindo que novas publicações quebrem o backend.
+
