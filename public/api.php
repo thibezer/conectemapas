@@ -32,13 +32,25 @@ function getDatabaseConnection() {
     }
 
     $configFile = __DIR__ . '/db_config.php';
-    if (!file_exists($configFile)) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Arquivo de configuração db_config.php não localizado.']);
-        exit;
+    if (file_exists($configFile)) {
+        $config = require $configFile;
+    } else {
+        $config = [
+            'driver'   => getenv('DB_DRIVER')   ?: 'mysql',
+            'host'     => getenv('DB_HOST')     ?: 'localhost',
+            'port'     => (int)(getenv('DB_PORT') ?: 3306),
+            'database' => getenv('DB_NAME')     ?: 'u941736878_conectemapas',
+            'username' => getenv('DB_USER')     ?: 'u941736878_conectemapas',
+            'password' => getenv('DB_PASS')     ?: 'Conecte#Mapas2026$Db',
+            'charset'  => 'utf8mb4',
+            'options'  => [
+                PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES   => false,
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci"
+            ]
+        ];
     }
-
-    $config = require $configFile;
     $dsn = sprintf(
         '%s:host=%s;port=%d;dbname=%s;charset=%s',
         $config['driver'],
