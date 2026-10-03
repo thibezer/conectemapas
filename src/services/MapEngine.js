@@ -7,6 +7,8 @@ import L from 'leaflet';
 import { DrawingEngine } from './MapEngine/DrawingEngine.js';
 import { VertexEditor } from './MapEngine/VertexEditor.js';
 import { FeatureRenderer } from './MapEngine/FeatureRenderer.js';
+import { FeatureHitTester } from './MapEngine/FeatureHitTester.js';
+import { FeaturePopupBuilder } from './MapEngine/FeaturePopupBuilder.js';
 import { SpatialIndex } from './SpatialIndex.js';
 import { SpatialAlgorithms } from './SpatialAlgorithms.js';
 import { GeometryVersionManager } from './GeometryVersionManager.js';
@@ -36,6 +38,7 @@ export class MapEngine {
     this.onToolChange = options.onToolChange || (() => {});
     this.onContextMenu = options.onContextMenu || (() => {});
     this.onTextPromptRequested = options.onTextPromptRequested || (() => {});
+    this.onFeatureAction = options.onFeatureAction || (() => {});
 
     this.selectedFeatureId = null;
     this.selectedFeatureIds = new Set();
@@ -49,6 +52,9 @@ export class MapEngine {
     this.drawingEngine = new DrawingEngine(this);
     this.vertexEditor = new VertexEditor(this);
     this.featureRenderer = new FeatureRenderer(this);
+    this.hitTester = new FeatureHitTester(this);
+    this._featurePopup = null;
+    this._popupFeatureId = null;
     this.bindEvents();
   }
 
@@ -332,6 +338,7 @@ export class MapEngine {
           this._mouseMoveRafId = null;
           if (latestMouseMoveEvent) {
             this.onCursorMove(latestMouseMoveEvent.latlng);
+            this._updateHoverCursor(latestMouseMoveEvent.latlng);
             // Aciona o DrawingEngine se houver uma ferramenta CAD ativa
             if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
               this.drawingEngine.handleMouseMove(latestMouseMoveEvent);
@@ -349,8 +356,14 @@ export class MapEngine {
           this._justBoxSelected = false;
           return;
         }
-        // Se clicou em área vazia do mapa (não em uma feição e não foi drag de seleção)
-        if (!e.originalEvent || !e.originalEvent._cmFeatureClicked) {
+        // Marcadores DOM já trataram o próprio clique
+        if (e.originalEvent && e.originalEvent._cmFeatureClicked) return;
+
+        // Hit-test unificado sobre todas as camadas visíveis (os canvases não recebem eventos)
+        const hit = this.hitTester.pickForClick(e.latlng);
+        if (hit) {
+          this.handleFeatureClick(hit, e.originalEvent, e.latlng);
+        } else {
           this.clearSelection();
         }
       }
@@ -381,7 +394,7 @@ export class MapEngine {
       }
 
       // Modo Select / Normal: Aciona Menu de Contexto CAD/GIS
-      const feature = e.originalEvent?._cmFeatureRightClicked || null;
+      const feature = e.originalEvent?._cmFeatureRightClicked || this.hitTester.pickTop(e.latlng) || null;
       if (this.onContextMenu) {
         this.onContextMenu({
           latlng: e.latlng,
@@ -474,9 +487,12 @@ export class MapEngine {
   }
   updateFeature(feat, layers) {
     if (feat) this.spatialIndex.update(feat);
-    return this.featureRenderer.updateFeature(feat, layers || this.featureRenderer.allLayers);
+    const result = this.featureRenderer.updateFeature(feat, layers || this.featureRenderer.allLayers);
+    this.refreshFeaturePopup(feat);
+    return result;
   }
   removeFeature(featId) {
+    if (featId === this._popupFeatureId) this.closeFeaturePopup();
     this.spatialIndex.remove(featId);
     this.featureRenderer.removeFeature(featId);
   }
@@ -535,6 +551,7 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
     }
+    this._syncPopupWithSelection();
 
     if (this.onFeaturesSelected) {
       const selectedList = this.featureRenderer.allFeatures.filter(f => this.selectedFeatureIds.has(f.id));
@@ -550,6 +567,7 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
     }
+    this._syncPopupWithSelection();
     const selectedList = this.getSelectedFeatures();
     if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
     if (this.onFeatureSelected) this.onFeatureSelected(selectedList[0] || null);
@@ -565,6 +583,7 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
     }
+    this._syncPopupWithSelection();
     const selectedList = this.getSelectedFeatures();
     if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
     if (this.onFeatureSelected) this.onFeatureSelected(selectedList[0] || null);
@@ -589,6 +608,7 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, this.selectedFeatureIds);
     }
+    this._syncPopupWithSelection();
     const selectedList = this.getSelectedFeatures();
     if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
     if (this.onFeatureSelected) this.onFeatureSelected(selectedList[0] || null);
@@ -603,8 +623,109 @@ export class MapEngine {
     if (this.featureRenderer) {
       this.featureRenderer.refreshSelectionVisuals(prevSelectedIds, new Set());
     }
+    this.closeFeaturePopup();
     if (this.onFeaturesSelected) this.onFeaturesSelected([]);
     if (this.onFeatureSelected) this.onFeatureSelected(null);
+  }
+
+  /**
+   * Clique simples em uma feição (via hit-test ou marcador DOM).
+   * Shift/Ctrl alternam a feição na seleção múltipla; clique simples seleciona e abre o popup.
+   */
+  handleFeatureClick(feat, originalEvent = null, latlng = null) {
+    if (!feat) return;
+    const isMulti = !!(originalEvent && (originalEvent.shiftKey || originalEvent.ctrlKey || originalEvent.metaKey));
+    if (isMulti) {
+      this.toggleFeatureSelection(feat.id);
+      return;
+    }
+    this.selectFeature(feat.id);
+    this.openFeaturePopup(feat, latlng);
+  }
+
+  // --- Popup informativo da feição (instância única, aberta sob demanda) ---
+  openFeaturePopup(feat, latlng = null) {
+    if (!feat || !this.map) return;
+    const layerConfig = this.featureRenderer?.layerMap?.get(feat.layerId) || null;
+    const anchor = (feat.type === 'Point' || feat.type === 'Text' || feat.type === 'Circle' || !latlng)
+      ? this._featureAnchor(feat, latlng)
+      : latlng;
+    if (!anchor) return;
+
+    if (!this._featurePopup) {
+      this._featurePopup = L.popup({
+        className: 'cm-feature-popup',
+        maxWidth: 340,
+        minWidth: 260,
+        // Topo: barra flutuante de seleção (HUD); base: barra da tabela de atributos
+        autoPanPaddingTopLeft: [24, 76],
+        autoPanPaddingBottomRight: [24, 40],
+        closeButton: true
+      });
+      this._featurePopup.on('remove', () => { this._popupFeatureId = null; });
+    }
+
+    this._popupFeatureId = feat.id;
+    this._featurePopup
+      .setLatLng(anchor)
+      .setContent(FeaturePopupBuilder.createFeaturePopupHtml(feat, layerConfig))
+      .openOn(this.map);
+    this._bindPopupActions(feat.id);
+  }
+
+  closeFeaturePopup() {
+    if (this._featurePopup && this.map && this.map.hasLayer(this._featurePopup)) {
+      this.map.closePopup(this._featurePopup);
+    }
+    this._popupFeatureId = null;
+  }
+
+  /** Atualiza o conteúdo do popup aberto quando a feição exibida muda (edição, sync remoto). */
+  refreshFeaturePopup(feat) {
+    if (!feat || feat.id !== this._popupFeatureId || !this._featurePopup) return;
+    const layerConfig = this.featureRenderer?.layerMap?.get(feat.layerId) || null;
+    this._featurePopup.setContent(FeaturePopupBuilder.createFeaturePopupHtml(feat, layerConfig));
+    this._bindPopupActions(feat.id);
+  }
+
+  _syncPopupWithSelection() {
+    if (!this._popupFeatureId) return;
+    const ids = this.selectedFeatureIds;
+    if (!ids || ids.size !== 1 || !ids.has(this._popupFeatureId)) {
+      this.closeFeaturePopup();
+    }
+  }
+
+  _featureAnchor(feat, fallback) {
+    const leafLayer = this.renderedFeatures.get(feat.id);
+    if (leafLayer && typeof leafLayer.getLatLng === 'function') return leafLayer.getLatLng();
+    if (leafLayer && typeof leafLayer.getBounds === 'function') {
+      const b = leafLayer.getBounds();
+      if (b && b.isValid()) return b.getCenter();
+    }
+    return fallback;
+  }
+
+  _bindPopupActions(featureId) {
+    const el = this._featurePopup && this._featurePopup.getElement();
+    if (!el || el._cmActionsBound) return;
+    el._cmActionsBound = true;
+    L.DomEvent.disableClickPropagation(el);
+    el.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('[data-popup-action]');
+      if (!btn) return;
+      const id = this._popupFeatureId;
+      const feat = id ? (this.featureRenderer?.featureMap?.get(id) || null) : null;
+      if (feat) this.onFeatureAction(btn.getAttribute('data-popup-action'), feat);
+    });
+  }
+
+  _updateHoverCursor(latlng) {
+    const container = this.map ? this.map.getContainer() : null;
+    if (!container) return;
+    const canHover = this.activeTool === 'select' && !this._isBoxSelecting && !this._isMiddlePanning;
+    const over = canHover && !!this.hitTester.pickTop(latlng);
+    container.classList.toggle('cm-feature-hover', over);
   }
 
   getSelectedFeatures() {

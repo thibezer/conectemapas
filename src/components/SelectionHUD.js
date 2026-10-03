@@ -4,6 +4,7 @@
    ========================================================================== */
 
 import './SelectionHUD.css';
+import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
 export class SelectionHUD {
   /**
@@ -62,7 +63,9 @@ export class SelectionHUD {
       const feat = this.selectedFeatures[0];
       const layer = layers.find(l => l.id === feat.layerId) || { name: 'Camada', color: '#00E08A' };
       const featName = feat.name || 'Feição Sem Nome';
-      const category = feat.category || feat.type || 'Elemento';
+      const category = feat.category && feat.category !== feat.type
+        ? feat.category
+        : FeatureGeometryUtils.getTypeLabel(feat.type);
 
       this.element.innerHTML = `
         <div class="cm-sel-info">

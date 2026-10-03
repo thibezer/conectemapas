@@ -10,6 +10,36 @@ export class FeatureGeometryUtils {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
   }
 
+  static getTypeLabel(type) {
+    const labels = {
+      Polygon: 'Polígono',
+      LineString: 'Linha',
+      Point: 'Ponto',
+      Circle: 'Círculo',
+      Text: 'Texto'
+    };
+    return labels[type] || type || 'Feição';
+  }
+
+  /**
+   * Perímetro de polígono somando o fechamento de cada anel (anel aberto ou fechado).
+   */
+  static calculatePolygonPerimeter(coords) {
+    if (!Array.isArray(coords) || coords.length === 0) return 0;
+    const ringLength = (ring) => {
+      if (!Array.isArray(ring) || ring.length < 2) return 0;
+      let total = this.calculateSinglePolylineLength(ring);
+      const first = ring[0];
+      const last = ring[ring.length - 1];
+      if (first[0] !== last[0] || first[1] !== last[1]) total += this.calculateDistance(last, first);
+      return total;
+    };
+    // Anel simples [[lat,lng],...] | anéis [[[lat,lng],...],...] | multipolígono (um nível a mais)
+    if (!Array.isArray(coords[0][0])) return ringLength(coords);
+    if (!Array.isArray(coords[0][0][0])) return ringLength(coords[0]);
+    return coords.reduce((sum, poly) => sum + ringLength(poly[0]), 0);
+  }
+
   static normalizeCoordinates(feat) {
     let coords = feat.coordinates;
     if ((feat.type === 'Point' || feat.type === 'Text') && coords && coords.lat !== undefined) {

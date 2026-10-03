@@ -295,6 +295,8 @@ export class FeatureRenderer {
         existingLayer._cmLayerId = feat.layerId;
         existingLayer._cmFeature = feat;
 
+        // Só dispara para marcadores DOM (ícones SVG e textos): os paths em canvas são
+        // resolvidos pelo FeatureHitTester no clique do mapa.
         existingLayer.on('click', (e) => {
           if (this.engine._justBoxSelected) return;
           if (this.engine.activeTool !== 'select') {
@@ -302,16 +304,12 @@ export class FeatureRenderer {
             return;
           }
           if (e && e.originalEvent) e.originalEvent._cmFeatureClicked = true;
-          const isMulti = e && e.originalEvent && (e.originalEvent.shiftKey || e.originalEvent.ctrlKey || e.originalEvent.metaKey);
-          if (isMulti) {
-            this.engine.toggleFeatureSelection(feat.id);
-          } else {
-            this.engine.selectFeature(feat.id);
-          }
+          const current = existingLayer._cmFeature || feat;
+          this.engine.handleFeatureClick(current, e && e.originalEvent, e && e.latlng);
         });
 
         existingLayer.on('contextmenu', (e) => {
-          if (e && e.originalEvent) e.originalEvent._cmFeatureRightClicked = feat;
+          if (e && e.originalEvent) e.originalEvent._cmFeatureRightClicked = existingLayer._cmFeature || feat;
         });
 
         if (existingLayer._path) existingLayer._path.classList.toggle('cm-feature-selected', isSelected);

@@ -51,6 +51,31 @@ export class AppComponentsBuilder {
           app.contextMenu.open(data);
         }
       },
+      // Ações dos botões do popup de feição (mesmo comportamento do HUD e do menu de contexto)
+      onFeatureAction: (action, feature) => {
+        if (!feature || !app.mapEngine) return;
+        if (action === 'inspect') {
+          if (app.selectionHUD) app.selectionHUD.onInspect(feature);
+        } else if (action === 'zoom') {
+          app.mapEngine.zoomToFeature(feature.id);
+        } else if (action === 'edit-vertex') {
+          app.mapEngine.closeFeaturePopup();
+          app.mapEngine.startVertexEditing(feature, (updated) => {
+            app.saveFeature(updated);
+          });
+        } else if (action === 'copy-coords') {
+          const c = Array.isArray(feature.coordinates) ? feature.coordinates : [feature.coordinates?.lat, feature.coordinates?.lng];
+          const text = `${Number(c[0]).toFixed(6)}, ${Number(c[1]).toFixed(6)}`;
+          const done = () => UIToast.notificar({ tipo: 'sucesso', titulo: 'Coordenadas Copiadas', mensagem: text, duracao: 2000 });
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done).catch(() => {
+              UIToast.notificar({ tipo: 'alerta', titulo: 'Não foi possível copiar', mensagem: text, duracao: 4000 });
+            });
+          } else {
+            UIToast.notificar({ tipo: 'informativo', titulo: 'Coordenadas', mensagem: text, duracao: 4000 });
+          }
+        }
+      },
       onFeatureSelected: (feature) => {
         app.updateSelectionState(feature ? [feature] : []);
       },

@@ -217,18 +217,26 @@ export class FeatureViewportController {
           for (; i < limit; i++) applyVisual(outsideBounds[i]);
           if (i < outsideBounds.length) {
             requestAnimationFrame(processChunk);
-          } else if (pointClustersNeedRedraw && renderer.clusterEngine) {
-            renderer.clusterEngine.redraw();
+          } else if (pointClustersNeedRedraw) {
+            this._redrawClusters(renderer);
           }
         };
         requestAnimationFrame(processChunk);
       }
     } else {
       for (const id of changedArr) applyVisual(id);
-      if (pointClustersNeedRedraw && renderer.clusterEngine) {
-        renderer.clusterEngine.redraw();
+      if (pointClustersNeedRedraw) {
+        this._redrawClusters(renderer);
       }
     }
+  }
+
+  // PointClusterEngine não possui redraw(): os clusters são recalculados pelo culling.
+  // Só reprocessa quando há clusters na tela (pontos avulsos já foram atualizados acima).
+  static _redrawClusters(renderer) {
+    if (!renderer.renderedClusters || renderer.renderedClusters.size === 0) return;
+    renderer.invalidateClusterCache();
+    renderer.updateViewportCulling(true);
   }
 
   static _isFeatureInBounds(feat, bounds) {

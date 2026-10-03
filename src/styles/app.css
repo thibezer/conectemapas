@@ -128,43 +128,215 @@
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
 
-/* Custom Popup Design */
+/* Popup de Feição (Identificar) */
+.leaflet-popup.cm-feature-popup .leaflet-popup-content-wrapper {
+  background: var(--cm-glass-bg) !important;
+  backdrop-filter: var(--cm-glass-blur);
+  -webkit-backdrop-filter: var(--cm-glass-blur);
+}
+.leaflet-popup.cm-feature-popup .leaflet-popup-tip {
+  background: var(--cm-surface) !important;
+}
+.leaflet-popup.cm-feature-popup a.leaflet-popup-close-button {
+  top: 10px !important;
+  right: 10px !important;
+  width: 24px !important;
+  height: 24px !important;
+  padding: 0 !important;
+  border-radius: 6px;
+  font-size: 18px !important;
+  line-height: 22px !important;
+  text-align: center;
+  transition: background var(--cm-trans-fast), color var(--cm-trans-fast);
+}
+.leaflet-popup.cm-feature-popup a.leaflet-popup-close-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .cm-popup-card {
-  padding: 12px 16px;
-  min-width: 220px;
+  --cm-popup-accent: var(--cm-primary);
+  padding: 14px 14px 12px;
+  min-width: 250px;
+  font-family: var(--cm-fonte);
+  border-top: 3px solid var(--cm-popup-accent);
 }
 .cm-popup-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
+  padding-right: 28px; /* espaço reservado para o botão fechar */
+  margin-bottom: 10px;
+}
+.cm-popup-swatch {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: var(--cm-popup-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cm-popup-accent) 22%, transparent);
+}
+.cm-popup-heading {
+  min-width: 0;
+  flex: 1;
 }
 .cm-popup-title {
   font-weight: 600;
   font-size: 14px;
   color: var(--cm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-popup-subtitle {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--cm-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-popup-category {
+  color: var(--cm-popup-accent);
 }
 .cm-popup-desc {
   font-size: 12px;
   color: var(--cm-text-muted);
   margin-bottom: 10px;
+  max-height: 54px;
+  overflow: auto;
 }
-.cm-popup-stats {
+.cm-popup-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.cm-popup-metric {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  font-family: var(--cm-fonte-mono);
-  background: rgba(255, 255, 255, 0.04);
+  gap: 2px;
+  min-width: 0;
   padding: 6px 8px;
-  border-radius: 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.cm-popup-metric.wide {
+  grid-column: 1 / -1;
+}
+.cm-popup-metric-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--cm-text-dim);
+}
+.cm-popup-metric-value {
+  font-family: var(--cm-fonte-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--cm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cm-popup-metric-value small {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--cm-text-muted);
+}
+.cm-popup-attrs {
+  display: flex;
+  flex-direction: column;
   margin-bottom: 10px;
+  border-top: 1px solid var(--cm-border);
+}
+.cm-popup-attr {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 11.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.cm-popup-attr-key {
+  color: var(--cm-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cm-popup-attr-value {
+  color: var(--cm-text);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cm-popup-more {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cm-accent);
+  font-size: 11px;
+  cursor: pointer;
+}
+.cm-popup-more:hover {
+  text-decoration: underline;
+}
+.cm-popup-meta {
+  font-size: 11px;
+  color: var(--cm-text-dim);
+  margin-bottom: 10px;
+}
+.cm-popup-meta strong {
+  color: var(--cm-text-muted);
+  font-weight: 600;
 }
 .cm-popup-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  justify-content: flex-end;
+}
+.cm-popup-btn {
+  flex: 1 1 auto;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--cm-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cm-text);
+  font-family: var(--cm-fonte);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--cm-trans-fast), border-color var(--cm-trans-fast), color var(--cm-trans-fast);
+}
+.cm-popup-btn:hover {
+  border-color: var(--cm-border-hover);
+  background: rgba(255, 255, 255, 0.08);
+}
+.cm-popup-btn.primary {
+  border-color: color-mix(in srgb, var(--cm-accent) 55%, transparent);
+  background: color-mix(in srgb, var(--cm-accent) 16%, transparent);
+  color: #7dd3fc;
+}
+.cm-popup-btn.primary:hover {
+  background: color-mix(in srgb, var(--cm-accent) 26%, transparent);
+}
+.cm-popup-btn:focus-visible,
+.cm-popup-more:focus-visible {
+  outline: 2px solid var(--cm-accent);
+  outline-offset: 1px;
+}
+
+/* Seleção por clique: os canvases por camada não capturam eventos (hit-test no MapEngine) */
+.leaflet-pane > canvas {
+  pointer-events: none !important;
+}
+.leaflet-container.cm-feature-hover,
+.leaflet-container.cm-feature-hover .leaflet-interactive {
+  cursor: pointer !important;
 }
 
 /* --------------------------------------------------------------------------
