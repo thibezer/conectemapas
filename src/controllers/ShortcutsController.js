@@ -9,9 +9,19 @@ import { StorageService } from '../services/StorageService.js';
 
 export class ShortcutsController {
   static pushHistory(app, description = '') {
-    app.historyUndo.push(JSON.stringify(app.features));
-    if (app.historyUndo.length > 50) app.historyUndo.shift();
-    app.historyRedo = [];
+    if (!app.historyUndo) app.historyUndo = [];
+    const count = app.features ? app.features.length : 0;
+    const maxSteps = count > 2000 ? 15 : (count > 500 ? 25 : 50);
+
+    try {
+      app.historyUndo.push(JSON.stringify(app.features));
+      if (app.historyUndo.length > maxSteps) {
+        app.historyUndo.splice(0, app.historyUndo.length - maxSteps);
+      }
+      app.historyRedo = [];
+    } catch (e) {
+      console.warn('[ShortcutsController] Falha ao capturar snapshot de histórico:', e);
+    }
   }
 
   static undo(app) {

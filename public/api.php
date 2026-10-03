@@ -6,7 +6,11 @@
 
 define('CONECTEMAPAS_API', true);
 
-// 1. Headers e Tratamento de CORS
+// 1. Compressão HTTP GZIP e Headers
+if (!ob_start('ob_gzhandler')) {
+    ob_start();
+}
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -253,10 +257,10 @@ switch ($action) {
             WHERE project_id = ? AND deleted = 0
         ");
         $stmtFeat->execute([$projectId]);
-        $rawFeatures = $stmtFeat->fetchAll();
 
         $features = [];
-        foreach ($rawFeatures as $f) {
+        // Otimização de Memória: Cursor iterativo em vez de carregar tudo duplicado com fetchAll()
+        while ($f = $stmtFeat->fetch(PDO::FETCH_ASSOC)) {
             $coords = json_decode($f['coordinates'], true);
             $props = !empty($f['properties']) ? json_decode($f['properties'], true) : [];
             $style = !empty($f['style']) ? json_decode($f['style'], true) : [];
@@ -336,22 +340,32 @@ switch ($action) {
                 INSERT INTO cm_projects (id, name, description, basemap, center_lat, center_lng, zoom, feature_count, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
-                    name = VALUES(name),
-                    description = VALUES(description),
-                    basemap = VALUES(basemap),
-                    center_lat = VALUES(center_lat),
-                    center_lng = VALUES(center_lng),
-                    zoom = VALUES(zoom),
-                    feature_count = VALUES(feature_count),
+                    name = ?,
+                    description = ?,
+                    basemap = ?,
+                    center_lat = ?,
+                    center_lng = ?,
+                    zoom = ?,
+                    feature_count = ?,
                     updated_at = NOW()
             ");
+            $latVal = $center[0] ?? -23.7661;
+            $lngVal = $center[1] ?? -53.3206;
             $stmtProj->execute([
                 $projectId,
                 $name,
                 $description,
                 $basemap,
-                $center[0] ?? -23.7661,
-                $center[1] ?? -53.3206,
+                $latVal,
+                $lngVal,
+                $zoom,
+                $featureCount,
+                // ON DUPLICATE KEY UPDATE (compatibilidade MariaDB 11.8)
+                $name,
+                $description,
+                $basemap,
+                $latVal,
+                $lngVal,
                 $zoom,
                 $featureCount
             ]);
@@ -643,25 +657,41 @@ switch ($action) {
                 INSERT INTO cm_projects (id, name, description, basemap, center_lat, center_lng, zoom, feature_count, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
-                    name = VALUES(name),
-                    description = VALUES(description),
-                    basemap = VALUES(basemap),
-                    center_lat = VALUES(center_lat),
-                    center_lng = VALUES(center_lng),
-                    zoom = VALUES(zoom),
-                    feature_count = VALUES(feature_count),
+                    name = ?,
+                    description = ?,
+                    basemap = ?,
+                    center_lat = ?,
+                    center_lng = ?,
+                    zoom = ?,
+                    feature_count = ?,
                     updated_at = NOW()
             ");
             $center = $body['center'] ?? [-23.7661, -53.3206];
+            $projName = $body['name'] ?? 'Levantamento Topográfico - Umuarama';
+            $projDesc = $body['description'] ?? '';
+            $projBase = $body['basemap'] ?? 'google_satelite_puro';
+            $projLat  = $center[0] ?? -23.7661;
+            $projLng  = $center[1] ?? -53.3206;
+            $projZoom = $body['zoom'] ?? 14;
+            $projCount = isset($body['features']) ? count($body['features']) : 0;
+
             $stmtProj->execute([
                 $projectId,
-                $body['name'] ?? 'Levantamento Topográfico - Umuarama',
-                $body['description'] ?? '',
-                $body['basemap'] ?? 'google_satelite_puro',
-                $center[0] ?? -23.7661,
-                $center[1] ?? -53.3206,
-                $body['zoom'] ?? 14,
-                isset($body['features']) ? count($body['features']) : 0
+                $projName,
+                $projDesc,
+                $projBase,
+                $projLat,
+                $projLng,
+                $projZoom,
+                $projCount,
+                // ON DUPLICATE KEY UPDATE
+                $projName,
+                $projDesc,
+                $projBase,
+                $projLat,
+                $projLng,
+                $projZoom,
+                $projCount
             ]);
 
             // Camadas (Upsert sem truncar)
@@ -703,13 +733,13 @@ switch ($action) {
                     INSERT INTO cm_features (id, project_id, layer_id, name, geom_type, coordinates, properties, style, color, created_by, deleted, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())
                     ON DUPLICATE KEY UPDATE
-                        layer_id = VALUES(layer_id),
-                        name = VALUES(name),
-                        geom_type = VALUES(geom_type),
-                        coordinates = VALUES(coordinates),
-                        properties = VALUES(properties),
-                        style = VALUES(style),
-                        color = VALUES(color),
+                        layer_id = ?,
+                        name = ?,
+                        geom_type = ?,
+                        coordinates = ?,
+                        properties = ?,
+                        style = ?,
+                        color = ?,
                         deleted = 0,
                         updated_at = NOW()
                 ");
@@ -724,17 +754,35 @@ switch ($action) {
                         $props['visible'] = (bool)$f['visible'];
                     }
 
+                    $fLayerId   = $f['layerId'] ?? 'layer-default';
+                    $fName      = $f['name'] ?? 'Feição';
+                    $fType      = $f['type'] ?? 'Polygon';
+                    $fCoords    = json_encode($f['coordinates'] ?? [], JSON_UNESCAPED_UNICODE);
+                    $fProps     = json_encode($props, JSON_UNESCAPED_UNICODE);
+                    $fStyle     = json_encode($f['style'] ?? [], JSON_UNESCAPED_UNICODE);
+                    $fColor     = $f['color'] ?? '#00E08A';
+                    $fCreatedBy = $f['createdBy'] ?? 'Operador';
+
                     $stmtFeat->execute([
+                        // INSERT
                         $f['id'],
                         $projectId,
-                        $f['layerId'] ?? 'layer-default',
-                        $f['name'] ?? 'Feição',
-                        $f['type'] ?? 'Polygon',
-                        json_encode($f['coordinates'] ?? [], JSON_UNESCAPED_UNICODE),
-                        json_encode($props, JSON_UNESCAPED_UNICODE),
-                        json_encode($f['style'] ?? [], JSON_UNESCAPED_UNICODE),
-                        $f['color'] ?? '#00E08A',
-                        $f['createdBy'] ?? 'Operador'
+                        $fLayerId,
+                        $fName,
+                        $fType,
+                        $fCoords,
+                        $fProps,
+                        $fStyle,
+                        $fColor,
+                        $fCreatedBy,
+                        // ON DUPLICATE KEY UPDATE
+                        $fLayerId,
+                        $fName,
+                        $fType,
+                        $fCoords,
+                        $fProps,
+                        $fStyle,
+                        $fColor
                     ]);
                 }
 
@@ -808,18 +856,28 @@ switch ($action) {
                 INSERT INTO cm_audit (id, project_id, action, detail, user_name, timestamp)
                 VALUES (?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
-                    action = VALUES(action),
-                    detail = VALUES(detail),
-                    user_name = VALUES(user_name),
-                    timestamp = VALUES(timestamp)
+                    action = ?,
+                    detail = ?,
+                    user_name = ?,
+                    timestamp = ?
             ");
+            $actVal  = $body['action'] ?? '';
+            $detVal  = $body['detail'] ?? '';
+            $usrVal  = $body['user'] ?? 'Você';
+            $timeVal = $body['timestamp'] ?? date('c');
+
             $stmt->execute([
                 $auditId,
                 $projectId,
-                $body['action'] ?? '',
-                $body['detail'] ?? '',
-                $body['user'] ?? 'Você',
-                $body['timestamp'] ?? date('c')
+                $actVal,
+                $detVal,
+                $usrVal,
+                $timeVal,
+                // ON DUPLICATE KEY UPDATE
+                $actVal,
+                $detVal,
+                $usrVal,
+                $timeVal
             ]);
             echo json_encode(['success' => true]);
             exit;

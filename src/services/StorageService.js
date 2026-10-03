@@ -92,16 +92,54 @@ function _removeLocalTombstone(featureId, projectId = null) {
   } catch {}
 }
 
-function _persistPendingDeltas(projectId = null) {
+function _persistPendingDeltasWithItems(toUpsert = [], toDelete = [], projectId = null) {
   if (typeof localStorage === 'undefined') return;
   try {
     const projId = projectId || _currentProjectId || 'projeto_padrao';
-    const payload = {
-      dirty: Array.from(_dirtyFeatures.values()),
-      deleted: Array.from(_deletedFeatureIds)
-    };
-    localStorage.setItem(PENDING_DELTAS_KEY_PREFIX + projId, JSON.stringify(payload));
+    const key = PENDING_DELTAS_KEY_PREFIX + projId;
+    let existing = { dirty: [], deleted: [] };
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      try { existing = JSON.parse(raw); } catch {}
+    }
+
+    const dirtyMap = new Map((existing.dirty || []).map(f => [f.id, f]));
+    const delSet = new Set(existing.deleted || []);
+
+    for (const id of toDelete) {
+      if (id) {
+        dirtyMap.delete(id);
+        delSet.add(id);
+      }
+    }
+    for (const f of toUpsert) {
+      if (f && f.id) {
+        delSet.delete(f.id);
+        dirtyMap.set(f.id, f);
+      }
+    }
+
+    if (dirtyMap.size === 0 && delSet.size === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify({
+        dirty: Array.from(dirtyMap.values()),
+        deleted: Array.from(delSet)
+      }));
+    }
   } catch {}
+}
+
+function _clearPendingDeltas(projectId = null) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    localStorage.removeItem(PENDING_DELTAS_KEY_PREFIX + projId);
+  } catch {}
+}
+
+function _persistPendingDeltas(projectId = null) {
+  _persistPendingDeltasWithItems(Array.from(_dirtyFeatures.values()), Array.from(_deletedFeatureIds), projectId);
 }
 
 function _loadPendingDeltas(projectId = null) {
@@ -1227,11 +1265,17 @@ export class StorageService {
         _cloudStatus.connected = true;
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
-        _persistPendingDeltas(projId);
+        _clearPendingDeltas(projId);
+        return true;
+      } else {
+        throw new Error(`HTTP ${res.status}`);
       }
     } catch (err) {
-      console.warn('[StorageService] Falha ao sincronizar deltas com Hostinger MySQL:', err);
-      _cloudStatus.error = err.message;
+      console.warn('[StorageService] Falha ao sincronizar deltas com Hostinger MySQL (armazenado para retry):', err);
+      _cloudStatus.connected = false;
+      _cloudStatus.error = err.message || 'Falha de rede';
+      _persistPendingDeltasWithItems(toUpsert, toDelete, projId);
+      return false;
     } finally {
       _cloudStatus.syncing = false;
       this._notifyCloudStatus();
@@ -1446,5 +1490,36 @@ export class StorageService {
       return false;
     }
   }
+  /**
+   * Descarrega deltas salvos offline no LocalStorage assim que a conexão for restabelecida
+   */
+  static async flushPendingOfflineDeltas(projectId = null) {
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    if (typeof localStorage === 'undefined') return true;
+    const key = PENDING_DELTAS_KEY_PREFIX + projId;
+    const raw = localStorage.getItem(key);
+    if (!raw) return true;
+
+    try {
+      const data = JSON.parse(raw);
+      const dirty = Array.isArray(data.dirty) ? data.dirty : [];
+      const deleted = Array.isArray(data.deleted) ? data.deleted : [];
+      if (dirty.length === 0 && deleted.length === 0) {
+        localStorage.removeItem(key);
+        return true;
+      }
+      return await this.syncDeltasToCloud(dirty, deleted, projId);
+    } catch (e) {
+      console.warn('[StorageService] Falha ao descarregar deltas pendentes:', e);
+      return false;
+    }
+  }
 }
 
+// Listener de rede: ao retornar conexão, descarrega imediatamente os deltas pendentes
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    StorageService.flushPendingOfflineDeltas();
+    StorageService.checkCloudConnection();
+  });
+}
