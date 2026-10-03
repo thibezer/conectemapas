@@ -6,6 +6,7 @@
 import './ContextMenu.css';
 import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
 import { GeometryVersionManager } from '../services/GeometryVersionManager.js';
+import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { UIToast } from 'ui-components-kit';
 
 export class ContextMenu {
@@ -321,7 +322,7 @@ export class ContextMenu {
           if (this.app.layerPanel) {
             this.app.layerPanel.setSelectedFeature(feat);
             this.app.mapEngine.startVertexEditing(feat, (updated) => {
-              this.app.saveFeature(updated);
+              FeatureSyncController.updateFeature(this.app, updated);
             });
           }
         } else if (action === 'duplicate' && feat) {

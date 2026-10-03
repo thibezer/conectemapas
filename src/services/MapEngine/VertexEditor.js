@@ -4,6 +4,8 @@
    ========================================================================== */
 
 import L from 'leaflet';
+import { DrawingSnappingHelper } from './DrawingSnappingHelper.js';
+import { UIToast } from 'ui-components-kit';
 
 export class VertexEditor {
   constructor(mapEngine) {
@@ -57,11 +59,37 @@ export class VertexEditor {
       });
 
       const dragMarker = L.marker(coords, { icon: dragIcon, draggable: true }).addTo(this.editHandlesLayer);
+
+      dragMarker.on('drag', (e) => {
+        let newLL = e.target.getLatLng();
+        if (this.engine.options?.snapping !== false) {
+          const snapped = DrawingSnappingHelper.findNearbyVertex(
+            this.map,
+            newLL,
+            'point',
+            [],
+            this.engine,
+            14
+          );
+          if (snapped) {
+            newLL = L.latLng(snapped[0], snapped[1]);
+            e.target.setLatLng(newLL);
+          }
+        }
+        feat.coordinates = [newLL.lat, newLL.lng];
+        const leafLayer = this.engine.renderedFeatures.get(feat.id);
+        if (leafLayer && leafLayer.setLatLng) {
+          leafLayer.setLatLng(newLL);
+        }
+        this.updateHUDLiveMetrics(feat.coordinates);
+      });
+
       dragMarker.on('dragend', (e) => {
         const newLL = e.target.getLatLng();
         feat.coordinates = [newLL.lat, newLL.lng];
+        this.updateHUD();
         if (this.onFeatureUpdatedCallback) {
-          this.onFeatureUpdatedCallback({ ...feat });
+          this.onFeatureUpdatedCallback({ ...feat, coordinates: [newLL.lat, newLL.lng] });
         }
       });
       return;
@@ -93,12 +121,28 @@ export class VertexEditor {
         handle.bindTooltip(`Vértice V${index + 1}<br><small style="color: #ff5555;">Botão direito: excluir</small>`, { direction: 'top', offset: [0, -6] });
 
         handle.on('drag', (e) => {
-          const newLL = e.target.getLatLng();
+          let newLL = e.target.getLatLng();
+          if (this.engine.options?.snapping !== false) {
+            const otherPts = coords.filter((_, i) => i !== index);
+            const snapped = DrawingSnappingHelper.findNearbyVertex(
+              this.map,
+              newLL,
+              isPoly ? 'polygon' : 'line',
+              otherPts,
+              this.engine,
+              14
+            );
+            if (snapped) {
+              newLL = L.latLng(snapped[0], snapped[1]);
+              e.target.setLatLng(newLL);
+            }
+          }
           coords[index] = [newLL.lat, newLL.lng];
           const leafLayer = this.engine.renderedFeatures.get(feat.id);
           if (leafLayer && leafLayer.setLatLngs) {
             leafLayer.setLatLngs(coords);
           }
+          this.updateHUDLiveMetrics(coords);
         });
 
         handle.on('dragend', (e) => {
@@ -106,6 +150,7 @@ export class VertexEditor {
           coords[index] = [newLL.lat, newLL.lng];
           feat.coordinates = [...coords];
           this.renderEditHandles();
+          this.updateHUD();
           if (this.onFeatureUpdatedCallback) {
             this.onFeatureUpdatedCallback({ ...feat, coordinates: [...coords] });
           }
@@ -115,12 +160,18 @@ export class VertexEditor {
           L.DomEvent.stopPropagation(e);
           const minNodes = isPoly ? 3 : 2;
           if (coords.length <= minNodes) {
-            alert(`A feição não pode ter menos de ${minNodes} vértices.`);
+            UIToast.notificar({
+              tipo: 'alerta',
+              titulo: 'Limite de Vértices',
+              mensagem: `A feição não pode ter menos de ${minNodes} vértices.`,
+              duracao: 2500
+            });
             return;
           }
           coords.splice(index, 1);
           feat.coordinates = [...coords];
           this.renderEditHandles();
+          this.updateHUD();
           const leafLayer = this.engine.renderedFeatures.get(feat.id);
           if (leafLayer && leafLayer.setLatLngs) {
             leafLayer.setLatLngs(coords);
@@ -128,6 +179,12 @@ export class VertexEditor {
           if (this.onFeatureUpdatedCallback) {
             this.onFeatureUpdatedCallback({ ...feat, coordinates: [...coords] });
           }
+          UIToast.notificar({
+            tipo: 'informativo',
+            titulo: 'Vértice Removido',
+            mensagem: `Vértice V${index + 1} excluído com sucesso.`,
+            duracao: 1500
+          });
         });
       });
 
@@ -156,6 +213,7 @@ export class VertexEditor {
           coords.splice(i + 1, 0, [midLat, midLng]);
           feat.coordinates = [...coords];
           this.renderEditHandles();
+          this.updateHUD();
           const leafLayer = this.engine.renderedFeatures.get(feat.id);
           if (leafLayer && leafLayer.setLatLngs) {
             leafLayer.setLatLngs(coords);
@@ -163,8 +221,31 @@ export class VertexEditor {
           if (this.onFeatureUpdatedCallback) {
             this.onFeatureUpdatedCallback({ ...feat, coordinates: [...coords] });
           }
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Vértice Inserido',
+            mensagem: `Novo nó V${i + 2} adicionado. Arraste para posicionar.`,
+            duracao: 1500
+          });
         });
       }
+    }
+  }
+
+  updateHUDLiveMetrics(coords) {
+    const metricEl = document.getElementById('cm-vertex-hud-live-metric');
+    if (!metricEl || !this.editingFeature) return;
+
+    if (this.editingFeature.type === 'Polygon' && Array.isArray(coords) && coords.length >= 3) {
+      const areaM2 = this.engine.calculatePolygonArea(coords);
+      const ha = (areaM2 / 10000).toFixed(2);
+      metricEl.textContent = `• Área: ${ha} ha (${areaM2.toFixed(1)} m²)`;
+    } else if (this.editingFeature.type === 'LineString' && Array.isArray(coords) && coords.length >= 2) {
+      const lengthM = this.engine.calculatePolylineLength(coords);
+      const str = lengthM >= 1000 ? `${(lengthM / 1000).toFixed(2)} km` : `${lengthM.toFixed(1)} m`;
+      metricEl.textContent = `• Extensão: ${str}`;
+    } else if (this.editingFeature.type === 'Point' && Array.isArray(coords)) {
+      metricEl.textContent = `• Lat: ${Number(coords[0]).toFixed(5)}, Lng: ${Number(coords[1]).toFixed(5)}`;
     }
   }
 
@@ -183,15 +264,27 @@ export class VertexEditor {
     }
 
     hud.style.display = 'flex';
-    const count = Array.isArray(this.editingFeature.coordinates) ? this.editingFeature.coordinates.length : 1;
+    const coords = this.editingFeature.coordinates;
+    const count = Array.isArray(coords) ? (this.editingFeature.type === 'Point' ? 1 : coords.length) : 1;
+
+    let initialMetric = '';
+    if (this.editingFeature.type === 'Polygon' && Array.isArray(coords) && coords.length >= 3) {
+      const areaM2 = this.engine.calculatePolygonArea(coords);
+      initialMetric = `• Área: ${(areaM2 / 10000).toFixed(2)} ha (${areaM2.toFixed(1)} m²)`;
+    } else if (this.editingFeature.type === 'LineString' && Array.isArray(coords) && coords.length >= 2) {
+      const lengthM = this.engine.calculatePolylineLength(coords);
+      initialMetric = `• Extensão: ${lengthM >= 1000 ? (lengthM / 1000).toFixed(2) + ' km' : lengthM.toFixed(1) + ' m'}`;
+    } else if (this.editingFeature.type === 'Point' && Array.isArray(coords)) {
+      initialMetric = `• Lat: ${Number(coords[0]).toFixed(5)}, Lng: ${Number(coords[1]).toFixed(5)}`;
+    }
 
     hud.innerHTML = `
       <span class="cm-cad-hud-pulse" style="background: #00b4d8; box-shadow: 0 0 8px #00b4d8;"></span>
       <span><strong>Editor de Vértices:</strong> ${count} nós</span>
-      <span class="cm-cad-hud-hint">• Arraste os pontos</span>
-      <span class="cm-cad-hud-hint">• Clique nos nós intermediários para criar</span>
-      <span class="cm-cad-hud-hint">• Botão direito para excluir</span>
-      <button id="btn-finish-vertex-edit" class="cm-cad-finish-btn" style="background: #00b4d8; color: #fff;">✔ Concluir</button>
+      <span id="cm-vertex-hud-live-metric" class="cm-cad-hud-hint" style="color: #00E08A; font-weight: 600;">${initialMetric}</span>
+      <span class="cm-cad-hud-hint">• Arraste para mover (Snap ativo)</span>
+      <span class="cm-cad-hud-hint">• Botão direito no vértice para excluir</span>
+      <button id="btn-finish-vertex-edit" class="cm-cad-finish-btn" style="background: #00b4d8; color: #fff;">✔ Concluir (Enter/Esc)</button>
     `;
 
     const btn = hud.querySelector('#btn-finish-vertex-edit');

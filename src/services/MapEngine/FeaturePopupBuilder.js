@@ -94,7 +94,7 @@ export class FeaturePopupBuilder {
           ${metrics.map(m => `
             <div class="cm-popup-metric${m.wide ? ' wide' : ''}">
               <span class="cm-popup-metric-label">${esc(m.label)}</span>
-              <span class="cm-popup-metric-value">${esc(m.value)}${m.unit ? ` <small>${esc(m.unit)}</small>` : ''}</span>
+              <span class="cm-popup-metric-value">${esc(m.value)}${m.unit ? ` <small>${esc(m.unit)}</small>` : ''}${m.alt ? `<span class="cm-popup-metric-alt">${esc(m.alt)}</span>` : ''}</span>
             </div>`).join('')}
         </div>` : ''}
         ${attrRows ? `<div class="cm-popup-attrs">${attrRows}${extraAttrs}</div>` : ''}
@@ -103,7 +103,7 @@ export class FeaturePopupBuilder {
           <button type="button" class="cm-popup-btn primary" data-popup-action="inspect" title="Abrir no painel de propriedades">Inspecionar</button>
           <button type="button" class="cm-popup-btn" data-popup-action="zoom" title="Enquadrar a feição">Zoom</button>
           ${canEditVertices ? '<button type="button" class="cm-popup-btn" data-popup-action="edit-vertex" title="Editar vértices no mapa">Vértices</button>' : ''}
-          ${isPoint ? '<button type="button" class="cm-popup-btn" data-popup-action="copy-coords" title="Copiar latitude, longitude">Copiar coord.</button>' : ''}
+          ${isPoint ? '<button type="button" class="cm-popup-btn" data-popup-action="copy-coords" title="Copiar latitude, longitude">Copiar</button>' : ''}
         </div>
       </div>
     `;
@@ -118,8 +118,7 @@ export class FeaturePopupBuilder {
       if (feat.type === 'Polygon') {
         const area = FeatureGeometryUtils.calculatePolygonArea(coords);
         const perim = FeatureGeometryUtils.calculatePolygonPerimeter(coords);
-        metrics.push({ label: 'Área', value: nf(area / 10000, 4), unit: 'ha' });
-        metrics.push({ label: 'Área', value: nf(area, 0), unit: 'm²' });
+        metrics.push({ label: 'Área', value: nf(area / 10000, 4), unit: 'ha', alt: `${nf(area, 0)} m²`, wide: true });
         metrics.push({ label: 'Perímetro', ...length(perim) });
         metrics.push({ label: 'Vértices', value: String(this._countVertices(coords)) });
       } else if (feat.type === 'LineString') {

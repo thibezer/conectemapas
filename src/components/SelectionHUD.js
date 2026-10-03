@@ -11,6 +11,7 @@ export class SelectionHUD {
    * @param {Object} options
    * @param {HTMLElement} options.container Container pai onde o HUD será montado
    * @param {Function} options.onInspect
+   * @param {Function} options.onEditVertices
    * @param {Function} options.onZoom
    * @param {Function} options.onDelete
    * @param {Function} options.onClear
@@ -19,6 +20,7 @@ export class SelectionHUD {
   constructor(options = {}) {
     this.container = options.container || document.body;
     this.onInspect = options.onInspect || (() => {});
+    this.onEditVertices = options.onEditVertices || (() => {});
     this.onZoom = options.onZoom || (() => {});
     this.onDelete = options.onDelete || (() => {});
     this.onClear = options.onClear || (() => {});
@@ -66,6 +68,7 @@ export class SelectionHUD {
       const category = feat.category && feat.category !== feat.type
         ? feat.category
         : FeatureGeometryUtils.getTypeLabel(feat.type);
+      const canEditNodes = !feat.locked && (feat.type === 'Polygon' || feat.type === 'LineString' || feat.type === 'Point');
 
       this.element.innerHTML = `
         <div class="cm-sel-info">
@@ -81,6 +84,11 @@ export class SelectionHUD {
           <button class="cm-sel-btn primary" id="btn-sel-inspect" title="Inspecionar e editar propriedades">
             🔍 Inspecionar
           </button>
+          ${canEditNodes ? `
+          <button class="cm-sel-btn" id="btn-sel-edit-nodes" title="Editar vértices / nós no mapa">
+            ✏️ Vértices
+          </button>
+          ` : ''}
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Centralizar no mapa">
             🎯 Zoom
           </button>
@@ -136,6 +144,16 @@ export class SelectionHUD {
         e.stopPropagation();
         if (this.selectedFeatures.length > 0) {
           this.onInspect(this.selectedFeatures[0]);
+        }
+      });
+    }
+
+    const btnEditNodes = this.element.querySelector('#btn-sel-edit-nodes');
+    if (btnEditNodes) {
+      btnEditNodes.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.selectedFeatures.length > 0) {
+          this.onEditVertices(this.selectedFeatures[0]);
         }
       });
     }

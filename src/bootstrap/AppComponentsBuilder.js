@@ -61,7 +61,7 @@ export class AppComponentsBuilder {
         } else if (action === 'edit-vertex') {
           app.mapEngine.closeFeaturePopup();
           app.mapEngine.startVertexEditing(feature, (updated) => {
-            app.saveFeature(updated);
+            FeatureSyncController.updateFeature(app, updated);
           });
         } else if (action === 'copy-coords') {
           const c = Array.isArray(feature.coordinates) ? feature.coordinates : [feature.coordinates?.lat, feature.coordinates?.lng];
@@ -353,6 +353,11 @@ export class AppComponentsBuilder {
           const btnExpand = document.getElementById('btn-expand-sidebar');
           if (btnExpand) btnExpand.style.display = 'none';
         }
+      },
+      onEditVertices: (feature) => {
+        app.mapEngine.startVertexEditing(feature, (updated) => {
+          FeatureSyncController.updateFeature(app, updated);
+        });
       },
       onZoom: (features) => {
         if (!features || features.length === 0) return;

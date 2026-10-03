@@ -425,6 +425,14 @@ export class MapEngine {
       );
       if (isInput) return;
       
+      if (this.vertexEditor && this.vertexEditor.editingFeature) {
+        if (e.key === 'Escape' || e.key === 'Enter') {
+          e.preventDefault();
+          this.vertexEditor.stopEditing();
+          return;
+        }
+      }
+
       if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -655,8 +663,8 @@ export class MapEngine {
     if (!this._featurePopup) {
       this._featurePopup = L.popup({
         className: 'cm-feature-popup',
-        maxWidth: 340,
-        minWidth: 260,
+        maxWidth: 280,
+        minWidth: 210,
         // Topo: barra flutuante de seleção (HUD); base: barra da tabela de atributos
         autoPanPaddingTopLeft: [24, 76],
         autoPanPaddingBottomRight: [24, 40],
@@ -665,12 +673,25 @@ export class MapEngine {
       this._featurePopup.on('remove', () => { this._popupFeatureId = null; });
     }
 
+    // O painel lateral flutua sobre o mapa: o auto-pan precisa desviar dele também
+    this._featurePopup.options.autoPanPaddingBottomRight = [this._rightOverlayPadding(), 40];
+
     this._popupFeatureId = feat.id;
     this._featurePopup
       .setLatLng(anchor)
       .setContent(FeaturePopupBuilder.createFeaturePopupHtml(feat, layerConfig))
       .openOn(this.map);
     this._bindPopupActions(feat.id);
+  }
+
+  _rightOverlayPadding() {
+    const base = 24;
+    const panel = typeof document !== 'undefined' ? document.getElementById('cm-sidebar-panel') : null;
+    if (!panel || !this.map || panel.classList.contains('collapsed')) return base;
+    const mapRect = this.map.getContainer().getBoundingClientRect();
+    const panelRect = panel.getBoundingClientRect();
+    if (panelRect.width === 0 || panelRect.left >= mapRect.right) return base;
+    return Math.max(base, Math.round(mapRect.right - panelRect.left) + 16);
   }
 
   closeFeaturePopup() {
