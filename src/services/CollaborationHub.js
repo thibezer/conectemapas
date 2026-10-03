@@ -3,18 +3,30 @@
    Sincronização em Tempo Real (BroadcastChannel), Presença e Cursores ao Vivo
    ========================================================================== */
 
+const PRESENCE_COLORS = ['#00E08A', '#3B82F6', '#F59E0B', '#EF4444', '#A855F7', '#EC4899', '#14B8A6', '#F97316'];
+
 export class CollaborationHub {
-  constructor(currentUser, onEvent, projectId = 'projeto_padrao') {
-    const defaultId = typeof crypto !== 'undefined' && crypto.randomUUID 
-      ? 'usr_' + crypto.randomUUID().slice(0, 8) 
-      : 'usr_' + Math.random().toString(36).substring(2, 10);
+  /**
+   * @param {Object|null} currentUser
+   * @param {Function} onEvent
+   * @param {string} projectId
+   * @param {string|null} userId id compartilhado com a sincronização em nuvem (StorageService.getClientId())
+   */
+  constructor(currentUser, onEvent, projectId = 'projeto_padrao', userId = null) {
+    const defaultId = userId || (typeof crypto !== 'undefined' && crypto.randomUUID
+      ? 'usr_' + crypto.randomUUID().slice(0, 8)
+      : 'usr_' + Math.random().toString(36).substring(2, 10));
+    const colorIdx = Array.from(defaultId).reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % PRESENCE_COLORS.length;
 
     this.projectId = projectId || 'projeto_padrao';
+    this.cloudPresence = new Map();
     this.currentUser = currentUser || {
       id: defaultId,
       name: 'Você (Operador)',
+      // Nome exibido aos outros operadores (o local continua vendo "Você")
+      displayName: `Operador ${defaultId.slice(-4).toUpperCase()}`,
       role: 'Editor',
-      color: '#00E08A',
+      color: PRESENCE_COLORS[colorIdx],
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
       status: 'online'
     };
@@ -207,8 +219,24 @@ export class CollaborationHub {
     return entry;
   }
 
+  /**
+   * Registra os operadores ativos vistos pela nuvem (outros dispositivos/navegadores)
+   * @param {Array<{id: string, name: string, color: string}>} list
+   */
+  setCloudPresence(list) {
+    this.cloudPresence = new Map();
+    for (const p of list || []) {
+      if (p && p.id && p.id !== this.currentUser.id) {
+        this.cloudPresence.set(p.id, { id: p.id, name: p.name, color: p.color, role: 'Editor', status: 'online' });
+      }
+    }
+  }
+
   getActiveCollaboratorsList() {
-    return [this.currentUser, ...Array.from(this.activeCollaborators.values())];
+    const merged = new Map(this.cloudPresence);
+    for (const c of this.activeCollaborators.values()) merged.set(c.id, c);
+    merged.delete(this.currentUser.id);
+    return [this.currentUser, ...merged.values()];
   }
 
   destroy() {

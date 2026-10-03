@@ -270,39 +270,104 @@ class ConecteMapasApp {
   }
 
   /**
-   * Sincronização inteligente e contínua em tempo real (Smart Sync Polling)
-   * Garante que múltiplos dispositivos (desktop, notebook, tablet, celular) recebam
-   * adições, edições e exclusões (tombstones) sem perda de dados nem ressuscitação.
+   * Sincronização colaborativa quase em tempo real (estilo Canva) sobre PHP/MySQL.
+   * - Pull a cada ~1 s com a aba visível (cursor de revisão: nenhuma alteração é perdida)
+   * - Páginas extras buscadas imediatamente quando o servidor indica 'hasMore'
+   * - Backoff exponencial em falhas; pausa com a aba oculta; retoma na hora ao voltar
+   * - Cada ciclo publica a presença (cursor) deste operador e recebe a dos demais
    */
   startCloudSyncLoop() {
-    if (this._cloudSyncInterval) {
-      clearInterval(this._cloudSyncInterval);
+    const ACTIVE_INTERVAL_MS = 1000;
+    const HIDDEN_INTERVAL_MS = 5000;
+    const MAX_BACKOFF_MS = 15000;
+
+    if (this._cloudSyncTimer) {
+      clearTimeout(this._cloudSyncTimer);
     }
+    this._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
 
-    this._cloudSyncInterval = setInterval(async () => {
-      // Não consulta se a aba estiver oculta, se o cliente estiver sem internet ou no meio de um clique de vetorização
-      if (typeof document !== 'undefined' && document.hidden) return;
-      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-      if (this.mapEngine && this.mapEngine.isDrawing) return;
+    const schedule = (delay) => {
+      if (this._cloudSyncTimer) clearTimeout(this._cloudSyncTimer);
+      this._cloudSyncTimer = setTimeout(tick, delay);
+    };
 
+    const tick = async () => {
+      this._cloudSyncTimer = null;
+      if (this._cloudSyncRunning) return;
+
+      // Aba oculta ou sem internet: não consulta (visibilitychange/online retomam na hora)
+      if ((typeof document !== 'undefined' && document.hidden) ||
+          (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        schedule(HIDDEN_INTERVAL_MS);
+        return;
+      }
+      // Durante um clique de vetorização não re-renderiza o mapa (precisão do desenho)
+      if (this.mapEngine && this.mapEngine.isDrawing) {
+        schedule(ACTIVE_INTERVAL_MS);
+        return;
+      }
+
+      this._cloudSyncRunning = true;
+      let nextDelay = ACTIVE_INTERVAL_MS;
       try {
-        const changes = await StorageService.pullChangesFromCloud(this.projectId);
-        if (!changes) return;
+        // Reenvia primeiro o que ficou pendente por falha de rede
+        if (StorageService.hasPendingOfflineDeltas()) {
+          StorageService.flushPendingOfflineDeltas(this.projectId);
+        }
 
-        const hasUpserted = Array.isArray(changes.upserted) && changes.upserted.length > 0;
-        const hasDeleted = Array.isArray(changes.deleted) && changes.deleted.length > 0;
-        const hasLayers = Array.isArray(changes.layers) && changes.layers.length > 0;
+        const user = this.collabHub ? this.collabHub.currentUser : null;
+        const presence = user ? {
+          name: user.displayName || user.name,
+          color: user.color,
+          lat: this._lastCursorLatLng ? this._lastCursorLatLng.lat : undefined,
+          lng: this._lastCursorLatLng ? this._lastCursorLatLng.lng : undefined
+        } : null;
 
-        if (hasUpserted || hasDeleted || hasLayers) {
-          const changed = FeatureSyncController.applyRemoteDeltas(this, changes);
-          if (changed) {
-            this._updateSyncChip();
+        const changes = await StorageService.pullChangesFromCloud(this.projectId, presence);
+        if (!changes) {
+          this._cloudSyncBackoff = Math.min((this._cloudSyncBackoff || ACTIVE_INTERVAL_MS) * 2, MAX_BACKOFF_MS);
+          nextDelay = this._cloudSyncBackoff;
+        } else {
+          this._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
+
+          const hasUpserted = changes.upserted.length > 0;
+          const hasDeleted = changes.deleted.length > 0;
+          const hasLayers = changes.layers.length > 0;
+          if (hasUpserted || hasDeleted || hasLayers) {
+            const changed = FeatureSyncController.applyRemoteDeltas(this, changes);
+            if (changed) {
+              this._updateSyncChip();
+            }
+          }
+          if (changes.presence) {
+            FeatureSyncController.applyRemotePresence(this, changes.presence);
+          }
+          if (changes.hasMore) {
+            nextDelay = 0;
           }
         }
       } catch (err) {
         // Polling tolerante a falhas efêmeras de rede
+        nextDelay = ACTIVE_INTERVAL_MS * 2;
+      } finally {
+        this._cloudSyncRunning = false;
+        schedule(nextDelay);
       }
-    }, 4000);
+    };
+
+    if (!this._cloudSyncWakeBound && typeof document !== 'undefined') {
+      this._cloudSyncWakeBound = true;
+      const wake = () => {
+        if (!document.hidden) {
+          this._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
+          schedule(0);
+        }
+      };
+      document.addEventListener('visibilitychange', wake);
+      if (typeof window !== 'undefined') window.addEventListener('online', wake);
+    }
+
+    schedule(0);
   }
 
   /**
@@ -435,7 +500,7 @@ class ConecteMapasApp {
   initCollaboration() {
     this.collabHub = new CollaborationHub(null, (type, data) => {
       FeatureSyncController.handleCollabEvent(this, type, data);
-    }, this.projectId);
+    }, this.projectId, StorageService.getClientId());
   }
 
   initMap() {
@@ -477,6 +542,7 @@ class ConecteMapasApp {
       },
       onCursorMove: (latlng) => {
         if (!latlng) return;
+        this._lastCursorLatLng = latlng;
         if (this.collabHub) {
           this.collabHub.sendCursorPosition([latlng.lat, latlng.lng]);
         }

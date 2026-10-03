@@ -45,8 +45,31 @@ let _cloudStatus = {
 };
 const _cloudStatusListeners = new Set();
 let _cloudMetaDebounceTimer = null;
-let _lastServerSyncTimestamp = null;
+let _cloudProjectDebounceTimer = null;
 let _currentProjectId = 'projeto_padrao';
+
+// ---- Sincronização colaborativa quase em tempo real ----
+// Identidade desta aba (por carregamento de página): usada pelo servidor para não devolver
+// ao autor o eco das próprias gravações e para a presença ao vivo (cursores).
+const _clientId = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
+  ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+  : Math.random().toString(36).substring(2, 12) + Date.now().toString(36));
+
+// Gravação: debounce curto com teto, para que um arraste contínuo não adie o envio indefinidamente
+const DELTA_DEBOUNCE_MS = 120;
+const DELTA_MAX_WAIT_MS = 400;
+let _deltaFirstQueuedAt = 0;
+
+// Envio serializado: um POST por vez, na ordem das edições (evita que uma edição antiga chegue depois de uma nova)
+let _pushChain = Promise.resolve();
+const _inFlightCounts = new Map(); // featureId -> nº de envios ainda não confirmados
+let _offlinePendingIds = null;     // cache dos ids com deltas pendentes no LocalStorage
+
+// Leitura: cursor monotônico de revisão do servidor (rev, id), persistido por projeto
+const SYNC_CURSOR_KEY_PREFIX = 'cm_sync_cursor_';
+let _syncCursor = null;
+const _localWriteRev = new Map(); // featureId -> revisão em que ESTE cliente gravou por último
+const _appliedRevs = new Map();   // featureId -> última revisão remota já aplicada (evita re-render)
 
 function yieldToMain() {
   return new Promise((resolve) => {
@@ -92,41 +115,63 @@ function _removeLocalTombstone(featureId, projectId = null) {
   } catch {}
 }
 
+function _readPendingDeltas(projId) {
+  if (typeof localStorage === 'undefined') return { dirty: [], deleted: [] };
+  try {
+    const raw = localStorage.getItem(PENDING_DELTAS_KEY_PREFIX + projId);
+    if (!raw) return { dirty: [], deleted: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      dirty: Array.isArray(parsed.dirty) ? parsed.dirty : [],
+      deleted: Array.isArray(parsed.deleted) ? parsed.deleted : []
+    };
+  } catch {
+    return { dirty: [], deleted: [] };
+  }
+}
+
+/**
+ * Mescla deltas novos sobre um conjunto base (o mais recente vence por id).
+ */
+function _mergeDeltas(base, toUpsert = [], toDelete = []) {
+  const dirtyMap = new Map((base.dirty || []).map(f => [f.id, f]));
+  const delSet = new Set(base.deleted || []);
+  for (const id of toDelete) {
+    if (id) {
+      dirtyMap.delete(id);
+      delSet.add(id);
+    }
+  }
+  for (const f of toUpsert) {
+    if (f && f.id) {
+      delSet.delete(f.id);
+      dirtyMap.set(f.id, f);
+    }
+  }
+  return { dirty: Array.from(dirtyMap.values()), deleted: Array.from(delSet) };
+}
+
+function _refreshOfflinePendingCache(projId, merged) {
+  if (projId !== _currentProjectId) return;
+  _offlinePendingIds = new Set([
+    ...merged.dirty.map(f => f.id),
+    ...merged.deleted
+  ]);
+}
+
 function _persistPendingDeltasWithItems(toUpsert = [], toDelete = [], projectId = null) {
   if (typeof localStorage === 'undefined') return;
   try {
     const projId = projectId || _currentProjectId || 'projeto_padrao';
     const key = PENDING_DELTAS_KEY_PREFIX + projId;
-    let existing = { dirty: [], deleted: [] };
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      try { existing = JSON.parse(raw); } catch {}
-    }
+    const merged = _mergeDeltas(_readPendingDeltas(projId), toUpsert, toDelete);
 
-    const dirtyMap = new Map((existing.dirty || []).map(f => [f.id, f]));
-    const delSet = new Set(existing.deleted || []);
-
-    for (const id of toDelete) {
-      if (id) {
-        dirtyMap.delete(id);
-        delSet.add(id);
-      }
-    }
-    for (const f of toUpsert) {
-      if (f && f.id) {
-        delSet.delete(f.id);
-        dirtyMap.set(f.id, f);
-      }
-    }
-
-    if (dirtyMap.size === 0 && delSet.size === 0) {
+    if (merged.dirty.length === 0 && merged.deleted.length === 0) {
       localStorage.removeItem(key);
     } else {
-      localStorage.setItem(key, JSON.stringify({
-        dirty: Array.from(dirtyMap.values()),
-        deleted: Array.from(delSet)
-      }));
+      localStorage.setItem(key, JSON.stringify(merged));
     }
+    _refreshOfflinePendingCache(projId, merged);
   } catch {}
 }
 
@@ -135,7 +180,48 @@ function _clearPendingDeltas(projectId = null) {
   try {
     const projId = projectId || _currentProjectId || 'projeto_padrao';
     localStorage.removeItem(PENDING_DELTAS_KEY_PREFIX + projId);
+    _refreshOfflinePendingCache(projId, { dirty: [], deleted: [] });
   } catch {}
+}
+
+function _getOfflinePendingIds() {
+  if (_offlinePendingIds === null) {
+    const pending = _readPendingDeltas(_currentProjectId || 'projeto_padrao');
+    _offlinePendingIds = new Set([...pending.dirty.map(f => f && f.id), ...pending.deleted].filter(Boolean));
+  }
+  return _offlinePendingIds;
+}
+
+function _loadSyncCursor(projId) {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem(SYNC_CURSOR_KEY_PREFIX + projId);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Number.isFinite(parsed.rev)) {
+          return { rev: parsed.rev, id: typeof parsed.id === 'string' ? parsed.id : '' };
+        }
+      }
+    }
+  } catch {}
+  return { rev: 0, id: '' };
+}
+
+function _saveSyncCursor(projId, cursor) {
+  _syncCursor = { rev: cursor.rev, id: cursor.id || '' };
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SYNC_CURSOR_KEY_PREFIX + projId, JSON.stringify(_syncCursor));
+    }
+  } catch {}
+
+  // Entradas abaixo do cursor nunca mais serão devolvidas pelo servidor
+  for (const [id, rev] of _localWriteRev) {
+    if (rev < _syncCursor.rev) _localWriteRev.delete(id);
+  }
+  for (const [id, rev] of _appliedRevs) {
+    if (rev < _syncCursor.rev) _appliedRevs.delete(id);
+  }
 }
 
 function _persistPendingDeltas(projectId = null) {
@@ -172,7 +258,11 @@ export class StorageService {
       const clean = id.trim();
       if (clean !== _currentProjectId) {
         _currentProjectId = clean;
-        _lastServerSyncTimestamp = null; // Reseta cursor temporal para o novo projeto
+        // Cursor de revisão, caches de conflito e pendências são por projeto
+        _syncCursor = null;
+        _offlinePendingIds = null;
+        _localWriteRev.clear();
+        _appliedRevs.clear();
       }
     }
   }
@@ -183,6 +273,42 @@ export class StorageService {
    */
   static getCurrentProjectId() {
     return _currentProjectId;
+  }
+
+  /**
+   * Identificador desta aba na sincronização em nuvem (eco e presença)
+   * @returns {string}
+   */
+  static getClientId() {
+    return _clientId;
+  }
+
+  /**
+   * Cursor de revisão do servidor já incorporado localmente
+   * @returns {{rev: number, id: string}}
+   */
+  static getSyncCursor() {
+    if (!_syncCursor) {
+      _syncCursor = _loadSyncCursor(_currentProjectId || 'projeto_padrao');
+    }
+    return { ..._syncCursor };
+  }
+
+  /**
+   * Indica se a feição possui alteração local ainda não confirmada pelo servidor
+   * (na fila de debounce, em envio, ou pendente offline). Alterações remotas sobre
+   * ela não devem sobrescrever o estado local até a confirmação.
+   */
+  static hasPendingLocalChange(featureId) {
+    if (!featureId) return false;
+    return _dirtyFeatures.has(featureId)
+      || _deletedFeatureIds.has(featureId)
+      || _inFlightCounts.has(featureId)
+      || _getOfflinePendingIds().has(featureId);
+  }
+
+  static hasPendingOfflineDeltas() {
+    return _getOfflinePendingIds().size > 0;
   }
 
   /**
@@ -541,7 +667,7 @@ export class StorageService {
     const compacted = GeoCompressor.compactFeatureForStorage(feature);
     _deletedFeatureIds.delete(feature.id);
     _dirtyFeatures.set(feature.id, { ...compacted, projectId: projId });
-    this.commitDeltasDebounced(350);
+    this.commitDeltasDebounced();
   }
 
   static queueFeaturesBulkUpsert(features, projectId = null) {
@@ -555,14 +681,14 @@ export class StorageService {
         _dirtyFeatures.set(feat.id, { ...compacted, projectId: projId });
       }
     }
-    this.commitDeltasDebounced(350);
+    this.commitDeltasDebounced();
   }
 
   static queueFeatureDelete(featureId) {
     if (!featureId) return;
     _dirtyFeatures.delete(featureId);
     _deletedFeatureIds.add(featureId);
-    this.commitDeltasDebounced(350);
+    this.commitDeltasDebounced();
   }
 
   static async queueFeaturesBulkDelete(featureIds, projectId = null) {
@@ -595,17 +721,22 @@ export class StorageService {
     this.commitDeltasDebounced(100);
   }
 
-  static commitDeltasDebounced(delayMs = 350) {
+  static commitDeltasDebounced(delayMs = DELTA_DEBOUNCE_MS) {
+    const now = Date.now();
+    if (!_deltaFirstQueuedAt) _deltaFirstQueuedAt = now;
     if (_deltaDebounceTimer) {
       clearTimeout(_deltaDebounceTimer);
     }
+    // Teto de espera: rajadas contínuas de edição ainda são enviadas a cada ~400 ms
+    const maxWaitLeft = Math.max(0, DELTA_MAX_WAIT_MS - (now - _deltaFirstQueuedAt));
     _deltaDebounceTimer = setTimeout(() => {
       _deltaDebounceTimer = null;
       this.commitDeltas();
-    }, delayMs);
+    }, Math.min(delayMs, maxWaitLeft));
   }
 
   static async commitDeltas() {
+    _deltaFirstQueuedAt = 0;
     if (_deltaDebounceTimer) {
       clearTimeout(_deltaDebounceTimer);
       _deltaDebounceTimer = null;
@@ -619,6 +750,10 @@ export class StorageService {
     const toDelete = Array.from(_deletedFeatureIds);
     _dirtyFeatures.clear();
     _deletedFeatureIds.clear();
+
+    // Enfileira o envio à nuvem já aqui (síncrono): os ids passam de "dirty" para "em envio"
+    // sem janela em que um pull remoto pudesse sobrescrever a edição local.
+    this.syncDeltasToCloud(toUpsert, toDelete, _currentProjectId);
 
     try {
       const db = await this.getDB();
@@ -641,15 +776,10 @@ export class StorageService {
           };
         });
 
-        // Sincronização em nuvem assíncrona com o projectId atual
-        this.syncDeltasToCloud(toUpsert, toDelete, _currentProjectId);
-
         return await idbPromise;
       }
 
-      const chunkedResult = await this.executeDeltasChunked(db, toDelete, toUpsert, 10000);
-      this.syncDeltasToCloud(toUpsert, toDelete, _currentProjectId);
-      return chunkedResult;
+      return await this.executeDeltasChunked(db, toDelete, toUpsert, 10000);
     } catch (err) {
       console.warn('[StorageService] Erro ao commitar deltas no IndexedDB:', err);
       return false;
@@ -1184,7 +1314,7 @@ export class StorageService {
   /**
    * Envia metadados e camadas para a nuvem em background (debounced)
    */
-  static syncMetadataToCloudDebounced(projectData, delayMs = 600) {
+  static syncMetadataToCloudDebounced(projectData, delayMs = 400) {
     if (_cloudMetaDebounceTimer) clearTimeout(_cloudMetaDebounceTimer);
     _cloudMetaDebounceTimer = setTimeout(() => {
       _cloudMetaDebounceTimer = null;
@@ -1201,23 +1331,19 @@ export class StorageService {
       const projId = projectData.id || _currentProjectId || 'projeto_padrao';
       const payload = {
         id: projId,
+        clientId: _clientId,
         name: projectData.name || 'Levantamento Topográfico - Umuarama',
         description: projectData.description || '',
         basemap: projectData.basemap || 'google_satelite_puro',
         center: projectData.center || [-23.7661, -53.3206],
         zoom: projectData.zoom || 14,
-        featureCount: projectData.featureCount !== undefined 
-          ? projectData.featureCount 
+        featureCount: projectData.featureCount !== undefined
+          ? projectData.featureCount
           : (Array.isArray(projectData.features) ? projectData.features.length : 0),
         layers: Array.isArray(projectData.layers) ? projectData.layers : []
       };
 
-      const res = await fetch(`${CLOUD_API_URL}?action=save_metadata`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true
-      });
+      const res = await this._postJson('save_metadata', payload);
 
       if (res.ok) {
         _cloudStatus.connected = true;
@@ -1234,47 +1360,94 @@ export class StorageService {
   }
 
   /**
-   * Sincroniza deltas de feições na nuvem de forma assíncrona
+   * POST JSON para a API. 'keepalive' (sobrevive ao fechamento da aba) só é usado em corpos
+   * pequenos: o navegador rejeita requisições keepalive acima de 64 KB.
    */
-  static async syncDeltasToCloud(toUpsert, toDelete, projectId = null) {
-    if ((!toUpsert || toUpsert.length === 0) && (!toDelete || toDelete.length === 0)) return;
+  static _postJson(action, payload) {
+    const body = JSON.stringify(payload);
+    return fetch(`${CLOUD_API_URL}?action=${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: body.length < 60000
+    });
+  }
+
+  /**
+   * Encadeia um envio na fila serializada de escrita em nuvem.
+   * @param {Array<string>} ids ids marcados como "em envio" até a conclusão
+   * @param {Function} task
+   */
+  static _enqueuePush(ids, task) {
+    for (const id of ids) {
+      _inFlightCounts.set(id, (_inFlightCounts.get(id) || 0) + 1);
+    }
+    const run = async () => {
+      try {
+        return await task();
+      } finally {
+        for (const id of ids) {
+          const n = (_inFlightCounts.get(id) || 1) - 1;
+          if (n <= 0) _inFlightCounts.delete(id);
+          else _inFlightCounts.set(id, n);
+        }
+      }
+    };
+    const p = _pushChain.then(run, run);
+    _pushChain = p.catch(() => {});
+    return p;
+  }
+
+  /**
+   * Sincroniza deltas de feições na nuvem (fila serializada, com retry offline)
+   */
+  static syncDeltasToCloud(toUpsert, toDelete, projectId = null) {
+    const upserts = Array.isArray(toUpsert) ? toUpsert : [];
+    const deletes = Array.isArray(toDelete) ? toDelete : [];
+    if (upserts.length === 0 && deletes.length === 0) return Promise.resolve(true);
+
+    const projId = projectId || _currentProjectId || 'projeto_padrao';
+    const ids = [...upserts.map(f => f && f.id).filter(Boolean), ...deletes];
+    return this._enqueuePush(ids, () => this._pushDeltas(upserts, deletes, projId));
+  }
+
+  static async _pushDeltas(toUpsert, toDelete, projId) {
+    // Reenvia junto quaisquer deltas que falharam antes: um sucesso posterior nunca
+    // descarta silenciosamente uma pendência de outra feição.
+    const merged = _mergeDeltas(_readPendingDeltas(projId), toUpsert, toDelete);
+    if (merged.dirty.length === 0 && merged.deleted.length === 0) return true;
 
     try {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
 
-      const projId = projectId || _currentProjectId || 'projeto_padrao';
-      const payload = {
+      const res = await this._postJson('sync_deltas', {
         projectId: projId,
-        toUpsert: toUpsert || [],
-        toDelete: toDelete || []
-      };
-
-      const res = await fetch(`${CLOUD_API_URL}?action=sync_deltas`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        keepalive: true
+        clientId: _clientId,
+        toUpsert: merged.dirty,
+        toDelete: merged.deleted
       });
 
-      if (res.ok) {
-        const resData = await res.json().catch(() => null);
-        if (resData && resData.serverTime) {
-          _lastServerSyncTimestamp = resData.serverTime;
-        }
-        _cloudStatus.connected = true;
-        _cloudStatus.lastSyncedAt = new Date().toISOString();
-        _cloudStatus.error = null;
-        _clearPendingDeltas(projId);
-        return true;
-      } else {
+      if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
+
+      const resData = await res.json().catch(() => null);
+      if (resData && Number.isFinite(resData.rev) && projId === _currentProjectId) {
+        // Versões remotas anteriores a esta revisão são obsoletas para estas feições
+        for (const f of merged.dirty) _localWriteRev.set(f.id, resData.rev);
+        for (const id of merged.deleted) _localWriteRev.set(id, resData.rev);
+      }
+      _cloudStatus.connected = true;
+      _cloudStatus.lastSyncedAt = new Date().toISOString();
+      _cloudStatus.error = null;
+      _clearPendingDeltas(projId);
+      return true;
     } catch (err) {
       console.warn('[StorageService] Falha ao sincronizar deltas com Hostinger MySQL (armazenado para retry):', err);
       _cloudStatus.connected = false;
       _cloudStatus.error = err.message || 'Falha de rede';
-      _persistPendingDeltasWithItems(toUpsert, toDelete, projId);
+      _persistPendingDeltasWithItems(merged.dirty, merged.deleted, projId);
       return false;
     } finally {
       _cloudStatus.syncing = false;
@@ -1283,11 +1456,19 @@ export class StorageService {
   }
 
   /**
-   * Salva o projeto integralmente (metadados, camadas e todas as feições) no MySQL da Hostinger
+   * Salva o projeto integralmente (metadados, camadas e todas as feições) no MySQL da Hostinger.
+   * Envia 'baseRev': feições alteradas por outro operador após essa revisão não são sobrescritas.
    * @param {Object} projectData
    */
-  static async saveProjectToCloud(projectData) {
-    if (!projectData) return { success: false, error: 'Sem dados para salvar' };
+  static saveProjectToCloud(projectData) {
+    if (!projectData) return Promise.resolve({ success: false, error: 'Sem dados para salvar' });
+    const ids = Array.isArray(projectData.features)
+      ? projectData.features.map(f => f && f.id).filter(Boolean)
+      : [];
+    return this._enqueuePush(ids, () => this._saveProjectToCloudNow(projectData));
+  }
+
+  static async _saveProjectToCloudNow(projectData) {
     try {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
@@ -1295,6 +1476,8 @@ export class StorageService {
       const projId = projectData.id || _currentProjectId || 'projeto_padrao';
       const payload = {
         id: projId,
+        clientId: _clientId,
+        baseRev: projId === _currentProjectId ? this.getSyncCursor().rev : 0,
         name: projectData.name || 'Levantamento Topográfico - Umuarama',
         description: projectData.description || '',
         basemap: projectData.basemap || 'google_satelite_puro',
@@ -1316,13 +1499,10 @@ export class StorageService {
 
       const result = await res.json();
       if (result && result.success) {
-        if (result.serverTime) {
-          _lastServerSyncTimestamp = result.serverTime;
-        }
         _cloudStatus.connected = true;
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
-        return { success: true, count: payload.features.length, message: result.message };
+        return { success: true, count: payload.features.length, skipped: result.skipped || 0, message: result.message };
       } else {
         throw new Error(result?.error || 'Erro ao persistir no servidor');
       }
@@ -1340,9 +1520,9 @@ export class StorageService {
    * Versão debounced do salvamento integral em nuvem
    */
   static syncProjectToCloudDebounced(projectData, delayMs = 1500) {
-    if (_cloudMetaDebounceTimer) clearTimeout(_cloudMetaDebounceTimer);
-    _cloudMetaDebounceTimer = setTimeout(() => {
-      _cloudMetaDebounceTimer = null;
+    if (_cloudProjectDebounceTimer) clearTimeout(_cloudProjectDebounceTimer);
+    _cloudProjectDebounceTimer = setTimeout(() => {
+      _cloudProjectDebounceTimer = null;
       this.saveProjectToCloud(projectData);
     }, delayMs);
   }
@@ -1363,8 +1543,9 @@ export class StorageService {
       const data = await res.json();
       if (!data || !data.exists) return null;
 
-      if (data.serverTime) {
-        _lastServerSyncTimestamp = data.serverTime;
+      // O snapshot completo corresponde exatamente a esta revisão
+      if (Number.isFinite(data.rev) && projId === _currentProjectId) {
+        _saveSyncCursor(projId, { rev: data.rev, id: '' });
       }
 
       _cloudStatus.connected = true;
@@ -1379,31 +1560,41 @@ export class StorageService {
   }
 
   /**
-   * Retorna o timestamp da última sincronização com o servidor
-   */
-  static getLastServerSyncTimestamp() {
-    return _lastServerSyncTimestamp;
-  }
-
-  /**
-   * Define o timestamp de sincronização do servidor
-   */
-  static setLastServerSyncTimestamp(ts) {
-    _lastServerSyncTimestamp = ts;
-  }
-
-  /**
-   * Busca alterações remotas (deltas) na nuvem desde a última checagem
+   * Busca alterações remotas desde o cursor de revisão e publica a presença deste operador.
+   *
+   * Regras de consistência:
+   * - Linhas mais antigas que a última gravação deste cliente na mesma feição são ignoradas.
+   * - Feições com edição local ainda não confirmada não são sobrescritas; o cursor fica retido
+   *   antes delas e a linha é reavaliada no próximo ciclo (após a confirmação do envio).
+   * - Revisões já aplicadas não são reaplicadas (sem re-render redundante).
+   *
    * @param {string|null} projectId
-   * @returns {Promise<{upserted: Array, deleted: Array, layers: Array, project: Object}|null>}
+   * @param {{name?: string, color?: string, lat?: number, lng?: number}|null} presence
+   * @returns {Promise<{upserted: Array, deleted: Array, layers: Array, project: Object, presence: Array|null, hasMore: boolean}|null>}
    */
-  static async pullChangesFromCloud(projectId = null) {
+  static async pullChangesFromCloud(projectId = null, presence = null) {
     try {
       const projId = projectId || _currentProjectId || 'projeto_padrao';
-      const sinceParam = _lastServerSyncTimestamp ? encodeURIComponent(_lastServerSyncTimestamp) : '';
-      const url = `${CLOUD_API_URL}?action=pull_changes&projectId=${encodeURIComponent(projId)}&since=${sinceParam}`;
+      const isCurrent = projId === _currentProjectId;
+      const cursor = isCurrent ? this.getSyncCursor() : _loadSyncCursor(projId);
 
-      const res = await fetch(url, {
+      const params = new URLSearchParams({
+        action: 'pull_changes',
+        projectId: projId,
+        sinceRev: String(cursor.rev),
+        sinceId: cursor.id || '',
+        clientId: _clientId
+      });
+      if (presence) {
+        if (presence.name) params.set('userName', presence.name);
+        if (presence.color) params.set('userColor', presence.color);
+        if (Number.isFinite(presence.lat) && Number.isFinite(presence.lng)) {
+          params.set('lat', presence.lat.toFixed(6));
+          params.set('lng', presence.lng.toFixed(6));
+        }
+      }
+
+      const res = await fetch(`${CLOUD_API_URL}?${params.toString()}`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         cache: 'no-cache'
@@ -1413,20 +1604,72 @@ export class StorageService {
       const data = await res.json();
       if (!data || !data.success) return null;
 
-      if (data.serverTime) {
-        _lastServerSyncTimestamp = data.serverTime;
-      }
-
       _cloudStatus.connected = true;
       _cloudStatus.lastSyncedAt = new Date().toISOString();
       _cloudStatus.error = null;
       this._notifyCloudStatus();
 
+      const layers = Array.isArray(data.layers) ? data.layers : [];
+
+      // Servidor ainda sem suporte a revisões (deploy parcial): usa a resposta como veio
+      if (!Array.isArray(data.changes)) {
+        return {
+          upserted: Array.isArray(data.upserted) ? data.upserted : [],
+          deleted: Array.isArray(data.deleted) ? data.deleted : [],
+          layers,
+          project: data.project || null,
+          presence: null,
+          hasMore: false
+        };
+      }
+
+      if (data.reset) {
+        _localWriteRev.clear();
+        _appliedRevs.clear();
+      }
+
+      const upserted = [];
+      const deleted = [];
+      let heldCursor = null;
+      let prev = data.reset ? { rev: 0, id: '' } : cursor;
+
+      for (const ch of data.changes) {
+        if (!ch || !ch.id) continue;
+        const here = { rev: ch.rev, id: ch.id };
+
+        const ownRev = _localWriteRev.get(ch.id);
+        if (ownRev !== undefined && ownRev > ch.rev) {
+          prev = here; // versão remota obsoleta frente à nossa gravação já confirmada
+          continue;
+        }
+        if (this.hasPendingLocalChange(ch.id)) {
+          if (!heldCursor) heldCursor = prev;
+          prev = here;
+          continue;
+        }
+        if (_appliedRevs.get(ch.id) === ch.rev) {
+          prev = here;
+          continue;
+        }
+
+        _appliedRevs.set(ch.id, ch.rev);
+        if (ch.deleted) deleted.push(ch.id);
+        else if (ch.feature) upserted.push(ch.feature);
+        prev = here;
+      }
+
+      const serverCursor = data.cursor && Number.isFinite(data.cursor.rev)
+        ? data.cursor
+        : { rev: Number(data.rev) || 0, id: '' };
+      if (isCurrent) _saveSyncCursor(projId, heldCursor || serverCursor);
+
       return {
-        upserted: Array.isArray(data.upserted) ? data.upserted : [],
-        deleted: Array.isArray(data.deleted) ? data.deleted : [],
-        layers: Array.isArray(data.layers) ? data.layers : [],
-        project: data.project || null
+        upserted,
+        deleted,
+        layers,
+        project: data.project || null,
+        presence: Array.isArray(data.presence) ? data.presence : null,
+        hasMore: !!data.hasMore && !heldCursor
       };
     } catch (err) {
       // Falha silenciosa para não degradar a experiência em caso de oscilação momentânea
@@ -1442,21 +1685,8 @@ export class StorageService {
     if ((!upserted || upserted.length === 0) && (!deletedIds || deletedIds.length === 0)) return true;
     const projId = projectId || _currentProjectId || 'projeto_padrao';
 
-    // Limpa das filas dirty locais para garantir que não haja feedback loop
-    if (Array.isArray(deletedIds)) {
-      for (const id of deletedIds) {
-        _dirtyFeatures.delete(id);
-        _deletedFeatureIds.delete(id);
-      }
-    }
-    if (Array.isArray(upserted)) {
-      for (const f of upserted) {
-        if (f && f.id) {
-          _dirtyFeatures.delete(f.id);
-          _deletedFeatureIds.delete(f.id);
-        }
-      }
-    }
+    // Não mexe nas filas dirty: alterações remotas nunca entram nelas (sem eco), e descartar
+    // uma edição local ainda não enviada causaria perda silenciosa de dados.
 
     try {
       const db = await this.getDB();
@@ -1508,7 +1738,14 @@ export class StorageService {
         localStorage.removeItem(key);
         return true;
       }
-      return await this.syncDeltasToCloud(dirty, deleted, projId);
+      // Evita empilhar reenvios idênticos enquanto um já está na fila
+      if (this._offlineFlushPromise) return await this._offlineFlushPromise;
+      this._offlineFlushPromise = this.syncDeltasToCloud(dirty, deleted, projId);
+      try {
+        return await this._offlineFlushPromise;
+      } finally {
+        this._offlineFlushPromise = null;
+      }
     } catch (e) {
       console.warn('[StorageService] Falha ao descarregar deltas pendentes:', e);
       return false;

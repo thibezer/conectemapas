@@ -10,7 +10,7 @@
 </IfModule>
 
 # 2. Proteção de Arquivos Sensíveis de Configuração
-<FilesMatch "^(db_config\.php|\.env|\.sql|\.git)">
+<FilesMatch "^(db_config\.php|\.env|\.sql|\.git|\.cm_schema_version)">
   Order allow,deny
   Deny from all
 </FilesMatch>

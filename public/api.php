@@ -62,9 +62,25 @@ function getDatabaseConnection() {
 }
 
 // 3. Auto-Migração do Esquema Relacional (DDL Idempotente)
+// A versão do esquema fica gravada em disco para que as requisições de alta frequência
+// (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
+define('CM_SCHEMA_VERSION', 3);
+define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
+
+function columnExists(PDO $pdo, $table, $column) {
+    $stmt = $pdo->query("SHOW COLUMNS FROM `$table` LIKE " . $pdo->quote($column));
+    return !empty($stmt->fetchAll());
+}
+
 function ensureDatabaseSchema(PDO $pdo) {
     static $schemaChecked = false;
     if ($schemaChecked) return;
+
+    $marker = @file_get_contents(CM_SCHEMA_MARKER);
+    if ($marker !== false && (int)$marker >= CM_SCHEMA_VERSION) {
+        $schemaChecked = true;
+        return;
+    }
 
     $queries = [
         // Tabela de Projetos
@@ -142,7 +158,180 @@ function ensureDatabaseSchema(PDO $pdo) {
         // Ignora caso índice ou coluna já existam
     }
 
+    // v3: Revisão monotônica por projeto (cursor de sincronização sem dependência de relógio)
+    // Cada escrita incrementa cm_projects.rev dentro da transação; as linhas gravadas recebem essa
+    // revisão. O pull busca "rev > cursor", imune a empates de segundo, fuso horário PHP x MySQL e LIMIT.
+    try {
+        if (!columnExists($pdo, 'cm_projects', 'rev')) {
+            $pdo->exec("ALTER TABLE cm_projects ADD COLUMN rev BIGINT NOT NULL DEFAULT 0;");
+        }
+        if (!columnExists($pdo, 'cm_features', 'rev')) {
+            $pdo->exec("ALTER TABLE cm_features ADD COLUMN rev BIGINT NOT NULL DEFAULT 0, ADD COLUMN client_id VARCHAR(64) NULL;");
+            $pdo->exec("ALTER TABLE cm_features ADD INDEX idx_features_rev (project_id, rev, id);");
+            // Linhas legadas entram na revisão 1 (preserva updated_at para clientes antigos)
+            $pdo->exec("UPDATE cm_features SET rev = 1, updated_at = updated_at WHERE rev = 0;");
+        }
+        if (!columnExists($pdo, 'cm_layers', 'rev')) {
+            $pdo->exec("ALTER TABLE cm_layers ADD COLUMN rev BIGINT NOT NULL DEFAULT 0, ADD COLUMN client_id VARCHAR(64) NULL;");
+            $pdo->exec("ALTER TABLE cm_layers ADD INDEX idx_layers_rev (project_id, rev);");
+            $pdo->exec("UPDATE cm_layers SET rev = 1, updated_at = updated_at WHERE rev = 0;");
+        }
+        $pdo->exec("UPDATE cm_projects SET rev = 1, updated_at = updated_at WHERE rev = 0;");
+
+        // Presença ao vivo (cursores e avatares entre dispositivos diferentes)
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_presence (
+            project_id VARCHAR(64) NOT NULL,
+            client_id VARCHAR(64) NOT NULL,
+            user_name VARCHAR(128) NOT NULL DEFAULT 'Colaborador',
+            color VARCHAR(32) DEFAULT '#00E08A',
+            lat DOUBLE NULL,
+            lng DOUBLE NULL,
+            last_seen DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (project_id, client_id),
+            INDEX idx_presence_seen (project_id, last_seen)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    } catch (Exception $e) {
+        // Mantém a API operante; a migração será tentada novamente na próxima requisição
+        return;
+    }
+
+    @file_put_contents(CM_SCHEMA_MARKER, (string)CM_SCHEMA_VERSION);
     $schemaChecked = true;
+}
+
+/**
+ * Reserva a próxima revisão do projeto. Deve ser chamada DENTRO de uma transação:
+ * o UPDATE trava a linha do projeto até o commit, então as revisões ficam visíveis
+ * na mesma ordem em que são atribuídas (nenhum leitor vê rev N+1 sem ver rev N).
+ */
+function nextRevision(PDO $pdo, $projectId) {
+    $pdo->prepare("INSERT IGNORE INTO cm_projects (id) VALUES (?)")->execute([$projectId]);
+    $pdo->prepare("UPDATE cm_projects SET rev = rev + 1 WHERE id = ?")->execute([$projectId]);
+    $stmt = $pdo->prepare("SELECT rev FROM cm_projects WHERE id = ?");
+    $stmt->execute([$projectId]);
+    return (int)$stmt->fetchColumn();
+}
+
+function sanitizeClientId($raw) {
+    $clean = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$raw);
+    return $clean !== '' ? substr($clean, 0, 64) : null;
+}
+
+function decodeFeatureRow(array $f) {
+    $coords = json_decode($f['coordinates'], true);
+    $props = !empty($f['properties']) ? json_decode($f['properties'], true) : [];
+    $style = !empty($f['style']) ? json_decode($f['style'], true) : [];
+    if (!is_array($coords)) $coords = [];
+    if (!is_array($props)) $props = [];
+    if (!is_array($style)) $style = [];
+    $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
+    $visible = isset($props['visible']) ? (bool)$props['visible'] : true;
+    return [
+        'id'          => $f['id'],
+        'layerId'     => $f['layerId'],
+        'name'        => $f['name'],
+        'type'        => $f['type'],
+        'coordinates' => $coords,
+        'properties'  => $props,
+        'style'       => $style,
+        'color'       => $f['color'],
+        'radius'      => $radius,
+        'visible'     => $visible,
+        'createdBy'   => $f['createdBy'],
+        'updatedAt'   => $f['updatedAt']
+    ];
+}
+
+/**
+ * Grava somente as camadas alteradas, atribuindo-lhes uma nova revisão (dentro da transação ativa).
+ */
+function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $rev = null) {
+    $stmtCheck = $pdo->prepare("SELECT project_id, name, color, type, visible, opacity, order_idx FROM cm_layers WHERE id = ?");
+    $stmtUpdate = $pdo->prepare("
+        UPDATE cm_layers
+        SET project_id = ?, name = ?, color = ?, type = ?, visible = ?, opacity = ?, order_idx = ?, rev = ?, client_id = ?, updated_at = NOW()
+        WHERE id = ?
+    ");
+    $stmtInsert = $pdo->prepare("
+        INSERT INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, rev, client_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+    ");
+
+    foreach ($layers as $idx => $layer) {
+        if (empty($layer['id'])) continue;
+        $lid = $layer['id'];
+        $lname = $layer['name'] ?? 'Camada';
+        $lcolor = $layer['color'] ?? '#00E08A';
+        $ltype = $layer['type'] ?? 'custom';
+        $lvis = isset($layer['visible']) && !$layer['visible'] ? 0 : 1;
+        $lopac = isset($layer['opacity']) ? (float)$layer['opacity'] : 1.0;
+        $lord = (int)($layer['order'] ?? $idx);
+
+        $stmtCheck->execute([$lid]);
+        $existing = $stmtCheck->fetch();
+        if ($existing) {
+            $unchanged = $existing['project_id'] === $projectId
+                && $existing['name'] === $lname
+                && $existing['color'] === $lcolor
+                && $existing['type'] === $ltype
+                && (int)$existing['visible'] === $lvis
+                && abs((float)$existing['opacity'] - $lopac) < 0.0001
+                && (int)$existing['order_idx'] === $lord;
+            if ($unchanged) continue;
+            if ($rev === null) $rev = nextRevision($pdo, $projectId);
+            $stmtUpdate->execute([$projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $rev, $clientId, $lid]);
+        } else {
+            if ($rev === null) $rev = nextRevision($pdo, $projectId);
+            $stmtInsert->execute([$lid, $projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $rev, $clientId]);
+        }
+    }
+    return $rev;
+}
+
+function prepareFeatureUpsert(PDO $pdo) {
+    return $pdo->prepare("
+        INSERT INTO cm_features (id, project_id, layer_id, name, geom_type, coordinates, properties, style, color, created_by, deleted, rev, client_id, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())
+        ON DUPLICATE KEY UPDATE
+            layer_id = ?,
+            name = ?,
+            geom_type = ?,
+            coordinates = ?,
+            properties = ?,
+            style = ?,
+            color = ?,
+            deleted = 0,
+            rev = ?,
+            client_id = ?,
+            updated_at = NOW()
+    ");
+}
+
+function executeFeatureUpsert(PDOStatement $stmt, array $feat, $projectId, $rev, $clientId) {
+    $props = !empty($feat['properties']) ? (is_array($feat['properties']) ? $feat['properties'] : json_decode($feat['properties'], true)) : [];
+    if (!is_array($props)) $props = [];
+    if (!empty($feat['radius'])) {
+        $props['radius'] = (float)$feat['radius'];
+    }
+    if (isset($feat['visible'])) {
+        $props['visible'] = (bool)$feat['visible'];
+    }
+
+    $layerId   = $feat['layerId'] ?? 'layer-default';
+    $name      = $feat['name'] ?? 'Feição';
+    $type      = $feat['type'] ?? 'Polygon';
+    $coords    = json_encode($feat['coordinates'] ?? [], JSON_UNESCAPED_UNICODE);
+    $propsJson = json_encode($props, JSON_UNESCAPED_UNICODE);
+    $style     = json_encode($feat['style'] ?? [], JSON_UNESCAPED_UNICODE);
+    $color     = $feat['color'] ?? '#00E08A';
+    $createdBy = $feat['createdBy'] ?? 'Operador';
+
+    return $stmt->execute([
+        // INSERT
+        $feat['id'], $projectId, $layerId, $name, $type, $coords, $propsJson, $style, $color, $createdBy, $rev, $clientId,
+        // ON DUPLICATE KEY UPDATE (parâmetros posicionais: compatibilidade MariaDB 11.8)
+        $layerId, $name, $type, $coords, $propsJson, $style, $color, $rev, $clientId
+    ]);
 }
 
 // 4. Roteamento de Ações REST
@@ -220,12 +409,16 @@ switch ($action) {
             ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_GET['projectId']) 
             : 'projeto_padrao';
 
+        // Snapshot consistente: a revisão devolvida corresponde exatamente às feições lidas
+        $pdo->beginTransaction();
+
         // 1. Carrega metadados do projeto
         $stmtProj = $pdo->prepare("SELECT * FROM cm_projects WHERE id = ?");
         $stmtProj->execute([$projectId]);
         $project = $stmtProj->fetch();
 
         if (!$project) {
+            $pdo->commit();
             echo json_encode([
                 'exists'   => false,
                 'project'  => null,
@@ -295,10 +488,12 @@ switch ($action) {
         ");
         $stmtAudit->execute([$projectId]);
         $auditLog = $stmtAudit->fetchAll();
+        $pdo->commit();
 
         echo json_encode([
             'exists'     => true,
             'serverTime' => date('Y-m-d H:i:s'),
+            'rev'        => (int)($project['rev'] ?? 0),
             'project'    => [
                 'id'           => $project['id'],
                 'name'         => $project['name'],
@@ -370,36 +565,11 @@ switch ($action) {
                 $featureCount
             ]);
 
-            // Se houver camadas, grava/atualiza
+            // Se houver camadas, grava/atualiza apenas as que realmente mudaram
+            // (evita que cada salvamento "acorde" todos os outros operadores à toa)
             if (isset($body['layers']) && is_array($body['layers'])) {
-                $stmtCheck = $pdo->prepare("SELECT id FROM cm_layers WHERE id = ?");
-                $stmtUpdate = $pdo->prepare("
-                    UPDATE cm_layers 
-                    SET project_id = ?, name = ?, color = ?, type = ?, visible = ?, opacity = ?, order_idx = ?, updated_at = NOW()
-                    WHERE id = ?
-                ");
-                $stmtInsert = $pdo->prepare("
-                    INSERT INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                ");
-
-                foreach ($body['layers'] as $idx => $layer) {
-                    if (empty($layer['id'])) continue;
-                    $lid = $layer['id'];
-                    $lname = $layer['name'] ?? 'Camada';
-                    $lcolor = $layer['color'] ?? '#00E08A';
-                    $ltype = $layer['type'] ?? 'custom';
-                    $lvis = isset($layer['visible']) && !$layer['visible'] ? 0 : 1;
-                    $lopac = isset($layer['opacity']) ? (float)$layer['opacity'] : 1.0;
-                    $lord = $layer['order'] ?? $idx;
-
-                    $stmtCheck->execute([$lid]);
-                    if ($stmtCheck->fetch()) {
-                        $stmtUpdate->execute([$projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $lid]);
-                    } else {
-                        $stmtInsert->execute([$lid, $projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord]);
-                    }
-                }
+                $clientId = sanitizeClientId($body['clientId'] ?? '');
+                upsertChangedLayers($pdo, $projectId, $body['layers'], $clientId);
             }
 
             $pdo->commit();
@@ -424,6 +594,7 @@ switch ($action) {
 
         $body = getJsonBody();
         $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
+        $clientId = sanitizeClientId($body['clientId'] ?? '');
         $toUpsert = isset($body['toUpsert']) && is_array($body['toUpsert']) ? $body['toUpsert'] : [];
         $rawDelete = isset($body['toDelete']) && is_array($body['toDelete']) ? $body['toDelete'] : [];
         $toDelete = [];
@@ -438,86 +609,36 @@ switch ($action) {
 
         $pdo->beginTransaction();
         try {
+            // Revisão reservada primeiro: trava a linha do projeto até o commit (ordem total das escritas)
+            $rev = nextRevision($pdo, $projectId);
+
             // 1. Exclusão Lógica com Tombstones em lotes seguros de até 500 itens
             if (!empty($toDelete)) {
                 $chunks = array_chunk($toDelete, 500);
                 foreach ($chunks as $chunk) {
                     $placeholders = implode(',', array_fill(0, count($chunk), '?'));
                     $stmtDel = $pdo->prepare("
-                        UPDATE cm_features 
-                        SET deleted = 1, updated_at = NOW() 
+                        UPDATE cm_features
+                        SET deleted = 1, rev = ?, client_id = ?, updated_at = NOW()
                         WHERE project_id = ? AND id IN ($placeholders)
                     ");
-                    $stmtDel->execute(array_merge([$projectId], $chunk));
+                    $stmtDel->execute(array_merge([$rev, $clientId, $projectId], $chunk));
                 }
             }
 
             // 2. Insere ou Atualiza feições modificadas (marca deleted = 0)
+            $upsertCount = 0;
+            $upsertErrors = [];
             if (!empty($toUpsert)) {
                 $deletedSet = !empty($toDelete) ? array_flip($toDelete) : [];
+                $stmtUpsert = prepareFeatureUpsert($pdo);
 
-                $stmtUpsert = $pdo->prepare("
-                    INSERT INTO cm_features (id, project_id, layer_id, name, geom_type, coordinates, properties, style, color, created_by, deleted, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())
-                    ON DUPLICATE KEY UPDATE
-                        layer_id = ?,
-                        name = ?,
-                        geom_type = ?,
-                        coordinates = ?,
-                        properties = ?,
-                        style = ?,
-                        color = ?,
-                        deleted = 0,
-                        updated_at = NOW()
-                ");
-
-                $upsertCount = 0;
-                $upsertErrors = [];
                 foreach ($toUpsert as $feat) {
                     if (empty($feat['id'])) continue;
                     // Salvaguarda Anti-Zumbi: Não ressuscita feição excluída no mesmo batch
                     if (isset($deletedSet[$feat['id']])) continue;
 
-                    $props = !empty($feat['properties']) ? (is_array($feat['properties']) ? $feat['properties'] : json_decode($feat['properties'], true)) : [];
-                    if (!empty($feat['radius'])) {
-                        $props['radius'] = (float)$feat['radius'];
-                    }
-                    if (isset($feat['visible'])) {
-                        $props['visible'] = (bool)$feat['visible'];
-                    }
-
-                    $featLayerId   = $feat['layerId'] ?? 'layer-default';
-                    $featName      = $feat['name'] ?? 'Feição';
-                    $featType      = $feat['type'] ?? 'Polygon';
-                    $coordsJson    = json_encode($feat['coordinates'] ?? [], JSON_UNESCAPED_UNICODE);
-                    $propsJson     = json_encode($props, JSON_UNESCAPED_UNICODE);
-                    $styleJson     = json_encode($feat['style'] ?? [], JSON_UNESCAPED_UNICODE);
-                    $featColor     = $feat['color'] ?? '#00E08A';
-                    $featCreatedBy = $feat['createdBy'] ?? 'Operador';
-
-                    $resEx = $stmtUpsert->execute([
-                        // INSERT params
-                        $feat['id'],
-                        $projectId,
-                        $featLayerId,
-                        $featName,
-                        $featType,
-                        $coordsJson,
-                        $propsJson,
-                        $styleJson,
-                        $featColor,
-                        $featCreatedBy,
-                        // ON DUPLICATE KEY UPDATE params
-                        $featLayerId,
-                        $featName,
-                        $featType,
-                        $coordsJson,
-                        $propsJson,
-                        $styleJson,
-                        $featColor
-                    ]);
-
-                    if ($resEx) {
+                    if (executeFeatureUpsert($stmtUpsert, $feat, $projectId, $rev, $clientId)) {
                         $upsertCount++;
                     } else {
                         $upsertErrors[] = ['id' => $feat['id'], 'error' => $stmtUpsert->errorInfo()];
@@ -527,7 +648,7 @@ switch ($action) {
 
             // 3. Atualiza contagem de feições ativas no projeto
             $stmtCount = $pdo->prepare("
-                UPDATE cm_projects 
+                UPDATE cm_projects
                 SET feature_count = (SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0),
                     updated_at = NOW()
                 WHERE id = ?
@@ -538,6 +659,7 @@ switch ($action) {
             echo json_encode([
                 'success'    => true,
                 'serverTime' => date('Y-m-d H:i:s'),
+                'rev'        => $rev,
                 'synced'     => [
                     'upserted' => $upsertCount,
                     'deleted'  => count($toDelete),
@@ -554,91 +676,215 @@ switch ($action) {
 
     // --------------------------------------------------------------------------
     // ACTION: PULL_CHANGES (Sincronização Ativa Multi-Dispositivo)
+    // Modo revisão (sinceRev): cursor monotônico + presença ao vivo. É o modo usado pelo app.
+    // Modo legado (since=timestamp): mantido para clientes em cache durante o deploy.
     // --------------------------------------------------------------------------
     case 'pull_changes':
         $projectId = !empty($_GET['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_GET['projectId']) : 'projeto_padrao';
-        $rawSince = isset($_GET['since']) ? trim($_GET['since']) : '';
-        $since = (!empty($rawSince) && $rawSince !== 'undefined' && $rawSince !== 'null' && strtotime($rawSince) !== false)
-            ? $rawSince 
-            : '1970-01-01 00:00:00';
 
-        // 1. Feições adicionadas ou alteradas por outros clientes
-        $stmtUpsert = $pdo->prepare("
-            SELECT id, layer_id AS layerId, name, geom_type AS type, coordinates, properties, style, color, created_by AS createdBy, updated_at AS updatedAt
-            FROM cm_features
-            WHERE project_id = ? AND deleted = 0 AND updated_at > ?
-            ORDER BY updated_at ASC
-            LIMIT 500
-        ");
-        $stmtUpsert->execute([$projectId, $since]);
-        $rawUpserted = $stmtUpsert->fetchAll();
-        $upserted = [];
-        foreach ($rawUpserted as $f) {
-            $coords = json_decode($f['coordinates'], true);
-            $props = !empty($f['properties']) ? json_decode($f['properties'], true) : [];
-            $style = !empty($f['style']) ? json_decode($f['style'], true) : [];
-            if (!is_array($coords)) $coords = [];
-            if (!is_array($props)) $props = [];
-            if (!is_array($style)) $style = [];
-            $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
-            $visible = isset($props['visible']) ? (bool)$props['visible'] : true;
-            $upserted[] = [
-                'id'          => $f['id'],
-                'layerId'     => $f['layerId'],
-                'name'        => $f['name'],
-                'type'        => $f['type'],
-                'coordinates' => $coords,
-                'properties'  => $props,
-                'style'       => $style,
-                'color'       => $f['color'],
-                'radius'      => $radius,
-                'visible'     => $visible,
-                'createdBy'   => $f['createdBy'],
-                'updatedAt'   => $f['updatedAt']
-            ];
+        if (!isset($_GET['sinceRev'])) {
+            $rawSince = isset($_GET['since']) ? trim($_GET['since']) : '';
+            $since = (!empty($rawSince) && $rawSince !== 'undefined' && $rawSince !== 'null' && strtotime($rawSince) !== false)
+                ? $rawSince
+                : '1970-01-01 00:00:00';
+
+            $stmtUpsert = $pdo->prepare("
+                SELECT id, layer_id AS layerId, name, geom_type AS type, coordinates, properties, style, color, created_by AS createdBy, updated_at AS updatedAt
+                FROM cm_features
+                WHERE project_id = ? AND deleted = 0 AND updated_at > ?
+                ORDER BY updated_at ASC
+                LIMIT 500
+            ");
+            $stmtUpsert->execute([$projectId, $since]);
+            $upserted = array_map('decodeFeatureRow', $stmtUpsert->fetchAll());
+
+            $stmtDel = $pdo->prepare("
+                SELECT id
+                FROM cm_features
+                WHERE project_id = ? AND deleted = 1 AND updated_at > ?
+                LIMIT 500
+            ");
+            $stmtDel->execute([$projectId, $since]);
+            $deletedIds = $stmtDel->fetchAll(PDO::FETCH_COLUMN);
+
+            $stmtLayers = $pdo->prepare("
+                SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at
+                FROM cm_layers
+                WHERE project_id = ?
+                ORDER BY order_idx ASC
+            ");
+            $stmtLayers->execute([$projectId]);
+            $layers = $stmtLayers->fetchAll();
+            foreach ($layers as &$l) {
+                $l['visible'] = (bool)$l['visible'];
+                $l['opacity'] = (float)$l['opacity'];
+            }
+            unset($l);
+
+            $stmtProj = $pdo->prepare("SELECT name, basemap, feature_count, updated_at FROM cm_projects WHERE id = ?");
+            $stmtProj->execute([$projectId]);
+            $projectMeta = $stmtProj->fetch();
+
+            echo json_encode([
+                'success'      => true,
+                'serverTime'   => date('Y-m-d H:i:s'),
+                'upserted'     => $upserted,
+                'deleted'      => $deletedIds,
+                'layers'       => $layers,
+                'project'      => $projectMeta
+            ]);
+            exit;
         }
 
-        // 2. Feições deletadas por outros clientes (Tombstones)
-        $stmtDel = $pdo->prepare("
-            SELECT id
-            FROM cm_features
-            WHERE project_id = ? AND deleted = 1 AND updated_at > ?
-            LIMIT 500
-        ");
-        $stmtDel->execute([$projectId, $since]);
-        $deletedIds = $stmtDel->fetchAll(PDO::FETCH_COLUMN);
+        $sinceRev = max(0, (int)$_GET['sinceRev']);
+        $sinceId = isset($_GET['sinceId']) ? (string)$_GET['sinceId'] : '';
+        $clientId = sanitizeClientId($_GET['clientId'] ?? '');
+        $pageLimit = 500;
 
-        // 3. Camadas do projeto (para sincronizar novas camadas criadas por outros operadores)
-        $stmtLayers = $pdo->prepare("
-            SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at
+        // 1. Presença: heartbeat + posição do cursor deste operador, e lista dos demais ativos
+        $presence = [];
+        if ($clientId) {
+            $rawName = trim((string)($_GET['userName'] ?? ''));
+            $pName = $rawName !== '' ? (function_exists('mb_substr') ? mb_substr($rawName, 0, 128) : substr($rawName, 0, 128)) : 'Colaborador';
+            $pColor = preg_match('/^#[0-9a-fA-F]{3,8}$/', (string)($_GET['userColor'] ?? '')) ? $_GET['userColor'] : '#00E08A';
+            $pLat = isset($_GET['lat']) && is_numeric($_GET['lat']) ? (float)$_GET['lat'] : null;
+            $pLng = isset($_GET['lng']) && is_numeric($_GET['lng']) ? (float)$_GET['lng'] : null;
+
+            try {
+                $stmtPres = $pdo->prepare("
+                    INSERT INTO cm_presence (project_id, client_id, user_name, color, lat, lng, last_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        user_name = ?,
+                        color = ?,
+                        lat = COALESCE(?, lat),
+                        lng = COALESCE(?, lng),
+                        last_seen = NOW()
+                ");
+                $stmtPres->execute([$projectId, $clientId, $pName, $pColor, $pLat, $pLng, $pName, $pColor, $pLat, $pLng]);
+
+                if (mt_rand(1, 200) === 1) {
+                    $pdo->exec("DELETE FROM cm_presence WHERE last_seen < NOW() - INTERVAL 1 HOUR");
+                }
+
+                $stmtOthers = $pdo->prepare("
+                    SELECT client_id AS id, user_name AS name, color, lat, lng
+                    FROM cm_presence
+                    WHERE project_id = ? AND client_id <> ? AND last_seen >= NOW() - INTERVAL 12 SECOND
+                ");
+                $stmtOthers->execute([$projectId, $clientId]);
+                foreach ($stmtOthers->fetchAll() as $p) {
+                    $presence[] = [
+                        'id'    => $p['id'],
+                        'name'  => $p['name'],
+                        'color' => $p['color'],
+                        'lat'   => $p['lat'] !== null ? (float)$p['lat'] : null,
+                        'lng'   => $p['lng'] !== null ? (float)$p['lng'] : null
+                    ];
+                }
+            } catch (Exception $e) {
+                // Presença é acessória: nunca bloqueia a sincronização de dados
+            }
+        }
+
+        // 2. Leitura em snapshot consistente: tudo com rev <= projRev já está commitado
+        $pdo->beginTransaction();
+        $stmtRev = $pdo->prepare("SELECT rev, name, basemap, feature_count, updated_at FROM cm_projects WHERE id = ?");
+        $stmtRev->execute([$projectId]);
+        $projectRow = $stmtRev->fetch();
+        $projRev = $projectRow ? (int)$projectRow['rev'] : 0;
+
+        $reset = false;
+        if ($sinceRev > $projRev) {
+            // Cursor à frente do servidor (banco restaurado/recriado): refaz do zero
+            $sinceRev = 0;
+            $sinceId = '';
+            $reset = true;
+        }
+
+        $echoFilter = $clientId ? ' AND (client_id IS NULL OR client_id <> ?)' : '';
+
+        $sqlFeat = "
+            SELECT id, layer_id AS layerId, name, geom_type AS type, coordinates, properties, style, color,
+                   created_by AS createdBy, updated_at AS updatedAt, deleted, rev
+            FROM cm_features
+            WHERE project_id = ? AND rev >= ? AND rev <= ? AND (rev > ? OR id > ?)" . $echoFilter . "
+            ORDER BY rev ASC, id ASC
+            LIMIT " . ($pageLimit + 1);
+        $paramsFeat = [$projectId, $sinceRev, $projRev, $sinceRev, $sinceId];
+        if ($clientId) $paramsFeat[] = $clientId;
+        $stmtFeat = $pdo->prepare($sqlFeat);
+        $stmtFeat->execute($paramsFeat);
+        $rows = $stmtFeat->fetchAll();
+
+        $hasMore = count($rows) > $pageLimit;
+        if ($hasMore) {
+            $rows = array_slice($rows, 0, $pageLimit);
+            $last = $rows[count($rows) - 1];
+            $cursor = ['rev' => (int)$last['rev'], 'id' => $last['id']];
+        } else {
+            $cursor = ['rev' => $projRev, 'id' => ''];
+        }
+
+        $changes = [];
+        $upserted = [];
+        $deletedIds = [];
+        foreach ($rows as $r) {
+            $isDeleted = (int)$r['deleted'] === 1;
+            if ($isDeleted) {
+                $deletedIds[] = $r['id'];
+                $changes[] = ['id' => $r['id'], 'rev' => (int)$r['rev'], 'deleted' => true];
+            } else {
+                $feat = decodeFeatureRow($r);
+                $upserted[] = $feat;
+                $changes[] = ['id' => $r['id'], 'rev' => (int)$r['rev'], 'deleted' => false, 'feature' => $feat];
+            }
+        }
+
+        $sqlLayers = "
+            SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at, rev
             FROM cm_layers
-            WHERE project_id = ?
-            ORDER BY order_idx ASC
-        ");
-        $stmtLayers->execute([$projectId]);
+            WHERE project_id = ? AND rev > ? AND rev <= ?" . $echoFilter . "
+            ORDER BY order_idx ASC";
+        $paramsLayers = [$projectId, $sinceRev, $projRev];
+        if ($clientId) $paramsLayers[] = $clientId;
+        $stmtLayers = $pdo->prepare($sqlLayers);
+        $stmtLayers->execute($paramsLayers);
         $layers = $stmtLayers->fetchAll();
         foreach ($layers as &$l) {
             $l['visible'] = (bool)$l['visible'];
             $l['opacity'] = (float)$l['opacity'];
+            $l['rev'] = (int)$l['rev'];
         }
-
-        // 4. Metadados do projeto
-        $stmtProj = $pdo->prepare("SELECT name, basemap, feature_count, updated_at FROM cm_projects WHERE id = ?");
-        $stmtProj->execute([$projectId]);
-        $projectMeta = $stmtProj->fetch();
+        unset($l);
+        $pdo->commit();
 
         echo json_encode([
-            'success'      => true,
-            'serverTime'   => date('Y-m-d H:i:s'),
-            'upserted'     => $upserted,
-            'deleted'      => $deletedIds,
-            'layers'       => $layers,
-            'project'      => $projectMeta
+            'success'    => true,
+            'serverTime' => date('Y-m-d H:i:s'),
+            'rev'        => $projRev,
+            'cursor'     => $cursor,
+            'hasMore'    => $hasMore,
+            'reset'      => $reset,
+            'changes'    => $changes,
+            'upserted'   => $upserted,
+            'deleted'    => $deletedIds,
+            'layers'     => $layers,
+            'presence'   => $presence,
+            'project'    => $projectRow ? [
+                'name'          => $projectRow['name'],
+                'basemap'       => $projectRow['basemap'],
+                'feature_count' => (int)$projectRow['feature_count'],
+                'updated_at'    => $projectRow['updated_at']
+            ] : null
         ]);
         exit;
 
     // --------------------------------------------------------------------------
     // ACTION: SAVE_ALL (Gravação com Upsert Não-Destrutivo)
+    // Concorrência otimista: com 'baseRev', feições alteradas por OUTRO operador depois
+    // dessa revisão não são sobrescritas pela cópia (possivelmente defasada) deste cliente.
+    // A poda de feições ausentes só ocorre com 'prune' explícito.
     // --------------------------------------------------------------------------
     case 'save_all':
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -649,9 +895,14 @@ switch ($action) {
 
         $body = getJsonBody();
         $projectId = !empty($body['id']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['id']) : 'projeto_padrao';
+        $clientId = sanitizeClientId($body['clientId'] ?? '');
+        $baseRev = isset($body['baseRev']) && is_numeric($body['baseRev']) ? (int)$body['baseRev'] : null;
+        $prune = !empty($body['prune']);
 
         $pdo->beginTransaction();
         try {
+            $rev = nextRevision($pdo, $projectId);
+
             // Salva projeto
             $stmtProj = $pdo->prepare("
                 INSERT INTO cm_projects (id, name, description, basemap, center_lat, center_lng, zoom, feature_count, updated_at)
@@ -694,129 +945,65 @@ switch ($action) {
                 $projCount
             ]);
 
-            // Camadas (Upsert sem truncar)
+            // Camadas (Upsert sem truncar, apenas as alteradas)
             if (isset($body['layers']) && is_array($body['layers'])) {
-                $stmtCheckL = $pdo->prepare("SELECT id FROM cm_layers WHERE id = ?");
-                $stmtUpdateL = $pdo->prepare("
-                    UPDATE cm_layers 
-                    SET project_id = ?, name = ?, color = ?, type = ?, visible = ?, opacity = ?, order_idx = ?, updated_at = NOW()
-                    WHERE id = ?
-                ");
-                $stmtInsertL = $pdo->prepare("
-                    INSERT INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                ");
-
-                foreach ($body['layers'] as $idx => $l) {
-                    if (empty($l['id'])) continue;
-                    $lid = $l['id'];
-                    $lname = $l['name'] ?? 'Camada';
-                    $lcolor = $l['color'] ?? '#00E08A';
-                    $ltype = $l['type'] ?? 'custom';
-                    $lvis = isset($l['visible']) && !$l['visible'] ? 0 : 1;
-                    $lopac = isset($l['opacity']) ? (float)$l['opacity'] : 1.0;
-                    $lord = $l['order'] ?? $idx;
-
-                    $stmtCheckL->execute([$lid]);
-                    if ($stmtCheckL->fetch()) {
-                        $stmtUpdateL->execute([$projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $lid]);
-                    } else {
-                        $stmtInsertL->execute([$lid, $projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord]);
-                    }
-                }
+                upsertChangedLayers($pdo, $projectId, $body['layers'], $clientId, $rev);
             }
 
-            // Feições - Upsert Não-Destrutivo com soft-delete para feições removidas
+            $skipped = 0;
             if (isset($body['features']) && is_array($body['features'])) {
+                // Feições alteradas por outro operador depois da revisão vista por este cliente
+                $newerElsewhere = [];
+                if ($baseRev !== null) {
+                    $sqlNewer = "SELECT id FROM cm_features WHERE project_id = ? AND rev > ?" . ($clientId ? " AND (client_id IS NULL OR client_id <> ?)" : "");
+                    $stmtNewer = $pdo->prepare($sqlNewer);
+                    $stmtNewer->execute($clientId ? [$projectId, $baseRev, $clientId] : [$projectId, $baseRev]);
+                    $newerElsewhere = array_flip($stmtNewer->fetchAll(PDO::FETCH_COLUMN));
+                }
+
                 $currentIds = [];
-                $stmtFeat = $pdo->prepare("
-                    INSERT INTO cm_features (id, project_id, layer_id, name, geom_type, coordinates, properties, style, color, created_by, deleted, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NOW())
-                    ON DUPLICATE KEY UPDATE
-                        layer_id = ?,
-                        name = ?,
-                        geom_type = ?,
-                        coordinates = ?,
-                        properties = ?,
-                        style = ?,
-                        color = ?,
-                        deleted = 0,
-                        updated_at = NOW()
-                ");
+                $stmtFeat = prepareFeatureUpsert($pdo);
                 foreach ($body['features'] as $f) {
                     if (empty($f['id'])) continue;
                     $currentIds[] = $f['id'];
-                    $props = !empty($f['properties']) ? (is_array($f['properties']) ? $f['properties'] : json_decode($f['properties'], true)) : [];
-                    if (!empty($f['radius'])) {
-                        $props['radius'] = (float)$f['radius'];
+                    if (isset($newerElsewhere[$f['id']])) {
+                        $skipped++;
+                        continue;
                     }
-                    if (isset($f['visible'])) {
-                        $props['visible'] = (bool)$f['visible'];
-                    }
-
-                    $fLayerId   = $f['layerId'] ?? 'layer-default';
-                    $fName      = $f['name'] ?? 'Feição';
-                    $fType      = $f['type'] ?? 'Polygon';
-                    $fCoords    = json_encode($f['coordinates'] ?? [], JSON_UNESCAPED_UNICODE);
-                    $fProps     = json_encode($props, JSON_UNESCAPED_UNICODE);
-                    $fStyle     = json_encode($f['style'] ?? [], JSON_UNESCAPED_UNICODE);
-                    $fColor     = $f['color'] ?? '#00E08A';
-                    $fCreatedBy = $f['createdBy'] ?? 'Operador';
-
-                    $stmtFeat->execute([
-                        // INSERT
-                        $f['id'],
-                        $projectId,
-                        $fLayerId,
-                        $fName,
-                        $fType,
-                        $fCoords,
-                        $fProps,
-                        $fStyle,
-                        $fColor,
-                        $fCreatedBy,
-                        // ON DUPLICATE KEY UPDATE
-                        $fLayerId,
-                        $fName,
-                        $fType,
-                        $fCoords,
-                        $fProps,
-                        $fStyle,
-                        $fColor
-                    ]);
+                    executeFeatureUpsert($stmtFeat, $f, $projectId, $rev, $clientId);
                 }
 
-                // Identifica de forma eficiente e segura feições ativas no banco que foram excluídas neste salvamento
-                // (Substitui NOT IN massivo por diferença em memória O(N), imune a estouro de placeholders)
-                $stmtExisting = $pdo->prepare("SELECT id FROM cm_features WHERE project_id = ? AND deleted = 0");
-                $stmtExisting->execute([$projectId]);
-                $existingActiveIds = $stmtExisting->fetchAll(PDO::FETCH_COLUMN);
+                if ($prune) {
+                    $stmtExisting = $pdo->prepare("SELECT id FROM cm_features WHERE project_id = ? AND deleted = 0");
+                    $stmtExisting->execute([$projectId]);
+                    $existingActiveIds = $stmtExisting->fetchAll(PDO::FETCH_COLUMN);
 
-                $currentIdSet = array_flip($currentIds);
-                $idsToMarkDeleted = [];
-                foreach ($existingActiveIds as $existId) {
-                    if (!isset($currentIdSet[$existId])) {
-                        $idsToMarkDeleted[] = $existId;
+                    $currentIdSet = array_flip($currentIds);
+                    $idsToMarkDeleted = [];
+                    foreach ($existingActiveIds as $existId) {
+                        if (!isset($currentIdSet[$existId]) && !isset($newerElsewhere[$existId])) {
+                            $idsToMarkDeleted[] = $existId;
+                        }
                     }
-                }
 
-                if (!empty($idsToMarkDeleted)) {
-                    $delChunks = array_chunk($idsToMarkDeleted, 500);
-                    foreach ($delChunks as $delBatch) {
-                        $placeholders = implode(',', array_fill(0, count($delBatch), '?'));
-                        $stmtDelMissing = $pdo->prepare("
-                            UPDATE cm_features 
-                            SET deleted = 1, updated_at = NOW() 
-                            WHERE project_id = ? AND deleted = 0 AND id IN ($placeholders)
-                        ");
-                        $stmtDelMissing->execute(array_merge([$projectId], $delBatch));
+                    if (!empty($idsToMarkDeleted)) {
+                        $delChunks = array_chunk($idsToMarkDeleted, 500);
+                        foreach ($delChunks as $delBatch) {
+                            $placeholders = implode(',', array_fill(0, count($delBatch), '?'));
+                            $stmtDelMissing = $pdo->prepare("
+                                UPDATE cm_features
+                                SET deleted = 1, rev = ?, client_id = ?, updated_at = NOW()
+                                WHERE project_id = ? AND deleted = 0 AND id IN ($placeholders)
+                            ");
+                            $stmtDelMissing->execute(array_merge([$rev, $clientId, $projectId], $delBatch));
+                        }
                     }
                 }
             }
 
             // Atualiza contagem real
             $stmtCount = $pdo->prepare("
-                UPDATE cm_projects 
+                UPDATE cm_projects
                 SET feature_count = (SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0),
                     updated_at = NOW()
                 WHERE id = ?
@@ -825,8 +1012,10 @@ switch ($action) {
 
             $pdo->commit();
             echo json_encode([
-                'success'    => true, 
+                'success'    => true,
                 'serverTime' => date('Y-m-d H:i:s'),
+                'rev'        => $rev,
+                'skipped'    => $skipped,
                 'message'    => 'Projeto completo persistido no MySQL com concorrência segura'
             ]);
             exit;

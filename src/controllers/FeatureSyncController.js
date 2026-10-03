@@ -314,8 +314,8 @@ export class FeatureSyncController {
 
   static handleCollabEvent(app, type, data) {
     if (type === 'cursor:move') {
-      if (app.mapEngine) {
-        app.mapEngine.updateRemoteCursor(data.user, data.latlng);
+      if (app.mapEngine && data.user) {
+        app.mapEngine.updateRemoteCursor({ ...data.user, name: data.user.displayName || data.user.name }, data.latlng);
       }
     } else if (type === 'feature:created') {
       app.features.push(data.feature);
@@ -481,9 +481,8 @@ export class FeatureSyncController {
         if (!rawFeat || !rawFeat.id) continue;
         // Se a feição foi excluída localmente, ignora o upsert remoto (evita ressuscitação)
         if (StorageService.hasLocalTombstone(rawFeat.id, app.projectId)) continue;
-
-        // Se o operador local estiver ativamente desenhando, adia para não interromper a precisão de clique
-        if (app.mapEngine && app.mapEngine.isDrawing) continue;
+        // (Edições locais não confirmadas já são filtradas em StorageService.pullChangesFromCloud,
+        // e o loop de sync não consulta a nuvem durante um desenho ativo.)
 
         const normalized = normalizeFeature(rawFeat);
         const existingIdx = app.features.findIndex(f => f.id === normalized.id);
@@ -519,5 +518,44 @@ export class FeatureSyncController {
     }
 
     return stateChanged;
+  }
+
+  /**
+   * Aplica a presença vinda da nuvem (operadores em outros dispositivos/navegadores):
+   * cursores ao vivo no mapa e avatares no cabeçalho.
+   * @param {Object} app
+   * @param {Array<{id: string, name: string, color: string, lat: number|null, lng: number|null}>} presenceList
+   */
+  static applyRemotePresence(app, presenceList) {
+    if (!app || !Array.isArray(presenceList)) return;
+
+    const seen = new Set();
+    for (const p of presenceList) {
+      if (!p || !p.id) continue;
+      seen.add(p.id);
+      const user = { id: p.id, name: p.name || 'Colaborador', color: p.color || '#00E08A', role: 'Editor', status: 'online' };
+      if (app.mapEngine && Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
+        app.mapEngine.updateRemoteCursor(user, [p.lat, p.lng]);
+      }
+    }
+
+    // Remove cursores de quem saiu (apenas os que vieram da presença em nuvem)
+    const previous = app._cloudPresenceIds || new Set();
+    for (const id of previous) {
+      if (!seen.has(id) && app.mapEngine && typeof app.mapEngine.removeRemoteCursor === 'function') {
+        app.mapEngine.removeRemoteCursor(id);
+      }
+    }
+    app._cloudPresenceIds = seen;
+
+    // Só re-renderiza os avatares quando a lista de participantes muda (o pull roda a cada ~1 s)
+    const presenceKey = presenceList.map(p => `${p.id}:${p.name}:${p.color}`).sort().join('|');
+    if (app.collabHub && presenceKey !== app._cloudPresenceKey) {
+      app._cloudPresenceKey = presenceKey;
+      app.collabHub.setCloudPresence(presenceList);
+      if (app.headerBar) {
+        app.headerBar.updateCollaborators(app.collabHub.getActiveCollaboratorsList());
+      }
+    }
   }
 }

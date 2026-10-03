@@ -659,15 +659,20 @@ export class MapEngine {
 
     let cursor = this.remoteCursors.get(user.id);
     if (!cursor) {
+      // Nome e cor chegam de outros operadores pela rede: nunca interpolar sem sanitizar
+      const color = /^#[0-9a-fA-F]{3,8}$/.test(user.color || '') ? user.color : '#00E08A';
+      const safeName = String(user.name || 'Colaborador')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
       const icon = L.divIcon({
         className: 'cm-remote-cursor-container',
         html: `
           <div class="cm-remote-cursor">
-            <svg class="cm-remote-cursor-icon" viewBox="0 0 24 24" fill="${user.color || '#00E08A'}">
+            <svg class="cm-remote-cursor-icon" viewBox="0 0 24 24" fill="${color}">
               <path d="M4 0l16 12.279-6.951 1.17 4.325 8.817-3.596 1.734-4.35-8.879-5.428 5.439z"/>
             </svg>
-            <span class="cm-remote-cursor-badge" style="background: ${user.color || '#00E08A'};">
-              ${user.name}
+            <span class="cm-remote-cursor-badge" style="background: ${color};">
+              ${safeName}
             </span>
           </div>
         `
@@ -678,6 +683,15 @@ export class MapEngine {
     } else {
       cursor.setLatLng(latlng);
     }
+  }
+
+  removeRemoteCursor(userId) {
+    const cursor = this.remoteCursors.get(userId);
+    if (!cursor) return;
+    if (this.map && this.map.hasLayer(cursor)) {
+      this.map.removeLayer(cursor);
+    }
+    this.remoteCursors.delete(userId);
   }
 
   /**
