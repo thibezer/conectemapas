@@ -3,8 +3,8 @@
    Baseado no ecossistema thibezer/Componentes-UI
    ========================================================================== */
 
-/* CSS vendorizado do ui-components-kit (tokens e variáveis CSS — independente do path local) */
-@import "./ui-components-kit.css";
+/* CSS oficial do @thibezer/ui-components-kit (tokens, elevações e componentes) */
+@import "@thibezer/ui-components-kit/style.css";
 @import "leaflet/dist/leaflet.css";
 @import "./PointCluster.css";
 
