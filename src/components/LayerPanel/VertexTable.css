@@ -41,7 +41,7 @@
   font-family: var(--cm-fonte-mono, monospace);
   font-weight: 700;
   color: var(--cm-primary, #00E08A);
-  width: 20px;
+  min-width: 26px;
   flex-shrink: 0;
 }
 

@@ -6,14 +6,21 @@
 import { FeatureInspectorRenderer } from './FeatureInspectorRenderer.js';
 import { FeatureInspectorEvents } from './FeatureInspectorEvents.js';
 import 'ui-components-kit';
-import { UITabelaPropriedades } from 'ui-components-kit';
 
 export class FeatureInspectorTab {
-  static render(panel) {
-    return FeatureInspectorRenderer.render(panel);
+  /**
+   * @param {Object} panel
+   * @param {'sidebar'|'floating'} context
+   */
+  static render(panel, context = 'sidebar') {
+    return FeatureInspectorRenderer.render(panel, context);
   }
 
-  static bindEvents(panel) {
-    FeatureInspectorEvents.bind(panel);
+  /**
+   * @param {Object} panel
+   * @param {ParentNode} root contêiner onde o inspetor foi desenhado (barra lateral ou janela flutuante)
+   */
+  static bindEvents(panel, root) {
+    FeatureInspectorEvents.bind(panel, root || document);
   }
 }

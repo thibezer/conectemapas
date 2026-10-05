@@ -91,3 +91,13 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **Resiliência do Banco de Dados no Deploy (`api.php`)**:
   - `db_config.php` é ignorado no Git (`.gitignore`). O backend `api.php` deve conter fallback automático para variáveis de ambiente e parâmetros padrão do banco MySQL da Hostinger, impedindo que novas publicações quebrem o backend.
 
+
+---
+
+## 6. Geometria e Inspeção de Feições
+- **Fonte única de cálculo**: área, perímetro e extensão vêm sempre de `FeatureGeometryUtils` (área elipsoidal GRS80 com furos subtraídos e multipolígonos somados; perímetro inclui o lado de fechamento). Não duplicar fórmulas em componentes.
+- **Métricas gravadas** (`Área (ha)`, `Área (m²)`, `Perímetro`, `Extensão`, `Raio`, `Área Coberta`) são geradas por `computeMetricProperties()` e recalculadas a cada edição; são somente leitura no inspetor.
+- **Edição pelo inspetor**: sempre via `panel.commitFeatureEdit(id, mutate)`, que parte da versão mais recente em `app.features` (nunca da cópia exibida), preservando alterações de colaboradores.
+- **Bloqueio**: feição com `locked: true` não é excluída (atalho, HUD, lote, inspetor) nem editada; somente o próprio bloqueio pode ser alterado.
+- **Campos sem coluna na API** (`description`, `category`, `locked`, `status`, `customAttributes`) viajam em `properties._cm` (`packFeatureForCloud`/`unpackFeatureFromCloud`); nunca exibir chaves iniciadas por `_`.
+- **Contrato de métodos**: ao modularizar, conferir que todo método chamado por `MapEngine`/`LayerPanel` continua existindo (os testes usam mocks e não detectam a ausência).

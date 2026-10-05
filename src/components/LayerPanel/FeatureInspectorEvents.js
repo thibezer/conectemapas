@@ -2,167 +2,140 @@
    ConecteMapas - FeatureInspectorEvents
    Responsabilidade Única: Vinculação de eventos e barramento reativo da Paleta
    de Propriedades (<ui-tabela-propriedades>) e controles do Inspetor de Feições.
+
+   Toda alteração passa por panel.commitFeatureEdit(): o rascunho parte da versão
+   mais recente da feição no app, nunca da cópia exibida (evita desfazer edições
+   de colaboradores recebidas enquanto o painel estava aberto).
    ========================================================================== */
 
 import { FeaturePropertiesAdapter } from './FeaturePropertiesAdapter.js';
 import { GeoFormats } from '../../services/GeoFormats.js';
+import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
 import { UIToast } from 'ui-components-kit';
 
+// O seletor de cor nativo dispara 'input' a cada movimento: só grava após uma pausa
+const COLOR_COMMIT_DELAY_MS = 300;
+const COLOR_PROPS = new Set(['fillColor', 'strokeColor', 'pointColor', 'textColor']);
+
 export class FeatureInspectorEvents {
-  static bind(panel) {
-    if (!panel.selectedFeature) return;
+  /**
+   * @param {Object} panel LayerPanel
+   * @param {ParentNode} root contêiner do inspetor (barra lateral ou janela flutuante)
+   */
+  static bind(panel, root = document) {
+    if (!panel.selectedFeature || !root) return;
+    const q = (sel) => root.querySelector(sel);
+    const featId = panel.selectedFeature.id;
+    const isLockedNow = () => panel.getLatestFeature(featId)?.locked === true;
 
-    const feat = panel.selectedFeature;
-
-    // 1. Inicialização e Vinculação da Paleta <ui-tabela-propriedades>
-    const tabelaProps = document.getElementById('cm-feature-properties-table');
+    // 1. Paleta <ui-tabela-propriedades>
+    const tabelaProps = q('[data-insp="properties"]');
     if (tabelaProps) {
-      const { tipos, categorias } = FeaturePropertiesAdapter.gerarConfiguracao(panel, feat);
+      const { tipos, categorias } = FeaturePropertiesAdapter.gerarConfiguracao(panel, panel.selectedFeature);
       tabelaProps.tipos = tipos;
       tabelaProps.categorias = categorias;
 
-      // Evento de alteração de propriedade
+      const colorTimers = new Map();
       tabelaProps.addEventListener('ui-propriedade-alterada', (e) => {
         const { id, valor } = e.detail || {};
-        if (id) {
-          FeaturePropertiesAdapter.aplicarAlteracao(panel, panel.selectedFeature, id, valor);
+        if (!id) return;
+        if (COLOR_PROPS.has(id)) {
+          // Pré-visualização instantânea no mapa sem gravar; grava ao parar de arrastar
+          FeaturePropertiesAdapter.previewAlteracao(panel, featId, id, valor);
+          clearTimeout(colorTimers.get(id));
+          colorTimers.set(id, setTimeout(() => {
+            colorTimers.delete(id);
+            FeaturePropertiesAdapter.aplicarAlteracao(panel, featId, id, valor);
+          }, COLOR_COMMIT_DELAY_MS));
+          return;
         }
+        FeaturePropertiesAdapter.aplicarAlteracao(panel, featId, id, valor);
       });
 
-      // Evento de execução de ação (botões de ação dentro da tabela)
       tabelaProps.addEventListener('ui-acao-executada', (e) => {
         const { id } = e.detail || {};
-        if (id) {
-          FeaturePropertiesAdapter.executarAcao(panel, panel.selectedFeature, id);
-        }
+        if (id) FeaturePropertiesAdapter.executarAcao(panel, featId, id);
       });
     }
 
     // 2. Toolbar Rápida do Topo
-    const btnLock = document.getElementById('btn-toggle-lock');
-    if (btnLock) {
-      btnLock.addEventListener('click', () => {
-        const isLocked = !panel.selectedFeature.locked;
-        const updated = { ...panel.selectedFeature, locked: isLocked };
-        panel.selectedFeature = updated;
-        panel.onFeatureUpdate(updated);
-        panel.updateContent();
-        UIToast.notificar({
-          tipo: isLocked ? 'alerta' : 'sucesso',
-          titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
-          mensagem: isLocked ? 'Edições travadas.' : 'Edição liberada no mapa.',
-          duracao: 2000
-        });
+    q('[data-insp="toggle-lock"]')?.addEventListener('click', () => {
+      const saved = panel.commitFeatureEdit(featId, (draft) => { draft.locked = !draft.locked; });
+      if (!saved) return;
+      UIToast.notificar({
+        tipo: saved.locked ? 'alerta' : 'sucesso',
+        titulo: saved.locked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
+        mensagem: saved.locked ? 'Edições travadas.' : 'Edição liberada no mapa.',
+        duracao: 2000
       });
-    }
+    });
 
-    const btnFloat = document.getElementById('btn-toggle-float');
-    if (btnFloat) {
-      btnFloat.addEventListener('click', () => panel.toggleFloatingWindow());
-    }
+    q('[data-insp="toggle-float"]')?.addEventListener('click', () => panel.toggleFloatingWindow());
+    q('[data-insp="fit"]')?.addEventListener('click', () => panel.onFitFeature(featId));
+    q('[data-insp="delete"]')?.addEventListener('click', () => FeaturePropertiesAdapter.confirmDelete(panel, featId));
 
-    const btnFit = document.getElementById('btn-fit-feature');
-    if (btnFit) {
-      btnFit.addEventListener('click', () => panel.onFitFeature(panel.selectedFeature.id));
-    }
+    // 3. Edição de vértices e cópia da geometria
+    q('[data-insp="toggle-vertex-edit"]')?.addEventListener('click', () => {
+      if (isLockedNow()) return;
+      panel.toggleVertexEditing();
+    });
 
-    const btnDelete = document.getElementById('btn-delete-inspector');
-    if (btnDelete) {
-      btnDelete.addEventListener('click', () => {
-        if (panel.selectedFeature.locked) {
-          UIToast.notificar({
-            tipo: 'alerta',
-            titulo: 'Elemento Travado',
-            mensagem: 'Desbloqueie o elemento antes de excluir.'
-          });
+    q('[data-insp="copy-wkt"]')?.addEventListener('click', () => {
+      const feat = panel.getLatestFeature(featId) || panel.selectedFeature;
+      FeaturePropertiesAdapter.copyToClipboard(GeoFormats.toWKT(feat), 'WKT Copiado', 'Geometria copiada em formato Well-Known Text.');
+    });
+
+    q('[data-insp="copy-geojson"]')?.addEventListener('click', () => {
+      const feat = panel.getLatestFeature(featId) || panel.selectedFeature;
+      FeaturePropertiesAdapter.copyToClipboard(GeoFormats.toGeoJSON([feat]), 'GeoJSON Copiado', 'Feição copiada em formato GeoJSON.');
+    });
+
+    // Coordenada de um vértice (lat = eixo 0, lng = eixo 1), por anel
+    root.querySelectorAll('.cm-vertex-input').forEach(input => {
+      input.addEventListener('change', () => {
+        if (isLockedNow()) return;
+        const ringIdx = parseInt(input.getAttribute('data-ring'), 10);
+        const vIdx = parseInt(input.getAttribute('data-v'), 10);
+        const axis = parseInt(input.getAttribute('data-axis'), 10);
+        const val = parseFloat(input.value);
+        const limit = axis === 0 ? 90 : 180;
+        if (!Number.isFinite(val) || Math.abs(val) > limit) {
+          UIToast.notificar({ tipo: 'alerta', titulo: 'Coordenada Inválida', mensagem: `${axis === 0 ? 'Latitude' : 'Longitude'} deve estar entre -${limit} e ${limit}.` });
+          panel.refreshSelectedFeature(panel.getLatestFeature(featId) || panel.selectedFeature, { immediate: true });
           return;
         }
-        if (confirm(`Deseja realmente excluir a feição "${panel.selectedFeature.name || 'Sem Nome'}"?`)) {
-          panel.onFeatureDelete(panel.selectedFeature.id);
-          panel.selectedFeature = null;
-          panel.updateContent();
-          UIToast.notificar({
-            tipo: 'info',
-            titulo: 'Feição Excluída',
-            mensagem: 'Elemento removido do mapa.'
-          });
-        }
-      });
-    }
-
-    // 3. Edição Direta e Cópia de Vértices Topográficos
-    const btnToggleVertex = document.getElementById('btn-toggle-vertex-edit');
-    if (btnToggleVertex) {
-      btnToggleVertex.addEventListener('click', () => {
-        panel.toggleVertexEditing();
-      });
-    }
-
-    const btnCopyWkt = document.getElementById('btn-copy-wkt');
-    if (btnCopyWkt) {
-      btnCopyWkt.addEventListener('click', () => {
-        const wkt = GeoFormats.toWKT(panel.selectedFeature);
-        navigator.clipboard.writeText(wkt)
-          .then(() => UIToast.notificar({ tipo: 'sucesso', titulo: 'WKT Copiado', mensagem: 'Geometria copiada em formato Well-Known Text.' }))
-          .catch(() => UIToast.notificar({ tipo: 'erro', titulo: 'Erro', mensagem: 'Falha ao copiar WKT.' }));
-      });
-    }
-
-    const btnCopyGeoJson = document.getElementById('btn-copy-geojson');
-    if (btnCopyGeoJson) {
-      btnCopyGeoJson.addEventListener('click', () => {
-        const geojson = GeoFormats.toGeoJSON([panel.selectedFeature]);
-        navigator.clipboard.writeText(geojson)
-          .then(() => UIToast.notificar({ tipo: 'sucesso', titulo: 'GeoJSON Copiado', mensagem: 'Feição copiada em formato GeoJSON.' }))
-          .catch(() => UIToast.notificar({ tipo: 'erro', titulo: 'Erro', mensagem: 'Falha ao copiar GeoJSON.' }));
-      });
-    }
-
-    // Inputs numéricos de vértices individuais
-    document.querySelectorAll('.cm-vertex-input').forEach(input => {
-      input.addEventListener('change', () => {
-        if (panel.selectedFeature.locked) return;
-        const vLat = input.getAttribute('data-v-lat');
-        const vLng = input.getAttribute('data-v-lng');
-        const idx = vLat !== null ? parseInt(vLat, 10) : parseInt(vLng, 10);
-        const val = parseFloat(input.value);
-
-        if (!isNaN(val) && Array.isArray(panel.selectedFeature.coordinates)) {
-          const coords = JSON.parse(JSON.stringify(panel.selectedFeature.coordinates));
-          if (coords[idx]) {
-            if (vLat !== null) coords[idx][0] = val;
-            if (vLng !== null) coords[idx][1] = val;
-            const updated = { ...panel.selectedFeature, coordinates: coords };
-            panel.selectedFeature = updated;
-            panel.onFeatureUpdate(updated);
-            panel.updateContent();
-          }
-        }
+        panel.commitFeatureEdit(featId, (draft) => {
+          const ring = FeatureGeometryUtils.getVertexRings(draft)[ringIdx];
+          if (!ring || !ring.points[vIdx]) return false;
+          const points = ring.points.map(p => [...p]);
+          points[vIdx][axis] = val;
+          draft.coordinates = FeatureGeometryUtils.replaceRing(draft.coordinates, ring.path, points, ring.closed);
+        });
       });
     });
 
     // Exclusão de vértice individual
-    document.querySelectorAll('.cm-vertex-del-btn').forEach(btn => {
+    root.querySelectorAll('.cm-vertex-del-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (panel.selectedFeature.locked) return;
-        const idx = parseInt(btn.getAttribute('data-v-del'), 10);
-        if (Array.isArray(panel.selectedFeature.coordinates)) {
-          const coords = [...panel.selectedFeature.coordinates];
-          if (panel.selectedFeature.type === 'Polygon' && coords.length <= 3) {
-            UIToast.notificar({ tipo: 'alerta', titulo: 'Limite Mínimo', mensagem: 'Polígonos precisam de no mínimo 3 vértices.' });
-            return;
+        if (isLockedNow()) return;
+        const ringIdx = parseInt(btn.getAttribute('data-ring'), 10);
+        const vIdx = parseInt(btn.getAttribute('data-v-del'), 10);
+        let removed = false;
+        panel.commitFeatureEdit(featId, (draft) => {
+          const ring = FeatureGeometryUtils.getVertexRings(draft)[ringIdx];
+          const minVertices = draft.type === 'Polygon' ? 3 : 2;
+          if (!ring || !ring.points[vIdx]) return false;
+          if (ring.points.length <= minVertices) {
+            UIToast.notificar({ tipo: 'alerta', titulo: 'Limite Mínimo', mensagem: draft.type === 'Polygon' ? 'Cada anel precisa de no mínimo 3 vértices.' : 'Linhas precisam de no mínimo 2 vértices.' });
+            return false;
           }
-          if (panel.selectedFeature.type === 'LineString' && coords.length <= 2) {
-            UIToast.notificar({ tipo: 'alerta', titulo: 'Limite Mínimo', mensagem: 'Linhas precisam de no mínimo 2 vértices.' });
-            return;
-          }
-          coords.splice(idx, 1);
-          const updated = { ...panel.selectedFeature, coordinates: coords };
-          panel.selectedFeature = updated;
-          panel.onFeatureUpdate(updated);
-          panel.updateContent();
-          UIToast.notificar({ tipo: 'info', titulo: 'Vértice Removido', mensagem: `Vértice V${idx + 1} excluído.` });
+          const points = ring.points.filter((_, i) => i !== vIdx);
+          draft.coordinates = FeatureGeometryUtils.replaceRing(draft.coordinates, ring.path, points, ring.closed);
+          removed = true;
+        });
+        if (removed) {
+          UIToast.notificar({ tipo: 'info', titulo: 'Vértice Removido', mensagem: `Vértice V${vIdx + 1} excluído.` });
         }
       });
     });

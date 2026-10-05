@@ -3,6 +3,8 @@
    Responsabilidade Única: Construção e geração de arquivos binários .SHP, .SHX e .DBF
    ========================================================================== */
 
+import { FeatureGeometryUtils } from '../MapEngine/FeatureGeometryUtils.js';
+
 export class ShapefileWriter {
   /**
    * Constrói buffers binários para .SHP e .SHX
@@ -223,8 +225,9 @@ export class ShapefileWriter {
       uint8[currentPos] = 0x20;
       let colPos = currentPos + 1;
 
-      const areaHa = feat.properties?.['Área (ha)'] 
-        ? parseFloat(feat.properties['Área (ha)']) 
+      // Calculada da geometria (não do atributo gravado, que pode estar desatualizado)
+      const areaHa = feat.type === 'Polygon'
+        ? FeatureGeometryUtils.calculatePolygonArea(feat.coordinates) / 10000
         : 0;
       const extensao = feat.properties?.['Extensão'] || '';
 

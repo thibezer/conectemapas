@@ -16,6 +16,41 @@ const _clientId = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
   ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
   : Math.random().toString(36).substring(2, 12) + Date.now().toString(36));
 
+// Campos da feição que a API não possui como coluna: viajam empacotados em
+// properties._cm e são restaurados no recebimento (compatível com o servidor atual).
+const CLOUD_META_FIELDS = ['description', 'category', 'locked', 'status', 'customAttributes'];
+const CLOUD_META_KEY = '_cm';
+
+function packFeatureForCloud(feat) {
+  if (!feat || typeof feat !== 'object') return feat;
+  const meta = {};
+  for (const key of CLOUD_META_FIELDS) {
+    const val = feat[key];
+    if (val === undefined || val === null || val === '' || val === false) continue;
+    if (Array.isArray(val) && val.length === 0) continue;
+    meta[key] = val;
+  }
+  const props = (feat.properties && typeof feat.properties === 'object' && !Array.isArray(feat.properties))
+    ? { ...feat.properties }
+    : {};
+  delete props[CLOUD_META_KEY];
+  if (Object.keys(meta).length > 0) props[CLOUD_META_KEY] = meta;
+  return { ...feat, properties: props };
+}
+
+function unpackFeatureFromCloud(feat) {
+  if (!feat || !feat.properties || typeof feat.properties !== 'object') return feat;
+  const meta = feat.properties[CLOUD_META_KEY];
+  if (!meta || typeof meta !== 'object') return feat;
+  const props = { ...feat.properties };
+  delete props[CLOUD_META_KEY];
+  const restored = { ...feat, properties: props };
+  for (const key of CLOUD_META_FIELDS) {
+    if (meta[key] !== undefined) restored[key] = meta[key];
+  }
+  return restored;
+}
+
 let _cloudStatus = {
   connected: false,
   lastCheck: null,
@@ -39,6 +74,8 @@ let _offlineFlushPromise = null;
 DeltaQueue.setCommitCallback((toUpsert, toDelete, projectId) => {
   CloudSyncEngine.syncDeltasToCloud(toUpsert, toDelete, projectId);
 });
+
+export { packFeatureForCloud, unpackFeatureFromCloud };
 
 export class CloudSyncEngine {
   static getClientId() {
@@ -169,7 +206,7 @@ export class CloudSyncEngine {
       const res = await this._postJson('sync_deltas', {
         projectId,
         clientId: _clientId,
-        toUpsert: merged.dirty,
+        toUpsert: merged.dirty.map(packFeatureForCloud),
         toDelete: merged.deleted
       });
 
@@ -280,7 +317,7 @@ export class CloudSyncEngine {
         center: projectData.center || [-23.7661, -53.3206],
         zoom: projectData.zoom || 14,
         layers: Array.isArray(projectData.layers) ? projectData.layers : [],
-        features: Array.isArray(projectData.features) ? projectData.features : []
+        features: Array.isArray(projectData.features) ? projectData.features.map(packFeatureForCloud) : []
       };
 
       const res = await fetch(`${CLOUD_API_URL}?action=save_all`, {
@@ -333,6 +370,9 @@ export class CloudSyncEngine {
       if (Number.isFinite(data.rev)) {
         LocalStore.saveSyncCursor(projectId, { rev: data.rev, id: '' });
       }
+      if (Array.isArray(data.features)) {
+        data.features = data.features.map(unpackFeatureFromCloud);
+      }
 
       _cloudStatus.connected = true;
       _cloudStatus.lastCheck = new Date().toISOString();
@@ -382,7 +422,7 @@ export class CloudSyncEngine {
 
       if (!Array.isArray(data.changes)) {
         return {
-          upserted: Array.isArray(data.upserted) ? data.upserted : [],
+          upserted: Array.isArray(data.upserted) ? data.upserted.map(unpackFeatureFromCloud) : [],
           deleted: Array.isArray(data.deleted) ? data.deleted : [],
           layers,
           project: data.project || null,
@@ -422,7 +462,7 @@ export class CloudSyncEngine {
 
         _appliedRevs.set(ch.id, ch.rev);
         if (ch.deleted) deleted.push(ch.id);
-        else if (ch.feature) upserted.push(ch.feature);
+        else if (ch.feature) upserted.push(unpackFeatureFromCloud(ch.feature));
         prev = here;
       }
 

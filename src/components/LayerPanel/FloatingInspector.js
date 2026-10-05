@@ -1,6 +1,8 @@
 /* ==========================================================================
    ConecteMapas - FloatingInspector
    Responsabilidade Única: Gerenciamento da janela flutuante arrastável (Workbench)
+   Enquanto flutuante, a barra lateral exibe apenas um aviso (sem duplicar o inspetor),
+   e os eventos são ligados somente dentro desta janela.
    ========================================================================== */
 
 import { FeatureInspectorTab } from './FeatureInspectorTab.js';
@@ -17,51 +19,40 @@ export class FloatingInspector {
         document.body.appendChild(floatWin);
       }
       floatWin.style.display = 'flex';
-      this.renderContent(panel);
-      this.makeDraggable(floatWin);
-    } else {
-      if (floatWin) {
-        floatWin.style.display = 'none';
-      }
+    } else if (floatWin) {
+      floatWin.style.display = 'none';
+      floatWin.innerHTML = '';
     }
+    // updateContent redesenha a barra lateral e, se flutuante, esta janela
     panel.updateContent();
   }
 
   static renderContent(panel) {
     const floatWin = document.getElementById('cm-floating-inspector-window');
-    if (!floatWin || !panel.selectedFeature) return;
+    if (!floatWin || !panel.isFloating) return;
 
+    const name = panel.selectedFeature ? panel.escapeHtml(panel.selectedFeature.name || '') : '';
     floatWin.innerHTML = `
       <div class="cm-floating-header" id="cm-floating-header-handle">
         <div class="cm-floating-title">
           <span>🔍 Inspetor Workbench</span>
-          <span style="font-size: 10px; opacity: 0.7;">(${panel.escapeHtml(panel.selectedFeature.name || '')})</span>
+          ${name ? `<span style="font-size: 10px; opacity: 0.7;">(${name})</span>` : ''}
         </div>
         <div style="display: flex; gap: 4px; align-items: center;">
-          <button id="btn-dock-float-win" class="cm-native-select" style="padding: 1px 5px; font-size: 10px;" title="Acoplar de volta na barra lateral">📌 Acoplar</button>
-          <button id="btn-close-float-win" class="cm-vertex-del-btn" style="font-size: 16px; padding: 0 4px;" title="Fechar">×</button>
+          <button data-float="dock" class="cm-native-select" style="padding: 1px 5px; font-size: 10px;" title="Acoplar de volta na barra lateral">📌 Acoplar</button>
+          <button data-float="close" class="cm-vertex-del-btn" style="font-size: 16px; padding: 0 4px;" title="Fechar">×</button>
         </div>
       </div>
       <div class="cm-floating-body">
-        ${FeatureInspectorTab.render(panel)}
+        ${FeatureInspectorTab.render(panel, 'floating')}
       </div>
     `;
 
-    const btnDock = floatWin.querySelector('#btn-dock-float-win');
-    if (btnDock) {
-      btnDock.addEventListener('click', () => {
-        this.toggle(panel);
-      });
-    }
+    floatWin.querySelector('[data-float="dock"]')?.addEventListener('click', () => this.toggle(panel));
+    floatWin.querySelector('[data-float="close"]')?.addEventListener('click', () => this.toggle(panel));
 
-    const btnClose = floatWin.querySelector('#btn-close-float-win');
-    if (btnClose) {
-      btnClose.addEventListener('click', () => {
-        this.toggle(panel);
-      });
-    }
-
-    FeatureInspectorTab.bindEvents(panel);
+    FeatureInspectorTab.bindEvents(panel, floatWin.querySelector('.cm-floating-body'));
+    this.makeDraggable(floatWin);
   }
 
   static makeDraggable(win) {
@@ -73,6 +64,7 @@ export class FloatingInspector {
     let initialLeft = 0, initialTop = 0;
 
     header.onmousedown = (e) => {
+      if (e.target.closest('button')) return;
       isDragging = true;
       startX = e.clientX;
       startY = e.clientY;

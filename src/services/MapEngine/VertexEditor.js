@@ -16,12 +16,26 @@ export class VertexEditor {
     this.onFeatureUpdatedCallback = null;
   }
 
+  static isMultiPart(coords) {
+    return Array.isArray(coords) && Array.isArray(coords[0]) && Array.isArray(coords[0][0]);
+  }
+
   isEditing() {
     return Boolean(this.editingFeature);
   }
 
   startEditing(feature, onFeatureUpdated) {
     if (!feature || feature.locked) return;
+    // As alças operam sobre uma lista simples de vértices: furos e multipartes ficam no inspetor
+    if ((feature.type === 'Polygon' || feature.type === 'LineString') && VertexEditor.isMultiPart(feature.coordinates)) {
+      UIToast.notificar({
+        tipo: 'alerta',
+        titulo: 'Geometria com Múltiplas Partes',
+        mensagem: 'Polígonos com furos ou multipartes são editados pela tabela de vértices do Inspetor.',
+        duracao: 4000
+      });
+      return;
+    }
     if (this.editHandlesLayer) {
       this.editHandlesLayer.clearLayers();
     }

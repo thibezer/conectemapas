@@ -175,6 +175,12 @@ export class AppBootstrapSync {
       console.warn('[AppBootstrapSync] Erro na hidratação do projeto:', err);
     } finally {
       app._isStorageHydrated = true;
+      try {
+        const fixed = FeatureSyncController.refreshStoredMetrics(app);
+        if (fixed > 0) console.info(`[AppBootstrapSync] Métricas de ${fixed} feição(ões) recalculadas (área/perímetro).`);
+      } catch (e) {
+        console.warn('[AppBootstrapSync] Falha ao recalcular métricas gravadas:', e);
+      }
       this.updateSyncChip(app);
       this.startCloudSyncLoop(app);
     }

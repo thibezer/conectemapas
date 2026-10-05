@@ -9,9 +9,11 @@ import { LayerTreeTab } from './LayerPanel/LayerTreeTab.js';
 import { FeatureInspectorTab } from './LayerPanel/FeatureInspectorTab.js';
 import { CollabAuditTab } from './LayerPanel/CollabAuditTab.js';
 import { FloatingInspector } from './LayerPanel/FloatingInspector.js';
+import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
 export class LayerPanel {
   constructor(options = {}) {
+    this.app = options.app || null; // fonte da verdade das feições (estado mais recente)
     this.layers = options.layers || [];
     this.features = options.features || [];
     this.activeTab = options.initialTab || 'layers';
@@ -45,6 +47,7 @@ export class LayerPanel {
     this.onFeatureSelect = options.onFeatureSelect || (() => {});
     this.onFeatureLockToggle = options.onFeatureLockToggle || (() => {});
     this.onBulkDelete = options.onBulkDelete || (() => {});
+    this.onBulkUpdate = options.onBulkUpdate || (() => {});
     this.onFeaturesReorder = options.onFeaturesReorder || (() => {});
     this.onFeaturesSelect = options.onFeaturesSelect || (() => {});
 
@@ -143,7 +146,7 @@ export class LayerPanel {
     if (this.activeTab === 'layers') {
       return LayerTreeTab.render(this);
     } else if (this.activeTab === 'inspector') {
-      return FeatureInspectorTab.render(this);
+      return FeatureInspectorTab.render(this, 'sidebar');
     } else if (this.activeTab === 'collab') {
       return CollabAuditTab.render(this);
     }
@@ -163,6 +166,11 @@ export class LayerPanel {
         body.innerHTML = this.renderTabContent();
         this.bindTabEvents();
       }
+    }
+
+    // A janela flutuante acompanha a seleção mesmo com outra aba ativa
+    if (this.isFloating) {
+      FloatingInspector.renderContent(this);
     }
 
     const segmented = this.container?.querySelector('#cm-sidebar-segmented');
@@ -213,7 +221,7 @@ export class LayerPanel {
     if (this.activeTab === 'layers') {
       LayerTreeTab.bindEvents(this);
     } else if (this.activeTab === 'inspector') {
-      FeatureInspectorTab.bindEvents(this);
+      FeatureInspectorTab.bindEvents(this, document.getElementById('cm-sidebar-tab-content'));
     } else if (this.activeTab === 'collab') {
       CollabAuditTab.bindEvents(this);
     }
@@ -223,6 +231,7 @@ export class LayerPanel {
     const featId = feat?.id || null;
     const currentId = this.selectedFeature?.id || null;
     if (featId === currentId && !switchTab) return;
+    if (featId !== currentId) this._stopVertexEditingIfActive();
 
     this.selectedFeature = feat;
     this.selectedFeatureIds.clear();
@@ -238,7 +247,7 @@ export class LayerPanel {
       uiCamadas.selecionarFeicoes(Array.from(this.selectedFeatureIds), false);
     }
 
-    if (this.activeTab === 'inspector' || switchTab) {
+    if (this.activeTab === 'inspector' || switchTab || this.isFloating) {
       this.updateContent();
     }
   }
@@ -250,6 +259,7 @@ export class LayerPanel {
       return;
     }
 
+    if (!(newIds.length === 1 && newIds[0] === this.selectedFeature?.id)) this._stopVertexEditingIfActive();
     this.selectedFeatureIds.clear();
     newIds.forEach(id => this.selectedFeatureIds.add(id));
     if (features && features.length === 1) {
@@ -266,9 +276,131 @@ export class LayerPanel {
       uiCamadas.selecionarFeicoes(Array.from(this.selectedFeatureIds), false);
     }
 
-    if (this.activeTab === 'inspector' || switchTab) {
+    if (this.activeTab === 'inspector' || switchTab || this.isFloating) {
       this.updateContent();
     }
+  }
+
+  /** Liga/desliga as alças de edição de vértices no mapa para a feição inspecionada. */
+  toggleVertexEditing() {
+    const feat = this.getLatestFeature(this.selectedFeature?.id) || this.selectedFeature;
+    if (this.isVertexEditing) {
+      this.isVertexEditing = false;
+      this.onStopVertexEdit();
+    } else {
+      if (!feat || feat.locked === true || (feat.type !== 'Polygon' && feat.type !== 'LineString')) return;
+      if (FeatureGeometryUtils.getVertexRings(feat).length !== 1) {
+        this.onStartVertexEdit(feat); // o editor do mapa exibe o aviso de multipartes
+        return;
+      }
+      this.isVertexEditing = true;
+      this.onStartVertexEdit(feat);
+    }
+    this._renderPreservingScroll();
+  }
+
+  _stopVertexEditingIfActive() {
+    if (this.isVertexEditing) {
+      this.isVertexEditing = false;
+      this.onStopVertexEdit();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edição consistente do inspetor (colaboração em tempo real)
+  // ---------------------------------------------------------------------------
+
+  /** Versão mais recente da feição no estado do app (inclui alterações remotas). */
+  getLatestFeature(featId) {
+    if (!featId) return null;
+    const source = (this.app && Array.isArray(this.app.features)) ? this.app.features : this.features;
+    return (source || []).find(f => f.id === featId) || null;
+  }
+
+  /**
+   * Aplica uma edição do inspetor sobre a versão MAIS RECENTE da feição, nunca sobre a
+   * cópia exibida no painel: assim só o campo alterado é gravado e alterações de
+   * colaboradores recebidas nesse meio-tempo não são desfeitas.
+   * @param {string} featId
+   * @param {(draft: Object) => (void|false)} mutate altera o rascunho; retornar false cancela
+   * @param {{rerender?: boolean}} options rerender:false mantém o DOM (ex.: seletor de cor aberto)
+   * @returns {Object|null} feição gravada
+   */
+  commitFeatureEdit(featId, mutate, { rerender = true } = {}) {
+    const base = this.getLatestFeature(featId) || (this.selectedFeature?.id === featId ? this.selectedFeature : null);
+    if (!base) return null;
+    const draft = JSON.parse(JSON.stringify(base));
+    if (mutate(draft) === false) return null;
+    this.selectedFeature = draft;
+    this._suppressInspectorRender = !rerender;
+    try {
+      this.onFeatureUpdate(draft);
+    } finally {
+      this._suppressInspectorRender = false;
+    }
+    // Garante o re-render mesmo se o fluxo de atualização não notificar o painel
+    if (rerender) this.refreshSelectedFeature(draft, { immediate: true });
+    return draft;
+  }
+
+  /**
+   * Sincroniza o inspetor com uma nova versão da feição selecionada (edição local ou remota).
+   * Se o usuário estiver digitando no inspetor, adia o re-render até o foco sair.
+   */
+  refreshSelectedFeature(feat, { immediate = false } = {}) {
+    if (!feat || !this.selectedFeature || this.selectedFeature.id !== feat.id) return;
+    this.selectedFeature = feat;
+    if (this._suppressInspectorRender) return;
+    this._renderInspectorSafely(immediate);
+  }
+
+  /** A feição exibida foi excluída (localmente ou por um colaborador). */
+  handleSelectedFeatureRemoved(featId) {
+    if (!this.selectedFeature || this.selectedFeature.id !== featId) return;
+    this._stopVertexEditingIfActive();
+    this.selectedFeature = null;
+    this.selectedFeatureIds.delete(featId);
+    this._renderInspectorSafely(true);
+  }
+
+  _renderInspectorSafely(immediate) {
+    if (this.activeTab !== 'inspector' && !this.isFloating) return;
+    if (!immediate && this._isTypingInInspector()) {
+      if (!this._pendingInspectorRefresh) {
+        this._pendingInspectorRefresh = true;
+        const onFocusOut = () => {
+          setTimeout(() => {
+            if (this._isTypingInInspector()) return;
+            document.removeEventListener('focusout', onFocusOut, true);
+            this._pendingInspectorRefresh = false;
+            this._renderPreservingScroll();
+          }, 0);
+        };
+        document.addEventListener('focusout', onFocusOut, true);
+      }
+      return;
+    }
+    this._renderPreservingScroll();
+  }
+
+  _renderPreservingScroll() {
+    const body = document.getElementById('cm-sidebar-tab-content');
+    const floatBody = document.querySelector('#cm-floating-inspector-window .cm-floating-body');
+    const top = body ? body.scrollTop : 0;
+    const floatTop = floatBody ? floatBody.scrollTop : 0;
+    this.updateContent();
+    if (body) body.scrollTop = top;
+    const newFloatBody = document.querySelector('#cm-floating-inspector-window .cm-floating-body');
+    if (newFloatBody) newFloatBody.scrollTop = floatTop;
+  }
+
+  _isTypingInInspector() {
+    let el = document.activeElement;
+    if (!el || !el.closest || !el.closest('.cm-inspector-box, #cm-floating-inspector-window')) return false;
+    while (el && el.shadowRoot && el.shadowRoot.activeElement) el = el.shadowRoot.activeElement;
+    if (!el) return false;
+    if (el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
+    return el.tagName === 'INPUT' && !['checkbox', 'radio', 'color', 'button', 'range'].includes(el.type);
   }
 
   setActiveLayerId(layerId) {
@@ -376,56 +508,22 @@ export class LayerPanel {
     `;
   }
 
+  // Cálculos geodésicos: fonte única em FeatureGeometryUtils (área elipsoidal com furos/multipolígonos)
   calculatePolylineLength(coordinates) {
-    if (!Array.isArray(coordinates) || coordinates.length === 0) return 0;
-    if (Array.isArray(coordinates[0]) && Array.isArray(coordinates[0][0])) {
-      return coordinates.reduce((sum, line) => sum + this.calculateSinglePolylineLength(line), 0);
-    }
-    return this.calculateSinglePolylineLength(coordinates);
-  }
-
-  calculateSinglePolylineLength(coordinates) {
-    let total = 0;
-    for (let i = 0; i < coordinates.length - 1; i++) {
-      total += this.calculateDistance(coordinates[i], coordinates[i + 1]);
-    }
-    return total;
+    return FeatureGeometryUtils.calculatePolylineLength(coordinates);
   }
 
   calculatePolygonArea(coords) {
-    if (!Array.isArray(coords) || coords.length === 0) return 0;
-    if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
-      return coords.reduce((sum, ring) => sum + this.calculateSinglePolygonArea(ring), 0);
-    }
-    return this.calculateSinglePolygonArea(coords);
+    return FeatureGeometryUtils.calculatePolygonArea(coords);
   }
 
-  calculateSinglePolygonArea(coords) {
-    if (!Array.isArray(coords) || coords.length < 3) return 0;
-    const R = 6378137;
-    let total = 0;
-    const len = coords.length;
-    for (let i = 0; i < len; i++) {
-      const lower = coords[i];
-      const middle = coords[(i + 1) % len];
-      const upper = coords[(i + 2) % len];
-      const x1 = (middle[1] - lower[1]) * (Math.PI / 180);
-      const y1 = (middle[0] - lower[0]) * (Math.PI / 180);
-      const x2 = (upper[1] - middle[1]) * (Math.PI / 180);
-      const y2 = (upper[0] - middle[0]) * (Math.PI / 180);
-      total += (x1 * y2 - y1 * x2);
-    }
-    const area = Math.abs(total * (R * R) / 2);
-    return isNaN(area) ? 0 : area;
+  calculatePolygonPerimeter(coords) {
+    return FeatureGeometryUtils.calculatePolygonPerimeter(coords);
   }
 
   calculateDistance(p1, p2) {
     if (!p1 || !p2) return 0;
-    const R = 6371000;
-    const dLat = (p2[0] - p1[0]) * Math.PI / 180;
-    const dLon = (p2[1] - p1[1]) * Math.PI / 180;
-    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(p1[0] * Math.PI / 180) * Math.cos(p2[0] * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return FeatureGeometryUtils.calculateDistance(p1, p2);
   }
 
   calculateBearing(p1, p2) {

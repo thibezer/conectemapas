@@ -189,6 +189,7 @@ export class AppComponentsBuilder {
     }
 
     app.layerPanel = new LayerPanel({
+      app,
       layers: app.getLayersWithCounts(),
       features: app.features,
       activeLayerId: app.activeLayerId,
@@ -292,12 +293,20 @@ export class AppComponentsBuilder {
         app.saveMetadata(false);
         UIToast.notificar({ tipo: 'sucesso', titulo: 'Modificação Coletiva', mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`, duracao: 2500 });
       },
-      onBulkDelete: (featureIds) => {
+      onBulkDelete: (requestedIds) => {
+        // Feições bloqueadas ficam de fora da exclusão em lote
+        const lockedIds = requestedIds.filter(id => FeatureSyncController.isFeatureLocked(app, id));
+        const featureIds = requestedIds.filter(id => !lockedIds.includes(id));
+        if (lockedIds.length > 0) {
+          FeatureSyncController.notifyLocked(`${lockedIds.length} feição(ões) selecionada(s)`);
+        }
+        if (featureIds.length === 0) return;
         const idSet = new Set(featureIds);
         app.pushHistory(`Exclusão coletiva (${featureIds.length} itens)`);
         app.features = app.features.filter(f => !idSet.has(f.id));
         app.refreshMapAndTable();
         StorageService.queueFeaturesBulkDelete(featureIds);
+        featureIds.forEach(id => app.layerPanel && app.layerPanel.handleSelectedFeatureRemoved?.(id));
         app.saveMetadata(false);
         UIToast.notificar({ tipo: 'alerta', titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas. Pressione Ctrl+Z para desfazer.`, duracao: 3000 });
       },

@@ -87,15 +87,18 @@ export class GeometryLayerBuilder {
 
       const marker = L.marker(coords, {
         icon,
-        draggable: true,
+        draggable: feat.locked !== true,
         pane: paneName
       });
 
       marker.on('dragend', (e) => {
+        // Usa a versão atual da feição (o FeatureRenderer mantém _cmFeature atualizado);
+        // a referência capturada na criação pode estar desatualizada.
+        const current = marker._cmFeature || feat;
+        if (current.locked === true) return;
         const newPos = e.target.getLatLng();
-        feat.coordinates = [newPos.lat, newPos.lng];
         if (typeof onTextUpdated === 'function') {
-          onTextUpdated(feat);
+          onTextUpdated({ ...current, coordinates: [newPos.lat, newPos.lng] });
         }
       });
 
@@ -174,6 +177,11 @@ export class GeometryLayerBuilder {
         iconAnchor: [0, 0]
       });
       layer.setIcon(icon);
+      // Bloqueio reflete imediatamente no arraste do rótulo
+      if (layer.dragging) {
+        if (feat.locked === true) layer.dragging.disable();
+        else layer.dragging.enable();
+      }
     } else if (feat.type === 'Point' && coords) {
       if (layer instanceof L.CircleMarker) {
         layer.setLatLng(coords);

@@ -8,6 +8,7 @@ import { normalizeFeature } from '../services/MockData.js';
 import { StorageService } from '../services/StorageService.js';
 import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
 import { UIToast } from 'ui-components-kit';
+import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
 export class FeatureSyncController {
   /**
@@ -64,21 +65,10 @@ export class FeatureSyncController {
 
     // 2. Normalização estrita da feição e cálculo de propriedades geométricas
     const initialProps = { ...(rawFeature.properties || {}) };
-    if (app.mapEngine && Array.isArray(rawFeature.coordinates)) {
-      if (rawFeature.type === 'Polygon') {
-        const areaM2 = app.mapEngine.calculatePolygonArea(rawFeature.coordinates);
-        const perimM = app.mapEngine.calculatePolylineLength(rawFeature.coordinates);
-        if (!initialProps['Área (ha)']) initialProps['Área (ha)'] = (areaM2 / 10000).toFixed(2) + ' ha';
-        if (!initialProps['Área (m²)']) initialProps['Área (m²)'] = areaM2.toFixed(1) + ' m²';
-        if (!initialProps['Perímetro']) initialProps['Perímetro'] = perimM > 1000 ? (perimM / 1000).toFixed(2) + ' km' : perimM.toFixed(1) + ' m';
-      } else if (rawFeature.type === 'LineString') {
-        const lengthM = app.mapEngine.calculatePolylineLength(rawFeature.coordinates);
-        if (!initialProps['Extensão']) initialProps['Extensão'] = lengthM > 1000 ? (lengthM / 1000).toFixed(2) + ' km' : lengthM.toFixed(1) + ' m';
-      }
-    } else if (rawFeature.type === 'Circle' && rawFeature.radius) {
-      if (!initialProps['Raio']) initialProps['Raio'] = `${rawFeature.radius} m`;
-      const circleAreaHa = (Math.PI * Math.pow(rawFeature.radius, 2)) / 10000;
-      if (!initialProps['Área Coberta']) initialProps['Área Coberta'] = `${circleAreaHa.toFixed(2)} ha`;
+    // Métricas derivadas da geometria (área elipsoidal, perímetro fechado, extensão, raio)
+    const metricProps = FeatureGeometryUtils.computeMetricProperties({ ...rawFeature, coordinates: rawFeature.coordinates });
+    for (const [key, value] of Object.entries(metricProps)) {
+      if (!initialProps[key]) initialProps[key] = value;
     }
 
     const newFeature = normalizeFeature({
@@ -248,18 +238,46 @@ export class FeatureSyncController {
     });
   }
 
+  /**
+   * Corrige métricas gravadas por versões anteriores (a fórmula antiga de área
+   * superestimava ~2,2× e ignorava o lado de fechamento no perímetro).
+   * Só regrava feições que já possuem atributos métricos e cujo valor diverge.
+   * @returns {number} quantidade de feições corrigidas
+   */
+  static refreshStoredMetrics(app) {
+    if (!app || !Array.isArray(app.features)) return 0;
+    const changed = [];
+    for (let i = 0; i < app.features.length; i++) {
+      const feat = app.features[i];
+      if (!feat || !feat.properties || typeof feat.properties !== 'object') continue;
+      const metrics = FeatureGeometryUtils.computeMetricProperties(feat);
+      const keys = Object.keys(metrics);
+      if (keys.length === 0 || !keys.some(k => k in feat.properties)) continue;
+      if (keys.every(k => feat.properties[k] === metrics[k])) continue;
+      const fixed = { ...feat, properties: { ...feat.properties, ...metrics } };
+      app.features[i] = fixed;
+      changed.push(fixed);
+    }
+    if (changed.length > 0) {
+      StorageService.queueFeaturesBulkUpsert(changed, app.projectId);
+      if (app.mapEngine) changed.forEach(f => app.mapEngine.updateFeature(f, app.layers));
+      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      if (app.layerPanel) {
+        app.layerPanel.updateFeatures(app.features);
+        const fresh = changed.find(f => f.id === app.layerPanel.selectedFeature?.id);
+        if (fresh) app.layerPanel.refreshSelectedFeature?.(fresh);
+      }
+    }
+    return changed.length;
+  }
+
   static updateFeature(app, updatedFeature) {
     const idx = app.features.findIndex(f => f.id === updatedFeature.id);
     if (idx >= 0) {
-      if (updatedFeature.type === 'Polygon' && Array.isArray(updatedFeature.coordinates) && app.mapEngine) {
-        const areaM2 = app.mapEngine.calculatePolygonArea(updatedFeature.coordinates);
-        updatedFeature.properties = updatedFeature.properties || {};
-        updatedFeature.properties['Área (ha)'] = (areaM2 / 10000).toFixed(2) + ' ha';
-        updatedFeature.properties['Área (m²)'] = areaM2.toFixed(1) + ' m²';
-      } else if (updatedFeature.type === 'LineString' && Array.isArray(updatedFeature.coordinates) && app.mapEngine) {
-        const lengthM = app.mapEngine.calculatePolylineLength(updatedFeature.coordinates);
-        updatedFeature.properties = updatedFeature.properties || {};
-        updatedFeature.properties['Extensão'] = lengthM > 1000 ? (lengthM / 1000).toFixed(2) + ' km' : lengthM.toFixed(1) + ' m';
+      // Recalcula as métricas gravadas a cada edição (geometria, raio)
+      const metricProps = FeatureGeometryUtils.computeMetricProperties(updatedFeature);
+      if (Object.keys(metricProps).length > 0) {
+        updatedFeature.properties = { ...(updatedFeature.properties || {}), ...metricProps };
       }
 
       app.pushHistory(`Edição de "${updatedFeature.name}"`);
@@ -268,9 +286,8 @@ export class FeatureSyncController {
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       if (app.layerPanel) {
         app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
-        if (app.layerPanel.selectedFeature?.id === updatedFeature.id) {
-          app.layerPanel.selectedFeature = updatedFeature;
-        }
+        // Re-renderiza o inspetor com a versão gravada (métricas recalculadas, bloqueio, camada)
+        app.layerPanel.refreshSelectedFeature?.(updatedFeature, { immediate: true });
       }
       app.collabHub.notifyFeatureUpdated(updatedFeature);
       const audit = app.collabHub.logAudit(`Editou feição "${updatedFeature.name}"`, updatedFeature.id);
@@ -288,14 +305,36 @@ export class FeatureSyncController {
     }
   }
 
+  /** Feição bloqueada não pode ser excluída nem alterada por atalhos/ações em lote. */
+  static isFeatureLocked(app, featureId) {
+    const feat = app && Array.isArray(app.features) ? app.features.find(f => f.id === featureId) : null;
+    return !!(feat && feat.locked === true);
+  }
+
+  static notifyLocked(names) {
+    UIToast.notificar({
+      tipo: 'alerta',
+      titulo: 'Elemento Bloqueado',
+      mensagem: `${names} está bloqueado. Desbloqueie no inspetor antes de alterar ou excluir.`,
+      duracao: 3500
+    });
+  }
+
   static deleteFeature(app, featureId) {
     const feat = app.features.find(f => f.id === featureId);
+    if (feat && feat.locked === true) {
+      FeatureSyncController.notifyLocked(`"${feat.name || 'A feição'}"`);
+      return false;
+    }
     const name = feat ? feat.name : featureId;
     app.pushHistory(`Exclusão de "${name}"`);
     app.features = app.features.filter(f => f.id !== featureId);
     app.mapEngine.removeFeature(featureId);
     if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-    if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+    if (app.layerPanel) {
+      app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+      app.layerPanel.handleSelectedFeatureRemoved?.(featureId);
+    }
     app.updateHUD();
     app.collabHub.notifyFeatureDeleted(featureId);
     const audit = app.collabHub.logAudit(`Excluiu feição "${name}"`, featureId);
@@ -346,13 +385,17 @@ export class FeatureSyncController {
         app.features[idx] = data.feature;
         app.mapEngine.updateFeature(data.feature, app.layers);
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+        if (app.layerPanel) app.layerPanel.refreshSelectedFeature?.(data.feature);
         StorageService.applyRemoteChangesLocally([data.feature], [], app.projectId);
       }
     } else if (type === 'feature:deleted') {
       app.features = app.features.filter(f => f.id !== data.featureId);
       app.mapEngine.removeFeature(data.featureId);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-      if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+      if (app.layerPanel) {
+        app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        app.layerPanel.handleSelectedFeatureRemoved?.(data.featureId);
+      }
       app.updateHUD();
 
       // Persistência local imediata do expurgo
@@ -503,7 +546,19 @@ export class FeatureSyncController {
     // 4. Atualiza UI se houve qualquer modificação
     if (stateChanged) {
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-      if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+      if (app.layerPanel) {
+        app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        // Inspetor aberto na feição alterada/excluída por um colaborador
+        const selId = app.layerPanel.selectedFeature?.id;
+        if (selId) {
+          if (deletedSet.has(selId)) {
+            app.layerPanel.handleSelectedFeatureRemoved?.(selId);
+          } else {
+            const fresh = app.features.find(f => f.id === selId);
+            if (fresh && fresh !== app.layerPanel.selectedFeature) app.layerPanel.refreshSelectedFeature?.(fresh);
+          }
+        }
+      }
       if (app.updateHUD) app.updateHUD();
 
       // Persiste no IndexedDB local de forma assíncrona sem disparar eco para a nuvem

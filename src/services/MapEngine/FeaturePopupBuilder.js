@@ -177,10 +177,14 @@ export class FeaturePopupBuilder {
     if (style.showLabel) {
       let labelText = feat.name || 'Feição';
       if (style.labelField === 'category') {
-        labelText = feat.category || feat.type;
+        labelText = feat.category || FeatureGeometryUtils.getTypeLabel(feat.type);
+      } else if (style.labelField === 'description') {
+        labelText = feat.description || feat.name || 'Feição';
+      } else if (style.labelField === 'id') {
+        labelText = feat.id || '';
       } else if (style.labelField === 'area' && feat.type === 'Polygon') {
         const a = FeatureGeometryUtils.calculatePolygonArea(rawCoords);
-        labelText = `${(a / 10000).toFixed(2)} ha`;
+        labelText = `${(a / 10000).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ha`;
       } else if (style.labelField === 'extensao' && feat.type === 'LineString') {
         const l = FeatureGeometryUtils.calculatePolylineLength(rawCoords);
         labelText = l > 1000 ? `${(l / 1000).toFixed(2)} km` : `${l.toFixed(0)} m`;

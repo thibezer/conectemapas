@@ -17,6 +17,7 @@ import { FeaturePopupBuilder } from './FeaturePopupBuilder.js';
 import { GeometryLayerBuilder } from './GeometryLayerBuilder.js';
 import { FeatureViewportController } from './FeatureViewportController.js';
 import { ViewportCullingManager } from './ViewportCullingManager.js';
+import { GeometryVersionManager } from '../GeometryVersionManager.js';
 
 export class FeatureRenderer {
   constructor(mapEngine) {
@@ -221,6 +222,81 @@ export class FeatureRenderer {
     ViewportCullingManager.clearAllClusters(this);
   }
 
+  // --- Atualização incremental de feições (usada por MapEngine.add/update/removeFeature) ---
+  // Restaurado: removido no refactor 97c28a2, o que fazia criar/editar/excluir feições lançar erro.
+  reorderLayers(layers) {
+    this._syncLayerMap(layers);
+    this.updateLayerZIndexes(this.allLayers);
+  }
+  addFeature(feat, layers) {
+    if (!feat || !feat.id) return;
+    if (feat.type === 'Point') {
+      this.invalidateClusterCache();
+    }
+    if (layers && layers !== this.allLayers) {
+      this._syncLayerMap(layers);
+    }
+    if (!this.featureMap.has(feat.id)) {
+      this.allFeatures.push(feat);
+      this.featureMap.set(feat.id, feat);
+    } else {
+      this.featureMap.set(feat.id, feat);
+      const idx = this.allFeatures.findIndex(f => f.id === feat.id);
+      if (idx >= 0) this.allFeatures[idx] = feat;
+    }
+
+    const bounds = this.map ? this.map.getBounds() : null;
+    const isVisibleInViewport = bounds ? this.engine.spatialIndex.intersects(feat, bounds, 0.20) : true;
+
+    if (isVisibleInViewport && feat.visible !== false) {
+      this.renderSingleFeature(feat, layers);
+    }
+  }
+  updateFeature(feat, layers) {
+    if (!feat || !feat.id) return;
+    if (feat.type === 'Point') {
+      this.invalidateClusterCache();
+    }
+    if (layers && layers !== this.allLayers) {
+      this._syncLayerMap(layers);
+    }
+    this.featureMap.set(feat.id, feat);
+    const idx = this.allFeatures.findIndex(f => f.id === feat.id);
+    if (idx >= 0) this.allFeatures[idx] = feat;
+    else this.allFeatures.push(feat);
+
+    if (this.engine && this.engine.spatialIndex) {
+      this.engine.spatialIndex.update(feat);
+    }
+
+    const bounds = this.map ? this.map.getBounds() : null;
+    const isVisibleInViewport = bounds ? this.engine.spatialIndex.intersects(feat, bounds, 0.20) : true;
+    const shouldRender = GeometryVersionManager.shouldRenderFeature(
+      feat,
+      this.allFeatures,
+      this.engine.showPreviewGeometries,
+      this.engine.individualPreviewToggles
+    );
+
+    if (isVisibleInViewport && feat.visible !== false && shouldRender) {
+      this.renderSingleFeature(feat, layers);
+    } else {
+      this.removeSingleFeature(feat.id);
+    }
+  }
+  removeFeature(featId) {
+    const feat = this.featureMap.get(featId);
+    if (!feat || feat.type === 'Point') {
+      this.invalidateClusterCache();
+    }
+    this.featureMap.delete(featId);
+    const idx = this.allFeatures.findIndex(f => f.id === featId);
+    if (idx >= 0) this.allFeatures.splice(idx, 1);
+    if (this.engine && this.engine.spatialIndex) {
+      this.engine.spatialIndex.remove(featId);
+    }
+    this.removeSingleFeature(featId);
+  }
   renderSingleFeature(feat, layers) {
     if (!feat) return null;
     if (feat.visible === false) {
