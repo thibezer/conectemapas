@@ -71,8 +71,9 @@ export class IndexedDbStore {
           store.put({
             ...l,
             projectId,
-            order: l.order !== undefined ? l.order : i,
-            updatedAt: l.updatedAt || new Date().toISOString()
+            // A posição no array é a fonte da verdade da ordem (reordenar não mexia no `order`)
+            order: i,
+            updatedAt: new Date().toISOString()
           });
         }
       }

@@ -151,6 +151,15 @@ export class StorageService {
     }
 
     this.commitDeltas();
+    CloudSyncEngine.flushMetadataToCloud();
+  }
+
+  static hasPendingLayerSync() {
+    return CloudSyncEngine.hasPendingLayerSync(_currentProjectId);
+  }
+
+  static hasLayerSyncActive() {
+    return CloudSyncEngine.hasLayerSyncActive();
   }
 
   static loadCurrentProject() {

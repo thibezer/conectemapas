@@ -62,6 +62,8 @@ let _cloudStatus = {
 };
 const _cloudStatusListeners = new Set();
 let _cloudMetaDebounceTimer = null;
+let _pendingMetaForCloud = null;
+let _layerSyncInFlight = 0;
 let _cloudProjectDebounceTimer = null;
 
 let _pushChain = Promise.resolve();
@@ -255,16 +257,60 @@ export class CloudSyncEngine {
     }
   }
 
+  // Camadas/pastas editadas localmente e ainda não confirmadas pela nuvem.
+  // Persistido em localStorage para sobreviver a um F5 antes do envio terminar.
+  static _layerDirtyKey(projectId) {
+    return `cm_layers_dirty_${projectId || 'projeto_padrao'}`;
+  }
+
+  static hasPendingLayerSync(projectId = 'projeto_padrao') {
+    if (_cloudMetaDebounceTimer || _layerSyncInFlight > 0) return true;
+    try {
+      return typeof localStorage !== 'undefined' && localStorage.getItem(this._layerDirtyKey(projectId)) === '1';
+    } catch {
+      return false;
+    }
+  }
+
+  static hasLayerSyncActive() {
+    return !!_cloudMetaDebounceTimer || _layerSyncInFlight > 0;
+  }
+
+  static _setLayerDirty(projectId, dirty) {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      if (dirty) localStorage.setItem(this._layerDirtyKey(projectId), '1');
+      else localStorage.removeItem(this._layerDirtyKey(projectId));
+    } catch {}
+  }
+
   static syncMetadataToCloudDebounced(projectData, delayMs = 400) {
+    if (!projectData) return;
+    _pendingMetaForCloud = projectData;
+    this._setLayerDirty(projectData.id, true);
     if (_cloudMetaDebounceTimer) clearTimeout(_cloudMetaDebounceTimer);
     _cloudMetaDebounceTimer = setTimeout(() => {
       _cloudMetaDebounceTimer = null;
-      this.syncMetadataToCloud(projectData);
+      const payload = _pendingMetaForCloud;
+      _pendingMetaForCloud = null;
+      this.syncMetadataToCloud(payload);
     }, delayMs);
+  }
+
+  /** Envia já o metadado pendente (usado ao fechar/recarregar a página). */
+  static flushMetadataToCloud() {
+    if (!_cloudMetaDebounceTimer) return;
+    clearTimeout(_cloudMetaDebounceTimer);
+    _cloudMetaDebounceTimer = null;
+    const payload = _pendingMetaForCloud;
+    _pendingMetaForCloud = null;
+    if (payload) this.syncMetadataToCloud(payload);
   }
 
   static async syncMetadataToCloud(projectData) {
     if (!projectData) return;
+    const dirtyProjectId = projectData.id || 'projeto_padrao';
+    _layerSyncInFlight++;
     try {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
@@ -289,11 +335,14 @@ export class CloudSyncEngine {
         _cloudStatus.connected = true;
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
+        // Só limpa se nenhuma edição mais nova ficou na fila durante o envio
+        if (!_cloudMetaDebounceTimer) this._setLayerDirty(dirtyProjectId, false);
       }
     } catch (err) {
       console.warn('[CloudSyncEngine] Falha ao sincronizar metadados:', err);
       _cloudStatus.error = err.message;
     } finally {
+      _layerSyncInFlight--;
       _cloudStatus.syncing = false;
       this._notifyCloudStatus();
     }

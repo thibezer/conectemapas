@@ -8,6 +8,7 @@ import { normalizeFeature } from '../services/MockData.js';
 import { StorageService } from '../services/StorageService.js';
 import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
 import { UIToast } from 'ui-components-kit';
+import { notifyUndoable } from '../utils/toastHelpers.js';
 import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
 export class FeatureSyncController {
@@ -23,11 +24,8 @@ export class FeatureSyncController {
     const {
       broadcastCollab = true,
       selectInUI = true,
-      notifyToast = true,
       skipHistory = false,
-      skipSave = false,
-      toastTitle = 'Feição Salva no Mapa',
-      toastMessage = null
+      skipSave = false
     } = options;
 
     // 1. Gera nomes e atributos padrão quando não fornecidos
@@ -138,15 +136,6 @@ export class FeatureSyncController {
     }
     app.updateHUD();
 
-    // 8. Feedback visual ao usuário
-    if (notifyToast) {
-      UIToast.notificar({
-        tipo: 'sucesso',
-        titulo: toastTitle,
-        mensagem: toastMessage || `"${newFeature.name}" adicionada ao mapa.`,
-        duracao: 2500
-      });
-    }
 
     return newFeature;
   }
@@ -232,9 +221,7 @@ export class FeatureSyncController {
    */
   static handleDrawingCompleted(app, rawFeature) {
     return FeatureSyncController.createFeature(app, rawFeature, {
-      selectInUI: true,
-      notifyToast: true,
-      toastTitle: 'Feição Salva no Mapa'
+      selectInUI: true
     });
   }
 
@@ -296,12 +283,6 @@ export class FeatureSyncController {
       if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
       app.saveFeature(updatedFeature);
 
-      UIToast.notificar({
-        tipo: 'sucesso',
-        titulo: 'Alterações Salvas',
-        mensagem: `Feição "${updatedFeature.name}" atualizada.`,
-        duracao: 2000
-      });
     }
   }
 
@@ -343,12 +324,7 @@ export class FeatureSyncController {
     if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
     app.removeFeature(featureId);
 
-    UIToast.notificar({
-      tipo: 'alerta',
-      titulo: 'Feição Excluída',
-      mensagem: `"${name}" removida. Pressione Ctrl+Z para desfazer.`,
-      duracao: 3500
-    });
+    notifyUndoable(app, { titulo: 'Feição excluída', mensagem: `"${name}" removida.` });
   }
 
   static handleCollabEvent(app, type, data) {
@@ -373,12 +349,6 @@ export class FeatureSyncController {
         featureCount: app.features.length
       });
 
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Nova Feição Criada',
-        mensagem: `${data.user.name} adicionou "${data.feature.name}".`,
-        duracao: 3500
-      });
     } else if (type === 'feature:updated') {
       const idx = app.features.findIndex(f => f.id === data.feature.id);
       if (idx >= 0) {
@@ -408,12 +378,6 @@ export class FeatureSyncController {
         featureCount: app.features.length
       });
 
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Feição Excluída',
-        mensagem: `${data.user.name} removeu uma feição.`,
-        duracao: 3500
-      });
     } else if (type === 'layer:created') {
       if (data.layer && !app.layers.some(l => l.id === data.layer.id)) {
         app.layers.push(data.layer);
@@ -421,12 +385,6 @@ export class FeatureSyncController {
         if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-        UIToast.notificar({
-          tipo: 'informativo',
-          titulo: 'Nova Camada Adicionada',
-          mensagem: `${data.user?.name || 'Colaborador'} criou a camada "${data.layer.name}".`,
-          duracao: 3000
-        });
       }
     } else if (type === 'layer:updated') {
       if (data.layer) {
@@ -479,13 +437,15 @@ export class FeatureSyncController {
     // 1. Processa reconciliação de camadas remotas
     if (Array.isArray(layers) && layers.length > 0) {
       let layersChanged = false;
+      // Edição local de camadas ainda não confirmada na nuvem vence: não reverte nome/cor
+      const localLayersPending = StorageService.hasPendingLayerSync();
       for (const remLayer of layers) {
         if (!remLayer || !remLayer.id) continue;
         const localLayer = app.layers.find(l => l.id === remLayer.id);
         if (!localLayer) {
           app.layers.push(remLayer);
           layersChanged = true;
-        } else {
+        } else if (!localLayersPending) {
           if (localLayer.name !== remLayer.name || localLayer.color !== remLayer.color) {
             localLayer.name = remLayer.name;
             localLayer.color = remLayer.color;

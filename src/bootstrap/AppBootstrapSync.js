@@ -153,16 +153,20 @@ export class AppBootstrapSync {
             });
             StorageService.applyRemoteChangesLocally(app.features, [], app.projectId);
 
-            UIToast.notificar({
-              tipo: 'sucesso',
-              titulo: 'Projeto Carregado da Nuvem',
-              mensagem: `Sincronizadas ${app.features.length} feições do banco Hostinger (${cloudData.project?.name || 'Projeto'}).`,
-              duracao: 4000
-            });
           }
         }
       } else {
         try {
+          // Reenvia camadas editadas antes do último F5 para a nuvem não reverter o nome/pasta
+          if (StorageService.hasPendingLayerSync()) {
+            await StorageService.syncMetadataToCloud({
+              id: app.projectId,
+              name: app.projectName,
+              basemap: app.currentBasemap,
+              layers: app.layers,
+              featureCount: app.features.length
+            });
+          }
           const deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
           if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
             FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
@@ -224,6 +228,16 @@ export class AppBootstrapSync {
       try {
         if (StorageService.hasPendingOfflineDeltas()) {
           StorageService.flushPendingOfflineDeltas(app.projectId);
+        }
+        // Camadas editadas offline/sem confirmação: reenvia antes de puxar da nuvem
+        if (app._isStorageHydrated && StorageService.hasPendingLayerSync() && !StorageService.hasLayerSyncActive()) {
+          await StorageService.syncMetadataToCloud({
+            id: app.projectId,
+            name: app.projectName,
+            basemap: app.currentBasemap,
+            layers: app.layers,
+            featureCount: app.features.length
+          });
         }
 
         const user = app.collabHub ? app.collabHub.currentUser : null;
@@ -312,15 +326,15 @@ export class AppBootstrapSync {
             UIToast.notificar({
               tipo: 'sucesso',
               titulo: 'Diagnóstico Hostinger MySQL',
-              mensagem: `Conexão ativa com o banco "${st.database}" no servidor ${st.server}. Latência: ${st.latencyMs}ms. Versão MySQL: ${st.mysqlVersion || '8.0'}.`,
-              duracao: 5000
+              mensagem: `Banco "${st.database}" ativo. Latência: ${st.latencyMs}ms.`,
+              duracao: 3500
             });
           } else {
             UIToast.notificar({
               tipo: 'alerta',
               titulo: 'Status Hostinger MySQL',
-              mensagem: `Modo local ativo. Falha na conexão com a nuvem: ${st.error || 'Servidor inacessível'}. Suas edições permanecem 100% salvas no IndexedDB local.`,
-              duracao: 5000
+              mensagem: `Modo local ativo (${st.error || 'servidor inacessível'}). Suas edições continuam salvas no navegador.`,
+              duracao: 4000
             });
           }
         });
