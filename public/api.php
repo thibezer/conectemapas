@@ -619,6 +619,18 @@ switch ($action) {
             }
         }
 
+        // Trava anti-exclusão em massa: protege contra bugs/clientes com estado vazio
+        if (count($toDelete) > 50 && empty($body['allowMassDelete'])) {
+            $stmtAct = $pdo->prepare("SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0");
+            $stmtAct->execute([$projectId]);
+            $active = (int)$stmtAct->fetchColumn();
+            if ($active > 0 && count($toDelete) > $active * 0.5) {
+                http_response_code(409);
+                echo json_encode(['error' => 'Exclusão em massa bloqueada', 'detail' => 'Tentativa de excluir ' . count($toDelete) . ' de ' . $active . ' feições ativas. Reenvie com allowMassDelete=true se for intencional.']);
+                exit;
+            }
+        }
+
         $pdo->beginTransaction();
         try {
             // Revisão reservada primeiro: trava a linha do projeto até o commit (ordem total das escritas)
@@ -998,6 +1010,13 @@ switch ($action) {
                         }
                     }
 
+                    if (count($idsToMarkDeleted) > 50 && empty($body['allowMassDelete'])
+                        && count($idsToMarkDeleted) > count($existingActiveIds) * 0.5) {
+                        $pdo->rollBack();
+                        http_response_code(409);
+                        echo json_encode(['error' => 'Prune em massa bloqueado', 'detail' => 'Apagaria ' . count($idsToMarkDeleted) . ' de ' . count($existingActiveIds) . ' feições ativas.']);
+                        exit;
+                    }
                     if (!empty($idsToMarkDeleted)) {
                         $delChunks = array_chunk($idsToMarkDeleted, 500);
                         foreach ($delChunks as $delBatch) {
@@ -1035,6 +1054,66 @@ switch ($action) {
             $pdo->rollBack();
             http_response_code(500);
             echo json_encode(['error' => 'Falha na gravação integral', 'detail' => $e->getMessage()]);
+            exit;
+        }
+
+    // --------------------------------------------------------------------------
+    // ACTION: RESTORE_FEATURES (Desfaz exclusões lógicas / tombstones)
+    // GET  ?action=restore_features&projectId=X            -> dry-run: resumo por revisão
+    // POST {projectId, confirm:true, revs?:[..], ids?:[..], namePrefixExclude?:[..]}
+    // --------------------------------------------------------------------------
+    case 'restore_features':
+        $projectId = !empty($_REQUEST['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_REQUEST['projectId']) : 'projeto_padrao';
+
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $stmtSum = $pdo->prepare("
+                SELECT rev, COUNT(*) AS total, MIN(name) AS exemploNome, MIN(id) AS exemploId, MAX(updated_at) AS quando
+                FROM cm_features WHERE project_id = ? AND deleted = 1
+                GROUP BY rev ORDER BY rev ASC
+            ");
+            $stmtSum->execute([$projectId]);
+            echo json_encode(['success' => true, 'dryRun' => true, 'porRevisao' => $stmtSum->fetchAll()]);
+            exit;
+        }
+
+        $body = getJsonBody();
+        if (empty($body['confirm'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Envie confirm:true para restaurar']);
+            exit;
+        }
+        $revs = isset($body['revs']) && is_array($body['revs']) ? array_map('intval', $body['revs']) : [];
+        $ids = isset($body['ids']) && is_array($body['ids']) ? array_map('strval', $body['ids']) : [];
+        if (empty($revs) && empty($ids)) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Informe revs[] ou ids[] a restaurar']);
+            exit;
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $newRev = nextRevision($pdo, $projectId);
+            $restored = 0;
+            if (!empty($revs)) {
+                $ph = implode(',', array_fill(0, count($revs), '?'));
+                $st = $pdo->prepare("UPDATE cm_features SET deleted = 0, rev = ?, client_id = NULL, updated_at = NOW() WHERE project_id = ? AND deleted = 1 AND rev IN ($ph)");
+                $st->execute(array_merge([$newRev, $projectId], $revs));
+                $restored += $st->rowCount();
+            }
+            foreach (array_chunk($ids, 500) as $chunk) {
+                $ph = implode(',', array_fill(0, count($chunk), '?'));
+                $st = $pdo->prepare("UPDATE cm_features SET deleted = 0, rev = ?, client_id = NULL, updated_at = NOW() WHERE project_id = ? AND deleted = 1 AND id IN ($ph)");
+                $st->execute(array_merge([$newRev, $projectId], $chunk));
+                $restored += $st->rowCount();
+            }
+            $pdo->prepare("UPDATE cm_projects SET feature_count = (SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0), updated_at = NOW() WHERE id = ?")->execute([$projectId, $projectId]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'restored' => $restored, 'rev' => $newRev]);
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Falha ao restaurar', 'detail' => $e->getMessage()]);
             exit;
         }
 

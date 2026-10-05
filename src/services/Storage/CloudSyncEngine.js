@@ -210,6 +210,13 @@ export class CloudSyncEngine {
         toDelete: merged.deleted
       });
 
+      if (res.status === 409) {
+        // Trava anti-exclusão em massa do servidor: não reenfileira (evitaria loop infinito)
+        LocalStore.clearPendingDeltas(projectId, projectId);
+        _cloudStatus.error = 'Exclusão em massa bloqueada pelo servidor';
+        console.warn('[CloudSyncEngine] Exclusão em massa bloqueada pelo servidor; nuvem preservada.');
+        return false;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const resData = await res.json().catch(() => null);
