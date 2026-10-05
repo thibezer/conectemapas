@@ -194,12 +194,38 @@ export class LayerTreeTab {
       }
     });
 
+    // Renomeação inline de Feição (o componente só altera o objeto em memória)
+    el.addEventListener('ui-feicao-renomeada', (e) => {
+      const { feicaoId, novoNome } = e.detail || {};
+      const name = String(novoNome ?? '').trim();
+      const feat = panel.features.find(f => f.id === feicaoId);
+      if (feat && name) {
+        feat.name = name;
+        panel.onFeatureUpdate(feat);
+      }
+    });
+
+    // Renomeação inline de Camada
+    el.addEventListener('ui-camada-renomeada', (e) => {
+      const { camadaId, novoNome } = e.detail || {};
+      const name = String(novoNome ?? '').trim();
+      const layer = panel.layers.find(l => l.id === camadaId);
+      if (layer && name) {
+        layer.name = name;
+        panel.onLayerRename(camadaId, name);
+      }
+    });
+
     // Reordenação de Feições dentro da Camada
     el.addEventListener('ui-feicoes-reordenadas', (e) => {
       const { camadaId, feicoes } = e.detail || {};
-      if (typeof panel.onFeaturesReorder === 'function') {
-        panel.onFeaturesReorder(camadaId, feicoes);
-      }
+      if (typeof panel.onFeaturesReorder !== 'function' || !Array.isArray(feicoes)) return;
+      // O callback espera a lista completa: mantém as demais camadas e aplica a nova ordem desta
+      const byId = new Map(panel.features.map(f => [f.id, f]));
+      const reordered = feicoes.map(f => byId.get(f.id)).filter(Boolean);
+      const ids = new Set(reordered.map(f => f.id));
+      const others = panel.features.filter(f => !ids.has(f.id));
+      panel.onFeaturesReorder([...others, ...reordered]);
     });
 
     // Alternância de Mapa Base (Satélite, OpenStreetMap, Google, Dark, etc.)
