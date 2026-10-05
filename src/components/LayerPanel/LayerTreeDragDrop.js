@@ -4,7 +4,6 @@
    edição inline (duplo clique) para camadas e feições na árvore.
    ========================================================================== */
 
-import { UIToast } from 'ui-components-kit';
 
 export class LayerTreeDragDrop {
   static bind(panel) {
@@ -73,12 +72,6 @@ export class LayerTreeDragDrop {
               if (newName && feat && feat.name !== newName) {
                 feat.name = newName;
                 panel.onFeatureUpdate(feat);
-                UIToast.notificar({
-                  tipo: 'sucesso',
-                  titulo: 'Feição Renomeada',
-                  mensagem: `Nome alterado para "${newName}".`,
-                  duracao: 1800
-                });
               }
             }
             panel.updateContent();
@@ -172,12 +165,6 @@ export class LayerTreeDragDrop {
             if (typeof panel.onFeaturesReorder === 'function') {
               panel.onFeaturesReorder(panel.features);
             }
-            UIToast.notificar({
-              tipo: 'sucesso',
-              titulo: 'Feição Movida',
-              mensagem: `"${feat.name}" transferida para a camada "${targetLayer.name}".`,
-              duracao: 2000
-            });
             panel.updateContent();
           }
         }
@@ -261,20 +248,6 @@ export class LayerTreeDragDrop {
 
         if (layerChanged) {
           panel.onFeatureUpdate(movedFeat);
-          const targetLayerObj = panel.layers.find(l => l.id === targetLayerId);
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Feição Movida',
-            mensagem: `"${movedFeat.name}" transferida para a camada "${targetLayerObj?.name || 'Alvo'}".`,
-            duracao: 2000
-          });
-        } else {
-          UIToast.notificar({
-            tipo: 'informativo',
-            titulo: 'Ordem Alterada',
-            mensagem: `"${movedFeat.name}" reposicionada na lista.`,
-            duracao: 1500
-          });
         }
 
         if (typeof panel.onFeaturesReorder === 'function') {

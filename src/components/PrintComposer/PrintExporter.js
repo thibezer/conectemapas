@@ -7,6 +7,7 @@
 
 import { jsPDF } from 'jspdf';
 import { UIToast } from 'ui-components-kit';
+import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
 
 export class PrintExporter {
@@ -15,14 +16,18 @@ export class PrintExporter {
    */
   static async exportToPNG(composer, dpi = 300) {
     try {
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Gerando Imagem PNG',
-        mensagem: `Renderizando prancha em ${dpi} DPI com precisão vetorial...`,
-        duracao: 3500
+      const progress = notifyProgress({
+        titulo: 'Gerando imagem PNG',
+        mensagem: `Renderizando prancha em ${dpi} DPI...`
       });
 
-      const { canvas, usedFallback } = await this.renderSheetWithFallback(composer, dpi);
+      let rendered;
+      try {
+        rendered = await this.renderSheetWithFallback(composer, dpi);
+      } finally {
+        progress.done();
+      }
+      const { canvas, usedFallback } = rendered;
       if (!canvas) return;
 
       canvas.toBlob((blob) => {
@@ -77,14 +82,18 @@ export class PrintExporter {
    */
   static async exportToPDF(composer, dpi = 300) {
     try {
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Gerando PDF Técnico',
-        mensagem: `Processando prancha ${composer.paperSize.name} em escala 1:1 via jsPDF...`,
-        duracao: 3500
+      const progress = notifyProgress({
+        titulo: 'Gerando PDF técnico',
+        mensagem: `Processando prancha ${composer.paperSize.name}...`
       });
 
-      const { canvas, usedFallback } = await this.renderSheetWithFallback(composer, dpi);
+      let rendered;
+      try {
+        rendered = await this.renderSheetWithFallback(composer, dpi);
+      } finally {
+        progress.done();
+      }
+      const { canvas, usedFallback } = rendered;
       if (!canvas) return;
 
       const wMm = composer.paperSize.width;

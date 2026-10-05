@@ -7,7 +7,7 @@ import './ContextMenu.css';
 import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
 import { GeometryVersionManager } from '../services/GeometryVersionManager.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
-import { UIToast } from 'ui-components-kit';
+import { copyToClipboardWithToast } from '../utils/toastHelpers.js';
 
 export class ContextMenu {
   /**
@@ -341,31 +341,18 @@ export class ContextMenu {
             this.app.saveFeature(updated);
             this.app.mapEngine.updateFeature(updated, this.app.layers);
             if (this.app.layerPanel) this.app.layerPanel.updateLayers(this.app.getLayersWithCounts(), this.app.features);
-            UIToast.notificar({
-              tipo: 'sucesso',
-              titulo: 'Feição Movida',
-              mensagem: `Feição transferida para nova camada com sucesso.`
-            });
           }
         } else if (action === 'toggle-lock' && feat) {
           const isLocked = !feat.locked;
           feat.locked = isLocked;
           this.app.saveFeature(feat);
-          UIToast.notificar({
-            tipo: isLocked ? 'alerta' : 'sucesso',
-            titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
-            mensagem: isLocked ? 'Protegida contra edições acidentais.' : 'Liberada para edição no mapa.'
-          });
         } else if (action === 'delete' && feat) {
           this.app.deleteFeature(feat.id);
         } else if (action === 'copy-coords') {
           const coordsText = latlng 
             ? `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`
             : (feat ? JSON.stringify(feat.coordinates) : '');
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(coordsText);
-            UIToast.notificar({ tipo: 'sucesso', titulo: 'Coordenadas Copiadas', mensagem: coordsText, duracao: 2000 });
-          }
+          copyToClipboardWithToast(coordsText, 'Coordenadas copiadas');
         }
         
         // 2. Ações no Mapa Aberto
@@ -396,13 +383,11 @@ export class ContextMenu {
           if (this.app.mapEngine.drawingEngine) {
             this.app.mapEngine.drawingEngine.handleClick({ latlng });
           }
-          UIToast.notificar({ tipo: 'informativo', titulo: 'Linha Iniciada', mensagem: 'Clique nos próximos pontos no mapa.' });
         } else if (action === 'start-polygon-here' && latlng) {
           this.app.mapEngine.setTool('polygon');
           if (this.app.mapEngine.drawingEngine) {
             this.app.mapEngine.drawingEngine.handleClick({ latlng });
           }
-          UIToast.notificar({ tipo: 'informativo', titulo: 'Polígono Iniciado', mensagem: 'Clique nos próximos vértices para delimitar a área.' });
         } else if (action === 'measure-from-here' && latlng) {
           this.app.mapEngine.setTool('measure');
           if (this.app.mapEngine.drawingEngine) {

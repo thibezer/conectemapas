@@ -207,12 +207,6 @@ export class VertexEditor {
           if (this.onFeatureUpdatedCallback) {
             this.onFeatureUpdatedCallback({ ...feat, coordinates: [...coords] });
           }
-          UIToast.notificar({
-            tipo: 'informativo',
-            titulo: 'Vértice Removido',
-            mensagem: `Vértice V${index + 1} excluído com sucesso.`,
-            duracao: 1500
-          });
         });
       });
 
@@ -249,12 +243,6 @@ export class VertexEditor {
           if (this.onFeatureUpdatedCallback) {
             this.onFeatureUpdatedCallback({ ...feat, coordinates: [...coords] });
           }
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Vértice Inserido',
-            mensagem: `Novo nó V${i + 2} adicionado. Arraste para posicionar.`,
-            duracao: 1500
-          });
         });
       }
     }

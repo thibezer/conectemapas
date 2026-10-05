@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { UIToast } from 'ui-components-kit';
+import { notifyProgress } from '../utils/toastHelpers.js';
 
 export class MapImageExporter {
   /**
@@ -38,11 +39,9 @@ export class MapImageExporter {
 
     const resLabel = resolutionNames[scale] || `${scale}x`;
 
-    UIToast.notificar({
-      tipo: 'informativo',
-      titulo: 'Gerando Imagem PNG',
-      mensagem: `Renderizando mapa em ${resLabel} com vetores e satélite...`,
-      duracao: 3500
+    const progress = notifyProgress({
+      titulo: 'Gerando imagem PNG',
+      mensagem: `Renderizando mapa em ${resLabel}...`
     });
 
     try {
@@ -65,6 +64,7 @@ export class MapImageExporter {
         }
       }
 
+      progress.done();
       if (!canvas) {
         throw new Error('Não foi possível gerar a área gráfica do mapa.');
       }
@@ -109,6 +109,7 @@ export class MapImageExporter {
         }
       }, 'image/png');
     } catch (err) {
+      progress.done();
       console.error('Erro na exportação de imagem:', err);
       UIToast.notificar({
         tipo: 'erro',

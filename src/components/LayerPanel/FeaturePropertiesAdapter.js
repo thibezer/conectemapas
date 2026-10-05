@@ -563,19 +563,9 @@ export class FeaturePropertiesAdapter {
       return;
     }
 
-    if (propId === 'locked') {
-      UIToast.notificar({
-        tipo: saved.locked ? 'alerta' : 'sucesso',
-        titulo: saved.locked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
-        mensagem: saved.locked ? 'Edições travadas.' : 'Edição liberada.',
-        duracao: 2000
-      });
-    }
-
     if (statusLabel) {
       // O mapa decide oficial x prévia pelo status: atualiza depois de gravar
       if (panel.app && typeof panel.app.refreshMapAndTable === 'function') panel.app.refreshMapAndTable();
-      UIToast.notificar({ tipo: 'sucesso', titulo: 'Status Atualizado', mensagem: `Status alterado para "${statusLabel}".`, duracao: 2000 });
     }
   }
 
@@ -609,7 +599,6 @@ export class FeaturePropertiesAdapter {
         });
         if (!saved) break;
         if (panel.app && typeof panel.app.refreshMapAndTable === 'function') panel.app.refreshMapAndTable();
-        UIToast.notificar({ tipo: 'sucesso', titulo: 'Promovido a Oficial', mensagem: `A feição "${saved.name}" agora é a Geometria Oficial.`, duracao: 2500 });
         break;
       }
 
@@ -622,7 +611,6 @@ export class FeaturePropertiesAdapter {
         const bufferFeature = SpatialAlgorithms.generateBuffer(feat, radius);
         if (bufferFeature) {
           panel.onFeatureCreate(bufferFeature);
-          UIToast.notificar({ tipo: 'sucesso', titulo: 'Buffer Gerado', mensagem: `Buffer de ${radius}m criado no mapa.`, duracao: 2500 });
         }
         break;
       }
@@ -631,7 +619,6 @@ export class FeaturePropertiesAdapter {
         const clone = SpatialAlgorithms.duplicateWithOffset(feat, 30);
         if (clone) {
           panel.onFeatureCreate(clone);
-          UIToast.notificar({ tipo: 'sucesso', titulo: 'Feição Duplicada', mensagem: 'Cópia criada com +30m de offset.', duracao: 2500 });
         }
         break;
       }
@@ -692,9 +679,6 @@ export class FeaturePropertiesAdapter {
           draft.customAttributes = Array.isArray(draft.customAttributes) ? draft.customAttributes : [];
           draft.customAttributes.push({ key: chaveLimpa, value: '' });
         });
-        if (saved) {
-          UIToast.notificar({ tipo: 'sucesso', titulo: 'Campo Adicionado', mensagem: `Atributo "${chaveLimpa}" criado com sucesso.` });
-        }
         break;
       }
     }

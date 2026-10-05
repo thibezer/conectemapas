@@ -64,26 +64,9 @@ class ConecteMapasApp {
       AppBootstrapSync.updateSyncChip(this);
     });
 
-    StorageService.checkCloudConnection().then((status) => {
+    StorageService.checkCloudConnection().then(() => {
       AppBootstrapSync.updateSyncChip(this);
-      if (status && status.connected) {
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Hostinger MySQL Conectado',
-          mensagem: `Banco ${status.database} ativo (${status.latencyMs}ms de resposta).`,
-          duracao: 3500
-        });
-      }
     });
-
-    setTimeout(() => {
-      UIToast.notificar({
-        tipo: 'sucesso',
-        titulo: 'ConecteMapas Iniciado',
-        mensagem: 'Sessão colaborativa ativa com persistência dupla (IndexedDB + Hostinger MySQL).',
-        duracao: 4000
-      });
-    }, 500);
   }
 
   initCollaboration() {
@@ -193,15 +176,6 @@ class ConecteMapasApp {
     if (this.drawingToolbar?.setActiveLayer) this.drawingToolbar.setActiveLayer(layer);
     if (this.newFeatureModal?.setActiveLayerId) this.newFeatureModal.setActiveLayerId(layer.id);
     if (this.textPromptModal?.setActiveLayerId) this.textPromptModal.setActiveLayerId(layer.id);
-
-    if (notify) {
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Camada de Desenho Ativa',
-        mensagem: `Novos desenhos serão salvos em "${layer.name}".`,
-        duracao: 2200
-      });
-    }
   }
 
   pushHistory(description = '') {
@@ -272,16 +246,7 @@ window.addEventListener('offline', () => {
   UIToast.notificar({
     tipo: 'alerta',
     titulo: 'Modo Offline Ativado',
-    mensagem: 'Conexão com a rede perdida. Suas edições continuam seguras no banco local IndexedDB.',
-    duracao: 6000
-  });
-});
-
-window.addEventListener('online', () => {
-  UIToast.notificar({
-    tipo: 'sucesso',
-    titulo: 'Conexão Restabelecida',
-    mensagem: 'Acesso à internet recuperado. Satélite e recursos de rede sincronizados.',
+    mensagem: 'Sem rede. Suas edições continuam salvas localmente.',
     duracao: 4000
   });
 });

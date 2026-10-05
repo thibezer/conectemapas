@@ -62,12 +62,6 @@ export class FeatureInspectorEvents {
     q('[data-insp="toggle-lock"]')?.addEventListener('click', () => {
       const saved = panel.commitFeatureEdit(featId, (draft) => { draft.locked = !draft.locked; });
       if (!saved) return;
-      UIToast.notificar({
-        tipo: saved.locked ? 'alerta' : 'sucesso',
-        titulo: saved.locked ? 'Feição Bloqueada' : 'Feição Desbloqueada',
-        mensagem: saved.locked ? 'Edições travadas.' : 'Edição liberada no mapa.',
-        duracao: 2000
-      });
     });
 
     q('[data-insp="toggle-float"]')?.addEventListener('click', () => panel.toggleFloatingWindow());
@@ -134,9 +128,6 @@ export class FeatureInspectorEvents {
           draft.coordinates = FeatureGeometryUtils.replaceRing(draft.coordinates, ring.path, points, ring.closed);
           removed = true;
         });
-        if (removed) {
-          UIToast.notificar({ tipo: 'info', titulo: 'Vértice Removido', mensagem: `Vértice V${vIdx + 1} excluído.` });
-        }
       });
     });
   }

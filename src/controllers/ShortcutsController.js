@@ -28,9 +28,9 @@ export class ShortcutsController {
     if (app.historyUndo.length === 0) {
       UIToast.notificar({
         tipo: 'informativo',
-        titulo: 'Histórico Vazio',
-        mensagem: 'Nenhuma ação recente para desfazer.',
-        duracao: 2000
+        titulo: 'Nada para desfazer',
+        mensagem: 'O histórico está vazio.',
+        duracao: 1500
       });
       return;
     }
@@ -43,21 +43,15 @@ export class ShortcutsController {
     app.refreshMapAndTable();
     app.saveMetadata(false);
 
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Desfeito (Ctrl+Z)',
-      mensagem: 'Estado anterior recuperado.',
-      duracao: 2000
-    });
   }
 
   static redo(app) {
     if (app.historyRedo.length === 0) {
       UIToast.notificar({
         tipo: 'informativo',
-        titulo: 'Histórico Vazio',
-        mensagem: 'Nenhuma ação para refazer.',
-        duracao: 2000
+        titulo: 'Nada para refazer',
+        mensagem: 'O histórico está vazio.',
+        duracao: 1500
       });
       return;
     }
@@ -70,12 +64,6 @@ export class ShortcutsController {
     app.refreshMapAndTable();
     app.saveMetadata(false);
 
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Refeito (Ctrl+Y)',
-      mensagem: 'Alteração reaplicada.',
-      duracao: 2000
-    });
   }
 
   static navigateFeature(app, direction = 1) {
@@ -131,9 +119,9 @@ export class ShortcutsController {
         app.saveState(true, { featuresChanged: true });
         UIToast.notificar({
           tipo: 'sucesso',
-          titulo: 'Projeto Salvo (Ctrl+S)',
-          mensagem: `${app.features.length} feições gravadas no banco de dados local.`,
-          duracao: 2500
+          titulo: 'Projeto salvo',
+          mensagem: `${app.features.length} feições gravadas localmente.`,
+          duracao: 1800
         });
       }
       // Selecionar Tudo: Ctrl+A / Cmd+A
@@ -151,12 +139,6 @@ export class ShortcutsController {
         if (app.layerPanel) {
           app.layerPanel.setSelectedFeatures(visibleFeats, false);
         }
-        UIToast.notificar({
-          tipo: 'informativo',
-          titulo: 'Seleção Total (Ctrl+A)',
-          mensagem: `${visibleFeats.length} feições selecionadas.`,
-          duracao: 1800
-        });
       }
       // Busca na Tabela de Atributos: Ctrl+K / Cmd+K
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {

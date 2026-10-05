@@ -4,7 +4,6 @@
    HUD de métricas e alternância de versões geométricas (oficiais vs prévias).
    ========================================================================== */
 
-import { UIToast } from 'ui-components-kit';
 import { GeometryVersionManager } from '../services/GeometryVersionManager.js';
 
 export class AppGeometryCoordinator {
@@ -32,12 +31,6 @@ export class AppGeometryCoordinator {
     if (app.drawingToolbar) {
       app.drawingToolbar.setActiveTool(tool);
     }
-    UIToast.notificar({
-      tipo: 'informativo',
-      titulo: 'Ferramenta Ativa',
-      mensagem: `Modo: ${this.getToolName(tool)}`,
-      duracao: 1500
-    });
   }
 
   static updateSelectionState(app, features = []) {
@@ -91,14 +84,6 @@ export class AppGeometryCoordinator {
     if (app.headerBar) {
       app.headerBar.updateGeometryVersionMode(isShowingPreviews);
     }
-    UIToast.notificar({
-      tipo: isShowingPreviews ? 'alerta' : 'sucesso',
-      titulo: isShowingPreviews ? 'Modo: Geometrias Prévias' : 'Modo: Geometrias Oficiais (Padrão)',
-      mensagem: isShowingPreviews 
-        ? 'Exibindo geometrias prévias solicitadas (geometrias oficiais vinculadas foram alternadas).' 
-        : 'Exibindo geometrias oficiais como padrão (prévias vinculadas ocultadas).',
-      duracao: 3000
-    });
     app.refreshMapAndTable();
   }
 
@@ -121,11 +106,5 @@ export class AppGeometryCoordinator {
     this.updateSelectionState(app, [targetToSelect]);
     app.refreshMapAndTable();
 
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Geometria Alternada',
-      mensagem: `Exibindo: "${targetToSelect.name}" (${GeometryVersionManager.getFeatureStatus(targetToSelect) === 'oficial' ? 'Oficial' : 'Prévia'}).`,
-      duracao: 2500
-    });
   }
 }

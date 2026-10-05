@@ -11,7 +11,6 @@ import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
 import { PrintPropertiesPanel } from './PrintPropertiesPanel.js';
 import { PrintExporter } from './PrintExporter.js';
-import { UIToast } from 'ui-components-kit';
 
 export class PrintComposerModal {
   constructor(options = {}) {
@@ -167,12 +166,6 @@ export class PrintComposerModal {
     this.renderAllItems();
     this.updatePropertiesPanel();
     this.selectItem('item-map-main');
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Layout Alinhado à Norma ABNT',
-      mensagem: `Prancha reorganizada com precisão milimétrica para ${this.paperSize.name}.`,
-      duracao: 2500
-    });
   }
 
   close() {
@@ -640,12 +633,6 @@ export class PrintComposerModal {
             this.items.push(item);
             this.renderAllItems();
             this.selectItem(item.id);
-            UIToast.notificar({
-              tipo: 'sucesso',
-              titulo: 'Elemento Inserido',
-              mensagem: `${item.name} adicionado à folha.`,
-              duracao: 2000
-            });
           }
         });
       }

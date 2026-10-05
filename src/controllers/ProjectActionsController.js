@@ -76,13 +76,6 @@ export class ProjectActionsController {
 
   static async handleImport(app, content, fileName, options = {}) {
     try {
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Processando Arquivo',
-        mensagem: `Lendo geometrias e atributos de "${fileName}"...`,
-        duracao: 2500
-      });
-
       const parsed = await GeoFormats.parseUploadedFile(content, fileName, options);
 
       // Se o arquivo tiver camadas (como AutoCAD DWG/DXF), integra ao projeto
@@ -206,12 +199,6 @@ export class ProjectActionsController {
       app.setActiveLayer(newLayer.id);
     }
 
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Camada Criada',
-      mensagem: `Camada "${name}" criada e definida como ativa para novos desenhos.`,
-      duracao: 3000
-    });
   }
 
   static addNewLayer(app) {
@@ -283,12 +270,6 @@ export class ProjectActionsController {
     StorageService.saveLayersBatch(app.layers, app.projectId);
     app.saveMetadata(true);
 
-    UIToast.notificar({
-      tipo: 'sucesso',
-      titulo: 'Modelo Carregado',
-      mensagem: `Template "${template.title}" pronto para uso.`,
-      duracao: 3500
-    });
   }
 
   static locateUser(app) {
@@ -297,12 +278,6 @@ export class ProjectActionsController {
         (pos) => {
           const latlng = [pos.coords.latitude, pos.coords.longitude];
           app.mapEngine.map.flyTo(latlng, 16, { duration: 1.5 });
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Localização Obtida',
-            mensagem: `Posição GPS centrada no mapa.`,
-            duracao: 3000
-          });
         },
         () => {
           UIToast.notificar({

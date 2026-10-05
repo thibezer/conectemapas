@@ -4,6 +4,7 @@
    ========================================================================== */
 
 import { UIToast } from 'ui-components-kit';
+import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../utils/toastHelpers.js';
 import { MapEngine } from '../services/MapEngine.js';
 import { StorageService } from '../services/StorageService.js';
 
@@ -66,14 +67,7 @@ export class AppComponentsBuilder {
         } else if (action === 'copy-coords') {
           const c = Array.isArray(feature.coordinates) ? feature.coordinates : [feature.coordinates?.lat, feature.coordinates?.lng];
           const text = `${Number(c[0]).toFixed(6)}, ${Number(c[1]).toFixed(6)}`;
-          const done = () => UIToast.notificar({ tipo: 'sucesso', titulo: 'Coordenadas Copiadas', mensagem: text, duracao: 2000 });
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(text).then(done).catch(() => {
-              UIToast.notificar({ tipo: 'alerta', titulo: 'Não foi possível copiar', mensagem: text, duracao: 4000 });
-            });
-          } else {
-            UIToast.notificar({ tipo: 'informativo', titulo: 'Coordenadas', mensagem: text, duracao: 4000 });
-          }
+          copyToClipboardWithToast(text, 'Coordenadas copiadas');
         }
       },
       onFeatureSelected: (feature) => {
@@ -118,15 +112,12 @@ export class AppComponentsBuilder {
       onProjectNameChange: (newName) => {
         app.projectName = newName;
         app.saveMetadata(true);
-        UIToast.notificar({ tipo: 'sucesso', titulo: 'Projeto Renomeado', mensagem: `Nome atualizado para "${newName}".`, duracao: 2500 });
       },
       onSaveProject: async () => {
         app.saveState(true, { featuresChanged: true });
-        UIToast.notificar({
-          tipo: 'info',
-          titulo: 'Sincronizando Nuvem',
-          mensagem: `Gravando ${app.features.length} feições no MySQL Hostinger...`,
-          duracao: 2500
+        const progress = notifyProgress({
+          titulo: 'Sincronizando com a nuvem',
+          mensagem: `Gravando ${app.features.length} feições...`
         });
 
         const cloudRes = await StorageService.saveProjectToCloud({
@@ -139,12 +130,13 @@ export class AppComponentsBuilder {
           zoom: app.mapEngine?.map ? app.mapEngine.map.getZoom() : 14
         });
 
+        progress.done();
         if (cloudRes && cloudRes.success) {
           UIToast.notificar({
             tipo: 'sucesso',
-            titulo: 'Projeto Salvo na Nuvem!',
-            mensagem: `${app.features.length} feições sincronizadas com sucesso. Qualquer pessoa com o link poderá visualizar!`,
-            duracao: 4500
+            titulo: 'Projeto salvo na nuvem',
+            mensagem: `${app.features.length} feições sincronizadas. Qualquer pessoa com o link pode visualizar.`,
+            duracao: 3500
           });
         } else {
           UIToast.notificar({
@@ -170,14 +162,12 @@ export class AppComponentsBuilder {
     app.drawingToolbar = new DrawingToolbar({
       onToolChange: (tool) => {
         app.mapEngine.setTool(tool);
-        UIToast.notificar({ tipo: 'informativo', titulo: 'Ferramenta Ativa', mensagem: `Modo: ${app.getToolName(tool)}`, duracao: 1500 });
       },
       onAction: (action) => {
         if (action === 'locate') {
           ProjectActionsController.locateUser(app);
         } else if (action === 'fit') {
           app.mapEngine.fitAllFeatures();
-          UIToast.notificar({ tipo: 'informativo', titulo: 'Vista Enquadrada', mensagem: 'Todas as feições foram centralizadas.', duracao: 2000 });
         }
       }
     });
@@ -212,7 +202,6 @@ export class AppComponentsBuilder {
         app.mapEngine.reorderLayers(app.layers);
         StorageService.saveLayersBatch(app.layers, app.projectId);
         app.saveMetadata(true);
-        UIToast.notificar({ tipo: 'informativo', titulo: 'Sobreposição Atualizada', mensagem: 'Ordem das camadas e Z-Index reordenados.', duracao: 1800 });
       },
       onLayerOpacityChange: (layerId, opacity) => {
         const layer = app.layers.find(l => l.id === layerId);
@@ -231,7 +220,6 @@ export class AppComponentsBuilder {
           StorageService.saveLayer(layer, app.projectId);
           if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
           app.saveMetadata(true);
-          UIToast.notificar({ tipo: 'sucesso', titulo: 'Camada Renomeada', mensagem: `Nome alterado para "${newName}".`, duracao: 2000 });
         }
       },
       onLayerColorChange: (layerId, newColor) => {
@@ -281,7 +269,6 @@ export class AppComponentsBuilder {
         if (feat) {
           feat.locked = isLocked;
           app.saveFeature(feat);
-          UIToast.notificar({ tipo: isLocked ? 'alerta' : 'sucesso', titulo: isLocked ? 'Feição Bloqueada' : 'Feição Desbloqueada', mensagem: isLocked ? `"${feat.name}" protegida contra edições.` : `"${feat.name}" liberada para edição.`, duracao: 1800 });
         }
       },
       onBulkUpdate: (updatedFeatures) => {
@@ -308,7 +295,7 @@ export class AppComponentsBuilder {
         StorageService.queueFeaturesBulkDelete(featureIds);
         featureIds.forEach(id => app.layerPanel && app.layerPanel.handleSelectedFeatureRemoved?.(id));
         app.saveMetadata(false);
-        UIToast.notificar({ tipo: 'alerta', titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas. Pressione Ctrl+Z para desfazer.`, duracao: 3000 });
+        notifyUndoable(app, { titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas.` });
       },
       onBasemapChange: (basemapName) => {
         app.currentBasemap = basemapName;
