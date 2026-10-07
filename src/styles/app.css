@@ -722,3 +722,8 @@ path.cm-feature-selected {
 body:has(#cm-bottom-table-wrapper:not(.collapsed)) .cm-map-basemap-container {
   bottom: 342px;
 }
+
+/* Modo leitura/sem acesso (papel viewer ou chave ausente): oculta as ferramentas de edição */
+body.cm-readonly #drawing-toolbar-mount {
+  display: none !important;
+}

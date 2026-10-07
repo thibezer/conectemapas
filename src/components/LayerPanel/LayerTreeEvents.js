@@ -4,7 +4,7 @@
    ========================================================================== */
 
 import { LayerTreeDragDrop } from './LayerTreeDragDrop.js';
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 export class LayerTreeEvents {
   static bind(panel) {

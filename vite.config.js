@@ -2,12 +2,6 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   base: './',
-  resolve: {
-    alias: [
-      { find: /^ui-components-kit\/(.*)/, replacement: '@thibezer/ui-components-kit/$1' },
-      { find: 'ui-components-kit', replacement: '@thibezer/ui-components-kit' }
-    ]
-  },
   plugins: [],
   server: {
     port: 3000,

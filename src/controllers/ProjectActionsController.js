@@ -9,7 +9,7 @@ import { normalizeFeature } from '../services/MockData.js';
 import { MapImageExporter } from '../services/MapImageExporter.js';
 import { StorageService } from '../services/StorageService.js';
 import { FeatureSyncController } from './FeatureSyncController.js';
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 export class ProjectActionsController {
   static async handleExport(app, format, options = {}) {

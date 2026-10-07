@@ -3,12 +3,14 @@
    Plataforma Colaborativa de Mapeamento com thibezer/Componentes-UI
    ========================================================================== */
 
-import 'ui-components-kit';
-import { UIToast } from 'ui-components-kit';
+import '@thibezer/ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 import { StorageService } from './services/StorageService.js';
 import { DEFAULT_LAYERS } from './services/MockData.js';
 import { CollaborationHub } from './services/CollaborationHub.js';
+import { AccessManager } from './services/Storage/AccessManager.js';
+import { AuthService } from './services/Storage/AuthService.js';
 
 import { FeatureSyncController } from './controllers/FeatureSyncController.js';
 import { ShortcutsController } from './controllers/ShortcutsController.js';
@@ -22,6 +24,7 @@ class ConecteMapasApp {
     const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
     this.projectId = (urlParams && urlParams.get('project')) ? urlParams.get('project') : 'projeto_padrao';
     StorageService.setCurrentProjectId(this.projectId);
+    AccessManager.adoptKeyFromUrl(this.projectId);
 
     this.projectName = 'Levantamento Topográfico - Umuarama';
     this.layers = [...DEFAULT_LAYERS];
@@ -67,6 +70,57 @@ class ConecteMapasApp {
     StorageService.checkCloudConnection().then(() => {
       AppBootstrapSync.updateSyncChip(this);
     });
+
+    AccessManager.onRoleChange((projectId, role) => {
+      if (projectId === this.projectId) this.applyAccessMode(role);
+    });
+    AuthService.onChange((user) => {
+      this.applyAccount(user);
+      AccessManager.refresh(this.projectId);
+    });
+    this.applyAccount(AuthService.getUser());
+    AuthService.refresh().then(() => AccessManager.refresh(this.projectId));
+    AccessManager.refresh(this.projectId);
+
+    const inviteCode = AccessManager.takeInviteFromUrl();
+    if (inviteCode && this.authModal) this.authModal.openInvite(inviteCode);
+  }
+
+  /** Nome da conta no cabeçalho e na presença; o servidor ainda decide o papel. */
+  applyAccount(user) {
+    if (this.headerBar) this.headerBar.updateAccount(user ? user.name : '');
+    if (this.collabHub) this.collabHub.setAccountName(user ? user.name : null);
+  }
+
+  /** Após aceitar um convite: abre o projeto do convite (recarrega se for outro). */
+  openProjectAfterInvite(projectId) {
+    if (projectId && projectId !== this.projectId) {
+      window.location.assign(AccessManager.buildShareUrl(projectId));
+      return;
+    }
+    AccessManager.refresh(this.projectId);
+  }
+
+  /**
+   * Reflete o papel de acesso na interface: leitor e "sem acesso" não editam.
+   * O servidor é quem garante (403); aqui só evitamos oferecer ações que falhariam.
+   */
+  applyAccessMode(role) {
+    // Projeto protegido que estava sem acesso e agora liberou (login/convite): recarrega para baixar os dados
+    if (this._lastAccessRole === 'none' && role && role !== 'none') {
+      window.location.reload();
+      return;
+    }
+    this._lastAccessRole = role;
+    const readOnly = role === 'viewer' || role === 'none';
+    document.body.classList.toggle('cm-readonly', readOnly);
+    if (readOnly && this.mapEngine) this.mapEngine.setTool('select');
+    if (this.collabHub) this.collabHub.setRole(role);
+    if (role === 'viewer') {
+      UIToast.notificar({ tipo: 'alerta', titulo: 'Modo leitura', mensagem: 'Você pode visualizar o mapa, mas não editá-lo.', duracao: 5000 });
+    } else if (role === 'none') {
+      UIToast.notificar({ tipo: 'erro', titulo: 'Acesso negado', mensagem: 'Este projeto exige um link de acesso válido.', duracao: 6000 });
+    }
   }
 
   initCollaboration() {
@@ -182,7 +236,53 @@ class ConecteMapasApp {
     ShortcutsController.pushHistory(this, description);
   }
 
+  /**
+   * Salvaguarda: feição cuja camada não existe mais fica invisível para sempre.
+   * Agenda uma checagem (com atraso, para não agir durante o carregamento inicial,
+   * quando feições podem chegar antes das camadas) e resgata as órfãs para a
+   * camada determinística "Recuperadas".
+   */
+  _scheduleOrphanCheck() {
+    if (this._orphanTimer || !this.layers.length) return;
+    this._orphanTimer = setTimeout(() => {
+      this._orphanTimer = null;
+      this.adoptOrphanFeatures();
+    }, 4000);
+  }
+
+  adoptOrphanFeatures() {
+    if (!this.layers.length || !this.features.length) return 0;
+    const known = new Set(this.layers.map(l => l.id));
+    const orphans = this.features.filter(f => f && f.layerId && !known.has(f.layerId));
+    const noLayer = this.features.filter(f => f && !f.layerId);
+    const all = [...orphans, ...noLayer];
+    if (all.length === 0) return 0;
+
+    const RESCUE_ID = 'layer-recuperadas';
+    let rescue = this.layers.find(l => l.id === RESCUE_ID);
+    if (!rescue) {
+      rescue = { id: RESCUE_ID, name: 'Recuperadas', color: '#F5A524', visible: true, opacity: 1, locked: false, order: this.layers.length };
+      this.layers.push(rescue);
+      StorageService.saveLayer(rescue, this.projectId);
+      if (this.collabHub) this.collabHub.notifyLayerCreated(rescue);
+      if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
+      this.saveMetadata(false);
+    }
+    all.forEach(f => { f.layerId = RESCUE_ID; });
+    StorageService.queueFeaturesBulkUpsert(all, this.projectId);
+    console.warn(`[ConecteMapas] ${all.length} feição(ões) órfã(s) movida(s) para "Recuperadas".`);
+    UIToast.notificar({
+      tipo: 'alerta',
+      titulo: 'Feições recuperadas',
+      mensagem: `${all.length} feição(ões) estavam sem camada e foram movidas para "Recuperadas".`,
+      duracao: 6000
+    });
+    this.refreshMapAndTable(true);
+    return all.length;
+  }
+
   refreshMapAndTable(forceRebuild = false) {
+    this._scheduleOrphanCheck();
     this.mapEngine.renderFeatures(this.features, this.layers, forceRebuild);
     if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
     if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);

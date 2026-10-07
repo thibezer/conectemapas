@@ -4,7 +4,7 @@
    projeção vetorial nativa subpixel, composição cartográfica e salvaguarda CORS.
    ========================================================================== */
 
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyProgress } from '../utils/toastHelpers.js';
 
 export class MapImageExporter {

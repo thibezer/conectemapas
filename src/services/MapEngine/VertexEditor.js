@@ -5,7 +5,7 @@
 
 import L from 'leaflet';
 import { DrawingSnappingHelper } from './DrawingSnappingHelper.js';
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 export class VertexEditor {
   constructor(mapEngine) {

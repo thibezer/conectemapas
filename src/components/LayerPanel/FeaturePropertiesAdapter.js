@@ -11,7 +11,7 @@ import { SpatialAlgorithms } from '../../services/SpatialAlgorithms.js';
 import { GeoFormats } from '../../services/GeoFormats.js';
 import { GeometryVersionManager } from '../../services/GeometryVersionManager.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 const COORD_DECIMALS = 8;
 

@@ -11,6 +11,7 @@
 import { CLOUD_API_URL } from './StorageConstants.js';
 import { LocalStore } from './LocalStore.js';
 import { DeltaQueue } from './DeltaQueue.js';
+import { AccessManager } from './AccessManager.js';
 
 const _clientId = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
   ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
@@ -125,7 +126,7 @@ export class CloudSyncEngine {
     const body = JSON.stringify(payload);
     return fetch(`${CLOUD_API_URL}?action=${action}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: AccessManager.headers(payload.projectId || payload.id, { 'Content-Type': 'application/json' }),
       body,
       keepalive: body.length < 60000
     });
@@ -217,6 +218,13 @@ export class CloudSyncEngine {
         LocalStore.clearPendingDeltas(projectId, projectId);
         _cloudStatus.error = 'Exclusão em massa bloqueada pelo servidor';
         console.warn('[CloudSyncEngine] Exclusão em massa bloqueada pelo servidor; nuvem preservada.');
+        return false;
+      }
+      if (res.status === 401 || res.status === 403) {
+        // Sem permissão de escrita: reenviar nunca vai funcionar, então descarta a fila local
+        AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
+        LocalStore.clearPendingDeltas(projectId, projectId);
+        _cloudStatus.error = 'Sem permissão de edição neste projeto';
         return false;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -331,7 +339,11 @@ export class CloudSyncEngine {
       };
 
       const res = await this._postJson('save_metadata', payload);
-      if (res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        AccessManager.handleDenied(projId, res.status, await res.json().catch(() => null));
+        this._setLayerDirty(dirtyProjectId, false);
+        _cloudStatus.error = 'Sem permissão de edição neste projeto';
+      } else if (res.ok) {
         _cloudStatus.connected = true;
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
@@ -378,10 +390,14 @@ export class CloudSyncEngine {
 
       const res = await fetch(`${CLOUD_API_URL}?action=save_all`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: AccessManager.headers(projId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
 
+      if (res.status === 401 || res.status === 403) {
+        AccessManager.handleDenied(projId, res.status, await res.json().catch(() => null));
+        throw new Error('Sem permissão de edição neste projeto');
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
       const result = await res.json();
@@ -415,11 +431,14 @@ export class CloudSyncEngine {
     try {
       const res = await fetch(`${CLOUD_API_URL}?action=load&projectId=${encodeURIComponent(projectId)}`, {
         method: 'GET',
-        headers: { 'Accept': 'application/json' },
+        headers: AccessManager.headers(projectId, { 'Accept': 'application/json' }),
         cache: 'no-cache'
       });
 
-      if (!res.ok) return null;
+      if (!res.ok) {
+        AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
+        return null;
+      }
       const data = await res.json();
       if (!data || !data.exists) return null;
 
@@ -461,13 +480,17 @@ export class CloudSyncEngine {
 
       const res = await fetch(`${CLOUD_API_URL}?${params.toString()}`, {
         method: 'GET',
-        headers: { 'Accept': 'application/json' },
+        headers: AccessManager.headers(projectId, { 'Accept': 'application/json' }),
         cache: 'no-cache'
       });
 
-      if (!res.ok) return null;
+      if (!res.ok) {
+        AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
+        return null;
+      }
       const data = await res.json();
       if (!data || !data.success) return null;
+      if (data.role) AccessManager.setRole(projectId, data.role);
 
       _cloudStatus.connected = true;
       _cloudStatus.lastSyncedAt = new Date().toISOString();

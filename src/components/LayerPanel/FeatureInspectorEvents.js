@@ -11,7 +11,7 @@
 import { FeaturePropertiesAdapter } from './FeaturePropertiesAdapter.js';
 import { GeoFormats } from '../../services/GeoFormats.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 // O seletor de cor nativo dispara 'input' a cada movimento: só grava após uma pausa
 const COLOR_COMMIT_DELAY_MS = 300;

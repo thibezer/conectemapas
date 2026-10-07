@@ -17,7 +17,7 @@ header('Pragma: no-cache');
 header('Expires: 0');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Project-Key, X-Auth-Token');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -76,7 +76,7 @@ function getDatabaseConnection() {
 // 3. Auto-Migração do Esquema Relacional (DDL Idempotente)
 // A versão do esquema fica gravada em disco para que as requisições de alta frequência
 // (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
-define('CM_SCHEMA_VERSION', 3);
+define('CM_SCHEMA_VERSION', 5);
 define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
 
 function columnExists(PDO $pdo, $table, $column) {
@@ -202,6 +202,72 @@ function ensureDatabaseSchema(PDO $pdo) {
             PRIMARY KEY (project_id, client_id),
             INDEX idx_presence_seen (project_id, last_seen)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+        // v4: Controle de acesso por chave (capability links). Só o hash SHA-256 da chave é guardado.
+        // Projeto sem nenhuma linha aqui é "aberto" (legado); a primeira linha (owner) o protege.
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_access (
+            id VARCHAR(32) PRIMARY KEY,
+            project_id VARCHAR(64) NOT NULL,
+            role VARCHAR(16) NOT NULL,
+            key_hash CHAR(64) NOT NULL,
+            label VARCHAR(128) NOT NULL DEFAULT '',
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            revoked_at DATETIME NULL,
+            UNIQUE KEY uq_access_key (key_hash),
+            INDEX idx_access_project (project_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+        // v5: Contas de usuário (login). Cadastro SOMENTE por convite de um dono de projeto;
+        // a primeira conta e o reset forçado de senha são feitos por tools/cm_admin.php (CLI).
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_users (
+            id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(100) NOT NULL,
+            email VARCHAR(190) NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            is_blocked TINYINT(1) NOT NULL DEFAULT 0,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_login_at DATETIME NULL,
+            UNIQUE KEY uq_users_email (email)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_sessions (
+            token_hash CHAR(64) NOT NULL PRIMARY KEY,
+            user_id INT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME NOT NULL,
+            INDEX idx_sessions_user (user_id),
+            INDEX idx_sessions_expires (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_members (
+            project_id VARCHAR(64) NOT NULL,
+            user_id INT NOT NULL,
+            role VARCHAR(16) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (project_id, user_id),
+            INDEX idx_members_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_invites (
+            id VARCHAR(32) NOT NULL PRIMARY KEY,
+            project_id VARCHAR(64) NOT NULL,
+            role VARCHAR(16) NOT NULL,
+            email VARCHAR(190) NULL,
+            code_hash CHAR(64) NOT NULL,
+            created_by INT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME NOT NULL,
+            used_at DATETIME NULL,
+            UNIQUE KEY uq_invite_code (code_hash),
+            INDEX idx_invites_project (project_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_auth_attempts (
+            id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            ip VARCHAR(45) NOT NULL,
+            subject_hash CHAR(64) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_attempts (ip, subject_hash, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        if (!columnExists($pdo, 'cm_presence', 'role')) {
+            $pdo->exec("ALTER TABLE cm_presence ADD COLUMN role VARCHAR(16) NULL;");
+        }
     } catch (Exception $e) {
         // Mantém a API operante; a migração será tentada novamente na próxima requisição
         return;
@@ -272,6 +338,11 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
     foreach ($layers as $idx => $layer) {
         if (empty($layer['id'])) continue;
         $lid = $layer['id'];
+        $stmtOwner = $pdo->prepare("SELECT project_id FROM cm_layers WHERE id = ?");
+        $stmtOwner->execute([$lid]);
+        $ownerProject = $stmtOwner->fetchColumn();
+        // Isolamento: id de camada de OUTRO projeto nunca é sobrescrito/sequestrado
+        if ($ownerProject !== false && $ownerProject !== $projectId) continue;
         $lname = $layer['name'] ?? 'Camada';
         $lcolor = $layer['color'] ?? '#00E08A';
         $ltype = $layer['type'] ?? 'custom';
@@ -346,6 +417,169 @@ function executeFeatureUpsert(PDOStatement $stmt, array $feat, $projectId, $rev,
     ]);
 }
 
+// 3.1 Controle de acesso (papéis: viewer < editor < owner)
+// Chave enviada no header X-Project-Key. Projeto sem registros em cm_access é "aberto" (legado):
+// qualquer um age como editor até que alguém o reivindique (claim_project) e vire dono.
+function roleRank($role) {
+    $ranks = ['viewer' => 1, 'editor' => 2, 'owner' => 3];
+    return $ranks[$role] ?? 0;
+}
+
+function cleanProjectId($raw) {
+    $clean = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$raw);
+    return $clean !== '' ? $clean : 'projeto_padrao';
+}
+
+function requestAccessKey() {
+    $key = $_SERVER['HTTP_X_PROJECT_KEY'] ?? '';
+    return preg_match('/^cmk_[a-f0-9]{32}$/', $key) ? $key : '';
+}
+
+function isProjectProtected(PDO $pdo, $projectId) {
+    $stmt = $pdo->prepare("SELECT 1 FROM cm_access WHERE project_id = ? UNION SELECT 1 FROM cm_members WHERE project_id = ? LIMIT 1");
+    $stmt->execute([$projectId, $projectId]);
+    return (bool)$stmt->fetchColumn();
+}
+
+// --- Contas e sessões (token opaco de 256 bits; só o hash SHA-256 fica no banco) ---
+function requestAuthToken() {
+    $token = $_SERVER['HTTP_X_AUTH_TOKEN'] ?? '';
+    return preg_match('/^cms_[a-f0-9]{64}$/', $token) ? $token : '';
+}
+
+/** Usuário da sessão atual ou null (conta bloqueada ou sessão expirada = null). */
+function currentUser(PDO $pdo) {
+    static $cache = false;
+    if ($cache !== false) return $cache;
+    $cache = null;
+    $token = requestAuthToken();
+    if ($token !== '') {
+        $stmt = $pdo->prepare("
+            SELECT u.id, u.name, u.email FROM cm_sessions s
+            JOIN cm_users u ON u.id = s.user_id
+            WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.is_blocked = 0
+        ");
+        $stmt->execute([hash('sha256', $token)]);
+        $row = $stmt->fetch();
+        if ($row) $cache = ['id' => (int)$row['id'], 'name' => $row['name'], 'email' => $row['email']];
+    }
+    return $cache;
+}
+
+function requireUser(PDO $pdo) {
+    $user = currentUser($pdo);
+    if (!$user) denyAccess(401, 'login_required', 'Entre na sua conta para continuar.');
+    return $user;
+}
+
+function createSession(PDO $pdo, $userId) {
+    $token = 'cms_' . bin2hex(random_bytes(32));
+    $pdo->prepare("INSERT INTO cm_sessions (token_hash, user_id, expires_at) VALUES (?, ?, NOW() + INTERVAL 30 DAY)")
+        ->execute([hash('sha256', $token), $userId]);
+    if (mt_rand(1, 50) === 1) {
+        $pdo->exec("DELETE FROM cm_sessions WHERE expires_at < NOW()");
+        $pdo->exec("DELETE FROM cm_auth_attempts WHERE created_at < NOW() - INTERVAL 1 DAY");
+    }
+    return $token;
+}
+
+function normalizeEmail($raw) {
+    return strtolower(trim((string)$raw));
+}
+
+function validatePassword($password) {
+    if (!is_string($password) || strlen($password) < 8 || strlen($password) > 72
+        || !preg_match('/[A-Za-z]/', $password) || !preg_match('/[0-9]/', $password)) {
+        denyAccess(400, 'weak_password', 'A senha precisa ter de 8 a 72 caracteres, com letras e números.');
+    }
+}
+
+/** Limita tentativas por IP+assunto (15 min) e por IP (30 em 15 min). Chamar ANTES de verificar. */
+function enforceAttemptLimit(PDO $pdo, $subject) {
+    $ip = substr($_SERVER['REMOTE_ADDR'] ?? '0', 0, 45);
+    $subjectHash = hash('sha256', $subject);
+    $stmt = $pdo->prepare("SELECT COUNT(*), SUM(subject_hash = ?) FROM cm_auth_attempts WHERE ip = ? AND created_at > NOW() - INTERVAL 15 MINUTE");
+    $stmt->execute([$subjectHash, $ip]);
+    $row = $stmt->fetch(PDO::FETCH_NUM);
+    if ((int)$row[0] >= 30 || (int)$row[1] >= 5) {
+        denyAccess(429, 'too_many_attempts', 'Muitas tentativas. Aguarde alguns minutos.');
+    }
+    return [$ip, $subjectHash];
+}
+
+function recordFailedAttempt(PDO $pdo, array $attempt) {
+    $pdo->prepare("INSERT INTO cm_auth_attempts (ip, subject_hash) VALUES (?, ?)")->execute($attempt);
+}
+
+/** @return string 'open' | 'viewer' | 'editor' | 'owner' | '' (sem acesso válido) */
+function resolveRole(PDO $pdo, $projectId) {
+    if (!isProjectProtected($pdo, $projectId)) return 'open';
+    $best = '';
+
+    $user = currentUser($pdo);
+    if ($user) {
+        $stmt = $pdo->prepare("SELECT role FROM cm_members WHERE project_id = ? AND user_id = ?");
+        $stmt->execute([$projectId, $user['id']]);
+        $memberRole = $stmt->fetchColumn();
+        if ($memberRole !== false) $best = $memberRole;
+    }
+
+    $key = requestAccessKey();
+    if ($key !== '') {
+        $stmt = $pdo->prepare("SELECT role FROM cm_access WHERE project_id = ? AND key_hash = ? AND revoked_at IS NULL");
+        $stmt->execute([$projectId, hash('sha256', $key)]);
+        $keyRole = $stmt->fetchColumn();
+        if ($keyRole !== false && roleRank($keyRole) > roleRank($best)) $best = $keyRole;
+    }
+    return $best;
+}
+
+function denyAccess($status, $code, $message, array $extra = []) {
+    http_response_code($status);
+    echo json_encode(array_merge(['error' => $message, 'code' => $code], $extra));
+    exit;
+}
+
+/** Exige papel mínimo; projeto aberto equivale a editor. Devolve o papel efetivo. */
+function requireRole(PDO $pdo, $projectId, $minRole) {
+    $role = resolveRole($pdo, $projectId);
+    if ($role === 'open') {
+        if (roleRank($minRole) > roleRank('editor')) {
+            denyAccess(403, 'claim_required', 'Projeto ainda sem dono: proteja-o primeiro.');
+        }
+        return 'editor';
+    }
+    if ($role === '') {
+        if (currentUser($pdo)) denyAccess(403, 'not_a_member', 'Sua conta não tem acesso a este projeto.');
+        $hasKey = requestAccessKey() !== '';
+        denyAccess($hasKey ? 403 : 401, $hasKey ? 'invalid_key' : 'key_required', $hasKey ? 'Chave de acesso inválida ou revogada.' : 'Este projeto exige um link de acesso.');
+    }
+    if (roleRank($role) < roleRank($minRole)) {
+        denyAccess(403, 'insufficient_role', 'Seu acesso (' . $role . ') não permite esta ação.', ['role' => $role, 'required' => $minRole]);
+    }
+    return $role;
+}
+
+function issueAccessKey(PDO $pdo, $projectId, $role, $label) {
+    $key = 'cmk_' . bin2hex(random_bytes(16));
+    $id = 'acc_' . bin2hex(random_bytes(6));
+    $stmt = $pdo->prepare("INSERT INTO cm_access (id, project_id, role, key_hash, label) VALUES (?, ?, ?, ?, ?)");
+    $stmt->execute([$id, $projectId, $role, hash('sha256', $key), substr(trim((string)$label), 0, 128)]);
+    return ['id' => $id, 'key' => $key];
+}
+
+/** Ids de feição que já pertencem a OUTRO projeto (o upsert por id não pode sobrescrevê-las). */
+function foreignFeatureIds(PDO $pdo, $projectId, array $ids) {
+    $foreign = [];
+    foreach (array_chunk(array_values(array_unique($ids)), 500) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $stmt = $pdo->prepare("SELECT id FROM cm_features WHERE project_id <> ? AND id IN ($ph)");
+        $stmt->execute(array_merge([$projectId], $chunk));
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $id) $foreign[$id] = true;
+    }
+    return $foreign;
+}
+
 // 4. Roteamento de Ações REST
 $pdo = getDatabaseConnection();
 ensureDatabaseSchema($pdo);
@@ -397,9 +631,11 @@ switch ($action) {
     // ACTION: LIST_PROJECTS (Listar Projetos na Nuvem)
     // --------------------------------------------------------------------------
     case 'list_projects':
+        // Projetos protegidos nunca são listados: só quem tem o link os alcança
         $stmt = $pdo->query("
             SELECT id, name, description, basemap, feature_count, updated_at
             FROM cm_projects
+            WHERE NOT EXISTS (SELECT 1 FROM cm_access a WHERE a.project_id = cm_projects.id)
             ORDER BY updated_at DESC
         ");
         $list = $stmt->fetchAll();
@@ -410,7 +646,266 @@ switch ($action) {
         $featId = isset($_GET['id']) ? trim($_GET['id']) : '';
         $stmtF = $pdo->prepare("SELECT * FROM cm_features WHERE id = ?");
         $stmtF->execute([$featId]);
-        echo json_encode(['feature' => $stmtF->fetch(PDO::FETCH_ASSOC)]);
+        $featRow = $stmtF->fetch(PDO::FETCH_ASSOC);
+        if ($featRow) requireRole($pdo, $featRow['project_id'], 'viewer');
+        echo json_encode(['feature' => $featRow]);
+        exit;
+
+    // --------------------------------------------------------------------------
+    // CONTROLE DE ACESSO
+    // access_info (GET)     : papel efetivo da chave enviada (nunca falha por chave ruim)
+    // claim_project (POST)  : torna o chamador dono de um projeto ainda aberto (devolve a chave 1x)
+    // create_share (POST)   : dono gera chave de editor/leitor (devolvida 1x)
+    // list_access (GET)     : dono lista chaves emitidas
+    // revoke_access (POST)  : dono revoga uma chave (exceto a do dono)
+    // --------------------------------------------------------------------------
+    case 'access_info':
+        $projectId = cleanProjectId($_GET['projectId'] ?? '');
+        $protected = isProjectProtected($pdo, $projectId);
+        $role = resolveRole($pdo, $projectId);
+        echo json_encode([
+            'success'   => true,
+            'protected' => $protected,
+            'role'      => $role === 'open' ? 'editor' : ($role !== '' ? $role : null),
+            'canManage' => $role === 'owner',
+            'canClaim'  => !$protected
+        ]);
+        exit;
+
+    // --------------------------------------------------------------------------
+    // CONTAS (login). Cadastro só com convite de dono; token em X-Auth-Token.
+    // --------------------------------------------------------------------------
+    case 'auth_login':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $email = normalizeEmail($body['email'] ?? '');
+        $password = (string)($body['password'] ?? '');
+        $attempt = enforceAttemptLimit($pdo, 'login:' . $email);
+
+        $stmt = $pdo->prepare("SELECT id, name, email, password_hash, is_blocked FROM cm_users WHERE email = ?");
+        $stmt->execute([$email]);
+        $u = $stmt->fetch();
+        // Compara sempre (hash fictício se o e-mail não existe): tempo igual, sem enumeração de contas
+        $hash = $u ? $u['password_hash'] : '$2y$12$57VBjTB2DrO0dbFoU8Sz5.6yderDGBTrxyZOJexCU43BssVZF5EKK';
+        $ok = password_verify($password, $hash) && $u && !(int)$u['is_blocked'];
+        if (!$ok) {
+            recordFailedAttempt($pdo, $attempt);
+            denyAccess(401, 'bad_credentials', 'E-mail ou senha incorretos.');
+        }
+        $pdo->prepare("UPDATE cm_users SET last_login_at = NOW() WHERE id = ?")->execute([$u['id']]);
+        echo json_encode(['success' => true, 'token' => createSession($pdo, $u['id']), 'user' => ['id' => (int)$u['id'], 'name' => $u['name'], 'email' => $u['email']]]);
+        exit;
+
+    case 'auth_register':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $code = trim((string)($body['code'] ?? ''));
+        $name = trim((string)($body['name'] ?? ''));
+        $email = normalizeEmail($body['email'] ?? '');
+        $password = (string)($body['password'] ?? '');
+        $attempt = enforceAttemptLimit($pdo, 'invite');
+        if ($name === '' || strlen($name) > 100 || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) {
+            denyAccess(400, 'bad_input', 'Informe nome e um e-mail válido.');
+        }
+        validatePassword($password);
+
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT id, project_id, role, email FROM cm_invites WHERE code_hash = ? AND used_at IS NULL AND expires_at > NOW() FOR UPDATE");
+            $stmt->execute([hash('sha256', $code)]);
+            $invite = $stmt->fetch();
+            if (!$invite || ($invite['email'] !== null && $invite['email'] !== $email)) {
+                $pdo->rollBack();
+                recordFailedAttempt($pdo, $attempt);
+                denyAccess(403, 'invalid_invite', 'Convite inválido, expirado ou já usado.');
+            }
+            $stmt = $pdo->prepare("SELECT 1 FROM cm_users WHERE email = ?");
+            $stmt->execute([$email]);
+            if ($stmt->fetchColumn()) {
+                $pdo->rollBack();
+                denyAccess(409, 'email_taken', 'Este e-mail já tem conta: entre e aceite o convite logado.');
+            }
+            $pdo->prepare("INSERT INTO cm_users (name, email, password_hash, last_login_at) VALUES (?, ?, ?, NOW())")
+                ->execute([$name, $email, password_hash($password, PASSWORD_BCRYPT, ['cost' => 12])]);
+            $userId = (int)$pdo->lastInsertId();
+            $pdo->prepare("INSERT INTO cm_members (project_id, user_id, role) VALUES (?, ?, ?)")->execute([$invite['project_id'], $userId, $invite['role']]);
+            $pdo->prepare("UPDATE cm_invites SET used_at = NOW() WHERE id = ?")->execute([$invite['id']]);
+            $token = createSession($pdo, $userId);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'token' => $token, 'projectId' => $invite['project_id'], 'role' => $invite['role'],
+                'user' => ['id' => $userId, 'name' => $name, 'email' => $email]]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'register_failed', 'Falha ao criar a conta');
+        }
+
+    case 'auth_logout':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        if (requestAuthToken() !== '') {
+            $pdo->prepare("DELETE FROM cm_sessions WHERE token_hash = ?")->execute([hash('sha256', requestAuthToken())]);
+        }
+        echo json_encode(['success' => true]);
+        exit;
+
+    case 'auth_me':
+        echo json_encode(['success' => true, 'user' => currentUser($pdo)]);
+        exit;
+
+    case 'auth_change_password':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $user = requireUser($pdo);
+        $body = getJsonBody();
+        $attempt = enforceAttemptLimit($pdo, 'pwd:' . $user['id']);
+        $stmt = $pdo->prepare("SELECT password_hash FROM cm_users WHERE id = ?");
+        $stmt->execute([$user['id']]);
+        if (!password_verify((string)($body['current'] ?? ''), (string)$stmt->fetchColumn())) {
+            recordFailedAttempt($pdo, $attempt);
+            denyAccess(403, 'bad_credentials', 'Senha atual incorreta.');
+        }
+        validatePassword($body['new'] ?? '');
+        $pdo->prepare("UPDATE cm_users SET password_hash = ? WHERE id = ?")->execute([password_hash($body['new'], PASSWORD_BCRYPT, ['cost' => 12]), $user['id']]);
+        // Derruba as demais sessões (mantém só esta)
+        $pdo->prepare("DELETE FROM cm_sessions WHERE user_id = ? AND token_hash <> ?")->execute([$user['id'], hash('sha256', requestAuthToken())]);
+        echo json_encode(['success' => true]);
+        exit;
+
+    case 'create_invite':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        requireRole($pdo, $projectId, 'owner');
+        $user = currentUser($pdo);
+        $inviteRole = $body['role'] ?? '';
+        if ($inviteRole !== 'editor' && $inviteRole !== 'viewer') denyAccess(400, 'bad_role', 'Papel deve ser editor ou viewer.');
+        $inviteEmail = normalizeEmail($body['email'] ?? '');
+        if ($inviteEmail !== '' && !filter_var($inviteEmail, FILTER_VALIDATE_EMAIL)) denyAccess(400, 'bad_input', 'E-mail do convite inválido.');
+        $stmtCnt = $pdo->prepare("SELECT COUNT(*) FROM cm_invites WHERE project_id = ? AND used_at IS NULL AND expires_at > NOW()");
+        $stmtCnt->execute([$projectId]);
+        if ((int)$stmtCnt->fetchColumn() >= 50) denyAccess(409, 'too_many_invites', 'Limite de 50 convites pendentes.');
+        $code = 'cmi_' . bin2hex(random_bytes(16));
+        $inviteId = 'inv_' . bin2hex(random_bytes(6));
+        $pdo->prepare("INSERT INTO cm_invites (id, project_id, role, email, code_hash, created_by, expires_at) VALUES (?, ?, ?, ?, ?, ?, NOW() + INTERVAL 7 DAY)")
+            ->execute([$inviteId, $projectId, $inviteRole, $inviteEmail !== '' ? $inviteEmail : null, hash('sha256', $code), $user ? $user['id'] : null]);
+        echo json_encode(['success' => true, 'inviteId' => $inviteId, 'code' => $code, 'role' => $inviteRole]);
+        exit;
+
+    case 'accept_invite':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $user = requireUser($pdo);
+        $body = getJsonBody();
+        $attempt = enforceAttemptLimit($pdo, 'invite');
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT id, project_id, role, email FROM cm_invites WHERE code_hash = ? AND used_at IS NULL AND expires_at > NOW() FOR UPDATE");
+            $stmt->execute([hash('sha256', trim((string)($body['code'] ?? '')))]);
+            $invite = $stmt->fetch();
+            if (!$invite || ($invite['email'] !== null && $invite['email'] !== $user['email'])) {
+                $pdo->rollBack();
+                recordFailedAttempt($pdo, $attempt);
+                denyAccess(403, 'invalid_invite', 'Convite inválido, expirado, já usado ou de outro e-mail.');
+            }
+            // Nunca rebaixa quem já tem papel maior no projeto
+            $pdo->prepare("INSERT INTO cm_members (project_id, user_id, role) VALUES (?, ?, ?)
+                           ON DUPLICATE KEY UPDATE role = IF(? > (CASE role WHEN 'owner' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END), VALUES(role), role)")
+                ->execute([$invite['project_id'], $user['id'], $invite['role'], roleRank($invite['role'])]);
+            $pdo->prepare("UPDATE cm_invites SET used_at = NOW() WHERE id = ?")->execute([$invite['id']]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'projectId' => $invite['project_id'], 'role' => $invite['role']]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'invite_failed', 'Falha ao aceitar o convite');
+        }
+
+    case 'revoke_member':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        requireRole($pdo, $projectId, 'owner');
+        $stmt = $pdo->prepare("DELETE FROM cm_members WHERE project_id = ? AND user_id = ? AND role <> 'owner'");
+        $stmt->execute([$projectId, (int)($body['userId'] ?? 0)]);
+        echo json_encode(['success' => true, 'revoked' => $stmt->rowCount()]);
+        exit;
+
+    case 'revoke_invite':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        requireRole($pdo, $projectId, 'owner');
+        $stmt = $pdo->prepare("DELETE FROM cm_invites WHERE project_id = ? AND id = ? AND used_at IS NULL");
+        $stmt->execute([$projectId, (string)($body['inviteId'] ?? '')]);
+        echo json_encode(['success' => true, 'revoked' => $stmt->rowCount()]);
+        exit;
+
+    case 'claim_project':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        $pdo->beginTransaction();
+        try {
+            // Trava a linha do projeto: duas reivindicações simultâneas não geram dois donos
+            $pdo->prepare("INSERT IGNORE INTO cm_projects (id) VALUES (?)")->execute([$projectId]);
+            $pdo->prepare("SELECT id FROM cm_projects WHERE id = ? FOR UPDATE")->execute([$projectId]);
+            if (isProjectProtected($pdo, $projectId)) {
+                $pdo->rollBack();
+                denyAccess(409, 'already_claimed', 'Este projeto já possui dono.');
+            }
+            $claimer = currentUser($pdo);
+            if ($claimer) {
+                $pdo->prepare("INSERT INTO cm_members (project_id, user_id, role) VALUES (?, ?, 'owner')")->execute([$projectId, $claimer['id']]);
+                $pdo->commit();
+                echo json_encode(['success' => true, 'role' => 'owner', 'key' => null]);
+                exit;
+            }
+            $issued = issueAccessKey($pdo, $projectId, 'owner', $body['label'] ?? 'Dono');
+            $pdo->commit();
+            echo json_encode(['success' => true, 'role' => 'owner', 'accessId' => $issued['id'], 'key' => $issued['key']]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'claim_failed', 'Falha ao proteger o projeto', ['detail' => $e->getMessage()]);
+        }
+
+    case 'create_share':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        requireRole($pdo, $projectId, 'owner');
+        $shareRole = $body['role'] ?? '';
+        if ($shareRole !== 'editor' && $shareRole !== 'viewer') {
+            denyAccess(400, 'bad_role', 'Papel deve ser editor ou viewer.');
+        }
+        $stmtCnt = $pdo->prepare("SELECT COUNT(*) FROM cm_access WHERE project_id = ? AND revoked_at IS NULL");
+        $stmtCnt->execute([$projectId]);
+        if ((int)$stmtCnt->fetchColumn() >= 50) {
+            denyAccess(409, 'too_many_keys', 'Limite de 50 acessos ativos. Revogue algum antes.');
+        }
+        $issued = issueAccessKey($pdo, $projectId, $shareRole, $body['label'] ?? '');
+        echo json_encode(['success' => true, 'role' => $shareRole, 'accessId' => $issued['id'], 'key' => $issued['key']]);
+        exit;
+
+    case 'list_access':
+        $projectId = cleanProjectId($_GET['projectId'] ?? '');
+        requireRole($pdo, $projectId, 'owner');
+        $stmt = $pdo->prepare("SELECT id, role, label, created_at AS createdAt, revoked_at AS revokedAt FROM cm_access WHERE project_id = ? ORDER BY created_at ASC");
+        $stmt->execute([$projectId]);
+        $access = $stmt->fetchAll();
+        $stmtM = $pdo->prepare("SELECT u.id, u.name, u.email, m.role, m.created_at AS createdAt FROM cm_members m JOIN cm_users u ON u.id = m.user_id WHERE m.project_id = ? ORDER BY m.created_at ASC");
+        $stmtM->execute([$projectId]);
+        $stmtI = $pdo->prepare("SELECT id, role, email, created_at AS createdAt, expires_at AS expiresAt FROM cm_invites WHERE project_id = ? AND used_at IS NULL AND expires_at > NOW() ORDER BY created_at ASC");
+        $stmtI->execute([$projectId]);
+        echo json_encode(['success' => true, 'access' => $access, 'members' => $stmtM->fetchAll(), 'invites' => $stmtI->fetchAll()]);
+        exit;
+
+    case 'revoke_access':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        requireRole($pdo, $projectId, 'owner');
+        $stmt = $pdo->prepare("UPDATE cm_access SET revoked_at = NOW() WHERE project_id = ? AND id = ? AND role <> 'owner' AND revoked_at IS NULL");
+        $stmt->execute([$projectId, (string)($body['accessId'] ?? '')]);
+        echo json_encode(['success' => true, 'revoked' => $stmt->rowCount()]);
         exit;
 
     // --------------------------------------------------------------------------
@@ -420,6 +915,7 @@ switch ($action) {
         $projectId = isset($_GET['projectId']) && !empty($_GET['projectId']) 
             ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_GET['projectId']) 
             : 'projeto_padrao';
+        requireRole($pdo, $projectId, 'viewer');
 
         // Snapshot consistente: a revisão devolvida corresponde exatamente às feições lidas
         $pdo->beginTransaction();
@@ -540,6 +1036,7 @@ switch ($action) {
         $center = isset($body['center']) && is_array($body['center']) ? $body['center'] : [-23.7661, -53.3206];
         $zoom = isset($body['zoom']) ? (int)$body['zoom'] : 14;
         $featureCount = isset($body['featureCount']) ? (int)$body['featureCount'] : 0;
+        requireRole($pdo, $projectId, 'editor');
 
         $pdo->beginTransaction();
         try {
@@ -607,6 +1104,7 @@ switch ($action) {
         $body = getJsonBody();
         $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
         $clientId = sanitizeClientId($body['clientId'] ?? '');
+        requireRole($pdo, $projectId, 'editor');
         $toUpsert = isset($body['toUpsert']) && is_array($body['toUpsert']) ? $body['toUpsert'] : [];
         $rawDelete = isset($body['toDelete']) && is_array($body['toDelete']) ? $body['toDelete'] : [];
         $toDelete = [];
@@ -656,9 +1154,11 @@ switch ($action) {
             if (!empty($toUpsert)) {
                 $deletedSet = !empty($toDelete) ? array_flip($toDelete) : [];
                 $stmtUpsert = prepareFeatureUpsert($pdo);
+                $foreignIds = foreignFeatureIds($pdo, $projectId, array_column(array_filter($toUpsert, 'is_array'), 'id'));
 
                 foreach ($toUpsert as $feat) {
                     if (empty($feat['id'])) continue;
+                    if (isset($foreignIds[$feat['id']])) continue; // id pertence a outro projeto
                     // Salvaguarda Anti-Zumbi: Não ressuscita feição excluída no mesmo batch
                     if (isset($deletedSet[$feat['id']])) continue;
 
@@ -705,6 +1205,7 @@ switch ($action) {
     // --------------------------------------------------------------------------
     case 'pull_changes':
         $projectId = !empty($_GET['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_GET['projectId']) : 'projeto_padrao';
+        $accessRole = requireRole($pdo, $projectId, 'viewer');
 
         if (!isset($_GET['sinceRev'])) {
             $rawSince = isset($_GET['since']) ? trim($_GET['since']) : '';
@@ -776,23 +1277,24 @@ switch ($action) {
 
             try {
                 $stmtPres = $pdo->prepare("
-                    INSERT INTO cm_presence (project_id, client_id, user_name, color, lat, lng, last_seen)
-                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                    INSERT INTO cm_presence (project_id, client_id, user_name, color, lat, lng, last_seen, role)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
                     ON DUPLICATE KEY UPDATE
+                        role = VALUES(role),
                         user_name = ?,
                         color = ?,
                         lat = COALESCE(?, lat),
                         lng = COALESCE(?, lng),
                         last_seen = NOW()
                 ");
-                $stmtPres->execute([$projectId, $clientId, $pName, $pColor, $pLat, $pLng, $pName, $pColor, $pLat, $pLng]);
+                $stmtPres->execute([$projectId, $clientId, $pName, $pColor, $pLat, $pLng, $accessRole, $pName, $pColor, $pLat, $pLng]);
 
                 if (mt_rand(1, 200) === 1) {
                     $pdo->exec("DELETE FROM cm_presence WHERE last_seen < NOW() - INTERVAL 1 HOUR");
                 }
 
                 $stmtOthers = $pdo->prepare("
-                    SELECT client_id AS id, user_name AS name, color, lat, lng
+                    SELECT client_id AS id, user_name AS name, color, lat, lng, role
                     FROM cm_presence
                     WHERE project_id = ? AND client_id <> ? AND last_seen >= NOW() - INTERVAL 12 SECOND
                 ");
@@ -802,6 +1304,7 @@ switch ($action) {
                         'id'    => $p['id'],
                         'name'  => $p['name'],
                         'color' => $p['color'],
+                        'role'  => $p['role'],
                         'lat'   => $p['lat'] !== null ? (float)$p['lat'] : null,
                         'lng'   => $p['lng'] !== null ? (float)$p['lng'] : null
                     ];
@@ -895,6 +1398,7 @@ switch ($action) {
             'deleted'    => $deletedIds,
             'layers'     => $layers,
             'presence'   => $presence,
+            'role'       => $accessRole,
             'project'    => $projectRow ? [
                 'name'          => $projectRow['name'],
                 'basemap'       => $projectRow['basemap'],
@@ -922,6 +1426,7 @@ switch ($action) {
         $clientId = sanitizeClientId($body['clientId'] ?? '');
         $baseRev = isset($body['baseRev']) && is_numeric($body['baseRev']) ? (int)$body['baseRev'] : null;
         $prune = !empty($body['prune']);
+        requireRole($pdo, $projectId, 'editor');
 
         $pdo->beginTransaction();
         try {
@@ -987,8 +1492,10 @@ switch ($action) {
 
                 $currentIds = [];
                 $stmtFeat = prepareFeatureUpsert($pdo);
+                $foreignIds = foreignFeatureIds($pdo, $projectId, array_column(array_filter($body['features'], 'is_array'), 'id'));
                 foreach ($body['features'] as $f) {
                     if (empty($f['id'])) continue;
+                    if (isset($foreignIds[$f['id']])) continue; // id pertence a outro projeto
                     $currentIds[] = $f['id'];
                     if (isset($newerElsewhere[$f['id']])) {
                         $skipped++;
@@ -1064,6 +1571,7 @@ switch ($action) {
     // --------------------------------------------------------------------------
     case 'restore_features':
         $projectId = !empty($_REQUEST['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_REQUEST['projectId']) : 'projeto_padrao';
+        requireRole($pdo, $projectId, 'editor');
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             $stmtSum = $pdo->prepare("
@@ -1130,6 +1638,7 @@ switch ($action) {
         $body = getJsonBody();
         $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
         $auditId = !empty($body['id']) ? $body['id'] : ('aud-' . time() . '-' . substr(md5(mt_rand()), 0, 5));
+        requireRole($pdo, $projectId, 'editor');
 
         try {
             $stmt = $pdo->prepare("
@@ -1171,7 +1680,7 @@ switch ($action) {
         http_response_code(400);
         echo json_encode([
             'error'           => 'Ação não informada ou desconhecida.',
-            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'log_audit']
+            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite']
         ]);
         exit;
 }

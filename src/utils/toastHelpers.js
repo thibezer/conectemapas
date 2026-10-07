@@ -3,7 +3,7 @@
    progresso substituível, copiar para área de transferência e ação "Desfazer".
    ========================================================================== */
 
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 import { ShortcutsController } from '../controllers/ShortcutsController.js';
 
 /**

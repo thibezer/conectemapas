@@ -7,7 +7,7 @@
 import { normalizeFeature } from '../services/MockData.js';
 import { StorageService } from '../services/StorageService.js';
 import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyUndoable } from '../utils/toastHelpers.js';
 import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
@@ -548,7 +548,7 @@ export class FeatureSyncController {
     for (const p of presenceList) {
       if (!p || !p.id) continue;
       seen.add(p.id);
-      const user = { id: p.id, name: p.name || 'Colaborador', color: p.color || '#00E08A', role: 'Editor', status: 'online' };
+      const user = { id: p.id, name: p.name || 'Colaborador', color: p.color || '#00E08A', role: { owner: 'Dono', editor: 'Editor', viewer: 'Leitor' }[p.role] || 'Editor', status: 'online' };
       if (app.mapEngine && Number.isFinite(p.lat) && Number.isFinite(p.lng)) {
         app.mapEngine.updateRemoteCursor(user, [p.lat, p.lng]);
       }
@@ -564,7 +564,7 @@ export class FeatureSyncController {
     app._cloudPresenceIds = seen;
 
     // Só re-renderiza os avatares quando a lista de participantes muda (o pull roda a cada ~1 s)
-    const presenceKey = presenceList.map(p => `${p.id}:${p.name}:${p.color}`).sort().join('|');
+    const presenceKey = presenceList.map(p => `${p.id}:${p.name}:${p.color}:${p.role}`).sort().join('|');
     if (app.collabHub && presenceKey !== app._cloudPresenceKey) {
       app._cloudPresenceKey = presenceKey;
       app.collabHub.setCloudPresence(presenceList);

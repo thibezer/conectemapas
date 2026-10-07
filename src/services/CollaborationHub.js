@@ -227,9 +227,24 @@ export class CollaborationHub {
     this.cloudPresence = new Map();
     for (const p of list || []) {
       if (p && p.id && p.id !== this.currentUser.id) {
-        this.cloudPresence.set(p.id, { id: p.id, name: p.name, color: p.color, role: 'Editor', status: 'online' });
+        this.cloudPresence.set(p.id, { id: p.id, name: p.name, color: p.color, role: CollaborationHub.roleLabel(p.role) || 'Editor', status: 'online' });
       }
     }
+  }
+
+  /** Nome da conta logada passa a identificar o operador para os demais (null volta ao nome anônimo). */
+  setAccountName(name) {
+    this._anonymousDisplayName = this._anonymousDisplayName || this.currentUser.displayName;
+    this.currentUser.displayName = name || this._anonymousDisplayName;
+    this.currentUser.name = name ? `${name} (você)` : 'Você (Operador)';
+  }
+
+  setRole(role) {
+    this.currentUser.role = CollaborationHub.roleLabel(role) || this.currentUser.role;
+  }
+
+  static roleLabel(role) {
+    return { owner: 'Dono', editor: 'Editor', viewer: 'Leitor' }[role] || null;
   }
 
   getActiveCollaboratorsList() {

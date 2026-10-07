@@ -5,7 +5,7 @@
 
 import { FeatureInspectorRenderer } from './FeatureInspectorRenderer.js';
 import { FeatureInspectorEvents } from './FeatureInspectorEvents.js';
-import 'ui-components-kit';
+import '@thibezer/ui-components-kit';
 
 export class FeatureInspectorTab {
   /**

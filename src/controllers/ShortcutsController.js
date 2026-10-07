@@ -4,7 +4,7 @@
    Undo/Redo, Salvar, Navegação Master-Detail Workbench).
    ========================================================================== */
 
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 import { StorageService } from '../services/StorageService.js';
 
 export class ShortcutsController {

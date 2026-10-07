@@ -4,7 +4,7 @@
    e loop de sincronização colaborativa em tempo real.
    ========================================================================== */
 
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 import { StorageService } from '../services/StorageService.js';
 import { normalizeFeature } from '../services/MockData.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';

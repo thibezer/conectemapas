@@ -5,6 +5,8 @@
    ========================================================================== */
 
 import './ShareModal.css';
+import { AccessManager } from '../../services/Storage/AccessManager.js';
+import { AuthService } from '../../services/Storage/AuthService.js';
 
 export class ShareModal {
   constructor(options = {}) {
@@ -32,6 +34,145 @@ export class ShareModal {
   }
 
   /**
+   * Seção "Quem tem acesso": projeto aberto (qualquer um edita) ou protegido por chaves.
+   * Só o dono emite/revoga links; chaves novas aparecem uma única vez (o servidor guarda só o hash).
+   */
+  async refreshAccessPanel() {
+    const panel = this.container && this.container.querySelector('#cm-access-panel');
+    if (!panel) return;
+    const projectId = this.getProjectId();
+    const info = await AccessManager.refresh(projectId);
+
+    if (!info) {
+      panel.innerHTML = '<span class="cm-share-hint">Nuvem indisponível: não foi possível ler as permissões.</span>';
+      return;
+    }
+    if (info.canClaim) {
+      panel.innerHTML = `
+        <div class="cm-share-hint">⚠️ Projeto <b>aberto</b>: qualquer pessoa com o endereço pode ver e editar.
+          ${AuthService.isLoggedIn() ? 'Você será o dono pela sua conta.' : 'Entre na sua conta antes para ser o dono por ela; sem conta, será criado um link de dono.'}</div>
+        <ui-botao-primario inline id="btn-claim-project" variante="primary" style="height: 32px; font-size: 12px;">
+          🔒 Proteger projeto e tornar-me dono
+        </ui-botao-primario>`;
+      panel.querySelector('#btn-claim-project').addEventListener('click', () => this.claimProject());
+      return;
+    }
+    if (!info.canManage) {
+      panel.innerHTML = `<div class="cm-share-hint">Seu acesso: <b>${this.escapeHtml(info.role || 'nenhum')}</b>. Só o dono gerencia acessos.</div>`;
+      return;
+    }
+
+    let access = [], members = [], invites = [];
+    try { ({ access, members, invites } = await AccessManager.listAccess(projectId)); } catch {}
+    const roleNames = { owner: 'Dono', editor: 'Editor', viewer: 'Leitor' };
+    const me = AuthService.getUser();
+    const memberRows = members.map(m => `<div class="cm-access-row">
+        <span class="cm-access-role">${this.escapeHtml(roleNames[m.role] || m.role)}</span>
+        <span class="cm-access-label">${this.escapeHtml(m.name)} · ${this.escapeHtml(m.email)}</span>
+        ${m.role === 'owner' ? `<span class="cm-share-hint">${me && me.id === m.id ? 'você' : 'dono'}</span>`
+          : `<button class="cm-share-revoke" data-member-id="${Number(m.id)}">Remover</button>`}</div>`).join('');
+    const inviteRows = invites.map(i => `<div class="cm-access-row">
+        <span class="cm-access-role">${this.escapeHtml(roleNames[i.role] || i.role)}</span>
+        <span class="cm-access-label">Convite pendente${i.email ? ' · ' + this.escapeHtml(i.email) : ''}</span>
+        <button class="cm-share-revoke" data-invite-id="${this.escapeHtml(i.id)}">Cancelar</button></div>`).join('');
+    const rows = access.map(a => {
+      const revoked = !!a.revokedAt;
+      const roleLabel = { owner: 'Dono', editor: 'Editor', viewer: 'Leitor' }[a.role] || a.role;
+      const action = revoked ? '<span class="cm-share-hint">revogado</span>'
+        : a.role === 'owner' ? '<span class="cm-share-hint">você</span>'
+        : `<button class="cm-share-revoke" data-access-id="${this.escapeHtml(a.id)}">Revogar</button>`;
+      return `<div class="cm-access-row${revoked ? ' is-revoked' : ''}">
+        <span class="cm-access-role">${this.escapeHtml(roleLabel)}</span>
+        <span class="cm-access-label">${this.escapeHtml(a.label || '—')}</span>${action}</div>`;
+    }).join('');
+
+    panel.innerHTML = `
+      <div class="cm-access-list">${memberRows}${inviteRows}${rows}</div>
+      <span class="cm-share-label">Convidar pessoa com conta (cadastro só por convite, válido por 7 dias)</span>
+      <div class="cm-share-input-row">
+        <ui-lista-flutuante id="share-invite-role" label="Papel">
+          <option value="editor" selected>✏️ Editor</option>
+          <option value="viewer">👁️ Leitor</option>
+        </ui-lista-flutuante>
+        <ui-campo-texto id="share-invite-email" placeholder="E-mail (opcional, trava o convite)"></ui-campo-texto>
+        <ui-botao-primario inline id="btn-create-invite" variante="primary" class="cm-share-copy-btn">Convidar</ui-botao-primario>
+      </div>
+      <span class="cm-share-label">Link para convidados sem conta</span>
+      <div class="cm-share-input-row">
+        <ui-lista-flutuante id="share-new-role" label="Papel">
+          <option value="viewer" selected>👁️ Leitor (só visualiza)</option>
+          <option value="editor">✏️ Editor (desenha e edita)</option>
+        </ui-lista-flutuante>
+        <ui-campo-texto id="share-new-label" placeholder="Para quem? (ex.: Maria)"></ui-campo-texto>
+        <ui-botao-primario inline id="btn-create-share" variante="primary" class="cm-share-copy-btn">Gerar link</ui-botao-primario>
+      </div>
+      <div id="cm-share-new-link"></div>`;
+
+    panel.querySelectorAll('.cm-share-revoke').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          if (btn.dataset.memberId) await AccessManager.revokeMember(projectId, Number(btn.dataset.memberId));
+          else if (btn.dataset.inviteId) await AccessManager.revokeInvite(projectId, btn.dataset.inviteId);
+          else await AccessManager.revokeAccess(projectId, btn.dataset.accessId);
+        } catch {}
+        this.refreshAccessPanel();
+      });
+    });
+    panel.querySelector('#btn-create-invite').addEventListener('click', () => this.createInvite());
+    panel.querySelector('#btn-create-share').addEventListener('click', () => this.createShare());
+  }
+
+  async claimProject() {
+    const projectId = this.getProjectId();
+    try {
+      const data = await AccessManager.claimProject(projectId, 'Dono');
+      await this.refreshAccessPanel();
+      if (data.key) this.showNewLink(AccessManager.buildShareUrl(projectId, data.key), 'Seu link de dono (guarde-o: não será exibido de novo)');
+    } catch (e) {
+      this.showNewLink('', 'Falha ao proteger: ' + e.message);
+    }
+  }
+
+  async createInvite() {
+    const projectId = this.getProjectId();
+    const role = this.container.querySelector('#share-invite-role')?.value || 'editor';
+    const email = (this.container.querySelector('#share-invite-email')?.value || '').trim();
+    try {
+      const data = await AccessManager.createInvite(projectId, role, email);
+      await this.refreshAccessPanel();
+      this.showNewLink(AccessManager.buildInviteUrl(projectId, data.code), 'Link de convite (envie à pessoa; não será exibido de novo)');
+    } catch (e) {
+      this.showNewLink('', 'Falha ao convidar: ' + e.message);
+    }
+  }
+
+  async createShare() {
+    const projectId = this.getProjectId();
+    const role = this.container.querySelector('#share-new-role')?.value || 'viewer';
+    const label = this.container.querySelector('#share-new-label')?.value || '';
+    try {
+      const data = await AccessManager.createShare(projectId, role, label);
+      await this.refreshAccessPanel();
+      const title = role === 'editor' ? 'Link de editor' : 'Link de leitor';
+      this.showNewLink(AccessManager.buildShareUrl(projectId, data.key), `${title} (copie agora: não será exibido de novo)`);
+    } catch (e) {
+      this.showNewLink('', 'Falha ao gerar link: ' + e.message);
+    }
+  }
+
+  showNewLink(url, title) {
+    const slot = this.container.querySelector('#cm-share-new-link');
+    if (!slot) return;
+    slot.innerHTML = `<span class="cm-share-label">${this.escapeHtml(title)}</span>` + (url ? `
+      <div class="cm-share-input-row">
+        <ui-campo-texto value="${this.escapeHtml(url)}" readonly></ui-campo-texto>
+        <ui-botao-primario inline variante="secundario" class="cm-share-copy-btn"
+          copiar-texto="${this.escapeHtml(url)}" toast-sucesso="Link copiado!">📋 Copiar</ui-botao-primario>
+      </div>` : '');
+  }
+
+  /**
    * Renderiza o modal de compartilhamento
    * @param {HTMLElement} container
    */
@@ -48,13 +189,13 @@ export class ShareModal {
           <!-- Banner Informativo Compacto -->
           <div class="cm-share-banner">
             <span class="cm-share-banner-icon">☁️</span>
-            <span>Qualquer pessoa com este link acessará o mapa com todas as camadas e feições salvas no MySQL da Hostinger.</span>
+            <span>Projeto aberto: quem tiver este endereço acessa. Depois de proteger o projeto, só entram links de acesso gerados abaixo.</span>
           </div>
 
           <!-- Seção: Sincronização & Link Direto -->
           <div class="cm-share-section">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span class="cm-share-label">Link do Projeto Público</span>
+              <span class="cm-share-label">Endereço do Projeto</span>
               <span id="cm-share-sync-status" style="font-size: 10.5px; color: var(--cm-primary); font-family: var(--cm-fonte-mono);">
                 ● Conectado ao MySQL Hostinger
               </span>
@@ -90,13 +231,10 @@ export class ShareModal {
 
           <div class="cm-share-divider"></div>
 
-          <!-- Seção: Permissões de Acesso -->
+          <!-- Seção: Quem tem acesso (papéis reais, aplicados pelo servidor) -->
           <div class="cm-share-section">
-            <span class="cm-share-label">Nível de Acesso Padrão</span>
-            <ui-lista-flutuante id="share-permission-select" label="Permissão">
-              <option value="editor" selected>✏️ Editor (Pode visualizar, desenhar e exportar)</option>
-              <option value="viewer">👁️ Leitor (Apenas visualização)</option>
-            </ui-lista-flutuante>
+            <span class="cm-share-label">Quem tem acesso</span>
+            <div id="cm-access-panel"><span class="cm-share-hint">Carregando permissões…</span></div>
           </div>
 
           <div class="cm-share-divider"></div>
@@ -133,9 +271,13 @@ export class ShareModal {
 
     this.bindEvents();
     this.applyCompactModalStyles();
+    this.refreshAccessPanel();
   }
 
   bindEvents() {
+    // Permissões mudam com login/convites: relê sempre que o modal abre
+    this.container.querySelector('#modal-share')?.addEventListener('ui-abrir', () => this.refreshAccessPanel());
+
     const btnSync = this.container.querySelector('#btn-sync-before-share');
     const statusSpan = this.container.querySelector('#cm-share-sync-status');
     const inputLink = this.container.querySelector('#share-link-input');

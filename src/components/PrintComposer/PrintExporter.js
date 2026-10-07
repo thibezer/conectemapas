@@ -6,7 +6,7 @@
    ========================================================================== */
 
 import { jsPDF } from 'jspdf';
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
 

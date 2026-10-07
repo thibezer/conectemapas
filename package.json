@@ -21,7 +21,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@thibezer/ui-components-kit": "^1.0.0",
+    "@thibezer/ui-components-kit": "^2.0.0",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",

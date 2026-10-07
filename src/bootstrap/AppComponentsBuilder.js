@@ -3,7 +3,8 @@
    Montagem dos componentes de interface e motor cartográfico Leaflet.
    ========================================================================== */
 
-import { UIToast } from 'ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
+import { AuthService } from '../services/Storage/AuthService.js';
 import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../utils/toastHelpers.js';
 import { MapEngine } from '../services/MapEngine.js';
 import { StorageService } from '../services/StorageService.js';
@@ -109,6 +110,8 @@ export class AppComponentsBuilder {
     app.headerBar = new HeaderBar({
       projectName: app.projectName,
       collaborators: app.collabHub.getActiveCollaboratorsList(),
+      accountName: AuthService.getUser()?.name || '',
+      onOpenAccount: () => app.authModal && app.authModal.open(),
       onProjectNameChange: (newName) => {
         app.projectName = newName;
         app.saveMetadata(true);

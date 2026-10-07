@@ -5,6 +5,7 @@
 
 import { StorageService } from '../services/StorageService.js';
 import { ShareModal } from '../components/Modals/ShareModal.js';
+import { AuthModal } from '../components/Modals/AuthModal.js';
 import { ImportExportModal } from '../components/Modals/ImportExportModal.js';
 import { ProjectTemplatesModal } from '../components/Modals/ProjectTemplatesModal.js';
 import { NewFeatureModal } from '../components/Modals/NewFeatureModal.js';
@@ -33,6 +34,11 @@ export class AppModalsBuilder {
       }
     });
     app.shareModal.render(document.getElementById('share-modal-mount'));
+
+    app.authModal = new AuthModal({
+      onInviteAccepted: ({ projectId }) => app.openProjectAfterInvite(projectId)
+    });
+    app.authModal.render(document.getElementById('auth-modal-mount'));
 
     new ImportExportModal({
       onExport: (format, options) => ProjectActionsController.handleExport(app, format, options),

@@ -20,6 +20,8 @@ export class HeaderBar {
     this.onSaveProject = options.onSaveProject || (() => {});
     this.onOpenPrintComposer = options.onOpenPrintComposer || (() => {});
     this.onToggleGeometryVersion = options.onToggleGeometryVersion || (() => {});
+    this.onOpenAccount = options.onOpenAccount || (() => {});
+    this.accountName = options.accountName || '';
     this.container = null;
   }
 
@@ -156,6 +158,20 @@ export class HeaderBar {
 
           <ui-botao-primario 
             inline 
+            id="btn-open-account" 
+            variante="secundario" 
+            title="Entrar ou gerenciar sua conta">
+            <div class="cm-header-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span id="cm-account-label">${this.escapeHtml(this.accountName || 'Entrar')}</span>
+            </div>
+          </ui-botao-primario>
+
+          <ui-botao-primario 
+            inline 
             id="btn-open-share" 
             variante="secundario" 
             target-modal="modal-share" 
@@ -212,6 +228,16 @@ export class HeaderBar {
   }
 
   /**
+   * Mostra o nome da conta logada no botão (ou "Entrar")
+   * @param {string} name
+   */
+  updateAccount(name) {
+    this.accountName = name || '';
+    const label = document.getElementById('cm-account-label');
+    if (label) label.textContent = this.accountName || 'Entrar';
+  }
+
+  /**
    * Atualiza o estado de sincronização
    * @param {'sucesso'|'alerta'|'erro'} variante
    * @param {string} texto
@@ -255,6 +281,11 @@ export class HeaderBar {
       btnSave.addEventListener('click', () => {
         this.onSaveProject();
       });
+    }
+
+    const btnAccount = this.container.querySelector('#btn-open-account');
+    if (btnAccount) {
+      btnAccount.addEventListener('click', () => this.onOpenAccount());
     }
 
     const btnComposer = this.container.querySelector('#btn-open-print-composer');

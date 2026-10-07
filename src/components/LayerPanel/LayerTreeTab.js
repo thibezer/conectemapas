@@ -4,7 +4,7 @@
    do Componentes-UI (thibezer/Componentes-UI)
    ========================================================================== */
 
-import 'ui-components-kit/camadas';
+import '@thibezer/ui-components-kit/camadas';
 
 export class LayerTreeTab {
   static render(panel) {
