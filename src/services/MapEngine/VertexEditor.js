@@ -97,7 +97,8 @@ export class VertexEditor {
             'point',
             [],
             this.engine,
-            14
+            undefined,
+            feat.id
           );
           if (snapped) {
             newLL = L.latLng(snapped[0], snapped[1]);
@@ -158,7 +159,8 @@ export class VertexEditor {
               isPoly ? 'polygon' : 'line',
               otherPts,
               this.engine,
-              14
+              undefined,
+              feat.id
             );
             if (snapped) {
               newLL = L.latLng(snapped[0], snapped[1]);

@@ -5,16 +5,23 @@
    ========================================================================== */
 
 export class DrawingSnappingHelper {
-  static findNearbyVertex(map, mouseLatLng, activeTool, drawingPoints, engine, maxPixelDistance = 14) {
-    if (!map || !mouseLatLng) return null;
+  static SNAP_PIXELS = 8;
+  // Segurar Alt desativa temporariamente o snap
+  static altHeld = false;
+
+  static findNearbyVertex(map, mouseLatLng, activeTool, drawingPoints, engine, maxPixelDistance = DrawingSnappingHelper.SNAP_PIXELS, excludeFeatureId = null) {
+    if (!map || !mouseLatLng || DrawingSnappingHelper.altHeld) return null;
     const mousePt = map.latLngToContainerPoint(mouseLatLng);
+    let best = null;
+    let bestDist = maxPixelDistance;
+    const consider = (pt) => {
+      const p = map.latLngToContainerPoint(pt);
+      const d = Math.hypot(mousePt.x - p.x, mousePt.y - p.y);
+      if (d <= bestDist) { bestDist = d; best = pt; }
+    };
 
     if (activeTool === 'polygon' && drawingPoints.length >= 3) {
-      const firstPt = drawingPoints[0];
-      const p1 = map.latLngToContainerPoint(firstPt);
-      if (Math.hypot(mousePt.x - p1.x, mousePt.y - p1.y) <= maxPixelDistance) {
-        return firstPt;
-      }
+      consider(drawingPoints[0]);
     }
 
     if (engine.featureRenderer && engine.featureRenderer.allFeatures) {
@@ -25,25 +32,18 @@ export class DrawingSnappingHelper {
 
       for (const feat of visibleFeatures) {
         if (!feat || feat.visible === false) continue;
+        if (excludeFeatureId != null && feat.id === excludeFeatureId) continue;
         if (feat.type === 'Point' && feat.coordinates) {
-          const pt = [feat.coordinates[0], feat.coordinates[1]];
-          const p = map.latLngToContainerPoint(pt);
-          if (Math.hypot(mousePt.x - p.x, mousePt.y - p.y) <= maxPixelDistance) {
-            return pt;
-          }
+          consider([feat.coordinates[0], feat.coordinates[1]]);
         } else if ((feat.type === 'LineString' || feat.type === 'Polygon') && Array.isArray(feat.coordinates)) {
           for (const vertex of feat.coordinates) {
             if (!vertex) continue;
-            const pt = (vertex.lat !== undefined) ? [vertex.lat, vertex.lng] : vertex;
-            const p = map.latLngToContainerPoint(pt);
-            if (Math.hypot(mousePt.x - p.x, mousePt.y - p.y) <= maxPixelDistance) {
-              return pt;
-            }
+            consider((vertex.lat !== undefined) ? [vertex.lat, vertex.lng] : vertex);
           }
         }
       }
     }
-    return null;
+    return best;
   }
 
   static updateDrawingHUD(activeTool, drawingPoints, cumulativeDist, engine, onFinish, onClear) {
@@ -133,6 +133,7 @@ export class DrawingSnappingHelper {
       <span class="cm-cad-hud-hint">• <strong>[Enter]</strong> ou <strong>[Espaço]</strong> conclui</span>
       <span class="cm-cad-hud-hint">• <strong>[Ctrl+Z]</strong> ou <strong>[Botão Direito]</strong> desfaz</span>
       <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> cancela</span>
+      <span class="cm-cad-hud-hint">• <strong>[Alt]</strong> segurado desativa o snap</span>
       ${canFinish ? '<button id="btn-cad-finish" class="cm-cad-finish-btn">✔ Concluir Forma</button>' : ''}
     `;
 
@@ -144,4 +145,11 @@ export class DrawingSnappingHelper {
       });
     }
   }
+}
+
+if (typeof window !== 'undefined') {
+  const setAlt = (e) => { DrawingSnappingHelper.altHeld = e.altKey; };
+  window.addEventListener('keydown', setAlt);
+  window.addEventListener('keyup', setAlt);
+  window.addEventListener('blur', () => { DrawingSnappingHelper.altHeld = false; });
 }

@@ -188,7 +188,7 @@ export class DrawingEngine {
     return false;
   }
 
-  findNearbyVertex(mouseLatLng, maxPixelDistance = 14) {
+  findNearbyVertex(mouseLatLng, maxPixelDistance = DrawingSnappingHelper.SNAP_PIXELS) {
     return DrawingSnappingHelper.findNearbyVertex(
       this.map,
       mouseLatLng,
@@ -216,7 +216,7 @@ export class DrawingEngine {
     }
     this._lastMoveLatLng = { lat, lng };
 
-    const snapped = this.findNearbyVertex(e.latlng, 14);
+    const snapped = this.findNearbyVertex(e.latlng);
     if (snapped) {
       this._activeSnapLatLng = snapped;
       if (!this.snapMarker) {
