@@ -67,11 +67,32 @@ assert.strictEqual(strict3.coordinates.length, 4, 'Emendas não duplicam vértic
 assert.strictEqual(strict3.bridges, 0);
 console.log('✔ joinMany estrito: 3 linhas conectadas');
 
-// 6. Estrito não junta o que não se toca (e não junta nada)
+// 6. Estrito junta só o que se toca: a linha afastada fica de fora
 const lGap = L([-23.7700, -53.3300], [-23.7710, -53.3310]);
 const strictGap = SpatialAlgorithms.joinMany([l1, l2, lGap]);
-assert(!strictGap.success, 'Estrito deve falhar quando há linha desconectada');
-console.log('✔ joinMany estrito: recusa linhas desconectadas');
+assert(strictGap.success && strictGap.results.length === 1, 'Estrito deve unir o grupo conectado');
+assert.deepStrictEqual(strictGap.results[0].sources.sort(), [0, 1], 'A linha afastada não deve ser consumida');
+assert(!SpatialAlgorithms.joinMany([l1, lGap]).success, 'Estrito falha se nada se toca');
+console.log('✔ joinMany estrito: une o conectado e deixa o desconectado de fora');
+
+// 6b. Duas "caixas" de 4 linhas cada, selecionadas juntas e embaralhadas => 2 polígonos
+const box = (x, y) => [
+  L([x, y], [x, y + 0.001]),
+  L([x, y + 0.001], [x + 0.001, y + 0.001]),
+  L([x + 0.001, y + 0.001], [x + 0.001, y]),
+  L([x + 0.001, y], [x, y])
+];
+const b1 = box(-23.76, -53.32), b2 = box(-23.78, -53.34);
+const eight = [b1[0], b2[2], b1[1], b2[0], b1[3], b2[1], b1[2], b2[3]];
+const boxes = SpatialAlgorithms.joinMany(eight);
+assert(boxes.success, 'Duas caixas devem ser unidas de uma vez');
+assert.strictEqual(boxes.results.length, 2, 'Deve gerar 2 resultados');
+boxes.results.forEach((r) => {
+  assert.strictEqual(r.type, 'Polygon', 'Linhas que fecham viram polígono');
+  assert.strictEqual(r.coordinates.length, 4, 'Quadrado com 4 vértices');
+  assert.strictEqual(r.sources.length, 4);
+});
+console.log('✔ joinMany estrito: 8 linhas => 2 quadrados (polígonos)');
 
 // 7. Com ponte: liga as desconectadas
 const bridged = SpatialAlgorithms.joinMany([l1, l2, lGap], { bridge: true });
@@ -87,7 +108,9 @@ const pA = sq(0, 0), pB = sq(10, 0), pC = sq(20, 0), pFar = sq(100, 0);
 const polyStrict = SpatialAlgorithms.joinMany([pA, pB, pC]);
 assert(polyStrict.success && polyStrict.type === 'Polygon', 'Polígonos adjacentes devem virar um polígono');
 const polyStrictFar = SpatialAlgorithms.joinMany([pA, pB, pFar]);
-assert(!polyStrictFar.success, 'Estrito deve recusar polígono afastado');
+assert(polyStrictFar.success && polyStrictFar.results.length === 1, 'Estrito une só o par adjacente');
+assert.deepStrictEqual(polyStrictFar.results[0].sources.sort(), [0, 1], 'Polígono afastado fica de fora');
+assert(!SpatialAlgorithms.joinMany([pA, pFar]).success, 'Estrito falha se nenhum polígono se toca');
 const polyBridge = SpatialAlgorithms.joinMany([pA, pB, pFar], { bridge: true });
 assert(polyBridge.success && polyBridge.type === 'Polygon' && polyBridge.bridges === 1, 'Ponte deve gerar polígono único');
 console.log('✔ joinMany polígonos: estrito e com ponte');

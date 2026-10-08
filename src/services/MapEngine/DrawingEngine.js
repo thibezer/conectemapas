@@ -158,12 +158,23 @@ export class DrawingEngine {
   // Caneta (retas + curvas): clique = âncora reta, clique e arraste = âncora curva
   // ------------------------------------------------------------------------
 
+  /**
+   * Erro máximo aceito ao achatar curvas: ~1/2 pixel na tela atual (entre 15 cm e 5 m).
+   * Em zoom alto a curva é fina; em zoom baixo evita milhares de vértices desnecessários.
+   */
+  getPenTolerance() {
+    const zoom = this.map.getZoom();
+    const lat = this.map.getCenter().lat;
+    const metersPerPixel = (40075016.686 * Math.cos((lat * Math.PI) / 180)) / (256 * Math.pow(2, zoom));
+    return Math.min(5, Math.max(0.15, metersPerPixel / 2));
+  }
+
   /** Caminho achatado das âncoras atuais (+ segmento elástico até o cursor, se houver). */
   _penPreviewPath(cursor = null) {
     const anchors = cursor
       ? [...this.penAnchors, { p: cursor, hIn: null, hOut: null }]
       : this.penAnchors;
-    return DrawingPenHelper.flattenPath(anchors, false);
+    return DrawingPenHelper.flattenPath(anchors, false, { tolerance: this.getPenTolerance() });
   }
 
   _updatePenPreview(cursor = null) {

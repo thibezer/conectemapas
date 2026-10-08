@@ -106,33 +106,48 @@ export class AppComponentsBuilder {
 
     ShortcutsController.pushHistory(app, bridge ? 'Unir Formas com Ponte' : 'Unir Formas');
 
-    const ids = new Set(selected.map(f => f.id));
-    ids.forEach(id => StorageService.deleteFeature(id, app.projectId));
-    app.features = app.features.filter(f => !ids.has(f.id));
+    // Cada resultado consome suas feições de origem; as demais permanecem intactas
+    const consumed = new Set();
+    const created = joinRes.results.map((res, n) => {
+      res.sources.forEach(i => consumed.add(selected[i].id));
+      const base = selected[res.sources[0]];
+      const baseStyle = { ...(base.style || {}) };
+      if (res.type !== base.type && res.type === 'Polygon') {
+        // Linha fechada virou polígono: ganha preenchimento a partir da cor da própria linha
+        const fill = base.color || baseStyle.strokeColor || '#00E08A';
+        baseStyle.fillColor = baseStyle.fillColor || fill;
+        baseStyle.fillOpacity = baseStyle.fillOpacity ?? 0.35;
+      }
+      return {
+        ...JSON.parse(JSON.stringify(base)),
+        id: `feat_${Date.now()}_${n}_joined`,
+        name: `${base.name || 'Forma Unida'} (União)`,
+        type: res.type,
+        coordinates: res.coordinates,
+        style: baseStyle
+      };
+    });
 
-    const base = selected[0];
-    const mergedFeat = {
-      ...JSON.parse(JSON.stringify(base)),
-      id: 'feat_' + Date.now() + '_joined',
-      name: `${base.name || 'Forma Unida'} (União)`,
-      type: joinRes.type,
-      coordinates: joinRes.coordinates
-    };
-
-    app.features.push(mergedFeat);
-    StorageService.saveFeature(mergedFeat, app.projectId);
+    consumed.forEach(id => StorageService.deleteFeature(id, app.projectId));
+    app.features = app.features.filter(f => !consumed.has(f.id));
+    created.forEach((feat) => {
+      app.features.push(feat);
+      StorageService.saveFeature(feat, app.projectId);
+    });
     app.refreshMapAndTable();
     app.saveMetadata(true);
-    app.mapEngine?.selectFeatures([mergedFeat.id]);
+    app.mapEngine?.selectFeatures(created.map(f => f.id));
 
     const bridgeInfo = joinRes.bridges > 0
       ? ` ${joinRes.bridges} trecho(s) de junção criado(s) (${joinRes.bridgeLength.toFixed(1)} m).`
       : '';
+    const left = selected.length - consumed.size;
+    const leftInfo = left > 0 ? ` ${left} feição(ões) sem conexão ficaram de fora.` : '';
     UIToast.notificar({
       tipo: 'sucesso',
       titulo: `Junção Realizada — ${label}`,
-      mensagem: `${selected.length} feições unidas.${bridgeInfo}`,
-      duracao: 3500
+      mensagem: `${consumed.size} feições unidas em ${created.length} resultado(s).${bridgeInfo}${leftInfo}`,
+      duracao: 4500
     });
   }
 

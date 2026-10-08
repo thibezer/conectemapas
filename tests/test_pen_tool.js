@@ -50,11 +50,12 @@ assert(Math.abs(m[1] - (-53.321)) < 1e-6, 'Espelho em longitude');
 assert(Math.abs(m[0] - (-23.761)) < 1e-4, 'Espelho em latitude');
 console.log('✔ Alça espelhada simétrica');
 
-// 6. autoSteps respeita limites
-const few = DrawingPenHelper.autoSteps(A([0, 0], null, [0, 0.00001]), A([0, 0.00002], [0, 0.00001]));
-assert.strictEqual(few, 8);
-const many = DrawingPenHelper.autoSteps(A([0, 0], null, [0, 1]), A([0, 2], [0, 1]));
-assert.strictEqual(many, 64);
-console.log('✔ Densidade de amostragem limitada entre 8 e 64');
+// 6. autoSteps: poucos vértices em curva suave, mais em curva fechada, sempre dentro dos limites
+const gentle = DrawingPenHelper.autoSteps(A([0, 0], null, [0, 0.0001]), A([0, 0.0003], [0, 0.0002]));
+assert(gentle <= 6, `Curva quase reta deve usar poucos vértices (usou ${gentle})`);
+const wide = DrawingPenHelper.autoSteps(A([0, 0], null, [0.001, 0.0005]), A([0, 0.002], [0.001, 0.0015]));
+assert(wide >= 4 && wide <= 30, `Curva de ~200 m deve ficar em dezenas de vértices, não centenas (usou ${wide})`);
+assert.strictEqual(DrawingPenHelper.autoSteps(A([0, 0], null, [0, 1]), A([0, 2], [0, 1])), 96);
+console.log('✔ Densidade de amostragem pela planura (' + gentle + ' / ' + wide + ' vértices)');
 
 console.log('🎉 Todos os testes da Caneta passaram com 100% de sucesso!');

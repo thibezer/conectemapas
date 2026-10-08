@@ -839,13 +839,17 @@ export class SpatialAlgorithms {
 
   /**
    * Une N feições do mesmo tipo (todas Linhas ou todos Polígonos).
-   * - strict (bridge=false): só une o que já está conectado (pontas coincidentes / aresta compartilhada).
-   *   Se sobrar mais de um grupo, falha sem unir nada.
-   * - bridge=true: une o que está conectado e liga o restante pelo par de pontos/vértices mais próximo,
+   * - strict (bridge=false): une apenas o que está conectado (pontas coincidentes / aresta compartilhada),
+   *   formando um resultado para CADA grupo conectado (ex.: 8 linhas = 2 quadrados). Feições sem
+   *   conexão ficam de fora. Falha só se nada puder ser unido.
+   * - bridge=true: além disso, liga os grupos restantes pelo par de pontas/vértices mais próximo,
    *   criando o trecho de junção (segmento reto em linhas; "ponte" de largura zero em polígonos).
+   * Linhas que se fecham sobre si mesmas viram Polígono.
    * @param {Array<Object>} features
    * @param {{bridge?: boolean, tolerance?: number}} [options] tolerance em metros
-   * @returns {{ success: boolean, type?: string, coordinates?: Array, bridges?: number, bridgeLength?: number, reason?: string }}
+   * @returns {{ success: boolean, results?: Array<{type: string, coordinates: Array, sources: number[]}>,
+   *   type?: string, coordinates?: Array, bridges?: number, bridgeLength?: number, reason?: string }}
+   *   `sources` = índices (em `features`) consumidos por cada resultado.
    */
   static joinMany(features, { bridge = false, tolerance = 0.5 } = {}) {
     const list = (features || []).filter(Boolean);
@@ -856,9 +860,15 @@ export class SpatialAlgorithms {
     if (types.size !== 1 || !(types.has('LineString') || types.has('Polygon'))) {
       return { success: false, reason: 'As feições devem ser todas Linhas ou todas Polígonos para junção.' };
     }
-    return types.has('LineString')
+    const res = types.has('LineString')
       ? this._joinManyLines(list, bridge, tolerance)
       : this._joinManyPolygons(list, bridge, tolerance);
+
+    if (res.success && res.results.length === 1) {
+      res.type = res.results[0].type;
+      res.coordinates = res.results[0].coordinates;
+    }
+    return res;
   }
 
   static _toLatLngList(coords) {
@@ -866,22 +876,34 @@ export class SpatialAlgorithms {
   }
 
   static _joinManyLines(list, bridge, tol) {
-    let chains = list.map(f => this._toLatLngList(f.coordinates)).filter(c => c.length >= 2);
+    let chains = list
+      .map((f, i) => ({ pts: this._toLatLngList(f.coordinates), src: [i] }))
+      .filter(c => c.pts.length >= 2);
     if (chains.length < 2) return { success: false, reason: 'Linhas inválidas para junção.' };
 
+    const closedRings = [];
     let bridges = 0;
     let bridgeLength = 0;
     const maxGap = bridge ? Infinity : tol;
+    const isRing = (pts) => pts.length >= 4 && this.pointDistance(pts[0], pts[pts.length - 1]) <= tol;
+    // Cadeia que já nasce fechada (ex.: anel desenhado) e com mais de uma fonte vira anel
+    const settle = (c) => {
+      if (c.src.length > 1 && isRing(c.pts)) {
+        closedRings.push(c);
+        return false;
+      }
+      return true;
+    };
+    chains = chains.filter(settle);
 
     while (chains.length > 1) {
-      // Par de pontas mais próximo entre quaisquer duas cadeias
       let best = null;
       for (let i = 0; i < chains.length; i++) {
         for (let j = i + 1; j < chains.length; j++) {
           for (const endA of [true, false]) {
             for (const endB of [true, false]) {
-              const pa = endA ? chains[i][chains[i].length - 1] : chains[i][0];
-              const pb = endB ? chains[j][chains[j].length - 1] : chains[j][0];
+              const pa = endA ? chains[i].pts[chains[i].pts.length - 1] : chains[i].pts[0];
+              const pb = endB ? chains[j].pts[chains[j].pts.length - 1] : chains[j].pts[0];
               const d = this.pointDistance(pa, pb);
               if (!best || d < best.d) best = { i, j, endA, endB, d };
             }
@@ -890,42 +912,53 @@ export class SpatialAlgorithms {
       }
       if (!best || best.d > maxGap) break;
 
-      // Orienta A para terminar na ponta escolhida e B para começar nela
-      const a = best.endA ? chains[best.i] : [...chains[best.i]].reverse();
-      const b = best.endB ? [...chains[best.j]].reverse() : chains[best.j];
+      const a = best.endA ? chains[best.i].pts : [...chains[best.i].pts].reverse();
+      const b = best.endB ? [...chains[best.j].pts].reverse() : chains[best.j].pts;
       if (best.d > tol) {
         bridges++;
         bridgeLength += best.d;
       }
-      const merged = best.d <= 0.05 ? [...a, ...b.slice(1)] : [...a, ...b];
+      const merged = {
+        pts: best.d <= 0.05 ? [...a, ...b.slice(1)] : [...a, ...b],
+        src: [...chains[best.i].src, ...chains[best.j].src]
+      };
       chains = chains.filter((_, idx) => idx !== best.i && idx !== best.j);
-      chains.push(merged);
+      if (settle(merged)) chains.push(merged);
     }
 
-    if (chains.length > 1) {
+    const results = [];
+    for (const ring of closedRings) {
+      results.push({ type: 'Polygon', coordinates: ring.pts.slice(0, -1), sources: ring.src });
+    }
+    for (const c of chains) {
+      if (c.src.length > 1) results.push({ type: 'LineString', coordinates: c.pts, sources: c.src });
+    }
+
+    if (results.length === 0) {
       return {
         success: false,
-        reason: `${chains.length} grupos de linhas não estão conectados ponta com ponta. Use "Unir com Ponte" para ligá-los.`
+        reason: 'Nenhuma das linhas selecionadas está conectada ponta com ponta a outra. Use "Unir com Ponte" para ligá-las.'
       };
     }
-    return { success: true, type: 'LineString', coordinates: chains[0], bridges, bridgeLength };
+    return { success: true, results, bridges, bridgeLength };
   }
 
   static _joinManyPolygons(list, bridge, tol) {
-    let rings = list.map(f => this._toLatLngList(f.coordinates));
-    if (rings.some(r => r.length < 3)) return { success: false, reason: 'Polígonos inválidos para junção.' };
+    let groups = list.map((f, i) => ({ ring: this._toLatLngList(f.coordinates), src: [i] }));
+    if (groups.some(g => g.ring.length < 3)) return { success: false, reason: 'Polígonos inválidos para junção.' };
 
     // 1) Une os que compartilham aresta, até não haver mais pares
     let progressed = true;
-    while (progressed && rings.length > 1) {
+    while (progressed && groups.length > 1) {
       progressed = false;
       outer:
-      for (let i = 0; i < rings.length; i++) {
-        for (let j = i + 1; j < rings.length; j++) {
-          const res = this.joinPolygons(rings[i], rings[j]);
+      for (let i = 0; i < groups.length; i++) {
+        for (let j = i + 1; j < groups.length; j++) {
+          const res = this.joinPolygons(groups[i].ring, groups[j].ring);
           if (res.success && res.type === 'Polygon') {
-            rings = rings.filter((_, idx) => idx !== i && idx !== j);
-            rings.push(res.coordinates);
+            const merged = { ring: res.coordinates, src: [...groups[i].src, ...groups[j].src] };
+            groups = groups.filter((_, idx) => idx !== i && idx !== j);
+            groups.push(merged);
             progressed = true;
             break outer;
           }
@@ -933,38 +966,43 @@ export class SpatialAlgorithms {
       }
     }
 
+    // 2) Com ponte: liga os grupos restantes pelo par de vértices mais próximo (largura zero)
     let bridges = 0;
     let bridgeLength = 0;
-    if (rings.length > 1) {
-      if (!bridge) {
-        return {
-          success: false,
-          reason: `${rings.length} grupos de polígonos não compartilham aresta. Use "Unir com Ponte" para ligá-los.`
-        };
-      }
-      // 2) Liga os grupos restantes pelo par de vértices mais próximo (ponte de largura zero)
-      while (rings.length > 1) {
+    if (bridge) {
+      while (groups.length > 1) {
         let best = null;
-        for (let i = 0; i < rings.length; i++) {
-          for (let j = i + 1; j < rings.length; j++) {
-            for (let a = 0; a < rings[i].length; a++) {
-              for (let b = 0; b < rings[j].length; b++) {
-                const d = this.pointDistance(rings[i][a], rings[j][b]);
+        for (let i = 0; i < groups.length; i++) {
+          for (let j = i + 1; j < groups.length; j++) {
+            for (let a = 0; a < groups[i].ring.length; a++) {
+              for (let b = 0; b < groups[j].ring.length; b++) {
+                const d = this.pointDistance(groups[i].ring[a], groups[j].ring[b]);
                 if (!best || d < best.d) best = { i, j, a, b, d };
               }
             }
           }
         }
         const rot = (ring, k) => [...ring.slice(k), ...ring.slice(0, k), ring[k]];
-        const merged = [...rot(rings[best.i], best.a), ...rot(rings[best.j], best.b)];
+        const merged = {
+          ring: [...rot(groups[best.i].ring, best.a), ...rot(groups[best.j].ring, best.b)],
+          src: [...groups[best.i].src, ...groups[best.j].src]
+        };
         bridges++;
         bridgeLength += best.d;
-        rings = rings.filter((_, idx) => idx !== best.i && idx !== best.j);
-        rings.push(merged);
+        groups = groups.filter((_, idx) => idx !== best.i && idx !== best.j);
+        groups.push(merged);
       }
     }
-    return { success: true, type: 'Polygon', coordinates: rings[0], bridges, bridgeLength };
+
+    const results = groups
+      .filter(g => g.src.length > 1)
+      .map(g => ({ type: 'Polygon', coordinates: g.ring, sources: g.src }));
+    if (results.length === 0) {
+      return {
+        success: false,
+        reason: 'Nenhum dos polígonos selecionados compartilha aresta com outro. Use "Unir com Ponte" para ligá-los.'
+      };
+    }
+    return { success: true, results, bridges, bridgeLength };
   }
 }
-
-

@@ -82,27 +82,30 @@ export class DrawingPenHelper {
   }
 
   /**
-   * Número de amostras de um segmento curvo, proporcional ao comprimento do polígono de controle.
-   * ~1 vértice a cada `metersPerStep` metros (limitado entre 8 e 64).
+   * Número de amostras de um segmento curvo pela planura: escolhe o menor número de
+   * segmentos retos cuja distância máxima até a curva fique abaixo de `tolerance` (metros projetados).
+   * Curvas suaves/curtas usam poucos vértices; curvas fechadas usam mais.
    */
-  static autoSteps(a, b, proj = MercatorProjection, metersPerStep = 1.5) {
-    const pts = [a.p, a.hOut || a.p, b.hIn || b.p, b.p].map(p => proj.to(p));
-    let len = 0;
-    for (let i = 1; i < pts.length; i++) {
-      len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-    }
-    // Em Mercator o metro "real" é menor que o projetado; a diferença só aumenta a densidade (seguro)
-    return Math.max(8, Math.min(64, Math.ceil(len / metersPerStep)));
+  static autoSteps(a, b, proj = MercatorProjection, tolerance = 0.15) {
+    tolerance = tolerance > 0 ? tolerance : 0.15;
+    const [p0, c1, c2, p1] = [a.p, a.hOut || a.p, b.hIn || b.p, b.p].map(p => proj.to(p));
+    // Segunda diferença máxima dos pontos de controle (limite do erro de achatamento de uma Bézier cúbica)
+    const dd = Math.max(
+      Math.hypot(p0.x - 2 * c1.x + c2.x, p0.y - 2 * c1.y + c2.y),
+      Math.hypot(c1.x - 2 * c2.x + p1.x, c1.y - 2 * c2.y + p1.y)
+    );
+    const n = Math.ceil(Math.sqrt((0.75 * dd) / tolerance));
+    return Math.max(4, Math.min(96, n));
   }
 
   /**
    * Achata o traçado em uma lista de vértices.
    * @param {Array<{p: [number, number], hIn?: [number, number]|null, hOut?: [number, number]|null}>} anchors
    * @param {boolean} [closed=false] fecha o traçado (último -> primeiro); o 1º vértice NÃO é repetido no fim
-   * @param {{ proj?: Object, steps?: number|Function }} [options]
+   * @param {{ proj?: Object, steps?: number|Function, tolerance?: number }} [options] tolerance em metros (erro máx. da curva)
    * @returns {Array<[number, number]>}
    */
-  static flattenPath(anchors, closed = false, { proj = MercatorProjection, steps } = {}) {
+  static flattenPath(anchors, closed = false, { proj = MercatorProjection, steps, tolerance } = {}) {
     if (!Array.isArray(anchors) || anchors.length === 0) return [];
     const result = [[anchors[0].p[0], anchors[0].p[1]]];
     const segCount = closed ? anchors.length : anchors.length - 1;
@@ -112,7 +115,7 @@ export class DrawingPenHelper {
       const b = anchors[(i + 1) % anchors.length];
       if (this.isCurved(a, b)) {
         const n = typeof steps === 'function' ? steps(a, b)
-          : (typeof steps === 'number' ? steps : this.autoSteps(a, b, proj));
+          : (typeof steps === 'number' ? steps : this.autoSteps(a, b, proj, tolerance));
         result.push(...this.sampleCubic(a.p, a.hOut || a.p, b.hIn || b.p, b.p, n, proj));
       } else {
         result.push([b.p[0], b.p[1]]);

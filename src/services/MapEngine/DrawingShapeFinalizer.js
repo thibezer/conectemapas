@@ -38,7 +38,7 @@ export class DrawingShapeFinalizer {
 
     if (activeTool === 'pen' && ctx.penAnchors.length >= 2) {
       const closed = Boolean(ctx.penClosed) && ctx.penAnchors.length >= 3;
-      const coords = DrawingPenHelper.flattenPath(ctx.penAnchors, closed);
+      const coords = DrawingPenHelper.flattenPath(ctx.penAnchors, closed, { tolerance: ctx.getPenTolerance() });
       ctx.resetDrawingState();
       ctx.setTool('select');
 
