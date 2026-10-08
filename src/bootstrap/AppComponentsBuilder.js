@@ -9,6 +9,8 @@ import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../uti
 import { MapEngine } from '../services/MapEngine.js';
 import { StorageService } from '../services/StorageService.js';
 import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
+import { BatchActions } from '../services/BatchActions.js';
+import { AdvancedSearchPanel } from '../components/AdvancedSearch/AdvancedSearchPanel.js';
 
 import { HeaderBar } from '../components/HeaderBar.js';
 import { DrawingToolbar } from '../components/DrawingToolbar.js';
@@ -287,7 +289,8 @@ export class AppComponentsBuilder {
       },
       onToggleGeometryVersion: () => {
         app.toggleGlobalGeometryVersion();
-      }
+      },
+      onOpenAdvancedSearch: () => app.advancedSearch?.toggle()
     });
     app.headerBar.render(document.getElementById('header-mount'));
 
@@ -677,6 +680,61 @@ export class AppComponentsBuilder {
       }
     });
 
+    app.advancedSearch = new AdvancedSearchPanel({
+      getApp: () => app,
+      actions: AppComponentsBuilder.buildAdvancedSearchActions(app)
+    });
+
     ShortcutsController.bindGlobalShortcuts(app);
+  }
+
+  /** Ações da Busca Avançada: ligam o painel à seleção, ao mapa e às ações em lote. */
+  static buildAdvancedSearchActions(app) {
+    const toast = (tipo, titulo, mensagem, acao) => UIToast.notificar({ tipo, titulo, mensagem, duracao: 4500, ...(acao ? { acao } : {}) });
+
+    /** Resume o lote em um toast; quando algo mudou, oferece Desfazer (um passo de histórico). */
+    const report = (titulo, res, verb = 'alteradas') => {
+      if (!res) return res;
+      if (res.error) { toast('erro', titulo, res.error); return res; }
+      if (res.changed === 0) {
+        toast('alerta', titulo, `Nada alterado. ${BatchActions.describe(res, verb)}.`);
+        return res;
+      }
+      const t = toast('sucesso', titulo, `${BatchActions.describe(res, verb)}.`, {
+        rotulo: 'Desfazer',
+        tipo: 'primario',
+        onClick: () => {
+          ShortcutsController.undo(app);
+          try { t?.fechar?.(); } catch (_) { /* já fechado */ }
+        }
+      });
+      return res;
+    };
+
+    return {
+      select: (ids, mode = 'replace', { silent = false } = {}) => {
+        const current = new Set(AppComponentsBuilder.getSelectedFeatures(app).map(f => f.id));
+        let final;
+        if (mode === 'add') final = new Set([...current, ...ids]);
+        else if (mode === 'subtract') final = new Set([...current].filter(id => !ids.includes(id)));
+        else final = new Set(ids);
+        const list = [...final];
+        app.mapEngine?.selectFeatures(list);
+        const byId = new Map(app.features.map(f => [f.id, f]));
+        app.layerPanel?.setSelectedFeatures(list.map(id => byId.get(id)).filter(Boolean), false);
+        if (!silent) toast('info', 'Busca avançada', `${list.length} feição(ões) selecionada(s).`);
+      },
+      zoom: (ids) => {
+        const set = new Set(ids);
+        const feats = app.features.filter(f => set.has(f.id));
+        if (feats.length > 0) app.mapEngine?.zoomToFeatures(feats);
+      },
+      moveToLayer: (ids, layerId, opts) => report('Mover para camada', BatchActions.moveToLayer(app, ids, layerId, opts), 'movidas'),
+      applyColors: (ids, colors) => report('Aplicar cores', BatchActions.applyColors(app, ids, colors), 'coloridas'),
+      setLocked: (ids, locked) => report(locked ? 'Bloquear' : 'Desbloquear', BatchActions.setLocked(app, ids, locked)),
+      setVisible: (ids, visible) => report(visible ? 'Mostrar' : 'Ocultar', BatchActions.setVisible(app, ids, visible)),
+      // Reaproveita a exclusão coletiva do painel de camadas (ignora bloqueadas e oferece Desfazer)
+      remove: (ids) => app.layerPanel?.onBulkDelete?.(ids)
+    };
   }
 }

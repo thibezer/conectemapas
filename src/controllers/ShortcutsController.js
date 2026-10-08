@@ -140,6 +140,11 @@ export class ShortcutsController {
           app.layerPanel.setSelectedFeatures(visibleFeats, false);
         }
       }
+      // Busca Avançada: Ctrl+Shift+F / Cmd+Shift+F
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        app.advancedSearch?.toggle();
+      }
       // Busca na Tabela de Atributos: Ctrl+K / Cmd+K
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();

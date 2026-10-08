@@ -295,6 +295,7 @@ class ConecteMapasApp {
     if (this.attributeTable) this.attributeTable.updateData(this.features, this.layers);
     if (this.layerPanel) this.layerPanel.updateLayers(this.getLayersWithCounts(), this.features);
     this.updateHUD();
+    this.advancedSearch?.refresh();
   }
 
   getLayersWithCounts() {
