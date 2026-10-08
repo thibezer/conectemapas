@@ -78,17 +78,53 @@ export class DrawingToolbar {
       // --- GRUPO 2: FORMAS VETORIAIS (SHAPES) ---
       {
         id: 'polygon',
-        rotulo: 'Desenhar Polígono / Área',
+        rotulo: 'Desenhar Polígono / Área Livre',
         icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 8.5v7L12 22l10-6.5v-7L12 2z"/></svg>',
         atalho: 'A',
         tipo: 'ferramenta'
       },
       {
-        id: 'rectangle',
-        rotulo: 'Desenhar Retângulo / Caixa',
+        id: 'formas',
+        rotulo: 'Formas Geométricas',
         icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/></svg>',
-        atalho: 'R',
-        tipo: 'ferramenta'
+        tipo: 'ferramenta',
+        filhos: [
+          {
+            id: 'rectangle',
+            rotulo: 'Retângulo / Caixa',
+            icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="14" x="3" y="5" rx="2"/></svg>',
+            atalho: 'R',
+            tipo: 'ferramenta'
+          },
+          {
+            id: 'circle',
+            rotulo: 'Círculo / Buffer Circular',
+            icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>',
+            atalho: 'C',
+            tipo: 'ferramenta'
+          },
+          {
+            id: 'ellipse',
+            rotulo: 'Elipse Geodésica',
+            icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="10" ry="6"/></svg>',
+            atalho: 'E',
+            tipo: 'ferramenta'
+          },
+          {
+            id: 'regular-polygon',
+            rotulo: 'Polígono Regular (Hexágono)',
+            icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 21 7 21 17 12 22 3 17 3 7"/></svg>',
+            atalho: 'H',
+            tipo: 'ferramenta'
+          },
+          {
+            id: 'star',
+            rotulo: 'Estrela (5 Pontas)',
+            icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+            atalho: 'B',
+            tipo: 'ferramenta'
+          }
+        ]
       },
       {
         id: 'line',
@@ -102,13 +138,6 @@ export class DrawingToolbar {
         rotulo: 'Adicionar Marco / Ponto',
         icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
         atalho: 'P',
-        tipo: 'ferramenta'
-      },
-      {
-        id: 'circle',
-        rotulo: 'Criar Buffer Circular',
-        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/></svg>',
-        atalho: 'C',
         tipo: 'ferramenta'
       },
       {
@@ -171,21 +200,7 @@ export class DrawingToolbar {
         tipo: 'separador'
       },
 
-      // --- GRUPO 5: HISTÓRICO & AÇÕES RÁPIDAS ---
-      {
-        id: 'undo',
-        rotulo: 'Desfazer Vértice ou Ação',
-        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>',
-        atalho: 'Ctrl+Z',
-        tipo: 'botao'
-      },
-      {
-        id: 'redo',
-        rotulo: 'Refazer Ação',
-        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>',
-        atalho: 'Ctrl+Y',
-        tipo: 'botao'
-      },
+      // --- GRUPO 5: NAVEGAÇÃO & UTILITÁRIOS ---
       {
         id: 'fit',
         rotulo: 'Enquadrar Todas as Feições',
@@ -198,20 +213,6 @@ export class DrawingToolbar {
         rotulo: 'Minha Localização GPS',
         icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>',
         atalho: 'G',
-        tipo: 'botao'
-      },
-      {
-        id: 'clear-selection',
-        rotulo: 'Limpar Seleção / Desmarcar',
-        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg>',
-        atalho: 'Esc',
-        tipo: 'botao'
-      },
-      {
-        id: 'delete-feature',
-        rotulo: 'Excluir Feição Selecionada',
-        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
-        atalho: 'Del',
         tipo: 'botao'
       }
     ];

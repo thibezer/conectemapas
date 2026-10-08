@@ -14,6 +14,7 @@ import { DrawingMeasureHelper } from './DrawingMeasureHelper.js';
 import { DrawingSnappingHelper } from './DrawingSnappingHelper.js';
 import { DrawingShapeFinalizer } from './DrawingShapeFinalizer.js';
 import { DrawingClickHandler } from './DrawingClickHandler.js';
+import { ShapeGeometryGenerator } from './ShapeGeometryGenerator.js';
 
 export class DrawingEngine {
   constructor(mapEngine) {
@@ -251,6 +252,12 @@ export class DrawingEngine {
       this._previewPoints[this._previewPoints.length - 1] = currentLatLng;
     }
 
+    const activeStyles = this.engine.activeDrawingStyles || {};
+    const strokeColor = activeStyles.strokeColor || '#ffffff';
+    const fillColor = activeStyles.fillColor || this.activeDrawingLayer?.color || '#00E08A';
+    const fillOpacity = activeStyles.fillOpacity !== undefined ? activeStyles.fillOpacity : 0.35;
+    const strokeWidth = activeStyles.strokeWidth !== undefined ? activeStyles.strokeWidth : 2.5;
+
     if (this.activeTool === 'line' || this.activeTool === 'pen-select' || this.activeTool === 'polygon' || this.activeTool === 'split') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
     } else if (this.activeTool === 'rectangle') {
@@ -267,16 +274,54 @@ export class DrawingEngine {
         [minLat, minLng]
       ];
       if (!this.tempLayer) {
-        const color = this.activeDrawingLayer?.color || '#00E08A';
         this.tempLayer = L.polygon(rectCoords, {
-          color,
-          fillColor: color,
-          fillOpacity: 0.35,
-          weight: 2,
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity,
+          weight: strokeWidth,
           dashArray: '4, 4'
         }).addTo(this.map);
       } else {
         this.tempLayer.setLatLngs(rectCoords);
+      }
+    } else if (this.activeTool === 'ellipse') {
+      const coords = ShapeGeometryGenerator.generateEllipse(this.drawingPoints[0], currentLatLng);
+      if (!this.tempLayer) {
+        this.tempLayer = L.polygon(coords, {
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity,
+          weight: strokeWidth,
+          dashArray: '4, 4'
+        }).addTo(this.map);
+      } else {
+        this.tempLayer.setLatLngs(coords);
+      }
+    } else if (this.activeTool === 'regular-polygon') {
+      const coords = ShapeGeometryGenerator.generateRegularPolygon(this.drawingPoints[0], currentLatLng, 6);
+      if (!this.tempLayer) {
+        this.tempLayer = L.polygon(coords, {
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity,
+          weight: strokeWidth,
+          dashArray: '4, 4'
+        }).addTo(this.map);
+      } else {
+        this.tempLayer.setLatLngs(coords);
+      }
+    } else if (this.activeTool === 'star') {
+      const coords = ShapeGeometryGenerator.generateStar(this.drawingPoints[0], currentLatLng, 5);
+      if (!this.tempLayer) {
+        this.tempLayer = L.polygon(coords, {
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity,
+          weight: strokeWidth,
+          dashArray: '4, 4'
+        }).addTo(this.map);
+      } else {
+        this.tempLayer.setLatLngs(coords);
       }
     } else if (this.activeTool === 'measure') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
@@ -289,13 +334,12 @@ export class DrawingEngine {
       }
       this.lastCircleRadius = radius;
       if (!this.tempLayer) {
-        const circleColor = this.activeDrawingLayer?.color || '#8b5cf6';
         this.tempLayer = L.circle(center, {
           radius,
-          color: circleColor,
-          fillColor: circleColor,
-          fillOpacity: 0.25,
-          weight: 2,
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity,
+          weight: strokeWidth,
           dashArray: '4, 4'
         }).addTo(this.map);
       } else {

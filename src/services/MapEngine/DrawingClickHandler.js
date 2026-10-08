@@ -36,13 +36,22 @@ export class DrawingClickHandler {
     }
 
     if (ctx.activeTool === 'point') {
+      const activeStyles = ctx.engine.activeDrawingStyles || {};
+      const strokeColor = activeStyles.strokeColor || '#ffffff';
+      const fillColor = activeStyles.fillColor || activeColor;
       ctx.resetDrawingState();
       ctx.setTool('select');
       ctx.engine.onFeatureCreated({
         type: 'Point',
         coordinates: latlng,
         layerId: activeLayerId,
-        color: activeColor
+        color: strokeColor,
+        style: {
+          fillColor,
+          strokeColor,
+          fillOpacity: 1,
+          markerSize: 24
+        }
       });
       return;
     }
@@ -51,9 +60,11 @@ export class DrawingClickHandler {
       ctx.drawingPoints.push(latlng);
       ctx._previewPoints = [...ctx.drawingPoints, latlng];
       ctx.renderVertexHandles();
+      const activeStyles = ctx.engine.activeDrawingStyles || {};
+      const strokeColor = activeStyles.strokeColor || activeColor;
       if (!ctx.tempLayer) {
         ctx.tempLayer = L.polyline(ctx.drawingPoints, {
-          color: activeColor,
+          color: strokeColor,
           weight: 3,
           dashArray: '4, 4'
         }).addTo(ctx.map);
@@ -101,12 +112,15 @@ export class DrawingClickHandler {
       ctx.drawingPoints.push(latlng);
       ctx._previewPoints = [...ctx.drawingPoints, latlng];
       ctx.renderVertexHandles();
+      const activeStyles = ctx.engine.activeDrawingStyles || {};
+      const strokeColor = activeStyles.strokeColor || '#ffffff';
+      const fillColor = activeStyles.fillColor || activeColor;
       if (!ctx.tempLayer) {
         ctx.tempLayer = L.polygon(ctx.drawingPoints, {
-          color: activeColor,
-          fillColor: activeColor,
+          color: strokeColor,
+          fillColor: fillColor,
           fillOpacity: 0.35,
-          weight: 2,
+          weight: 2.5,
           dashArray: '4, 4'
         }).addTo(ctx.map);
       } else {
@@ -126,47 +140,22 @@ export class DrawingClickHandler {
         const center = ctx.drawingPoints[0];
         const radius = ctx.engine.calculateDistance(center, latlng);
         if (radius < 2) return;
-        ctx.resetDrawingState();
-        ctx.setTool('select');
-        ctx.engine.onFeatureCreated({
-          type: 'Circle',
-          coordinates: center,
-          radius: Math.round(radius),
-          layerId: activeLayerId,
-          color: activeColor
-        });
+        ctx.lastCircleRadius = radius;
+        ctx.finalizeCurrentDrawing();
       }
       return;
     }
 
-    if (ctx.activeTool === 'rectangle') {
+    if (ctx.activeTool === 'rectangle' || ctx.activeTool === 'ellipse' || 
+        ctx.activeTool === 'regular-polygon' || ctx.activeTool === 'star') {
       if (ctx.drawingPoints.length === 0) {
         ctx.drawingPoints.push(latlng);
         ctx._previewPoints = [latlng, latlng];
         ctx.renderVertexHandles();
         ctx.updateDrawingHUD();
       } else {
-        const p1 = ctx.drawingPoints[0];
-        const p2 = latlng;
-        const minLat = Math.min(p1[0], p2[0]);
-        const maxLat = Math.max(p1[0], p2[0]);
-        const minLng = Math.min(p1[1], p2[1]);
-        const maxLng = Math.max(p1[1], p2[1]);
-        const polyCoords = [
-          [maxLat, minLng],
-          [maxLat, maxLng],
-          [minLat, maxLng],
-          [minLat, minLng]
-        ];
-        ctx.resetDrawingState();
-        ctx.setTool('select');
-        ctx.engine.onFeatureCreated({
-          type: 'Polygon',
-          coordinates: polyCoords,
-          layerId: activeLayerId,
-          color: activeColor,
-          style: ctx.engine.activeDrawingStyles ? { ...ctx.engine.activeDrawingStyles } : undefined
-        });
+        ctx.drawingPoints.push(latlng);
+        ctx.finalizeCurrentDrawing();
       }
       return;
     }

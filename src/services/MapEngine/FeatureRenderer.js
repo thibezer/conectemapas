@@ -322,7 +322,7 @@ export class FeatureRenderer {
     const style = {
       fillColor: feat.style?.fillColor || defaultColor,
       fillOpacity: combinedFillOpacity,
-      strokeColor: feat.style?.strokeColor || defaultColor,
+      strokeColor: feat.style?.strokeColor || (feat.type === 'LineString' ? defaultColor : (feat.style?.fillColor ? '#ffffff' : defaultColor)),
       strokeWidth: feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : 2.5,
       strokeDashArray: feat.style?.strokeDashArray || null,
       markerIcon: feat.style?.markerIcon || 'pin',

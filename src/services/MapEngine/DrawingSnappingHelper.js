@@ -252,6 +252,9 @@ export class DrawingSnappingHelper {
     if (activeTool === 'line') { toolName = 'Linha'; minPts = 2; }
     if (activeTool === 'polygon') { toolName = 'Polígono'; minPts = 3; }
     if (activeTool === 'rectangle') { toolName = 'Retângulo'; minPts = 2; }
+    if (activeTool === 'ellipse') { toolName = 'Elipse'; minPts = 2; }
+    if (activeTool === 'regular-polygon') { toolName = 'Polígono Regular (Hexágono)'; minPts = 2; }
+    if (activeTool === 'star') { toolName = 'Estrela'; minPts = 2; }
     if (activeTool === 'split') { toolName = 'Divisão / Faca'; minPts = 2; }
     if (activeTool === 'pen-select') { toolName = 'Caneta de Seleção'; minPts = 3; }
     if (activeTool === 'circle') { toolName = 'Círculo'; minPts = 1; }

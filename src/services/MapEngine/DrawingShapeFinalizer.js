@@ -9,6 +9,7 @@
    ========================================================================== */
 
 import { DrawingPenSelectHelper } from './DrawingPenSelectHelper.js';
+import { ShapeGeometryGenerator } from './ShapeGeometryGenerator.js';
 
 export class DrawingShapeFinalizer {
   /**
@@ -19,7 +20,20 @@ export class DrawingShapeFinalizer {
   static finalize(ctx) {
     const { activeTool, drawingPoints, lastCircleRadius, activeDrawingLayer, engine } = ctx;
     const layerId = activeDrawingLayer ? activeDrawingLayer.id : undefined;
-    const color = activeDrawingLayer ? activeDrawingLayer.color : undefined;
+    const layerColor = activeDrawingLayer ? activeDrawingLayer.color : undefined;
+
+    const activeStyles = engine.activeDrawingStyles || {};
+    const strokeColor = activeStyles.strokeColor || '#ffffff';
+    const fillColor = activeStyles.fillColor || layerColor || '#00E08A';
+    const fillOpacity = activeStyles.fillOpacity !== undefined ? activeStyles.fillOpacity : 0.35;
+    const strokeWidth = activeStyles.strokeWidth !== undefined ? activeStyles.strokeWidth : 2.5;
+
+    const shapeStyle = {
+      fillColor,
+      strokeColor,
+      fillOpacity,
+      strokeWidth
+    };
 
     if (activeTool === 'line' && drawingPoints.length >= 2) {
       const coords = [...drawingPoints];
@@ -30,7 +44,11 @@ export class DrawingShapeFinalizer {
         type: 'LineString',
         coordinates: coords,
         layerId,
-        color
+        color: strokeColor,
+        style: {
+          strokeColor,
+          strokeWidth
+        }
       });
       return true;
     }
@@ -59,7 +77,8 @@ export class DrawingShapeFinalizer {
         type: 'Polygon',
         coordinates: coords,
         layerId,
-        color
+        color: strokeColor,
+        style: { ...shapeStyle }
       });
       return true;
     }
@@ -84,8 +103,53 @@ export class DrawingShapeFinalizer {
         type: 'Polygon',
         coordinates: polyCoords,
         layerId,
-        color,
-        style: engine.activeDrawingStyles ? { ...engine.activeDrawingStyles } : undefined
+        color: strokeColor,
+        style: { ...shapeStyle }
+      });
+      return true;
+    }
+
+    if (activeTool === 'ellipse' && drawingPoints.length >= 2) {
+      const polyCoords = ShapeGeometryGenerator.generateEllipse(drawingPoints[0], drawingPoints[1]);
+      ctx.resetDrawingState();
+      ctx.setTool('select');
+
+      engine.onFeatureCreated({
+        type: 'Polygon',
+        coordinates: polyCoords,
+        layerId,
+        color: strokeColor,
+        style: { ...shapeStyle }
+      });
+      return true;
+    }
+
+    if (activeTool === 'regular-polygon' && drawingPoints.length >= 2) {
+      const polyCoords = ShapeGeometryGenerator.generateRegularPolygon(drawingPoints[0], drawingPoints[1], 6);
+      ctx.resetDrawingState();
+      ctx.setTool('select');
+
+      engine.onFeatureCreated({
+        type: 'Polygon',
+        coordinates: polyCoords,
+        layerId,
+        color: strokeColor,
+        style: { ...shapeStyle }
+      });
+      return true;
+    }
+
+    if (activeTool === 'star' && drawingPoints.length >= 2) {
+      const polyCoords = ShapeGeometryGenerator.generateStar(drawingPoints[0], drawingPoints[1], 5);
+      ctx.resetDrawingState();
+      ctx.setTool('select');
+
+      engine.onFeatureCreated({
+        type: 'Polygon',
+        coordinates: polyCoords,
+        layerId,
+        color: strokeColor,
+        style: { ...shapeStyle }
       });
       return true;
     }
@@ -112,7 +176,8 @@ export class DrawingShapeFinalizer {
         coordinates: center,
         radius,
         layerId,
-        color
+        color: strokeColor,
+        style: { ...shapeStyle }
       });
       return true;
     }

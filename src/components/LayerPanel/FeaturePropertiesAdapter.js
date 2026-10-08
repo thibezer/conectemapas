@@ -113,7 +113,7 @@ export class FeaturePropertiesAdapter {
     const style = {
       fillColor: feat.style?.fillColor || defaultColor,
       fillOpacity: numOr(feat.style?.fillOpacity, isLine ? 1 : 0.35),
-      strokeColor: feat.style?.strokeColor || defaultColor,
+      strokeColor: feat.style?.strokeColor || (isLine ? defaultColor : '#ffffff'),
       strokeWidth: numOr(feat.style?.strokeWidth, 2.5),
       strokeDashArray: feat.style?.strokeDashArray || '',
       markerIcon: feat.style?.markerIcon || 'pin',
@@ -386,8 +386,8 @@ export class FeaturePropertiesAdapter {
     const latest = panel.getLatestFeature(featId);
     if (!engine || !latest || latest.locked === true) return;
     const preview = { ...latest, style: { ...(latest.style || {}) } };
-    if (propId === 'fillColor') { preview.style.fillColor = valor; preview.color = valor; }
-    else if (propId === 'strokeColor') preview.style.strokeColor = valor;
+    if (propId === 'fillColor') { preview.style.fillColor = valor; }
+    else if (propId === 'strokeColor') { preview.style.strokeColor = valor; }
     else if (propId === 'pointColor') { preview.style.fillColor = valor; preview.style.strokeColor = valor; preview.color = valor; }
     else if (propId === 'textColor') preview.style.textColor = valor;
     engine.updateFeature(preview, panel.app.layers);
@@ -478,7 +478,6 @@ export class FeaturePropertiesAdapter {
         // Estilo Visual
         case 'fillColor':
           draft.style.fillColor = novoValor;
-          draft.color = novoValor;
           return;
         case 'fillOpacity': {
           const n = parseNumber(novoValor);

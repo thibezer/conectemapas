@@ -39,16 +39,32 @@ console.log(`Total de itens na paleta: ${tools.length}`);
 const toolIds = tools.map(t => t.id);
 const expectedTools = [
   'select', 'pen-select',
-  'polygon', 'rectangle', 'line', 'point', 'circle', 'text',
+  'polygon', 'formas', 'line', 'point', 'text',
   'eyedropper', 'split', 'join',
   'snap', 'measure',
-  'undo', 'redo', 'fit', 'locate', 'clear-selection', 'delete-feature'
+  'fit', 'locate'
 ];
 
 for (const exp of expectedTools) {
   assert(toolIds.includes(exp), `Ferramenta esperada '${exp}' não encontrada na paleta`);
 }
-console.log('✔ Todas as 18 ferramentas e ações esperadas estão presentes na paleta');
+
+// Garante que undo, redo, clear-selection e delete-feature foram removidos da barra
+const removedTools = ['undo', 'redo', 'clear-selection', 'delete-feature'];
+for (const rem of removedTools) {
+  assert(!toolIds.includes(rem), `Ferramenta desnecessária '${rem}' não deveria constar na paleta`);
+}
+
+// Validação dos filhos do grupo de formas
+const grupoFormas = tools.find(t => t.id === 'formas');
+assert(grupoFormas && Array.isArray(grupoFormas.filhos), 'Grupo de formas deve possuir filhos');
+const filhosIds = grupoFormas.filhos.map(f => f.id);
+const expectedFilhos = ['rectangle', 'circle', 'ellipse', 'regular-polygon', 'star'];
+for (const filho of expectedFilhos) {
+  assert(filhosIds.includes(filho), `Sub-forma '${filho}' não encontrada no grupo de formas`);
+}
+
+console.log('✔ Todas as ferramentas esperadas, grupo de formas com sub-itens e remoção de botões redundantes validados com sucesso');
 
 // 2. Validação do snap como toggle
 const snapItem = tools.find(t => t.id === 'snap');
