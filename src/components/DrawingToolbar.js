@@ -252,36 +252,51 @@ export class DrawingToolbar {
           aria-label="Ferramentas de Desenho e Medição">
         </ui-paleta-ferramentas>
 
-        <!-- Seletor de Cores Clássico do Illustrator (Fill & Stroke) -->
-        <div class="cm-illustrator-color-widget" id="cm-illustrator-color-widget" title="Seletor de Cores de Preenchimento e Traço">
-          <div class="cm-illustrator-color-box">
-            <!-- Botão Inverter Fill / Stroke (X) -->
-            <button type="button" class="cm-color-swap-btn" id="cm-color-swap" title="Alternar Preenchimento e Traço [X]">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+        <!-- Controlador Moderno de Cores CAD/GIS (Fill & Stroke) -->
+        <div class="cm-color-controller" id="cm-color-controller">
+          <div class="cm-color-swatches-group">
+            <!-- Botão de Preenchimento (Fill) -->
+            <button type="button" 
+                    class="cm-color-swatch-btn cm-color-swatch-btn--fill ${this.activeColorTarget === 'fill' ? 'cm-color-swatch-btn--active' : ''}" 
+                    id="cm-fill-block" 
+                    title="Preenchimento: ${this.fillColor} (Clique para alterar)">
+              <span class="cm-swatch-indicator cm-swatch-indicator--fill" style="background-color: ${this.fillColor};"></span>
+              <span class="cm-swatch-type-label">Fundo</span>
+              <input type="color" class="cm-color-input-hidden" id="cm-fill-picker" value="${this.fillColor}">
             </button>
 
-            <!-- Bloco de Traço (Stroke) -->
-            <div class="cm-color-block cm-color-block--stroke ${this.activeColorTarget === 'stroke' ? 'cm-color-block--active' : ''}" 
-                 id="cm-stroke-block" 
-                 title="Cor do Traço / Contorno">
-              <div class="cm-color-stroke-inner" style="border-color: ${this.strokeColor};"></div>
+            <!-- Botão de Inverter Cores (Swap / X) -->
+            <button type="button" 
+                    class="cm-color-swap-btn" 
+                    id="cm-color-swap" 
+                    title="Inverter Preenchimento e Traço [Atalho: X]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+              </svg>
+            </button>
+
+            <!-- Botão de Traço / Contorno (Stroke) -->
+            <button type="button" 
+                    class="cm-color-swatch-btn cm-color-swatch-btn--stroke ${this.activeColorTarget === 'stroke' ? 'cm-color-swatch-btn--active' : ''}" 
+                    id="cm-stroke-block" 
+                    title="Contorno / Traço: ${this.strokeColor} (Clique para alterar)">
+              <span class="cm-swatch-indicator cm-swatch-indicator--stroke" style="border-color: ${this.strokeColor};"></span>
+              <span class="cm-swatch-type-label">Traço</span>
               <input type="color" class="cm-color-input-hidden" id="cm-stroke-picker" value="${this.strokeColor}">
-            </div>
-
-            <!-- Bloco de Preenchimento (Fill) -->
-            <div class="cm-color-block cm-color-block--fill ${this.activeColorTarget === 'fill' ? 'cm-color-block--active' : ''}" 
-                 id="cm-fill-block" 
-                 title="Cor do Preenchimento">
-              <div class="cm-color-fill-inner" style="background-color: ${this.fillColor};"></div>
-              <input type="color" class="cm-color-input-hidden" id="cm-fill-picker" value="${this.fillColor}">
-            </div>
-
-            <!-- Botão de Cores Padrão (D) -->
-            <button type="button" class="cm-color-default-btn" id="cm-color-default" title="Cores Padrão [D]">
-              <div class="cm-color-default-square cm-color-default-square--white"></div>
-              <div class="cm-color-default-square cm-color-default-square--color" style="background: ${this.activeLayer?.color || '#00E08A'}"></div>
             </button>
           </div>
+
+          <!-- Botão de Restaurar Cores da Camada (Reset / D) -->
+          <button type="button" 
+                  class="cm-color-reset-btn" 
+                  id="cm-color-default" 
+                  title="Restaurar Cores Padrão da Camada [Atalho: D]">
+            <span class="cm-color-reset-preview">
+              <span class="cm-reset-dot cm-reset-dot--white"></span>
+              <span class="cm-reset-dot cm-reset-dot--layer" style="background-color: ${this.activeLayer?.color || '#00E08A'}"></span>
+            </span>
+            <span class="cm-color-reset-label">Padrão</span>
+          </button>
         </div>
 
         <!-- Seletor Rápido de Camada Ativa Integrado -->
@@ -365,9 +380,9 @@ export class DrawingToolbar {
       if (name) name.textContent = layer.name;
     }
 
-    const defaultSq = this.container.querySelector('.cm-color-default-square--color');
-    if (defaultSq && layer?.color) {
-      defaultSq.style.background = layer.color;
+    const resetDotLayer = this.container.querySelector('.cm-reset-dot--layer');
+    if (resetDotLayer && layer?.color) {
+      resetDotLayer.style.backgroundColor = layer.color;
     }
   }
 
@@ -391,17 +406,21 @@ export class DrawingToolbar {
   setColors({ fillColor, strokeColor }) {
     if (fillColor) {
       this.fillColor = fillColor;
-      const fillInner = this.container?.querySelector('.cm-color-fill-inner');
+      const fillInner = this.container?.querySelector('.cm-swatch-indicator--fill');
       if (fillInner) fillInner.style.backgroundColor = fillColor;
       const fillPicker = this.container?.querySelector('#cm-fill-picker');
       if (fillPicker) fillPicker.value = fillColor;
+      const fillBtn = this.container?.querySelector('#cm-fill-block');
+      if (fillBtn) fillBtn.title = `Preenchimento: ${fillColor} (Clique para alterar)`;
     }
     if (strokeColor) {
       this.strokeColor = strokeColor;
-      const strokeInner = this.container?.querySelector('.cm-color-stroke-inner');
+      const strokeInner = this.container?.querySelector('.cm-swatch-indicator--stroke');
       if (strokeInner) strokeInner.style.borderColor = strokeColor;
       const strokePicker = this.container?.querySelector('#cm-stroke-picker');
       if (strokePicker) strokePicker.value = strokeColor;
+      const strokeBtn = this.container?.querySelector('#cm-stroke-block');
+      if (strokeBtn) strokeBtn.title = `Contorno / Traço: ${strokeColor} (Clique para alterar)`;
     }
   }
 
@@ -482,13 +501,24 @@ export class DrawingToolbar {
     const swapBtn = this.container.querySelector('#cm-color-swap');
     const defaultBtn = this.container.querySelector('#cm-color-default');
 
+    const triggerPicker = (picker) => {
+      if (!picker) return;
+      if (typeof picker.showPicker === 'function') {
+        try {
+          picker.showPicker();
+          return;
+        } catch (_) {}
+      }
+      picker.click();
+    };
+
     if (fillBlock && fillPicker) {
       fillBlock.addEventListener('click', (e) => {
         e.stopPropagation();
         this.activeColorTarget = 'fill';
-        fillBlock.classList.add('cm-color-block--active');
-        strokeBlock?.classList.remove('cm-color-block--active');
-        fillPicker.click();
+        fillBlock.classList.add('cm-color-swatch-btn--active');
+        strokeBlock?.classList.remove('cm-color-swatch-btn--active');
+        triggerPicker(fillPicker);
       });
       fillPicker.addEventListener('input', (e) => {
         this.setColors({ fillColor: e.target.value });
@@ -500,9 +530,9 @@ export class DrawingToolbar {
       strokeBlock.addEventListener('click', (e) => {
         e.stopPropagation();
         this.activeColorTarget = 'stroke';
-        strokeBlock.classList.add('cm-color-block--active');
-        fillBlock?.classList.remove('cm-color-block--active');
-        strokePicker.click();
+        strokeBlock.classList.add('cm-color-swatch-btn--active');
+        fillBlock?.classList.remove('cm-color-swatch-btn--active');
+        triggerPicker(strokePicker);
       });
       strokePicker.addEventListener('input', (e) => {
         this.setColors({ strokeColor: e.target.value });
