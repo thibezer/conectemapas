@@ -7,6 +7,7 @@
    - DrawingPenSelectHelper: Seleção espacial por lasso poligonal
    - DrawingShapeFinalizer: Conversão de buffers CAD em feições definitivas
    - DrawingClickHandler: Roteamento de cliques interativos do mapa
+   - DrawingPenHelper: Matemática da Caneta (retas + curvas Bézier)
    ========================================================================== */
 
 import L from 'leaflet';
@@ -15,6 +16,7 @@ import { DrawingSnappingHelper } from './DrawingSnappingHelper.js';
 import { DrawingShapeFinalizer } from './DrawingShapeFinalizer.js';
 import { DrawingClickHandler } from './DrawingClickHandler.js';
 import { ShapeGeometryGenerator } from './ShapeGeometryGenerator.js';
+import { DrawingPenHelper } from './DrawingPenHelper.js';
 
 export class DrawingEngine {
   constructor(mapEngine) {
@@ -34,6 +36,11 @@ export class DrawingEngine {
     this._cumulativeMeasureDistance = 0;
     this._activeSnapLatLng = null;
     this.activeDrawingLayer = null;
+
+    // Caneta: âncoras { p, hIn, hOut } espelhadas em drawingPoints (mesmo índice)
+    this.penAnchors = [];
+    this.penClosed = false;
+    this._penDrag = null;
 
     this.measureSegmentsLayer = L.layerGroup().addTo(this.map);
     this.measurePolygonLayer = null;
@@ -64,6 +71,9 @@ export class DrawingEngine {
     this._cumulativeMeasureDistance = 0;
     this.lastCircleRadius = null;
     this._activeSnapLatLng = null;
+    this.penAnchors = [];
+    this.penClosed = false;
+    this._penDrag = null;
 
     if (this.tempLayer) {
       this.map.removeLayer(this.tempLayer);
@@ -111,7 +121,7 @@ export class DrawingEngine {
     }
 
     this.drawingPoints.forEach((pt, index) => {
-      const isFirst = index === 0 && (this.activeTool === 'polygon' || this.activeTool === 'pen-select');
+      const isFirst = index === 0 && (this.activeTool === 'polygon' || this.activeTool === 'pen-select' || (this.activeTool === 'pen' && this.drawingPoints.length >= 3));
       const marker = L.circleMarker(pt, {
         radius: isFirst ? 6 : 4.5,
         color: isFirst ? '#00E08A' : '#ffffff',
@@ -132,6 +142,7 @@ export class DrawingEngine {
             }
           }
           if (this.drawingPoints.length >= 3) {
+            if (this.activeTool === 'pen') this.penClosed = true;
             this.finalizeCurrentDrawing();
           }
         });
@@ -139,6 +150,99 @@ export class DrawingEngine {
 
       this.vertexMarkers.addLayer(marker);
     });
+
+    if (this.activeTool === 'pen') this._renderPenHandles();
+  }
+
+  // ------------------------------------------------------------------------
+  // Caneta (retas + curvas): clique = âncora reta, clique e arraste = âncora curva
+  // ------------------------------------------------------------------------
+
+  /** Caminho achatado das âncoras atuais (+ segmento elástico até o cursor, se houver). */
+  _penPreviewPath(cursor = null) {
+    const anchors = cursor
+      ? [...this.penAnchors, { p: cursor, hIn: null, hOut: null }]
+      : this.penAnchors;
+    return DrawingPenHelper.flattenPath(anchors, false);
+  }
+
+  _updatePenPreview(cursor = null) {
+    if (this.penAnchors.length === 0) return;
+    const path = this._penPreviewPath(cursor);
+    const activeStyles = this.engine.activeDrawingStyles || {};
+    if (!this.tempLayer) {
+      this.tempLayer = L.polyline(path, {
+        color: activeStyles.strokeColor || '#ffffff',
+        weight: 3,
+        dashArray: '4, 4'
+      }).addTo(this.map);
+    } else {
+      this.tempLayer.setLatLngs(path);
+    }
+  }
+
+  /** Alças da última âncora (visíveis enquanto desenha, como na caneta do Illustrator). */
+  _renderPenHandles() {
+    const a = this.penAnchors[this.penAnchors.length - 1];
+    if (!a || (!a.hIn && !a.hOut)) return;
+    [a.hIn, a.hOut].forEach((h) => {
+      if (!h) return;
+      this.vertexMarkers.addLayer(L.polyline([a.p, h], { color: '#00E08A', weight: 1.5, interactive: false }));
+      this.vertexMarkers.addLayer(L.circleMarker(h, {
+        radius: 3.5, color: '#00E08A', fillColor: '#141417', fillOpacity: 1, weight: 2, interactive: false
+      }));
+    });
+  }
+
+  /** mousedown: cria âncora (reta por padrão; vira curva se o botão for arrastado) ou fecha no 1º ponto. */
+  penPointerDown(e) {
+    const latlng = this._activeSnapLatLng || [e.latlng.lat, e.latlng.lng];
+
+    if (this.penAnchors.length >= 3) {
+      const first = this.map.latLngToContainerPoint(this.penAnchors[0].p);
+      const here = this.map.latLngToContainerPoint(latlng);
+      if (Math.hypot(first.x - here.x, first.y - here.y) <= 10) {
+        this.penClosed = true;
+        this.engine._suppressNextClick = true;
+        this.finalizeCurrentDrawing();
+        return;
+      }
+    }
+
+    this.penAnchors.push({ p: latlng, hIn: null, hOut: null });
+    this.drawingPoints.push(latlng);
+    this._previewPoints = [...this.drawingPoints, latlng];
+    this._penDrag = { index: this.penAnchors.length - 1 };
+    this.renderVertexHandles();
+    this._updatePenPreview();
+    this.updateDrawingHUD();
+  }
+
+  /** Arraste após o mousedown: define a alça de saída e espelha a de entrada. */
+  penDragMove(latlng) {
+    if (!this._penDrag) return false;
+    const anchor = this.penAnchors[this._penDrag.index];
+    if (!anchor) return false;
+    const target = Array.isArray(latlng) ? latlng : [latlng.lat, latlng.lng];
+
+    const a = this.map.latLngToContainerPoint(anchor.p);
+    const t = this.map.latLngToContainerPoint(target);
+    if (Math.hypot(a.x - t.x, a.y - t.y) < 4) {
+      anchor.hOut = null;
+      anchor.hIn = null;
+    } else {
+      anchor.hOut = target;
+      anchor.hIn = DrawingPenHelper.mirror(anchor.p, target);
+    }
+    this.renderVertexHandles();
+    this._updatePenPreview();
+    return true;
+  }
+
+  penPointerUp(latlng = null) {
+    if (!this._penDrag) return;
+    if (latlng) this.penDragMove(latlng);
+    this._penDrag = null;
   }
 
   updateDrawingHUD() {
@@ -162,6 +266,7 @@ export class DrawingEngine {
   undoLastVertex() {
     if (this.drawingPoints.length > 0) {
       this.drawingPoints.pop();
+      if (this.activeTool === 'pen') this.penAnchors.length = this.drawingPoints.length;
       if (this.activeTool === 'measure') {
         this._cumulativeMeasureDistance = this.engine.calculatePolylineLength(this.drawingPoints);
       }
@@ -180,7 +285,7 @@ export class DrawingEngine {
         }
       } else {
         if (this.tempLayer) {
-          this.tempLayer.setLatLngs(this.drawingPoints);
+          this.tempLayer.setLatLngs(this.activeTool === 'pen' ? this._penPreviewPath() : this.drawingPoints);
         }
       }
       this.updateDrawingHUD();
@@ -206,6 +311,10 @@ export class DrawingEngine {
 
   handleMouseMove(e) {
     if (this.activeTool === 'select') return;
+    if (this.activeTool === 'pen' && this._penDrag) {
+      this.penDragMove(e.latlng);
+      return;
+    }
 
     const lat = e.latlng.lat;
     const lng = e.latlng.lng;
@@ -258,7 +367,9 @@ export class DrawingEngine {
     const fillOpacity = activeStyles.fillOpacity !== undefined ? activeStyles.fillOpacity : 0.35;
     const strokeWidth = activeStyles.strokeWidth !== undefined ? activeStyles.strokeWidth : 2.5;
 
-    if (this.activeTool === 'line' || this.activeTool === 'pen-select' || this.activeTool === 'polygon' || this.activeTool === 'split') {
+    if (this.activeTool === 'pen') {
+      this._updatePenPreview(currentLatLng);
+    } else if (this.activeTool === 'line' || this.activeTool === 'pen-select' || this.activeTool === 'polygon' || this.activeTool === 'split') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
     } else if (this.activeTool === 'rectangle') {
       const p1 = this.drawingPoints[0];
@@ -362,6 +473,7 @@ export class DrawingEngine {
         this.drawingPoints.pop();
       }
     }
+    if (this.activeTool === 'pen') this.penAnchors.length = this.drawingPoints.length;
     this.finalizeCurrentDrawing();
   }
 

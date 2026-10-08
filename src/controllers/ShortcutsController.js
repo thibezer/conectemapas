@@ -174,7 +174,8 @@ export class ShortcutsController {
           m: 'measure',
           t: 'text',
           i: 'eyedropper',
-          k: 'split'
+          k: 'split',
+          n: 'pen'
         };
 
         if (key === 'x') {
@@ -213,7 +214,7 @@ export class ShortcutsController {
         if (key === 'j') {
           e.preventDefault();
           if (app.drawingToolbar && typeof app.drawingToolbar.onAction === 'function') {
-            app.drawingToolbar.onAction('join');
+            app.drawingToolbar.onAction(e.shiftKey ? 'join-bridge' : 'join');
           }
           return;
         }

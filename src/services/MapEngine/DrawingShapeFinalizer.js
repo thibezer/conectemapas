@@ -10,6 +10,7 @@
 
 import { DrawingPenSelectHelper } from './DrawingPenSelectHelper.js';
 import { ShapeGeometryGenerator } from './ShapeGeometryGenerator.js';
+import { DrawingPenHelper } from './DrawingPenHelper.js';
 
 export class DrawingShapeFinalizer {
   /**
@@ -34,6 +35,18 @@ export class DrawingShapeFinalizer {
       fillOpacity,
       strokeWidth
     };
+
+    if (activeTool === 'pen' && ctx.penAnchors.length >= 2) {
+      const closed = Boolean(ctx.penClosed) && ctx.penAnchors.length >= 3;
+      const coords = DrawingPenHelper.flattenPath(ctx.penAnchors, closed);
+      ctx.resetDrawingState();
+      ctx.setTool('select');
+
+      engine.onFeatureCreated(closed
+        ? { type: 'Polygon', coordinates: coords, layerId, color: strokeColor, style: { ...shapeStyle } }
+        : { type: 'LineString', coordinates: coords, layerId, color: strokeColor, style: { strokeColor, strokeWidth } });
+      return true;
+    }
 
     if (activeTool === 'line' && drawingPoints.length >= 2) {
       const coords = [...drawingPoints];

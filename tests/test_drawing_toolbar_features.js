@@ -39,8 +39,8 @@ console.log(`Total de itens na paleta: ${tools.length}`);
 const toolIds = tools.map(t => t.id);
 const expectedTools = [
   'select', 'pen-select',
-  'polygon', 'formas', 'line', 'point', 'text',
-  'eyedropper', 'split', 'join',
+  'polygon', 'formas', 'line', 'pen', 'point', 'text',
+  'eyedropper', 'split', 'unir',
   'snap', 'measure',
   'fit', 'locate'
 ];
@@ -63,6 +63,9 @@ const expectedFilhos = ['rectangle', 'circle', 'ellipse', 'regular-polygon', 'st
 for (const filho of expectedFilhos) {
   assert(filhosIds.includes(filho), `Sub-forma '${filho}' não encontrada no grupo de formas`);
 }
+
+const grupoUnir = tools.find(t => t.id === 'unir');
+assert.deepStrictEqual(grupoUnir.filhos.map(f => f.id), ['join', 'join-bridge'], 'Junções devem ficar agrupadas na mesma célula');
 
 console.log('✔ Todas as ferramentas esperadas, grupo de formas com sub-itens e remoção de botões redundantes validados com sucesso');
 

@@ -227,7 +227,15 @@ class ConecteMapasApp {
 
     if (this.layerPanel?.setActiveLayerId) this.layerPanel.setActiveLayerId(layer.id);
     if (this.mapEngine?.setActiveDrawingLayer) this.mapEngine.setActiveDrawingLayer(layer);
-    if (this.drawingToolbar?.setActiveLayer) this.drawingToolbar.setActiveLayer(layer);
+    if (this.drawingToolbar?.setActiveLayer) {
+      this.drawingToolbar.setActiveLayer(layer);
+      // Novos desenhos herdam a cor da camada, a menos que haja feição selecionada refletida na barra
+      const hasSelection = Boolean(this.layerPanel?.selectedFeature) || (this.layerPanel?.selectedFeatureIds?.size || 0) > 0;
+      if (layer.color && !hasSelection) {
+        this.drawingToolbar.setColors({ fillColor: layer.color });
+        this.mapEngine?.setActiveDrawingStyles(this.drawingToolbar.getColors());
+      }
+    }
     if (this.newFeatureModal?.setActiveLayerId) this.newFeatureModal.setActiveLayerId(layer.id);
     if (this.textPromptModal?.setActiveLayerId) this.textPromptModal.setActiveLayerId(layer.id);
   }

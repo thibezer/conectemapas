@@ -349,7 +349,23 @@ export class MapEngine {
       }
     });
 
+    // Caneta: mousedown cria a âncora; arrastar vira curva; mouseup confirma
+    this.map.on('mousedown', (e) => {
+      if (this.drawingEngine?.activeTool === 'pen' && e.originalEvent?.button === 0) {
+        this.drawingEngine.penPointerDown(e);
+      }
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (this.drawingEngine?.activeTool === 'pen') {
+        this.drawingEngine.penPointerUp(this.map.mouseEventToLatLng(e));
+      }
+    });
+
     this.map.on('click', (e) => {
+      if (this._suppressNextClick) {
+        this._suppressNextClick = false;
+        return;
+      }
       if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
         this.drawingEngine.handleClick(e);
       } else if (this.activeTool === 'select') {
@@ -383,7 +399,7 @@ export class MapEngine {
       if (this.drawingEngine && this.drawingEngine.activeTool !== 'select') {
         const tool = this.drawingEngine.activeTool;
         const pts = this.drawingEngine.drawingPoints;
-        const minPts = tool === 'polygon' ? 3 : (tool === 'line' || tool === 'measure' ? 2 : 1);
+        const minPts = tool === 'polygon' ? 3 : (tool === 'line' || tool === 'measure' || tool === 'pen' ? 2 : 1);
         if (pts.length >= minPts) {
           this.drawingEngine.finalizeCurrentDrawing();
         } else if (pts.length > 0) {

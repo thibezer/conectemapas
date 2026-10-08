@@ -13,6 +13,7 @@ export class AppGeometryCoordinator {
       'pen-select': 'Caneta de Seleção Poligonal (Q)',
       point: 'Marco / Ponto (P)',
       line: 'Linha / Rota (L)',
+      pen: 'Caneta: retas e curvas (N)',
       polygon: 'Polígono / Área (A)',
       circle: 'Buffer Circular (C)',
       rectangle: 'Retângulo / BBox (R)',
@@ -62,7 +63,34 @@ export class AppGeometryCoordinator {
       app.attributeTable.selectFeature(list[0].id);
     }
 
+    this.syncToolbarColors(app, list);
     this.updateHUD(app, list.length);
+  }
+
+  /**
+   * Espelha no seletor de cores o estilo da feição selecionada (seleção única),
+   * para que o que a barra mostra seja o que será editado/aplicado.
+   */
+  static syncToolbarColors(app, list) {
+    const toolbar = app.drawingToolbar;
+    if (!toolbar || typeof toolbar.setColors !== 'function') return;
+
+    if (list.length !== 1) {
+      toolbar.setStrokeOnly(false);
+      return;
+    }
+
+    const feat = list[0];
+    const layer = (app.layers || []).find(l => l.id === feat.layerId);
+    const isLine = /LineString/.test(feat.type);
+    const style = feat.style || {};
+
+    toolbar.setStrokeOnly(isLine);
+    toolbar.setColors({
+      fillColor: isLine ? undefined : (style.fillColor || style.textColor || feat.color || layer?.color),
+      strokeColor: style.strokeColor || (isLine ? feat.color : undefined)
+    });
+    app.mapEngine?.setActiveDrawingStyles(toolbar.getColors());
   }
 
   static updateHUD(app, selectedCount = null) {

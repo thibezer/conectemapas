@@ -17,6 +17,9 @@ export class DrawingClickHandler {
     const activeColor = ctx.activeDrawingLayer?.color || '#00E08A';
     const activeLayerId = ctx.activeDrawingLayer?.id;
 
+    // A Caneta trabalha em mousedown/arraste/mouseup (ver DrawingEngine.penPointerDown); o clique já foi tratado
+    if (ctx.activeTool === 'pen') return;
+
     if (ctx.activeTool === 'eyedropper') {
       const hitResult = ctx.engine.hitTester?.hitTest(e.latlng) || ctx.engine.hitTester?.hitTestAll(e.latlng)?.[0];
       const feat = hitResult?.feat || hitResult;

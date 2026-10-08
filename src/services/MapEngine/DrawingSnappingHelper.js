@@ -69,7 +69,7 @@ export class DrawingSnappingHelper {
 
     // Vértices do buffer atual de desenho CAD
     if (Array.isArray(drawingPoints) && drawingPoints.length > 0) {
-      if (activeTool === 'polygon' && drawingPoints.length >= 3 && !excludeFeatureId) {
+      if ((activeTool === 'polygon' || activeTool === 'pen') && drawingPoints.length >= 3 && !excludeFeatureId) {
         // Ponto de origem para fechar polígono
         const p0 = drawingPoints[0];
         testCoord(Number(p0.lat !== undefined ? p0.lat : p0[0]), Number(p0.lng !== undefined ? p0.lng : p0[1]));
@@ -257,6 +257,7 @@ export class DrawingSnappingHelper {
     if (activeTool === 'star') { toolName = 'Estrela'; minPts = 2; }
     if (activeTool === 'split') { toolName = 'Divisão / Faca'; minPts = 2; }
     if (activeTool === 'pen-select') { toolName = 'Caneta de Seleção'; minPts = 3; }
+    if (activeTool === 'pen') { toolName = 'Caneta'; minPts = 2; }
     if (activeTool === 'circle') { toolName = 'Círculo'; minPts = 1; }
     if (activeTool === 'eyedropper') { toolName = 'Conta-gotas'; minPts = 1; }
 
@@ -265,6 +266,7 @@ export class DrawingSnappingHelper {
     hud.innerHTML = `
       <span class="cm-cad-hud-pulse"></span>
       <span><strong>${toolName}:</strong> ${count} vértice(s) adicionado(s)</span>
+      ${activeTool === 'pen' ? '<span class="cm-cad-hud-hint">• <strong>clique</strong> reta · <strong>arraste</strong> curva' + (count >= 3 ? ' · <strong>1º ponto</strong> fecha' : '') + '</span>' : ''}
       <span class="cm-cad-hud-hint">• <strong>[Enter]</strong> conclui</span>
       <span class="cm-cad-hud-hint">• <strong>[Ctrl+Z]</strong> desfaz</span>
       <span class="cm-cad-hud-hint">• <strong>[Esc]</strong> cancela</span>

@@ -23,6 +23,119 @@ import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { AppModalsBuilder } from './AppModalsBuilder.js';
 
 export class AppComponentsBuilder {
+  /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
+  static getSelectedFeatures(app) {
+    const hudFeats = app.selectionHUD?.selectedFeatures || [];
+    if (hudFeats.length > 0) return hudFeats;
+    const ids = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
+    const fromIds = ids.map(id => app.features.find(f => f.id === id)).filter(Boolean);
+    if (fromIds.length > 0) return fromIds;
+    return app.layerPanel?.selectedFeature ? [app.layerPanel.selectedFeature] : [];
+  }
+
+  /**
+   * Grava as cores do seletor nas feições selecionadas.
+   * Só altera as propriedades indicadas em `changed`; linhas usam apenas o traço e textos a cor do texto.
+   * @param {Object} app
+   * @param {{fillColor: string, strokeColor: string}} colors
+   * @param {string[]} [changed]
+   */
+  static applyColorsToSelection(app, colors, changed = ['fillColor', 'strokeColor']) {
+    const targets = AppComponentsBuilder.getSelectedFeatures(app)
+      .filter(f => !FeatureSyncController.isFeatureLocked(app, f.id));
+    if (targets.length === 0) return;
+
+    const mutate = (draft) => {
+      if (!draft.style) draft.style = {};
+      const isLine = /LineString/.test(draft.type);
+      if (changed.includes('fillColor') && !isLine) {
+        if (draft.type === 'Text') {
+          draft.style.textColor = colors.fillColor;
+        } else {
+          draft.style.fillColor = colors.fillColor;
+        }
+        draft.color = colors.fillColor;
+      }
+      if (changed.includes('strokeColor') && draft.type !== 'Text') {
+        draft.style.strokeColor = colors.strokeColor;
+        if (isLine) draft.color = colors.strokeColor;
+      }
+    };
+
+    if (targets.length === 1 && typeof app.layerPanel?.commitFeatureEdit === 'function') {
+      app.layerPanel.commitFeatureEdit(targets[0].id, mutate);
+      return;
+    }
+    targets.forEach((feat) => {
+      const draft = JSON.parse(JSON.stringify(feat));
+      mutate(draft);
+      FeatureSyncController.updateFeature(app, draft);
+    });
+  }
+
+  /**
+   * Une as feições selecionadas (2 ou mais, todas linhas ou todos polígonos).
+   * @param {Object} app
+   * @param {boolean} bridge true = liga o que não se toca com um trecho de junção; false = só une o que já está conectado
+   */
+  static joinSelection(app, bridge) {
+    const label = bridge ? 'Unir com Ponte [Shift+J]' : 'Unir Conectadas [J]';
+    const selected = AppComponentsBuilder.getSelectedFeatures(app)
+      .filter(f => !FeatureSyncController.isFeatureLocked(app, f.id));
+
+    if (selected.length < 2) {
+      UIToast.notificar({
+        tipo: 'alerta',
+        titulo: label,
+        mensagem: 'Selecione pelo menos 2 feições desbloqueadas, todas linhas ou todas polígonos.',
+        duracao: 3500
+      });
+      return;
+    }
+
+    const joinRes = SpatialAlgorithms.joinMany(selected, { bridge });
+    if (!joinRes.success) {
+      UIToast.notificar({
+        tipo: 'erro',
+        titulo: 'Junção não realizada',
+        mensagem: joinRes.reason || 'Não foi possível unir as feições selecionadas.',
+        duracao: 4500
+      });
+      return;
+    }
+
+    ShortcutsController.pushHistory(app, bridge ? 'Unir Formas com Ponte' : 'Unir Formas');
+
+    const ids = new Set(selected.map(f => f.id));
+    ids.forEach(id => StorageService.deleteFeature(id, app.projectId));
+    app.features = app.features.filter(f => !ids.has(f.id));
+
+    const base = selected[0];
+    const mergedFeat = {
+      ...JSON.parse(JSON.stringify(base)),
+      id: 'feat_' + Date.now() + '_joined',
+      name: `${base.name || 'Forma Unida'} (União)`,
+      type: joinRes.type,
+      coordinates: joinRes.coordinates
+    };
+
+    app.features.push(mergedFeat);
+    StorageService.saveFeature(mergedFeat, app.projectId);
+    app.refreshMapAndTable();
+    app.saveMetadata(true);
+    app.mapEngine?.selectFeatures([mergedFeat.id]);
+
+    const bridgeInfo = joinRes.bridges > 0
+      ? ` ${joinRes.bridges} trecho(s) de junção criado(s) (${joinRes.bridgeLength.toFixed(1)} m).`
+      : '';
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: `Junção Realizada — ${label}`,
+      mensagem: `${selected.length} feições unidas.${bridgeInfo}`,
+      duracao: 3500
+    });
+  }
+
   static initMap(app) {
     if (app.mapEngine) {
       app.mapEngine.destroy();
@@ -178,23 +291,13 @@ export class AppComponentsBuilder {
       onToolChange: (tool) => {
         app.mapEngine.setTool(tool);
       },
-      onColorChange: (colors) => {
+      onColorChange: (colors, { commit = true, changed } = {}) => {
+        // Sempre atualiza o estilo dos próximos desenhos; só grava na seleção ao confirmar a cor
         if (app.mapEngine) {
           app.mapEngine.setActiveDrawingStyles(colors);
         }
-        const selFeat = app.layerPanel?.selectedFeature;
-        if (selFeat && typeof app.commitFeatureEdit === 'function') {
-          ShortcutsController.pushHistory(app, 'Alterar Cor');
-          app.commitFeatureEdit(selFeat.id, (draft) => {
-            if (!draft.style) draft.style = {};
-            if (colors.fillColor) {
-              draft.style.fillColor = colors.fillColor;
-              draft.color = colors.fillColor;
-            }
-            if (colors.strokeColor) {
-              draft.style.strokeColor = colors.strokeColor;
-            }
-          });
+        if (commit) {
+          AppComponentsBuilder.applyColorsToSelection(app, colors, changed);
         }
       },
       onAction: (action) => {
@@ -249,69 +352,8 @@ export class AppComponentsBuilder {
               });
             }
           }
-        } else if (action === 'join') {
-          const hudFeats = app.selectionHUD?.selectedFeatures || [];
-          const panelSelectedIds = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
-          let selected = hudFeats;
-          if (selected.length < 2 && panelSelectedIds.length >= 2) {
-            selected = panelSelectedIds.map(id => app.features.find(f => f.id === id)).filter(Boolean);
-          }
-
-          if (selected.length < 2) {
-            UIToast.notificar({
-              tipo: 'alerta',
-              titulo: 'Junção de Formas [J]',
-              mensagem: 'Selecione pelo menos 2 feições do mesmo tipo (linhas ou polígonos) para unir.',
-              duracao: 3500
-            });
-            return;
-          }
-
-          const featA = selected[0];
-          const featB = selected[1];
-          const joinRes = SpatialAlgorithms.joinFeatures(featA, featB);
-
-          if (!joinRes.success) {
-            UIToast.notificar({
-              tipo: 'erro',
-              titulo: 'Falha na Junção',
-              mensagem: joinRes.reason || 'Não foi possível unir as feições selecionadas.',
-              duracao: 3500
-            });
-            return;
-          }
-
-          ShortcutsController.pushHistory(app, 'Unir Formas');
-
-          app.features = app.features.filter(f => f.id !== featA.id && f.id !== featB.id);
-          StorageService.deleteFeature(featA.id, app.projectId);
-          StorageService.deleteFeature(featB.id, app.projectId);
-
-          const baseName = featA.name || featB.name || 'Forma Unida';
-          const mergedFeat = {
-            ...JSON.parse(JSON.stringify(featA)),
-            id: 'feat_' + Date.now() + '_joined',
-            name: `${baseName} (União)`,
-            type: joinRes.type || featA.type,
-            coordinates: joinRes.coordinates
-          };
-
-          app.features.push(mergedFeat);
-          StorageService.saveFeature(mergedFeat, app.projectId);
-
-          app.refreshMapAndTable();
-          app.saveMetadata(true);
-
-          if (app.mapEngine) {
-            app.mapEngine.selectFeatures([mergedFeat.id]);
-          }
-
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Junção Realizada [J]',
-            mensagem: `"${featA.name || 'Feição 1'}" e "${featB.name || 'Feição 2'}" foram unidas com sucesso.`,
-            duracao: 3500
-          });
+        } else if (action === 'join' || action === 'join-bridge') {
+          AppComponentsBuilder.joinSelection(app, action === 'join-bridge');
         }
       }
     });
@@ -319,6 +361,10 @@ export class AppComponentsBuilder {
 
     if (initialLayer && app.drawingToolbar) {
       app.drawingToolbar.setActiveLayer(initialLayer);
+    }
+    // Motor e barra começam alinhados: o que o seletor mostra é o que o próximo desenho usa
+    if (app.mapEngine) {
+      app.mapEngine.setActiveDrawingStyles(app.drawingToolbar.getColors());
     }
 
     // Configura callbacks do MapEngine para snapping, eyedropper e split
@@ -335,16 +381,9 @@ export class AppComponentsBuilder {
         if (app.drawingToolbar) {
           app.drawingToolbar.setColors({ fillColor: color, strokeColor: stroke });
         }
-        app.mapEngine.setActiveDrawingStyles({ fillColor: color, strokeColor: stroke });
+        app.mapEngine.setActiveDrawingStyles(app.drawingToolbar?.getColors() || { fillColor: color, strokeColor: stroke });
 
-        if (app.layerPanel?.selectedFeature && typeof app.commitFeatureEdit === 'function') {
-          app.commitFeatureEdit(app.layerPanel.selectedFeature.id, (draft) => {
-            if (!draft.style) draft.style = {};
-            draft.style.fillColor = color;
-            draft.style.strokeColor = stroke;
-            draft.color = color;
-          });
-        }
+        AppComponentsBuilder.applyColorsToSelection(app, app.drawingToolbar?.getColors() || { fillColor: color, strokeColor: stroke });
 
         UIToast.notificar({
           tipo: 'sucesso',
