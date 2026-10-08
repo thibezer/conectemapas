@@ -11,6 +11,9 @@ export class AttributeTable {
     this.layers = options.layers || [];
     this.isCollapsed = true;
     this.searchQuery = '';
+    this.externalFilter = null; // Set de ids vindos da Busca Avançada (null = sem filtro)
+    this.externalFilterLabel = '';
+    this.onClearExternalFilter = options.onClearExternalFilter || (() => {});
     this.pageSize = 50; // Janela ideal de alta densidade sem sobrecarga de DOM
     this.currentPage = 1;
 
@@ -32,6 +35,10 @@ export class AttributeTable {
             </span>
             <span id="cm-attribute-table-subtitle" style="font-size: 10.5px; color: var(--cm-text-muted); line-height: 1;">
               Clique na barra para ${this.isCollapsed ? 'expandir' : 'recolher'}
+            </span>
+            <span id="cm-table-filter-chip" style="display: none; align-items: center; gap: 4px; font-size: 10.5px; line-height: 1; padding: 3px 4px 3px 8px; border-radius: 10px; background: rgba(0,224,138,0.14); border: 1px solid rgba(0,224,138,0.4); color: var(--cm-primary);" onclick="event.stopPropagation()">
+              <span id="cm-table-filter-chip-text"></span>
+              <button id="cm-table-filter-chip-clear" title="Limpar filtro da busca avançada" aria-label="Limpar filtro da busca avançada" style="background: transparent; border: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; padding: 0 3px;">×</button>
             </span>
           </div>
 
@@ -71,8 +78,48 @@ export class AttributeTable {
     this.updateTableData();
   }
 
+  /** Restringe a tabela aos ids informados (resultado da Busca Avançada). */
+  setExternalFilter(ids, label = 'Busca avançada') {
+    this.externalFilter = Array.isArray(ids) || ids instanceof Set ? new Set(ids) : null;
+    this.externalFilterLabel = label;
+    this.currentPage = 1;
+    this.updateTableData();
+  }
+
+  clearExternalFilter() {
+    if (!this.externalFilter) return;
+    this.externalFilter = null;
+    this.currentPage = 1;
+    this.updateTableData();
+  }
+
+  /** Feições visíveis na tabela: filtro externo + texto da busca rápida. */
+  _getFiltered() {
+    let list = this.features;
+    if (this.externalFilter) list = list.filter(f => this.externalFilter.has(f.id));
+    if (!this.searchQuery) return list;
+    const q = this.searchQuery.toLowerCase();
+    return list.filter(f => (
+      f.name?.toLowerCase().includes(q) ||
+      f.category?.toLowerCase().includes(q) ||
+      f.type?.toLowerCase().includes(q) ||
+      f.createdBy?.toLowerCase().includes(q)
+    ));
+  }
+
+  _updateFilterChip() {
+    const chip = document.getElementById('cm-table-filter-chip');
+    if (!chip) return;
+    chip.style.display = this.externalFilter ? 'inline-flex' : 'none';
+    const text = document.getElementById('cm-table-filter-chip-text');
+    if (text && this.externalFilter) {
+      text.textContent = `${this.externalFilterLabel}: ${this.externalFilter.size.toLocaleString('pt-BR')}`;
+    }
+  }
+
   updateTableData() {
     const totalCount = this.features.length;
+    this._updateFilterChip();
 
     // Se estiver recolhida, evita trabalho computacional e mutações de DOM desnecessárias
     if (this.isCollapsed) {
@@ -88,17 +135,7 @@ export class AttributeTable {
 
     const layerMap = new Map(this.layers.map(l => [l.id, l.name]));
 
-    // Filtra dados pela busca
-    const filtered = this.features.filter(f => {
-      if (!this.searchQuery) return true;
-      const q = this.searchQuery.toLowerCase();
-      return (
-        f.name?.toLowerCase().includes(q) ||
-        f.category?.toLowerCase().includes(q) ||
-        f.type?.toLowerCase().includes(q) ||
-        f.createdBy?.toLowerCase().includes(q)
-      );
-    });
+    const filtered = this._getFiltered();
 
     const totalFiltered = filtered.length;
     const totalPages = Math.max(1, Math.ceil(totalFiltered / this.pageSize));
@@ -311,7 +348,7 @@ export class AttributeTable {
 
   selectFeature(featId) {
     if (!featId) return;
-    const index = this.features.findIndex(f => f.id === featId);
+    const index = this._getFiltered().findIndex(f => f.id === featId);
     if (index !== -1) {
       const targetPage = Math.floor(index / this.pageSize) + 1;
       if (this.currentPage !== targetPage) {
@@ -366,13 +403,19 @@ export class AttributeTable {
     if (btnNext) {
       btnNext.addEventListener('click', (e) => {
         e.stopPropagation();
-        const totalPages = Math.max(1, Math.ceil(this.features.length / this.pageSize));
+        const totalPages = Math.max(1, Math.ceil(this._getFiltered().length / this.pageSize));
         if (this.currentPage < totalPages) {
           this.currentPage++;
           this.updateTableData();
         }
       });
     }
+
+    container.querySelector('#cm-table-filter-chip-clear')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.clearExternalFilter();
+      this.onClearExternalFilter();
+    });
 
     const searchInput = container.querySelector('#cm-table-search-input');
     if (searchInput) {

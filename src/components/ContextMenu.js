@@ -43,8 +43,9 @@ export class ContextMenu {
       : null);
 
     if (activeFeat) {
-      // Se não estava selecionada, seleciona para foco imediato
-      if (this.app.mapEngine.selectedFeatureId !== activeFeat.id) {
+      // Se não estava selecionada, seleciona para foco imediato (feição dentro de uma seleção múltipla preserva o grupo)
+      const inSelection = this.app.mapEngine.selectedFeatureIds?.has(activeFeat.id);
+      if (!inSelection && this.app.mapEngine.selectedFeatureId !== activeFeat.id) {
         this.app.mapEngine.selectFeature(activeFeat.id);
         if (this.app.layerPanel) this.app.layerPanel.setSelectedFeature(activeFeat);
       }
@@ -82,6 +83,13 @@ export class ContextMenu {
         this.app.mapEngine.map.once('movestart', this._closeHandler);
       }
     }, 10);
+  }
+
+  /** Ids da seleção atual se a feição faz parte dela; senão só a própria feição. */
+  _selectionIdsFor(feat) {
+    const sel = this.app.mapEngine?.selectedFeatureIds;
+    if (sel && sel.size > 1 && sel.has(feat.id)) return [...sel];
+    return [feat.id];
   }
 
   /**
@@ -162,7 +170,7 @@ export class ContextMenu {
           <div class="cm-ctx-item" data-action="move-layer-trigger">
             <div class="cm-ctx-item-left">
               <span class="cm-ctx-icon">📁</span>
-              <span class="cm-ctx-text">Mover para Camada...</span>
+              <span class="cm-ctx-text">${this._selectionIdsFor(feat).length > 1 ? `Mover seleção (${this._selectionIdsFor(feat).length}) para Camada...` : 'Mover para Camada...'}</span>
             </div>
             <span class="cm-ctx-shortcut">▶</span>
           </div>
@@ -336,12 +344,9 @@ export class ContextMenu {
           }
         } else if (action === 'set-layer' && feat) {
           const targetLayerId = item.getAttribute('data-layer-id');
-          if (targetLayerId && targetLayerId !== feat.layerId) {
-            const updated = { ...feat, layerId: targetLayerId };
-            this.app.saveFeature(updated);
-            this.app.mapEngine.updateFeature(updated, this.app.layers);
-            if (this.app.layerPanel) this.app.layerPanel.updateLayers(this.app.getLayersWithCounts(), this.app.features);
-          }
+          // Move a seleção inteira quando a feição clicada faz parte dela (um passo de histórico, respeita bloqueio)
+          const ids = this._selectionIdsFor(feat);
+          if (targetLayerId) this.app.batchActions?.moveToLayer(ids, targetLayerId, {});
         } else if (action === 'toggle-lock' && feat) {
           const isLocked = !feat.locked;
           feat.locked = isLocked;

@@ -670,6 +670,9 @@ export class AppComponentsBuilder {
           app.layerPanel?.onBulkDelete?.(ids);
         }
       },
+      onMoveToLayer: (features, layerId, opts) => {
+        app.batchActions?.moveToLayer(features.map(f => f.id), layerId, opts);
+      },
       onClear: () => {
         if (app.mapEngine) app.mapEngine.clearSelection();
         if (app.layerPanel) {
@@ -680,9 +683,11 @@ export class AppComponentsBuilder {
       }
     });
 
+    // Ações em lote compartilhadas por Busca Avançada, HUD de seleção e menu de contexto
+    app.batchActions = AppComponentsBuilder.buildAdvancedSearchActions(app);
     app.advancedSearch = new AdvancedSearchPanel({
       getApp: () => app,
-      actions: AppComponentsBuilder.buildAdvancedSearchActions(app)
+      actions: app.batchActions
     });
 
     ShortcutsController.bindGlobalShortcuts(app);
@@ -723,6 +728,12 @@ export class AppComponentsBuilder {
         const byId = new Map(app.features.map(f => [f.id, f]));
         app.layerPanel?.setSelectedFeatures(list.map(id => byId.get(id)).filter(Boolean), false);
         if (!silent) toast('info', 'Busca avançada', `${list.length} feição(ões) selecionada(s).`);
+      },
+      showInTable: (ids) => {
+        const table = app.attributeTable;
+        if (!table) return;
+        table.setExternalFilter(ids, 'Busca avançada');
+        if (table.isCollapsed) table.toggleCollapse();
       },
       zoom: (ids) => {
         const set = new Set(ids);

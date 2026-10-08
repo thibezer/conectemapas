@@ -16,6 +16,7 @@ export class SelectionHUD {
    * @param {Function} options.onDelete
    * @param {Function} options.onClear
    * @param {Function} options.onOpenTable
+   * @param {Function} options.onMoveToLayer (features, layerId, {inheritColor}) => void
    */
   constructor(options = {}) {
     this.container = options.container || document.body;
@@ -25,6 +26,8 @@ export class SelectionHUD {
     this.onDelete = options.onDelete || (() => {});
     this.onClear = options.onClear || (() => {});
     this.onOpenTable = options.onOpenTable || (() => {});
+    this.onMoveToLayer = options.onMoveToLayer || (() => {});
+    this.layers = [];
 
     this.selectedFeatures = [];
     this.element = null;
@@ -66,6 +69,7 @@ export class SelectionHUD {
    */
   update(features = [], layers = []) {
     this.selectedFeatures = Array.isArray(features) ? features : (features ? [features] : []);
+    this.layers = layers || [];
 
     if (!this.element) return;
 
@@ -117,6 +121,9 @@ export class SelectionHUD {
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Centralizar no mapa">
             🎯 Zoom
           </button>
+          <button class="cm-sel-btn" id="btn-sel-layer" title="Mover para outra camada" aria-haspopup="menu" aria-expanded="false">
+            📁 Camada
+          </button>
           <button class="cm-sel-btn danger" id="btn-sel-delete" title="Excluir feição">
             🗑️
           </button>
@@ -146,6 +153,9 @@ export class SelectionHUD {
           </button>
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Enquadrar todas as feições selecionadas">
             🎯 Enquadrar
+          </button>
+          <button class="cm-sel-btn" id="btn-sel-layer" title="Mover para outra camada" aria-haspopup="menu" aria-expanded="false">
+            📁 Camada
           </button>
           <button class="cm-sel-btn danger" id="btn-sel-delete" title="Excluir feições selecionadas">
             🗑️ Excluir (${count})
@@ -209,6 +219,14 @@ export class SelectionHUD {
       });
     }
 
+    const btnLayer = this.element.querySelector('#btn-sel-layer');
+    if (btnLayer) {
+      btnLayer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleLayerMenu(btnLayer);
+      });
+    }
+
     const btnClear = this.element.querySelector('#btn-sel-clear');
     if (btnClear) {
       btnClear.addEventListener('click', (e) => {
@@ -216,6 +234,47 @@ export class SelectionHUD {
         this.onClear();
       });
     }
+  }
+
+  closeLayerMenu() {
+    this.element?.querySelector('.cm-sel-layer-menu')?.remove();
+    this.element?.querySelector('#btn-sel-layer')?.setAttribute('aria-expanded', 'false');
+    if (this._outsideHandler) {
+      document.removeEventListener('mousedown', this._outsideHandler, true);
+      this._outsideHandler = null;
+    }
+  }
+
+  /** Menu com as camadas do projeto; a camada comum da seleção aparece marcada. */
+  toggleLayerMenu(anchor) {
+    if (this.element.querySelector('.cm-sel-layer-menu')) return this.closeLayerMenu();
+    const layerIds = new Set(this.selectedFeatures.map(f => f.layerId));
+    const menu = document.createElement('div');
+    menu.className = 'cm-sel-layer-menu';
+    menu.setAttribute('role', 'menu');
+    menu.innerHTML = `
+      <div class="cm-sel-layer-title">Mover ${this.selectedFeatures.length} feição(ões) para…</div>
+      <div class="cm-sel-layer-list">
+        ${this.layers.map(l => `
+          <button class="cm-sel-layer-item ${layerIds.size === 1 && layerIds.has(l.id) ? 'current' : ''}" role="menuitem" data-layer-id="${this.escape(l.id)}">
+            <span style="color: ${this.escape(l.color || '#00E08A')};">●</span>
+            <span class="cm-sel-layer-name">${this.escape(l.name)}</span>
+          </button>`).join('')}
+      </div>
+      <label class="cm-sel-layer-opt"><input type="checkbox" id="cm-sel-inherit-color"> Adotar a cor da camada</label>`;
+    menu.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const item = e.target.closest('[data-layer-id]');
+      if (!item) return;
+      const inheritColor = menu.querySelector('#cm-sel-inherit-color').checked;
+      const layerId = item.dataset.layerId;
+      this.closeLayerMenu();
+      this.onMoveToLayer(this.selectedFeatures, layerId, { inheritColor });
+    });
+    this.element.appendChild(menu);
+    anchor.setAttribute('aria-expanded', 'true');
+    this._outsideHandler = (e) => { if (!menu.contains(e.target) && e.target !== anchor) this.closeLayerMenu(); };
+    document.addEventListener('mousedown', this._outsideHandler, true);
   }
 
   escape(str) {

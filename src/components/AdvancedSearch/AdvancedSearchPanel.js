@@ -172,6 +172,7 @@ export class AdvancedSearchPanel {
             <button class="cm-adv-btn" data-act="select-add">+ À seleção</button>
             <button class="cm-adv-btn" data-act="select-sub">− Da seleção</button>
             <button class="cm-adv-btn" data-act="zoom">Zoom</button>
+            <button class="cm-adv-btn" data-act="table" title="Mostrar só os resultados na Tabela de Atributos">Ver na tabela</button>
           </div>
           <fieldset class="cm-adv-fs" ${readOnly ? 'disabled' : ''}>
             <legend>Mover resultados para camada</legend>
@@ -319,6 +320,7 @@ export class AdvancedSearchPanel {
       case 'select-add': return a.select?.(ids, 'add');
       case 'select-sub': return a.select?.(ids, 'subtract');
       case 'zoom': return a.zoom?.(ids);
+      case 'table': return a.showInTable?.(ids);
       case 'move': return this._afterBatch(a.moveToLayer?.(ids, q('[data-role="target-layer"]').value, { inheritColor: q('[data-role="inherit"]').checked }));
       case 'paint': {
         const colors = {};

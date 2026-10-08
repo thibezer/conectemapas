@@ -667,7 +667,8 @@ export class MapEngine {
     this._syncPopupWithSelection();
     const selectedList = this.getSelectedFeatures();
     if (this.onFeaturesSelected) this.onFeaturesSelected(selectedList);
-    if (this.onFeatureSelected) this.onFeatureSelected(selectedList[0] || null);
+    // Com várias feições, onFeatureSelected(primeira) sobrescreveria o HUD/painel com uma só
+    if (this.onFeatureSelected && selectedList.length <= 1) this.onFeatureSelected(selectedList[0] || null);
   }
 
   selectFeature(featureId) {

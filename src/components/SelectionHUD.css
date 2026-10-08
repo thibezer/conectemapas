@@ -148,3 +148,38 @@
   align-items: center;
   justify-content: center;
 }
+
+/* Menu "Mover para camada" */
+.cm-sel-layer-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 230px;
+  max-width: 320px;
+  background: rgba(18, 20, 26, 0.98);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  padding: 6px;
+  z-index: 10;
+}
+.cm-sel-layer-title { font-size: 10.5px; color: #888899; padding: 2px 6px 6px; }
+.cm-sel-layer-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.cm-sel-layer-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #e1e1e6;
+  font-size: 11.5px;
+  padding: 5px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.cm-sel-layer-item:hover, .cm-sel-layer-item:focus-visible { background: rgba(56, 189, 248, 0.18); outline: none; }
+.cm-sel-layer-item.current { background: rgba(255, 255, 255, 0.06); font-weight: 600; }
+.cm-sel-layer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-sel-layer-opt { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #b4b4c0; padding: 6px 8px 2px; cursor: pointer; }
