@@ -333,6 +333,7 @@ export class FeatureSyncController {
         app.mapEngine.updateRemoteCursor({ ...data.user, name: data.user.displayName || data.user.name }, data.latlng);
       }
     } else if (type === 'feature:created') {
+      if (!data.feature || app.features.some(f => f.id === data.feature.id)) return; // eco/reenvio da mesma feição
       app.features.push(data.feature);
       app.mapEngine.updateFeature(data.feature, app.layers);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);

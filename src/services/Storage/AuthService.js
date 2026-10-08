@@ -5,7 +5,7 @@
    no header X-Auth-Token; a senha nunca é guardada no navegador.
    ========================================================================== */
 
-import { CLOUD_API_URL } from './StorageConstants.js';
+import { CLOUD_API_URL, cloudFetch } from './StorageConstants.js';
 
 const TOKEN_KEY = 'cm_auth_token';
 const USER_KEY = 'cm_auth_user';
@@ -62,7 +62,7 @@ export class AuthService {
 
   static async _post(action, payload) {
     const token = this.getToken();
-    const res = await fetch(`${CLOUD_API_URL}?action=${action}`, {
+    const res = await cloudFetch(`${CLOUD_API_URL}?action=${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { 'X-Auth-Token': token } : {}) },
       body: JSON.stringify(payload || {})
@@ -109,7 +109,7 @@ export class AuthService {
     const token = this.getToken();
     if (!token) return null;
     try {
-      const res = await fetch(`${CLOUD_API_URL}?action=auth_me`, { headers: { 'X-Auth-Token': token }, cache: 'no-cache' });
+      const res = await cloudFetch(`${CLOUD_API_URL}?action=auth_me`, { headers: { 'X-Auth-Token': token }, cache: 'no-cache' });
       if (!res.ok) return this.getUser();
       const data = await res.json();
       if (data.user) this._setSession(token, data.user);

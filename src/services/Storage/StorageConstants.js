@@ -21,6 +21,25 @@ export const SYNC_CURSOR_KEY_PREFIX = 'cm_sync_cursor_';
 export const DELTA_DEBOUNCE_MS = 120;
 export const DELTA_MAX_WAIT_MS = 400;
 
-export const CLOUD_API_URL = (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1')
-  ? './api.php'
-  : 'https://lavender-panther-702784.hostingersite.com/api.php';
+/**
+ * Endpoint da nuvem por ambiente (o banco de testes local nunca compartilha dados com a Hostinger):
+ *  - VITE_CLOUD_API_URL definido (ex.: em .env.local): usa esse backend (staging/local), em qualquer ambiente.
+ *  - Navegador servido pela própria hospedagem: './api.php' (produção).
+ *  - Navegador em localhost/127.0.0.1 (npm run dev): nuvem DESATIVADA, só IndexedDB/localStorage.
+ *  - Fora do navegador (testes em Node): host reservado .invalid, que nunca resolve.
+ */
+const envUrl = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_CLOUD_API_URL) || '';
+const hostname = (typeof window !== 'undefined' && window.location && window.location.hostname) || '';
+const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname.endsWith('.localhost');
+
+export const CLOUD_API_URL = envUrl
+  || (hostname ? (isLocalHost ? '' : './api.php') : 'http://cloud.invalid/api.php');
+
+/** false no desenvolvimento local sem VITE_CLOUD_API_URL: nada é enviado nem lido da nuvem. */
+export const CLOUD_ENABLED = CLOUD_API_URL !== '';
+
+/** fetch da nuvem: com a nuvem desativada falha na hora, como se estivesse offline (os fluxos de erro já cobrem isso). */
+export function cloudFetch(url, init) {
+  if (!CLOUD_ENABLED) return Promise.reject(new TypeError('Nuvem desativada neste ambiente (modo local de testes)'));
+  return fetch(url, init);
+}

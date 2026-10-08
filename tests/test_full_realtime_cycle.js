@@ -1,7 +1,8 @@
+import { requireTestApiUrl } from './_cloud_target.js';
 const fetch = globalThis.fetch;
 
 async function testFullRealtimeCycle() {
-  const url = 'https://lavender-panther-702784.hostingersite.com/api.php';
+  const url = requireTestApiUrl();
   console.log('=== TESTE DE CICLO DE SALVAMENTO EM TEMPO REAL ===\n');
 
   // 1. Testa renomeação de camada

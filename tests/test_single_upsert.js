@@ -1,7 +1,8 @@
+import { requireTestApiUrl } from './_cloud_target.js';
 const fetch = globalThis.fetch;
 
 async function test() {
-  const url = 'https://lavender-panther-702784.hostingersite.com/api.php';
+  const url = requireTestApiUrl();
   const id = 'feat-test-debug-' + Date.now();
   console.log('Criando feição:', id);
 

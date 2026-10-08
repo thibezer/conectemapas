@@ -1,7 +1,8 @@
+import { requireTestApiUrl } from './_cloud_target.js';
 const fetch = globalThis.fetch;
 
 async function testCloud() {
-  const url = 'https://lavender-panther-702784.hostingersite.com/api.php';
+  const url = requireTestApiUrl();
 
   // 1. Testa sync_deltas com upsert (modificação e troca de pasta)
   console.log('\n--- Testando sync_deltas (upsert) ---');

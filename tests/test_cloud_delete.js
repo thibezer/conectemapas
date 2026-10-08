@@ -1,7 +1,8 @@
+import { requireTestApiUrl } from './_cloud_target.js';
 const fetch = globalThis.fetch;
 
 async function testDeleteAndLoad() {
-  const url = 'https://lavender-panther-702784.hostingersite.com/api.php';
+  const url = requireTestApiUrl();
 
   // 1. Deleta feat-test-123
   console.log('--- Deletando feat-test-123 ---');

@@ -128,25 +128,39 @@ function readField(feat, field, ctx) {
   }
 }
 
+/**
+ * Área/comprimento persistem entre consultas, com a referência do array de coordenadas como chave.
+ * Editar a geometria gera um array novo (FeatureGeometryUtils.replaceRing não altera o original),
+ * então o valor antigo é descartado sozinho; o WeakMap libera a entrada quando a geometria some.
+ */
+const geometryCache = new WeakMap();
+
 function geometryMetric(feat, ctx, kind) {
-  const cache = ctx.metricCache;
-  const key = feat.id + ':' + kind;
-  if (cache.has(key)) return cache.get(key);
+  if (feat.type === 'Circle') {
+    const r = Number(feat.radius) || 0;
+    return kind === 'area' ? Math.PI * r * r : 2 * Math.PI * r;
+  }
+  const coords = feat.coordinates;
+  if (feat.type !== 'Polygon' && feat.type !== 'LineString') return null;
+  if (!coords || typeof coords !== 'object') return null;
+
+  let entry = geometryCache.get(coords);
+  if (!entry || entry.type !== feat.type) {
+    entry = { type: feat.type };
+    geometryCache.set(coords, entry);
+  }
+  if (kind in entry) return entry[kind];
+
   let v = null;
   try {
     if (feat.type === 'Polygon') {
-      v = kind === 'area'
-        ? FeatureGeometryUtils.calculatePolygonArea(feat.coordinates)
-        : FeatureGeometryUtils.calculatePolygonPerimeter(feat.coordinates);
-    } else if (feat.type === 'LineString') {
-      v = kind === 'length' ? FeatureGeometryUtils.calculatePolylineLength(feat.coordinates) : null;
-    } else if (feat.type === 'Circle') {
-      const r = Number(feat.radius) || 0;
-      v = kind === 'area' ? Math.PI * r * r : 2 * Math.PI * r;
+      v = kind === 'area' ? FeatureGeometryUtils.calculatePolygonArea(coords) : FeatureGeometryUtils.calculatePolygonPerimeter(coords);
+    } else if (kind === 'length') {
+      v = FeatureGeometryUtils.calculatePolylineLength(coords);
     }
   } catch { v = null; }
   if (v != null && !Number.isFinite(v)) v = null;
-  cache.set(key, v);
+  entry[kind] = v;
   return v;
 }
 
@@ -284,7 +298,6 @@ export class FeatureQuery {
     const list = Array.isArray(features) ? features : [];
     const layers = options.layers || [];
     const ctx = {
-      metricCache: new Map(),
       layerNames: new Map(layers.map(l => [l.id, l.name]))
     };
 

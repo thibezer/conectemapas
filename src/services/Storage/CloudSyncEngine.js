@@ -8,7 +8,7 @@
    - keepalive só abaixo de 60 KB
    ========================================================================== */
 
-import { CLOUD_API_URL } from './StorageConstants.js';
+import { CLOUD_API_URL, cloudFetch } from './StorageConstants.js';
 import { LocalStore } from './LocalStore.js';
 import { DeltaQueue } from './DeltaQueue.js';
 import { AccessManager } from './AccessManager.js';
@@ -124,7 +124,7 @@ export class CloudSyncEngine {
 
   static _postJson(action, payload) {
     const body = JSON.stringify(payload);
-    return fetch(`${CLOUD_API_URL}?action=${action}`, {
+    return cloudFetch(`${CLOUD_API_URL}?action=${action}`, {
       method: 'POST',
       headers: AccessManager.headers(payload.projectId || payload.id, { 'Content-Type': 'application/json' }),
       body,
@@ -155,7 +155,7 @@ export class CloudSyncEngine {
   static async checkCloudConnection() {
     try {
       const start = performance.now();
-      const res = await fetch(`${CLOUD_API_URL}?action=status`, {
+      const res = await cloudFetch(`${CLOUD_API_URL}?action=status`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
         cache: 'no-cache'
@@ -388,7 +388,7 @@ export class CloudSyncEngine {
         features: Array.isArray(projectData.features) ? projectData.features.map(packFeatureForCloud) : []
       };
 
-      const res = await fetch(`${CLOUD_API_URL}?action=save_all`, {
+      const res = await cloudFetch(`${CLOUD_API_URL}?action=save_all`, {
         method: 'POST',
         headers: AccessManager.headers(projId, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
@@ -429,7 +429,7 @@ export class CloudSyncEngine {
 
   static async loadProjectFromCloud(projectId = 'projeto_padrao') {
     try {
-      const res = await fetch(`${CLOUD_API_URL}?action=load&projectId=${encodeURIComponent(projectId)}`, {
+      const res = await cloudFetch(`${CLOUD_API_URL}?action=load&projectId=${encodeURIComponent(projectId)}`, {
         method: 'GET',
         headers: AccessManager.headers(projectId, { 'Accept': 'application/json' }),
         cache: 'no-cache'
@@ -478,7 +478,7 @@ export class CloudSyncEngine {
         }
       }
 
-      const res = await fetch(`${CLOUD_API_URL}?${params.toString()}`, {
+      const res = await cloudFetch(`${CLOUD_API_URL}?${params.toString()}`, {
         method: 'GET',
         headers: AccessManager.headers(projectId, { 'Accept': 'application/json' }),
         cache: 'no-cache'

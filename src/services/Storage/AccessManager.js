@@ -6,7 +6,7 @@
    - Projeto sem dono ("aberto") funciona como antes; claimProject() o protege.
    ========================================================================== */
 
-import { CLOUD_API_URL } from './StorageConstants.js';
+import { CLOUD_API_URL, cloudFetch } from './StorageConstants.js';
 import { AuthService } from './AuthService.js';
 
 const KEY_PREFIX = 'cm_access_key_';
@@ -90,7 +90,7 @@ export class AccessManager {
 
   static async _call(action, projectId, { method = 'GET', payload = null } = {}) {
     const qs = method === 'GET' ? `&projectId=${encodeURIComponent(projectId)}` : '';
-    const res = await fetch(`${CLOUD_API_URL}?action=${action}${qs}`, {
+    const res = await cloudFetch(`${CLOUD_API_URL}?action=${action}${qs}`, {
       method,
       headers: this.headers(projectId, payload ? { 'Content-Type': 'application/json' } : { Accept: 'application/json' }),
       body: payload ? JSON.stringify({ projectId, ...payload }) : undefined,

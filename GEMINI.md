@@ -101,3 +101,18 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **Bloqueio**: feição com `locked: true` não é excluída (atalho, HUD, lote, inspetor) nem editada; somente o próprio bloqueio pode ser alterado.
 - **Campos sem coluna na API** (`description`, `category`, `locked`, `status`, `customAttributes`) viajam em `properties._cm` (`packFeatureForCloud`/`unpackFeatureFromCloud`); nunca exibir chaves iniciadas por `_`.
 - **Contrato de métodos**: ao modularizar, conferir que todo método chamado por `MapEngine`/`LayerPanel` continua existindo (os testes usam mocks e não detectam a ausência).
+
+---
+
+## 7. Busca Avançada e Ações em Lote
+- **Motor puro**: `FeatureQuery` (sem DOM) avalia critérios `{campo, operador, valor}` em grupos E/OU/NÃO aninhados e devolve ids. Critérios incompletos são ignorados; regex inválida não casa nada (`validate()` informa o erro). Área/comprimento são cacheados por referência do array de coordenadas, então geometria editada precisa gerar coordenadas **novas** (como faz `FeatureGeometryUtils.replaceRing`), nunca mutar o array no lugar.
+- **Ações em lote** passam sempre por `BatchActions` (mover de camada, cores, bloquear, visibilidade, atributo, excluir): ignoram feições bloqueadas, gravam **um** passo de histórico e redesenham uma vez. Não fazer loop de `updateFeature` para lotes. A exclusão em lote reaproveita `layerPanel.onBulkDelete`.
+- **Ponto único de entrada**: `app.batchActions` (criado em `AppComponentsBuilder.buildAdvancedSearchActions`) é usado pelo painel (Ctrl+Shift+F), pelo HUD de seleção e pelo menu de contexto.
+- **Renderer**: `FeatureRenderer.renderFeatures` guarda uma **cópia** de `app.features`; nunca compartilhar a referência do array (causava feições duplicadas no `createFeature`).
+
+---
+
+## 8. Ambientes: Banco Local de Testes x Hostinger
+- **`npm run dev` (localhost) não fala com a Hostinger**: `CLOUD_API_URL` fica vazio e `cloudFetch` falha na hora (como offline); só IndexedDB/localStorage são usados e o chip mostra "Modo local de testes". Nenhum fetch à nuvem deve ser feito sem passar por `cloudFetch`.
+- **Backend alternativo (staging/local)**: defina `VITE_CLOUD_API_URL` em `.env.local` (ignorado pelo Git). Em produção (hospedagem) o app usa `./api.php` da própria origem.
+- **Testes nunca tocam produção**: testes em Node usam o host reservado `.invalid`. Os testes de integração que escrevem no backend (`test_cloud*`, `test_single_upsert`, `test_full_realtime_cycle`, `test_check_layers`, `test_query_feat`) são opt-in e exigem `CM_TEST_API_URL` apontando para um backend de TESTES; URLs de produção são recusadas (`tests/_cloud_target.js`). `test_cloud_isolation.js` falha se a URL de produção aparecer em `src/` ou `tests/`.

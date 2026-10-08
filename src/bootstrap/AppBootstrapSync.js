@@ -6,6 +6,7 @@
 
 import { UIToast } from '@thibezer/ui-components-kit';
 import { StorageService } from '../services/StorageService.js';
+import { CLOUD_ENABLED } from '../services/Storage/StorageConstants.js';
 import { normalizeFeature } from '../services/MockData.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 
@@ -194,6 +195,8 @@ export class AppBootstrapSync {
    * Sincronização colaborativa quase em tempo real sobre PHP/MySQL
    */
   static startCloudSyncLoop(app) {
+    // Modo local de testes: sem nuvem não há o que sincronizar
+    if (!CLOUD_ENABLED) return;
     const ACTIVE_INTERVAL_MS = 1000;
     const HIDDEN_INTERVAL_MS = 5000;
     const MAX_BACKOFF_MS = 15000;
@@ -299,7 +302,11 @@ export class AppBootstrapSync {
     if (!syncChip) return;
 
     const cloud = StorageService.getCloudStatus();
-    if (cloud.syncing) {
+    if (!CLOUD_ENABLED) {
+      syncChip.setAttribute('variante', 'alerta');
+      syncChip.textContent = `● Modo local de testes (${app.features.length} feições, sem nuvem)`;
+      syncChip.title = 'Ambiente de desenvolvimento: nada é enviado à Hostinger. Para usar um backend, defina VITE_CLOUD_API_URL em .env.local.';
+    } else if (cloud.syncing) {
       syncChip.setAttribute('variante', 'alerta');
       syncChip.textContent = '● Sincronizando com Hostinger MySQL...';
       syncChip.title = 'Gravando alterações em tempo real no banco u941736878_conectemapas';

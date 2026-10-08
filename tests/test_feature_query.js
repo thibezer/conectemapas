@@ -1,6 +1,7 @@
 import assert from 'assert';
 import { FeatureQuery, parseNumber, normalizeText } from '../src/services/FeatureQuery.js';
 import { BatchActions } from '../src/services/BatchActions.js';
+import { FeatureGeometryUtils } from '../src/services/MapEngine/FeatureGeometryUtils.js';
 
 console.log('🧪 Iniciando testes da busca avançada (FeatureQuery) e ações em lote (BatchActions)...');
 
@@ -119,6 +120,34 @@ assert.strictEqual(FeatureQuery.validate(and(crit('foo', 'equals', 'x'))).length
 assert.strictEqual(FeatureQuery.validate(and(crit('name', 'contains', 'x'))).length, 0);
 assert.deepStrictEqual(ids(and(crit('name', 'regex', '('))), [], 'regex inválida não casa nada');
 console.log('✔ Validação passou');
+
+// Cache de área/comprimento entre consultas (chave = referência das coordenadas)
+{
+  const feats = mk();
+  const orig = FeatureGeometryUtils.calculatePolygonArea;
+  let calls = 0;
+  FeatureGeometryUtils.calculatePolygonArea = function (...args) { calls++; return orig.apply(this, args); };
+  try {
+    const q = and(crit('area', 'gt', 1000));
+    const first = FeatureQuery.run(feats, q, { layers }).ids;
+    const afterFirst = calls;
+    assert(afterFirst > 0, 'a primeira consulta calcula a área');
+    assert.deepStrictEqual(FeatureQuery.run(feats, q, { layers }).ids, first);
+    assert.strictEqual(calls, afterFirst, 'a segunda consulta reaproveita o cache');
+
+    // Editar a geometria gera coordenadas novas: o valor antigo não pode vazar
+    const big = feats.find(f => f.id === 'b');
+    const edited = { ...big, coordinates: square(-23.77, -53.33, 0.0001) };
+    const idx = feats.indexOf(big);
+    feats[idx] = edited;
+    const after = FeatureQuery.run(feats, and(crit('area', 'gt', 1000000)), { layers }).ids;
+    assert.deepStrictEqual(after, [], 'lote encolhido não pode mais passar de 1 km²');
+    assert(calls > afterFirst, 'geometria nova foi recalculada');
+  } finally {
+    FeatureGeometryUtils.calculatePolygonArea = orig;
+  }
+  console.log('✔ Cache de métricas geométricas passou');
+}
 
 // ---- Ações em lote -------------------------------------------------------
 function fakeApp() {

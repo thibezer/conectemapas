@@ -66,7 +66,8 @@ export class FeatureRenderer {
   }
 
   renderFeatures(features, layers, forceRebuildIndex = false) {
-    this.allFeatures = features || [];
+    // Cópia própria: guardar a referência de app.features fazia addFeature() inserir a mesma feição duas vezes no array do app
+    this.allFeatures = features ? features.slice() : [];
     this.featureMap = new Map(this.allFeatures.map(f => [f.id, f]));
     this._syncLayerMap(layers);
 
