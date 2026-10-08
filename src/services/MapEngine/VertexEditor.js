@@ -90,7 +90,7 @@ export class VertexEditor {
 
       dragMarker.on('drag', (e) => {
         let newLL = e.target.getLatLng();
-        if (this.engine.options?.snapping !== false) {
+        if (this.engine.snappingEnabled !== false) {
           const snapped = DrawingSnappingHelper.findNearbyVertex(
             this.map,
             newLL,
@@ -151,7 +151,7 @@ export class VertexEditor {
 
         handle.on('drag', (e) => {
           let newLL = e.target.getLatLng();
-          if (this.engine.options?.snapping !== false) {
+          if (this.engine.snappingEnabled !== false) {
             const otherPts = coords.filter((_, i) => i !== index);
             const snapped = DrawingSnappingHelper.findNearbyVertex(
               this.map,
@@ -299,14 +299,30 @@ export class VertexEditor {
       initialMetric = `• Lat: ${Number(coords[0]).toFixed(5)}, Lng: ${Number(coords[1]).toFixed(5)}`;
     }
 
+    const isSnapActive = !DrawingSnappingHelper.altHeld && (this.engine?.snappingEnabled !== false);
     hud.innerHTML = `
       <span class="cm-cad-hud-pulse" style="background: #00b4d8; box-shadow: 0 0 8px #00b4d8;"></span>
       <span><strong>Editor de Vértices:</strong> ${count} nós</span>
       <span id="cm-vertex-hud-live-metric" class="cm-cad-hud-hint" style="color: #00E08A; font-weight: 600;">${initialMetric}</span>
-      <span class="cm-cad-hud-hint">• Arraste para mover (Snap ativo)</span>
+      <span class="cm-cad-hud-hint">• Arraste para mover</span>
+      <span class="cm-cad-hud-hint">• <strong>[S]</strong> ou <strong>[Alt]</strong> snap</span>
+      <button id="btn-vertex-snap-toggle" class="cm-cad-snap-badge" style="background: ${isSnapActive ? 'rgba(0, 224, 138, 0.18)' : 'rgba(255, 255, 255, 0.08)'}; color: ${isSnapActive ? '#00E08A' : '#888'}; border: 1px solid ${isSnapActive ? '#00E08A' : 'rgba(255, 255, 255, 0.2)'}; border-radius: 12px; padding: 2px 8px; font-size: 11px; cursor: pointer; margin-left: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Clique para alternar snap (tecla S)">🧲 Snap: ${isSnapActive ? 'ON' : 'OFF'} <strong style="font-size: 9px; opacity: 0.85;">[S]</strong></button>
       <span class="cm-cad-hud-hint">• Botão direito no vértice para excluir</span>
       <button id="btn-finish-vertex-edit" class="cm-cad-finish-btn" style="background: #00b4d8; color: #fff;">✔ Concluir (Enter/Esc)</button>
     `;
+
+    const snapBtn = hud.querySelector('#btn-vertex-snap-toggle');
+    if (snapBtn && this.engine) {
+      snapBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof this.engine.toggleSnapping === 'function') {
+          this.engine.toggleSnapping();
+        } else {
+          this.engine.snappingEnabled = !this.engine.snappingEnabled;
+        }
+        this.updateHUD();
+      });
+    }
 
     const btn = hud.querySelector('#btn-finish-vertex-edit');
     if (btn) {

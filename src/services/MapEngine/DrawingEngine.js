@@ -223,10 +223,12 @@ export class DrawingEngine {
         this.snapMarker = L.circleMarker(snapped, {
           radius: 7,
           color: '#00E08A',
-          fillColor: 'transparent',
+          fillColor: '#00E08A',
+          fillOpacity: 0.45,
           weight: 2.5,
-          dashArray: '3, 3',
-          interactive: false
+          dashArray: '3, 2',
+          interactive: false,
+          pane: 'markerPane'
         }).addTo(this.map);
       } else {
         this.snapMarker.setLatLng(snapped);

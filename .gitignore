@@ -46,3 +46,7 @@ Thumbs.db
 # Deployment archives & scripts
 *.zip
 pack.js
+
+# Local data dumps and backups
+*_backup.json
+*.backup.json

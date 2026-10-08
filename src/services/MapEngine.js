@@ -43,6 +43,7 @@ export class MapEngine {
     this.selectedFeatureId = null;
     this.selectedFeatureIds = new Set();
     this._justBoxSelected = false;
+    this.snappingEnabled = true;
 
     // Controle de Exibição de Geometrias Oficiais vs Prévias
     this.showPreviewGeometries = false;
@@ -475,6 +476,23 @@ export class MapEngine {
   resetDrawingState() { this.drawingEngine.resetDrawingState(); }
   finalizeCurrentDrawing() { return this.drawingEngine.finalizeCurrentDrawing(); }
   undoLastVertex() { return this.drawingEngine.undoLastVertex(); }
+  setSnappingEnabled(enabled) {
+    this.snappingEnabled = !!enabled;
+    if (!this.snappingEnabled && this.drawingEngine) {
+      if (this.drawingEngine.snapMarker) {
+        this.map.removeLayer(this.drawingEngine.snapMarker);
+        this.drawingEngine.snapMarker = null;
+      }
+      this.drawingEngine._activeSnapLatLng = null;
+    }
+    if (this.drawingEngine && typeof this.drawingEngine.updateDrawingHUD === 'function') {
+      this.drawingEngine.updateDrawingHUD();
+    }
+    return this.snappingEnabled;
+  }
+  toggleSnapping() {
+    return this.setSnappingEnabled(!this.snappingEnabled);
+  }
   setActiveDrawingLayer(layer) {
     if (this.drawingEngine && typeof this.drawingEngine.setActiveDrawingLayer === 'function') {
       this.drawingEngine.setActiveDrawingLayer(layer);

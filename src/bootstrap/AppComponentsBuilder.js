@@ -171,6 +171,14 @@ export class AppComponentsBuilder {
           ProjectActionsController.locateUser(app);
         } else if (action === 'fit') {
           app.mapEngine.fitAllFeatures();
+        } else if (action === 'snap') {
+          const isEnabled = app.mapEngine.toggleSnapping();
+          UIToast.notificar({
+            tipo: 'info',
+            titulo: isEnabled ? 'Ímã / Snap Ativado' : 'Ímã / Snap Desativado',
+            mensagem: isEnabled ? 'Atração magnética a vértices ligada [S].' : 'Cursor livre de atração magnética [S].',
+            duracao: 1500
+          });
         }
       }
     });

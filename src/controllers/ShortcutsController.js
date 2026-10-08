@@ -175,6 +175,20 @@ export class ShortcutsController {
           t: 'text'
         };
 
+        if (key === 's') {
+          e.preventDefault();
+          if (app.mapEngine) {
+            const isEnabled = app.mapEngine.toggleSnapping();
+            UIToast.notificar({
+              tipo: 'info',
+              titulo: isEnabled ? 'Ímã / Snap Ativado' : 'Ímã / Snap Desativado',
+              mensagem: isEnabled ? 'Atração magnética a vértices ligada [S].' : 'Cursor livre de atração magnética [S].',
+              duracao: 1500
+            });
+          }
+          return;
+        }
+
         if (toolMap[key]) {
           e.preventDefault();
           if (typeof app.setDrawingTool === 'function') {
