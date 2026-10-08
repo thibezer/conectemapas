@@ -16,6 +16,8 @@ export class AppGeometryCoordinator {
       polygon: 'Polígono / Área (A)',
       circle: 'Buffer Circular (C)',
       rectangle: 'Retângulo / BBox (R)',
+      split: 'Divisão de Formas / Faca (K)',
+      eyedropper: 'Conta-gotas de Estilos (I)',
       text: 'Texto / Rótulo no Mapa (T)',
       measure: 'Régua de Medição (M)',
       'measure-line': 'Régua de Medição (M)'

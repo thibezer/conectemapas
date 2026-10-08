@@ -8,6 +8,7 @@ import { AuthService } from '../services/Storage/AuthService.js';
 import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../utils/toastHelpers.js';
 import { MapEngine } from '../services/MapEngine.js';
 import { StorageService } from '../services/StorageService.js';
+import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
 
 import { HeaderBar } from '../components/HeaderBar.js';
 import { DrawingToolbar } from '../components/DrawingToolbar.js';
@@ -162,9 +163,39 @@ export class AppComponentsBuilder {
     });
     app.headerBar.render(document.getElementById('header-mount'));
 
+    const initialLayer = app.layers.find(l => l.id === app.activeLayerId) || app.layers[0];
+
     app.drawingToolbar = new DrawingToolbar({
+      initialTool: 'select',
+      snappingEnabled: app.mapEngine?.snappingEnabled ?? true,
+      initialFillColor: initialLayer?.color || '#00E08A',
+      initialStrokeColor: '#ffffff',
+      initialLayer,
+      getLayers: () => app.layers || [],
+      onSelectLayer: (layerId) => {
+        app.setActiveLayer(layerId);
+      },
       onToolChange: (tool) => {
         app.mapEngine.setTool(tool);
+      },
+      onColorChange: (colors) => {
+        if (app.mapEngine) {
+          app.mapEngine.setActiveDrawingStyles(colors);
+        }
+        const selFeat = app.layerPanel?.selectedFeature;
+        if (selFeat && typeof app.commitFeatureEdit === 'function') {
+          ShortcutsController.pushHistory(app, 'Alterar Cor');
+          app.commitFeatureEdit(selFeat.id, (draft) => {
+            if (!draft.style) draft.style = {};
+            if (colors.fillColor) {
+              draft.style.fillColor = colors.fillColor;
+              draft.color = colors.fillColor;
+            }
+            if (colors.strokeColor) {
+              draft.style.strokeColor = colors.strokeColor;
+            }
+          });
+        }
       },
       onAction: (action) => {
         if (action === 'locate') {
@@ -173,20 +204,199 @@ export class AppComponentsBuilder {
           app.mapEngine.fitAllFeatures();
         } else if (action === 'snap') {
           const isEnabled = app.mapEngine.toggleSnapping();
+          app.drawingToolbar.setSnappingEnabled(isEnabled);
           UIToast.notificar({
             tipo: 'info',
             titulo: isEnabled ? 'Ímã / Snap Ativado' : 'Ímã / Snap Desativado',
             mensagem: isEnabled ? 'Atração magnética a vértices ligada [S].' : 'Cursor livre de atração magnética [S].',
             duracao: 1500
           });
+        } else if (action === 'undo') {
+          if (app.mapEngine && (app.mapEngine.isDrawing || (app.mapEngine.drawingEngine && app.mapEngine.drawingEngine.drawingPoints?.length > 0))) {
+            app.mapEngine.undoLastVertex();
+          } else {
+            ShortcutsController.undo(app);
+          }
+        } else if (action === 'redo') {
+          ShortcutsController.redo(app);
+        } else if (action === 'clear-selection') {
+          if (app.contextMenu) app.contextMenu.close();
+          if (app.mapEngine) app.mapEngine.clearSelection();
+          if (app.layerPanel) {
+            app.layerPanel.selectedFeatureIds.clear();
+            app.layerPanel.selectedFeature = null;
+            app.layerPanel.updateContent();
+          }
+          if (app.selectionHUD) app.selectionHUD.hide();
+          UIToast.notificar({ tipo: 'info', titulo: 'Seleção Limpa', duracao: 1000 });
+        } else if (action === 'delete-feature') {
+          const hudFeats = app.selectionHUD?.selectedFeatures || [];
+          const panelSelectedIds = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
+          if (hudFeats.length > 1) {
+            app.layerPanel?.onBulkDelete?.(hudFeats.map(f => f.id));
+          } else if (panelSelectedIds.length > 1) {
+            app.layerPanel?.onBulkDelete?.(panelSelectedIds);
+          } else {
+            const singleFeat = hudFeats[0] || app.layerPanel?.selectedFeature || (panelSelectedIds.length === 1 ? app.features.find(f => f.id === panelSelectedIds[0]) : null);
+            if (singleFeat && typeof app.deleteFeature === 'function') {
+              app.deleteFeature(singleFeat.id);
+            } else {
+              UIToast.notificar({
+                tipo: 'alerta',
+                titulo: 'Nenhuma Feição Selecionada',
+                mensagem: 'Selecione uma feição para excluir.',
+                duracao: 1500
+              });
+            }
+          }
+        } else if (action === 'join') {
+          const hudFeats = app.selectionHUD?.selectedFeatures || [];
+          const panelSelectedIds = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
+          let selected = hudFeats;
+          if (selected.length < 2 && panelSelectedIds.length >= 2) {
+            selected = panelSelectedIds.map(id => app.features.find(f => f.id === id)).filter(Boolean);
+          }
+
+          if (selected.length < 2) {
+            UIToast.notificar({
+              tipo: 'alerta',
+              titulo: 'Junção de Formas [J]',
+              mensagem: 'Selecione pelo menos 2 feições do mesmo tipo (linhas ou polígonos) para unir.',
+              duracao: 3500
+            });
+            return;
+          }
+
+          const featA = selected[0];
+          const featB = selected[1];
+          const joinRes = SpatialAlgorithms.joinFeatures(featA, featB);
+
+          if (!joinRes.success) {
+            UIToast.notificar({
+              tipo: 'erro',
+              titulo: 'Falha na Junção',
+              mensagem: joinRes.reason || 'Não foi possível unir as feições selecionadas.',
+              duracao: 3500
+            });
+            return;
+          }
+
+          ShortcutsController.pushHistory(app, 'Unir Formas');
+
+          app.features = app.features.filter(f => f.id !== featA.id && f.id !== featB.id);
+          StorageService.deleteFeature(featA.id, app.projectId);
+          StorageService.deleteFeature(featB.id, app.projectId);
+
+          const baseName = featA.name || featB.name || 'Forma Unida';
+          const mergedFeat = {
+            ...JSON.parse(JSON.stringify(featA)),
+            id: 'feat_' + Date.now() + '_joined',
+            name: `${baseName} (União)`,
+            type: joinRes.type || featA.type,
+            coordinates: joinRes.coordinates
+          };
+
+          app.features.push(mergedFeat);
+          StorageService.saveFeature(mergedFeat, app.projectId);
+
+          app.refreshMapAndTable();
+          app.saveMetadata(true);
+
+          if (app.mapEngine) {
+            app.mapEngine.selectFeatures([mergedFeat.id]);
+          }
+
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Junção Realizada [J]',
+            mensagem: `"${featA.name || 'Feição 1'}" e "${featB.name || 'Feição 2'}" foram unidas com sucesso.`,
+            duracao: 3500
+          });
         }
       }
     });
     app.drawingToolbar.render(document.getElementById('drawing-toolbar-mount'));
 
-    const initialLayer = app.layers.find(l => l.id === app.activeLayerId) || app.layers[0];
     if (initialLayer && app.drawingToolbar) {
       app.drawingToolbar.setActiveLayer(initialLayer);
+    }
+
+    // Configura callbacks do MapEngine para snapping, eyedropper e split
+    if (app.mapEngine) {
+      app.mapEngine.onSnappingChange = (enabled) => {
+        if (app.drawingToolbar) app.drawingToolbar.setSnappingEnabled(enabled);
+      };
+
+      app.mapEngine.onEyedropperSampled = (feat) => {
+        const targetLayer = app.layers.find(l => l.id === feat.layerId);
+        const color = feat.style?.fillColor || feat.color || targetLayer?.color || '#00E08A';
+        const stroke = feat.style?.strokeColor || feat.style?.color || feat.color || '#ffffff';
+        
+        if (app.drawingToolbar) {
+          app.drawingToolbar.setColors({ fillColor: color, strokeColor: stroke });
+        }
+        app.mapEngine.setActiveDrawingStyles({ fillColor: color, strokeColor: stroke });
+
+        if (app.layerPanel?.selectedFeature && typeof app.commitFeatureEdit === 'function') {
+          app.commitFeatureEdit(app.layerPanel.selectedFeature.id, (draft) => {
+            if (!draft.style) draft.style = {};
+            draft.style.fillColor = color;
+            draft.style.strokeColor = stroke;
+            draft.color = color;
+          });
+        }
+
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Estilo Copiado [I]',
+          mensagem: `Cores de "${feat.name || 'Feição'}" capturadas com sucesso.`,
+          duracao: 2500
+        });
+      };
+
+      app.mapEngine.onFeatureSplit = (targetFeat, polygons) => {
+        ShortcutsController.pushHistory(app, 'Dividir Polígono');
+        const oldId = targetFeat.id;
+        app.features = app.features.filter(f => f.id !== oldId);
+        StorageService.deleteFeature(oldId, app.projectId);
+
+        const baseName = targetFeat.name || 'Polígono';
+        const featA = {
+          ...JSON.parse(JSON.stringify(targetFeat)),
+          id: 'feat_' + Date.now() + '_a',
+          name: `${baseName} (Parte 1)`,
+          coordinates: polygons[0]
+        };
+        const featB = {
+          ...JSON.parse(JSON.stringify(targetFeat)),
+          id: 'feat_' + (Date.now() + 1) + '_b',
+          name: `${baseName} (Parte 2)`,
+          coordinates: polygons[1]
+        };
+
+        app.features.push(featA, featB);
+        StorageService.saveFeature(featA, app.projectId);
+        StorageService.saveFeature(featB, app.projectId);
+
+        app.refreshMapAndTable();
+        app.saveMetadata(true);
+
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Polígono Dividido [K]',
+          mensagem: `"${baseName}" foi dividido em 2 partes com sucesso.`,
+          duracao: 3500
+        });
+      };
+
+      app.mapEngine.onSplitFailed = (reason) => {
+        UIToast.notificar({
+          tipo: 'alerta',
+          titulo: 'Divisão não realizada',
+          mensagem: reason || 'A linha de corte precisa atravessar o polígono de uma borda a outra.',
+          duracao: 3000
+        });
+      };
     }
 
     app.layerPanel = new LayerPanel({

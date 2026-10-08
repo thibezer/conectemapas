@@ -251,8 +251,11 @@ export class DrawingSnappingHelper {
     let minPts = 2;
     if (activeTool === 'line') { toolName = 'Linha'; minPts = 2; }
     if (activeTool === 'polygon') { toolName = 'Polígono'; minPts = 3; }
+    if (activeTool === 'rectangle') { toolName = 'Retângulo'; minPts = 2; }
+    if (activeTool === 'split') { toolName = 'Divisão / Faca'; minPts = 2; }
     if (activeTool === 'pen-select') { toolName = 'Caneta de Seleção'; minPts = 3; }
     if (activeTool === 'circle') { toolName = 'Círculo'; minPts = 1; }
+    if (activeTool === 'eyedropper') { toolName = 'Conta-gotas'; minPts = 1; }
 
     const canFinish = count >= minPts;
 

@@ -251,8 +251,33 @@ export class DrawingEngine {
       this._previewPoints[this._previewPoints.length - 1] = currentLatLng;
     }
 
-    if (this.activeTool === 'line' || this.activeTool === 'pen-select' || this.activeTool === 'polygon') {
+    if (this.activeTool === 'line' || this.activeTool === 'pen-select' || this.activeTool === 'polygon' || this.activeTool === 'split') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
+    } else if (this.activeTool === 'rectangle') {
+      const p1 = this.drawingPoints[0];
+      const p2 = currentLatLng;
+      const minLat = Math.min(p1[0], p2[0]);
+      const maxLat = Math.max(p1[0], p2[0]);
+      const minLng = Math.min(p1[1], p2[1]);
+      const maxLng = Math.max(p1[1], p2[1]);
+      const rectCoords = [
+        [maxLat, minLng],
+        [maxLat, maxLng],
+        [minLat, maxLng],
+        [minLat, minLng]
+      ];
+      if (!this.tempLayer) {
+        const color = this.activeDrawingLayer?.color || '#00E08A';
+        this.tempLayer = L.polygon(rectCoords, {
+          color,
+          fillColor: color,
+          fillOpacity: 0.35,
+          weight: 2,
+          dashArray: '4, 4'
+        }).addTo(this.map);
+      } else {
+        this.tempLayer.setLatLngs(rectCoords);
+      }
     } else if (this.activeTool === 'measure') {
       if (this.tempLayer) this.tempLayer.setLatLngs(this._previewPoints);
       this.updateMeasureTooltip(e.latlng, currentLatLng);

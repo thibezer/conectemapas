@@ -488,6 +488,9 @@ export class MapEngine {
     if (this.drawingEngine && typeof this.drawingEngine.updateDrawingHUD === 'function') {
       this.drawingEngine.updateDrawingHUD();
     }
+    if (typeof this.onSnappingChange === 'function') {
+      this.onSnappingChange(this.snappingEnabled);
+    }
     return this.snappingEnabled;
   }
   toggleSnapping() {
@@ -497,6 +500,58 @@ export class MapEngine {
     if (this.drawingEngine && typeof this.drawingEngine.setActiveDrawingLayer === 'function') {
       this.drawingEngine.setActiveDrawingLayer(layer);
     }
+  }
+
+  setActiveDrawingStyles(styles) {
+    this.activeDrawingStyles = { ...(this.activeDrawingStyles || {}), ...styles };
+  }
+
+  onSplitRequested(lineCoords) {
+    this.splitFeatureWithLine(lineCoords);
+  }
+
+  splitFeatureWithLine(lineCoords) {
+    if (!lineCoords || lineCoords.length < 2) return null;
+
+    const allFeatures = this.featureRenderer?.allFeatures || [];
+    let targetFeat = null;
+
+    // Se houver feição selecionada poligonal, prioriza ela
+    if (this.selectedFeatureId) {
+      targetFeat = allFeatures.find(f => f.id === this.selectedFeatureId && f.type === 'Polygon');
+    }
+
+    if (!targetFeat) {
+      for (const f of allFeatures) {
+        if (f.type === 'Polygon' && Array.isArray(f.coordinates)) {
+          const res = SpatialAlgorithms.splitPolygonWithLine(f.coordinates, lineCoords);
+          if (res.success) {
+            targetFeat = f;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!targetFeat) {
+      if (typeof this.onSplitFailed === 'function') {
+        this.onSplitFailed('Nenhum polígono encontrado sob a linha de corte ou a linha não cruzou de uma borda a outra.');
+      }
+      return null;
+    }
+
+    const splitRes = SpatialAlgorithms.splitPolygonWithLine(targetFeat.coordinates, lineCoords);
+    if (!splitRes.success) {
+      if (typeof this.onSplitFailed === 'function') {
+        this.onSplitFailed(splitRes.reason);
+      }
+      return null;
+    }
+
+    if (typeof this.onFeatureSplit === 'function') {
+      this.onFeatureSplit(targetFeat, splitRes.polygons, lineCoords);
+    }
+    return { targetFeature: targetFeat, polygons: splitRes.polygons };
   }
 
   // --- Delegação de Renderização & Estilos Granulares ---

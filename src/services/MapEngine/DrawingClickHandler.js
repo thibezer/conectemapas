@@ -17,6 +17,17 @@ export class DrawingClickHandler {
     const activeColor = ctx.activeDrawingLayer?.color || '#00E08A';
     const activeLayerId = ctx.activeDrawingLayer?.id;
 
+    if (ctx.activeTool === 'eyedropper') {
+      const hitResult = ctx.engine.hitTester?.hitTest(e.latlng) || ctx.engine.hitTester?.hitTestAll(e.latlng)?.[0];
+      const feat = hitResult?.feat || hitResult;
+      ctx.resetDrawingState();
+      ctx.setTool('select');
+      if (feat && typeof ctx.engine.onEyedropperSampled === 'function') {
+        ctx.engine.onEyedropperSampled(feat, latlng);
+      }
+      return;
+    }
+
     if (ctx.activeTool === 'text') {
       if (ctx.engine && typeof ctx.engine.onTextPromptRequested === 'function') {
         ctx.engine.onTextPromptRequested(latlng);
@@ -124,6 +135,59 @@ export class DrawingClickHandler {
           layerId: activeLayerId,
           color: activeColor
         });
+      }
+      return;
+    }
+
+    if (ctx.activeTool === 'rectangle') {
+      if (ctx.drawingPoints.length === 0) {
+        ctx.drawingPoints.push(latlng);
+        ctx._previewPoints = [latlng, latlng];
+        ctx.renderVertexHandles();
+        ctx.updateDrawingHUD();
+      } else {
+        const p1 = ctx.drawingPoints[0];
+        const p2 = latlng;
+        const minLat = Math.min(p1[0], p2[0]);
+        const maxLat = Math.max(p1[0], p2[0]);
+        const minLng = Math.min(p1[1], p2[1]);
+        const maxLng = Math.max(p1[1], p2[1]);
+        const polyCoords = [
+          [maxLat, minLng],
+          [maxLat, maxLng],
+          [minLat, maxLng],
+          [minLat, minLng]
+        ];
+        ctx.resetDrawingState();
+        ctx.setTool('select');
+        ctx.engine.onFeatureCreated({
+          type: 'Polygon',
+          coordinates: polyCoords,
+          layerId: activeLayerId,
+          color: activeColor,
+          style: ctx.engine.activeDrawingStyles ? { ...ctx.engine.activeDrawingStyles } : undefined
+        });
+      }
+      return;
+    }
+
+    if (ctx.activeTool === 'split') {
+      ctx.drawingPoints.push(latlng);
+      ctx._previewPoints = [...ctx.drawingPoints, latlng];
+      ctx.renderVertexHandles();
+      if (!ctx.tempLayer) {
+        ctx.tempLayer = L.polyline(ctx.drawingPoints, {
+          color: '#ff4444',
+          weight: 3,
+          dashArray: '5, 5'
+        }).addTo(ctx.map);
+      } else {
+        ctx.tempLayer.setLatLngs(ctx.drawingPoints);
+      }
+      ctx.updateDrawingHUD();
+
+      if (ctx.drawingPoints.length >= 2) {
+        ctx.finalizeCurrentDrawing();
       }
       return;
     }

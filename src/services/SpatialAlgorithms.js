@@ -539,5 +539,303 @@ export class SpatialAlgorithms {
 
     return false;
   }
+
+  /**
+   * Divide uma geometria poligonal em duas partes através de uma linha de corte (Split / Faca)
+   * @param {Array<[number, number]>} polyCoords Coordenadas do anel externo do polígono [lat, lng]
+   * @param {Array<[number, number]>} lineCoords Coordenadas da linha de corte [lat, lng]
+   * @returns {{ success: boolean, polygons?: Array<Array<[number, number]>>, reason?: string }}
+   */
+  static splitPolygonWithLine(polyCoords, lineCoords) {
+    if (!Array.isArray(polyCoords) || polyCoords.length < 3) {
+      return { success: false, reason: 'Polígono inválido para divisão.' };
+    }
+    if (!Array.isArray(lineCoords) || lineCoords.length < 2) {
+      return { success: false, reason: 'A linha de corte precisa conter pelo menos 2 pontos.' };
+    }
+
+    // Normaliza polígono (remove duplicata final se houver)
+    const ring = polyCoords.map(p => Array.isArray(p) ? [p[0], p[1]] : [p.lat, p.lng]);
+    if (ring.length > 3 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]) {
+      ring.pop();
+    }
+    if (ring.length < 3) {
+      return { success: false, reason: 'Polígono com menos de 3 vértices válidos.' };
+    }
+
+    const n = ring.length;
+    const intersections = [];
+
+    // Interseção entre segmento P1P2 e segmento L1L2
+    const getSegIntersection = (p1, p2, l1, l2) => {
+      const x1 = p1[1], y1 = p1[0]; // lng, lat
+      const x2 = p2[1], y2 = p2[0];
+      const x3 = l1[1], y3 = l1[0];
+      const x4 = l2[1], y4 = l2[0];
+
+      const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+      if (Math.abs(denom) < 1e-12) return null;
+
+      const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+      const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+      if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+        return {
+          point: [y1 + t * (y2 - y1), x1 + t * (x2 - x1)],
+          t
+        };
+      }
+      return null;
+    };
+
+    // Percorre cada aresta do polígono e verifica interseções com a linha de corte
+    for (let i = 0; i < n; i++) {
+      const p1 = ring[i];
+      const p2 = ring[(i + 1) % n];
+
+      for (let j = 0; j < lineCoords.length - 1; j++) {
+        const l1 = lineCoords[j];
+        const l2 = lineCoords[j + 1];
+
+        const inter = getSegIntersection(p1, p2, l1, l2);
+        if (inter) {
+          intersections.push({
+            edgeIndex: i,
+            point: inter.point,
+            t: inter.t,
+            lineSegIndex: j
+          });
+        }
+      }
+    }
+
+    if (intersections.length < 2) {
+      return { 
+        success: false, 
+        reason: 'A linha de corte precisa cruzar o polígono de uma borda a outra (mínimo de 2 interseções).' 
+      };
+    }
+
+    // Ordena interseções pela primeira ocorrência na aresta
+    intersections.sort((a, b) => a.edgeIndex - b.edgeIndex || a.t - b.t);
+
+    const int1 = intersections[0];
+    const int2 = intersections[intersections.length - 1];
+
+    if (int1.edgeIndex === int2.edgeIndex && Math.abs(int1.t - int2.t) < 1e-5) {
+      return { success: false, reason: 'Interseções idênticas na mesma aresta.' };
+    }
+
+    // Monta o Polígono 1: int1 -> vértices entre edgeIndex1 e edgeIndex2 -> int2 -> int1
+    const poly1 = [int1.point];
+    let curr = (int1.edgeIndex + 1) % n;
+    while (curr !== (int2.edgeIndex + 1) % n) {
+      poly1.push(ring[curr]);
+      curr = (curr + 1) % n;
+    }
+    poly1.push(int2.point);
+
+    // Monta o Polígono 2: int2 -> vértices de edgeIndex2 até edgeIndex1 -> int1 -> int2
+    const poly2 = [int2.point];
+    curr = (int2.edgeIndex + 1) % n;
+    while (curr !== (int1.edgeIndex + 1) % n) {
+      poly2.push(ring[curr]);
+      curr = (curr + 1) % n;
+    }
+    poly2.push(int1.point);
+
+    const cleanRing = (pRing) => {
+      const res = [];
+      for (let i = 0; i < pRing.length; i++) {
+        const pt = pRing[i];
+        if (res.length === 0 || 
+            Math.abs(res[res.length - 1][0] - pt[0]) > 1e-7 || 
+            Math.abs(res[res.length - 1][1] - pt[1]) > 1e-7) {
+          res.push(pt);
+        }
+      }
+      return res;
+    };
+
+    const finalPoly1 = cleanRing(poly1);
+    const finalPoly2 = cleanRing(poly2);
+
+    if (finalPoly1.length < 3 || finalPoly2.length < 3) {
+      return { success: false, reason: 'A divisão gerou polígonos degenerados.' };
+    }
+
+    return {
+      success: true,
+      polygons: [finalPoly1, finalPoly2]
+    };
+  }
+
+  /**
+   * Une duas linhas (LineString) conectando as pontas mais próximas
+   * @param {Array<[number, number]>} coordsA
+   * @param {Array<[number, number]>} coordsB
+   * @returns {{ success: boolean, coordinates?: Array<[number, number]>, reason?: string }}
+   */
+  static joinLines(coordsA, coordsB) {
+    if (!Array.isArray(coordsA) || coordsA.length < 2 || !Array.isArray(coordsB) || coordsB.length < 2) {
+      return { success: false, reason: 'Linhas inválidas para junção.' };
+    }
+
+    const norm = (arr) => arr.map(p => Array.isArray(p) ? [p[0], p[1]] : [p.lat, p.lng]);
+    const a = norm(coordsA);
+    const b = norm(coordsB);
+
+    const startA = a[0];
+    const endA = a[a.length - 1];
+    const startB = b[0];
+    const endB = b[b.length - 1];
+
+    const d1 = this.pointDistance(endA, startB); // A -> B
+    const d2 = this.pointDistance(endA, endB);   // A -> reverse(B)
+    const d3 = this.pointDistance(startA, endB); // B -> A
+    const d4 = this.pointDistance(startA, startB); // reverse(A) -> B
+
+    const minD = Math.min(d1, d2, d3, d4);
+    let result = [];
+
+    if (minD === d1) {
+      result = [...a, ...b];
+    } else if (minD === d2) {
+      result = [...a, ...[...b].reverse()];
+    } else if (minD === d3) {
+      result = [...b, ...a];
+    } else {
+      result = [...[...a].reverse(), ...b];
+    }
+
+    const cleaned = [];
+    for (const pt of result) {
+      if (cleaned.length === 0 || this.pointDistance(cleaned[cleaned.length - 1], pt) > 0.05) {
+        cleaned.push(pt);
+      }
+    }
+
+    return {
+      success: true,
+      coordinates: cleaned
+    };
+  }
+
+  /**
+   * Une dois polígonos em um polígono único (ou MultiPolígono se desconexos)
+   * @param {Array<[number, number]>} polyA
+   * @param {Array<[number, number]>} polyB
+   * @returns {{ success: boolean, type: string, coordinates: Array, reason?: string }}
+   */
+  static joinPolygons(polyA, polyB) {
+    if (!Array.isArray(polyA) || polyA.length < 3 || !Array.isArray(polyB) || polyB.length < 3) {
+      return { success: false, reason: 'Polígonos inválidos para junção.' };
+    }
+
+    const norm = (ring) => {
+      const res = ring.map(p => Array.isArray(p) ? [p[0], p[1]] : [p.lat, p.lng]);
+      if (res.length > 3 && res[0][0] === res[res.length - 1][0] && res[0][1] === res[res.length - 1][1]) {
+        res.pop();
+      }
+      return res;
+    };
+
+    const rA = norm(polyA);
+    const rB = norm(polyB);
+
+    let sharedEdge = null;
+    const TOL = 0.5; // tolerância em metros
+
+    for (let i = 0; i < rA.length; i++) {
+      const a1 = rA[i];
+      const a2 = rA[(i + 1) % rA.length];
+
+      for (let j = 0; j < rB.length; j++) {
+        const b1 = rB[j];
+        const b2 = rB[(j + 1) % rB.length];
+
+        if (this.pointDistance(a1, b2) <= TOL && this.pointDistance(a2, b1) <= TOL) {
+          sharedEdge = { idxA: i, idxB: j, sameDir: false };
+          break;
+        }
+        if (this.pointDistance(a1, b1) <= TOL && this.pointDistance(a2, b2) <= TOL) {
+          sharedEdge = { idxA: i, idxB: j, sameDir: true };
+          break;
+        }
+      }
+      if (sharedEdge) break;
+    }
+
+    if (sharedEdge) {
+      const nA = rA.length;
+      const nB = rB.length;
+      const merged = [];
+
+      for (let k = 0; k < nA - 1; k++) {
+        const idx = (sharedEdge.idxA + 1 + k) % nA;
+        merged.push(rA[idx]);
+      }
+
+      if (sharedEdge.sameDir) {
+        for (let k = 0; k < nB - 1; k++) {
+          const idx = (sharedEdge.idxB + nB - k) % nB;
+          merged.push(rB[idx]);
+        }
+      } else {
+        for (let k = 0; k < nB - 1; k++) {
+          const idx = (sharedEdge.idxB + 1 + k) % nB;
+          merged.push(rB[idx]);
+        }
+      }
+
+      const cleaned = [];
+      for (const pt of merged) {
+        if (cleaned.length === 0 || this.pointDistance(cleaned[cleaned.length - 1], pt) > 0.05) {
+          cleaned.push(pt);
+        }
+      }
+
+      if (cleaned.length >= 3) {
+        return {
+          success: true,
+          type: 'Polygon',
+          coordinates: cleaned
+        };
+      }
+    }
+
+    return {
+      success: true,
+      type: 'MultiPolygon',
+      coordinates: [rA, rB]
+    };
+  }
+
+  /**
+   * Une duas feições (sejam linhas ou polígonos)
+   * @param {Object} featA
+   * @param {Object} featB
+   * @returns {{ success: boolean, type?: string, coordinates?: any, reason?: string }}
+   */
+  static joinFeatures(featA, featB) {
+    if (!featA || !featB) {
+      return { success: false, reason: 'Duas feições são necessárias para a junção.' };
+    }
+
+    if (featA.type === 'LineString' && featB.type === 'LineString') {
+      const res = this.joinLines(featA.coordinates, featB.coordinates);
+      return { ...res, type: 'LineString' };
+    }
+
+    if (featA.type === 'Polygon' && featB.type === 'Polygon') {
+      return this.joinPolygons(featA.coordinates, featB.coordinates);
+    }
+
+    return {
+      success: false,
+      reason: 'As feições devem ser do mesmo tipo (ambas Linhas ou ambos Polígonos) para junção.'
+    };
+  }
 }
+
 

@@ -171,14 +171,35 @@ export class ShortcutsController {
           a: 'polygon',
           c: 'circle',
           r: 'rectangle',
-          m: 'measure-line',
-          t: 'text'
+          m: 'measure',
+          t: 'text',
+          i: 'eyedropper',
+          k: 'split'
         };
+
+        if (key === 'x') {
+          e.preventDefault();
+          if (app.drawingToolbar && typeof app.drawingToolbar.swapColors === 'function') {
+            app.drawingToolbar.swapColors();
+          }
+          return;
+        }
+
+        if (key === 'd') {
+          e.preventDefault();
+          if (app.drawingToolbar && typeof app.drawingToolbar.resetDefaultColors === 'function') {
+            app.drawingToolbar.resetDefaultColors();
+          }
+          return;
+        }
 
         if (key === 's') {
           e.preventDefault();
           if (app.mapEngine) {
             const isEnabled = app.mapEngine.toggleSnapping();
+            if (app.drawingToolbar) {
+              app.drawingToolbar.setSnappingEnabled(isEnabled);
+            }
             UIToast.notificar({
               tipo: 'info',
               titulo: isEnabled ? 'Ímã / Snap Ativado' : 'Ímã / Snap Desativado',
@@ -189,15 +210,23 @@ export class ShortcutsController {
           return;
         }
 
+        if (key === 'j') {
+          e.preventDefault();
+          if (app.drawingToolbar && typeof app.drawingToolbar.onAction === 'function') {
+            app.drawingToolbar.onAction('join');
+          }
+          return;
+        }
+
         if (toolMap[key]) {
           e.preventDefault();
           if (typeof app.setDrawingTool === 'function') {
             app.setDrawingTool(toolMap[key]);
           }
-        } else if (e.key === 'j' || e.key === 'ArrowDown') {
+        } else if (e.key === 'ArrowDown') {
           e.preventDefault();
           this.navigateFeature(app, 1);
-        } else if (e.key === 'k' || e.key === 'ArrowUp') {
+        } else if (e.key === 'ArrowUp') {
           e.preventDefault();
           this.navigateFeature(app, -1);
         } else if (e.key === 'Escape') {

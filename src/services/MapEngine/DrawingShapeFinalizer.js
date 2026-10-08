@@ -64,6 +64,43 @@ export class DrawingShapeFinalizer {
       return true;
     }
 
+    if (activeTool === 'rectangle' && drawingPoints.length >= 2) {
+      const p1 = drawingPoints[0];
+      const p2 = drawingPoints[1];
+      const minLat = Math.min(p1[0], p2[0]);
+      const maxLat = Math.max(p1[0], p2[0]);
+      const minLng = Math.min(p1[1], p2[1]);
+      const maxLng = Math.max(p1[1], p2[1]);
+      const polyCoords = [
+        [maxLat, minLng],
+        [maxLat, maxLng],
+        [minLat, maxLng],
+        [minLat, minLng]
+      ];
+      ctx.resetDrawingState();
+      ctx.setTool('select');
+
+      engine.onFeatureCreated({
+        type: 'Polygon',
+        coordinates: polyCoords,
+        layerId,
+        color,
+        style: engine.activeDrawingStyles ? { ...engine.activeDrawingStyles } : undefined
+      });
+      return true;
+    }
+
+    if (activeTool === 'split' && drawingPoints.length >= 2) {
+      const lineCoords = [...drawingPoints];
+      ctx.resetDrawingState();
+      ctx.setTool('select');
+
+      if (typeof engine.onSplitRequested === 'function') {
+        engine.onSplitRequested(lineCoords);
+      }
+      return true;
+    }
+
     if (activeTool === 'circle' && drawingPoints.length >= 1 && lastCircleRadius && lastCircleRadius >= 2) {
       const center = drawingPoints[0];
       const radius = Math.round(lastCircleRadius);
