@@ -245,6 +245,7 @@ export class LayerPanel {
     const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
     if (uiCamadas && typeof uiCamadas.selecionarFeicoes === 'function') {
       uiCamadas.selecionarFeicoes(Array.from(this.selectedFeatureIds), false);
+      uiCamadas.lastClickedFeatureId = featId;
     }
 
     if (this.activeTab === 'inspector' || switchTab || this.isFloating) {
@@ -274,6 +275,7 @@ export class LayerPanel {
     const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
     if (uiCamadas && typeof uiCamadas.selecionarFeicoes === 'function') {
       uiCamadas.selecionarFeicoes(Array.from(this.selectedFeatureIds), false);
+      uiCamadas.lastClickedFeatureId = newIds.length > 0 ? newIds[newIds.length - 1] : null;
     }
 
     if (this.activeTab === 'inspector' || switchTab || this.isFloating) {

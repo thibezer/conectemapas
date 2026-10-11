@@ -6,7 +6,7 @@
 import { UIToast } from '@thibezer/ui-components-kit';
 import { AuthService } from '../services/Storage/AuthService.js';
 import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../utils/toastHelpers.js';
-import { MapEngine } from '../services/MapEngine.js';
+import { CanvasMapEngine } from '../services/CanvasMapEngine.js';
 import { StorageService } from '../services/StorageService.js';
 import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
 import { BatchActions } from '../services/BatchActions.js';
@@ -159,7 +159,7 @@ export class AppComponentsBuilder {
       app.mapEngine = null;
     }
 
-    app.mapEngine = new MapEngine('map-viewport', {
+    app.mapEngine = new CanvasMapEngine('map-viewport', {
       center: [-23.7661, -53.3206],
       zoom: 14,
       initialBasemap: app.currentBasemap,
@@ -385,7 +385,7 @@ export class AppComponentsBuilder {
       app.mapEngine.setActiveDrawingStyles(app.drawingToolbar.getColors());
     }
 
-    // Configura callbacks do MapEngine para snapping, eyedropper e split
+    // Configura callbacks do CanvasMapEngine para snapping, eyedropper e split
     if (app.mapEngine) {
       app.mapEngine.onSnappingChange = (enabled) => {
         if (app.drawingToolbar) app.drawingToolbar.setSnappingEnabled(enabled);

@@ -15,26 +15,14 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 
 ---
 
-## 2. Ciclo de Ferramentas CAD e Desenho Vetorial (MapEngine)
-- **Ordem de Limpeza vs Renderização**:
-  - Ao finalizar qualquer forma com <kbd>Enter</kbd>, <kbd>Espaço</kbd>, duplo clique ou botão *"Concluir"*:
-    1. Limpar buffers e camadas temporárias primeiro (`resetDrawingState()`).
-    2. Retornar a ferramenta ativa para `'select'`.
-    3. Só então invocar o callback `onFeatureCreated(feature)`.
-  - Isso evita condições de corrida (*race condition*) onde a limpeza tardia apagava a feição definitiva recém-renderizada.
-- **Visibilidade de Camadas**:
-  - Grupos de camadas (`L.featureGroup`) devem ser anexados ao mapa quando `layer.visible !== false`.
-- **Hierarquia de Empilhamento e Sub-Panes GIS (`GeometryLayerBuilder`)**:
-  - Cada camada do projeto aloca 4 sub-panes distintas com z-index crescente: `poly` (base), `line` (+2), `point` (+4) e `text` (+6).
-  - Isso garante que polígonos nunca sobreponham ou engulam pontos, linhas e textos nem no Canvas nem no SVG.
-- **Anti-Flickering e Culling Inteligente (`ViewportCullingManager`)**:
-  - Para projetos de até 300 feições, mantém todos os vetores carregados no mapa, eliminando completamente pop-in ou piscadeiras em pan/zoom.
-  - Para projetos grandes (>300), aplica buffer espacial de 75% em torno da viewport.
-  - Feições pontuais selecionadas ou em edição nunca são recolhidas para dentro de bolhas de cluster, permanecendo visíveis e destacadas individualmente.
-- **Sanitização de Coordenadas (`FeatureGeometryUtils`)**:
-  - Coordenadas com `NaN` ou `Infinity` são descartadas defensivamente.
-  - Polígonos exigem mínimo de 3 vértices válidos e linhas mínimo de 2; geometrias degeneradas são rejeitadas antes de instanciar camadas Leaflet.
-
+## 2. Ferramentas CAD e Mapa (`CanvasMapEngine` + `<ui-canvas-cad>`)
+- O motor antigo (`MapEngine`, `DrawingEngine`, `FeatureRenderer`...) foi removido. Renderização, culling/clusters, hit-test, seleção, popup, snap, edição de vértices, ferramentas de desenho, medição, divisão e conta-gotas pertencem ao componente; o `CanvasMapEngine` só traduz feições do app e eventos `cad-*` em callbacks.
+- **Ordem ao concluir uma forma** (`cad-feicao-criada`, medição, divisão, conta-gotas, laço): primeiro limpar a ferramenta e voltar para `'select'`, só então chamar `onFeatureCreated`/`onFeatureSplit`/`onEyedropperSampled`. Quem escuta a seleção precisa ver o mapa sem ferramenta ativa (o HUD de seleção some enquanto se desenha).
+- **O componente não grava nada**: a feição que ele cria é removida dele e entregue ao app, que define id, nome, modal e persistência; o estado volta ao componente por `renderFeatures`/`addFeature`.
+- **Seleção múltipla**: `onFeatureSelected` só com no máximo 1 feição; `onFeaturesSelected` sempre. Sincronização do `<ui-camadas>`: ao definir seleções, atualizar `uiCamadas.lastClickedFeatureId` (âncora do <kbd>Shift</kbd>) e resolver as feições a partir de `panel.features` filtrando por `newIds`.
+- **Sincronização incremental**: `renderFeatures` só envia o que mudou (referência da feição, cor/bloqueio da camada, vínculo oficial × prévia); cada operação incremental do componente é O(N) na camada, por isso acima de 20 mudanças a camada é redefinida por inteiro.
+- **Sanitização de coordenadas** (`FeatureGeometryUtils.normalizeCoordinates` + normalização do componente): `NaN`/`Infinity` e geometrias degeneradas (polígono < 3 vértices, linha < 2) são descartados antes de chegar ao mapa. O componente também recusa (0, 0) exato.
+- **Atalhos**: o app trata a tecla <kbd>S</kbd> (o `CanvasMapEngine` chama `definirAtalhoSnap(false)`); <kbd>Enter</kbd>, <kbd>Esc</kbd>, <kbd>Backspace</kbd>/<kbd>Ctrl+Z</kbd> durante o desenho são do componente, e o app ignora Delete/Backspace enquanto `mapEngine.isDrawing`.
 ---
 
 ## 3. Gestão de Teclas e Atalhos de Teclado
@@ -89,7 +77,7 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
   - O Vite copia integralmente o conteúdo da pasta `public/` para a raiz de `dist/`.
   - **NUNCA** versionar `public/index.html` ou pastas `public/assets/`. O entrypoint do Vite é exclusivamente o `index.html` da raiz do repositório.
 - **Resiliência do Banco de Dados no Deploy (`api.php`)**:
-  - `db_config.php` é ignorado no Git (`.gitignore`). O backend `api.php` deve conter fallback automático para variáveis de ambiente e parâmetros padrão do banco MySQL da Hostinger, impedindo que novas publicações quebrem o backend.
+  - `db_config.php` é ignorado no Git (`.gitignore`). O backend `api.php` carrega `db_config.php` ou lê variáveis de ambiente / `.env` automaticamente (`loadEnvFileIfNeeded`). Senhas de produção nunca devem ser versionadas em código-fonte aberto, mantendo-se estritamente em `db_config.php` ou `.env`.
 
 
 ---
@@ -100,7 +88,7 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **Edição pelo inspetor**: sempre via `panel.commitFeatureEdit(id, mutate)`, que parte da versão mais recente em `app.features` (nunca da cópia exibida), preservando alterações de colaboradores.
 - **Bloqueio**: feição com `locked: true` não é excluída (atalho, HUD, lote, inspetor) nem editada; somente o próprio bloqueio pode ser alterado.
 - **Campos sem coluna na API** (`description`, `category`, `locked`, `status`, `customAttributes`) viajam em `properties._cm` (`packFeatureForCloud`/`unpackFeatureFromCloud`); nunca exibir chaves iniciadas por `_`.
-- **Contrato de métodos**: ao modularizar, conferir que todo método chamado por `MapEngine`/`LayerPanel` continua existindo (os testes usam mocks e não detectam a ausência).
+- **Contrato de métodos**: ao modularizar, conferir que todo método chamado por `CanvasMapEngine`/`LayerPanel` continua existindo (os testes usam mocks e não detectam a ausência).
 
 ---
 
@@ -116,3 +104,12 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **`npm run dev` (localhost) não fala com a Hostinger**: `CLOUD_API_URL` fica vazio e `cloudFetch` falha na hora (como offline); só IndexedDB/localStorage são usados e o chip mostra "Modo local de testes". Nenhum fetch à nuvem deve ser feito sem passar por `cloudFetch`.
 - **Backend alternativo (staging/local)**: defina `VITE_CLOUD_API_URL` em `.env.local` (ignorado pelo Git). Em produção (hospedagem) o app usa `./api.php` da própria origem.
 - **Testes nunca tocam produção**: testes em Node usam o host reservado `.invalid`. Os testes de integração que escrevem no backend (`test_cloud*`, `test_single_upsert`, `test_full_realtime_cycle`, `test_check_layers`, `test_query_feat`) são opt-in e exigem `CM_TEST_API_URL` apontando para um backend de TESTES; URLs de produção são recusadas (`tests/_cloud_target.js`). `test_cloud_isolation.js` falha se a URL de produção aparecer em `src/` ou `tests/`.
+
+---
+
+## 9. Mapa hospedado no `<ui-canvas-cad>`
+- O `L.map` pertence ao `<ui-canvas-cad>` (`CanvasHost.mount`); o `CanvasMapEngine` só traduz o app para ele. Nunca chamar `map.remove()` no mapa hospedado: o componente o destrói (`CanvasHost.dispose`).
+- O componente usa Shadow DOM: o CSS do documento é espelhado no shadow root (`CanvasHost._mirrorDocumentStyles`). Seletores e consultas ao DOM do mapa devem partir de `map.getContainer()`, não de `document`.
+- Padrões do componente desligados no `CanvasHost`: camadas padrão (satélite Google, WMS SIGEF/INCRA — que consulta o INCRA a cada clique), painel/barra do kit. Pan com a roda, caixa Window/Crossing, snap e menu de contexto do componente ficam ligados.
+- O kit instalado é uma build local do repositório do usuário (D:/Desenvolvimento/UI_Componentes) enquanto não for publicado.
+- Histórico: o que o motor antigo fazia e o mapa de migração estão em `docs/MAPENGINE_INVENTARIO.md`.

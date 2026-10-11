@@ -384,20 +384,11 @@ export class ContextMenu {
           };
           this.app.newFeatureModal ? this.app.newFeatureModal.openWithFeature(newCircle) : null;
         } else if (action === 'start-line-here' && latlng) {
-          this.app.mapEngine.setTool('line');
-          if (this.app.mapEngine.drawingEngine) {
-            this.app.mapEngine.drawingEngine.handleClick({ latlng });
-          }
+          this.app.mapEngine.startTool('line', latlng);
         } else if (action === 'start-polygon-here' && latlng) {
-          this.app.mapEngine.setTool('polygon');
-          if (this.app.mapEngine.drawingEngine) {
-            this.app.mapEngine.drawingEngine.handleClick({ latlng });
-          }
+          this.app.mapEngine.startTool('polygon', latlng);
         } else if (action === 'measure-from-here' && latlng) {
-          this.app.mapEngine.setTool('measure');
-          if (this.app.mapEngine.drawingEngine) {
-            this.app.mapEngine.drawingEngine.handleClick({ latlng });
-          }
+          this.app.mapEngine.startTool('measure', latlng);
         } else if (action === 'fit-all') {
           this.app.mapEngine.fitAllFeatures();
         } else if (action === 'clear-selection') {

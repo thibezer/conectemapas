@@ -38,7 +38,15 @@ export class LayerTreeTab {
       if (typeof el.selecionarFeicoes === 'function') {
         el.selecionarFeicoes(Array.from(panel.selectedFeatureIds), false);
       }
+      el.lastClickedFeatureId = Array.from(panel.selectedFeatureIds)[0];
     }
+
+    // Garante âncora para seleção com Shift mesmo se o clique anterior ocorreu fora do componente
+    el.addEventListener('click', (e) => {
+      if (e.shiftKey && !el.lastClickedFeatureId && el.selectedFeatureIds && el.selectedFeatureIds.size > 0) {
+        el.lastClickedFeatureId = Array.from(el.selectedFeatureIds)[0];
+      }
+    }, true);
 
     // Flag de reentrância para isolar callbacks de loops de eco
     let _isSyncing = false;
@@ -142,16 +150,22 @@ export class LayerTreeTab {
       try {
         panel.selectedFeatureIds.clear();
         newIds.forEach(id => panel.selectedFeatureIds.add(id));
-        if (feicoes && feicoes.length === 1) {
-          panel.selectedFeature = feicoes[0];
+
+        // Resolve os objetos reais de feição a partir do catálogo do painel
+        const resolvedFeatures = newIds
+          .map(id => panel.features.find(f => f.id === id))
+          .filter(Boolean);
+
+        if (resolvedFeatures.length === 1) {
+          panel.selectedFeature = resolvedFeatures[0];
         } else {
           panel.selectedFeature = null;
         }
 
         if (typeof panel.onFeaturesSelect === 'function') {
-          panel.onFeaturesSelect(feicoes || []);
+          panel.onFeaturesSelect(resolvedFeatures);
         } else if (typeof panel.onFeatureSelect === 'function') {
-          panel.onFeatureSelect(feicoes?.[0] || null);
+          panel.onFeatureSelect(resolvedFeatures[0] || null);
         }
       } finally {
         _isSyncing = false;
