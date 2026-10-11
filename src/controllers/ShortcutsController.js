@@ -248,6 +248,8 @@ export class ShortcutsController {
             app.layerPanel.updateContent();
           }
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          // Com uma figura em andamento, Backspace desfaz o último vértice (tratado pelo mapa)
+          if (app.mapEngine?.isDrawing) return;
           // Exclusão rápida pelo teclado
           const hudFeats = app.selectionHUD?.selectedFeatures || [];
           const panelSelectedIds = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];

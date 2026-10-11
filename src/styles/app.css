@@ -37,6 +37,12 @@
   height: 100%;
   z-index: 1;
   background: #111114;
+
+  /* <ui-canvas-cad>: remove moldura/sombra/altura fixa do :host do kit */
+  display: block;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* Leaflet Dark Customizations */

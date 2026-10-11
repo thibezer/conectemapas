@@ -101,7 +101,7 @@ export class FeatureSyncController {
     }
     app.features.push(newFeature);
 
-    // 4. MapEngine (adiciona com suporte a culling espacial e z-index de pane)
+    // 4. CanvasMapEngine (o componente cuida de culling espacial e z-index das camadas)
     if (app.mapEngine) {
       app.mapEngine.addFeature(newFeature, app.layers);
     }
