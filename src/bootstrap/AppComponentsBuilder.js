@@ -56,11 +56,17 @@ export class AppComponentsBuilder {
         } else {
           draft.style.fillColor = colors.fillColor;
         }
-        draft.color = colors.fillColor;
+        if (colors.fillColor && colors.fillColor !== 'none' && colors.fillColor !== 'transparent') {
+          draft.color = colors.fillColor;
+          draft.style._lastFillColor = colors.fillColor;
+        }
       }
       if (changed.includes('strokeColor') && draft.type !== 'Text') {
         draft.style.strokeColor = colors.strokeColor;
-        if (isLine) draft.color = colors.strokeColor;
+        if (colors.strokeColor && colors.strokeColor !== 'none' && colors.strokeColor !== 'transparent') {
+          if (isLine) draft.color = colors.strokeColor;
+          draft.style._lastStrokeColor = colors.strokeColor;
+        }
       }
     };
 

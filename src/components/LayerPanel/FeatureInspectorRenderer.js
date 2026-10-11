@@ -82,6 +82,9 @@ export class FeatureInspectorRenderer {
           </div>
         </div>
 
+        <!-- Painel Rápido de Estilo & Cores CAD -->
+        ${this.renderColorPalette(panel, feat, isLocked)}
+
         <!-- Componente Principal: Paleta de Propriedades AutoCAD / Revit (<ui-tabela-propriedades>) -->
         <div class="cm-properties-panel-wrapper">
           <ui-tabela-propriedades
@@ -179,5 +182,96 @@ export class FeatureInspectorRenderer {
     const m = Math.floor((total % 3600) / 60);
     const s = total % 60;
     return `${d}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
+  }
+
+  static renderColorPalette(panel, feat, isLocked) {
+    const isPoly = feat.type === 'Polygon';
+    const isCircle = feat.type === 'Circle';
+    const isLine = /LineString/.test(feat.type);
+    const isPoint = feat.type === 'Point';
+    const isText = feat.type === 'Text';
+
+    if (isText) return '';
+
+    const defaultColor = feat.color || '#00E08A';
+    const rawFill = feat.style?.fillColor;
+    const isFillNone = rawFill === 'none' || rawFill === 'transparent';
+    const effectiveFill = isFillNone ? (feat.style?._lastFillColor || defaultColor) : (rawFill || defaultColor);
+
+    const rawStroke = feat.style?.strokeColor;
+    const isStrokeNone = rawStroke === 'none' || rawStroke === 'transparent';
+    const effectiveStroke = isStrokeNone ? (feat.style?._lastStrokeColor || '#ffffff') : (rawStroke || (isLine ? defaultColor : '#ffffff'));
+
+    const disabledAttr = isLocked ? 'disabled' : '';
+
+    return `
+      <div class="cm-inspector-color-card" data-insp-color-card>
+        <div class="cm-color-card-header">
+          <span class="cm-color-card-title">🎨 Cores & Estilo CAD</span>
+          ${isPoly || isCircle ? `
+            <div class="cm-color-quick-actions">
+              <button type="button" class="cm-color-mini-btn" data-insp-action="swap-colors" title="Inverter Preenchimento e Borda [X]" ${disabledAttr}>⇄ Inverter</button>
+              <button type="button" class="cm-color-mini-btn cm-color-mini-btn--clear" data-insp-action="clear-both-colors" title="Deixar ambos sem cor (vazado total)" ${disabledAttr}>🚫 Ambos sem cor</button>
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="cm-color-card-body">
+          ${isPoly || isCircle ? `
+            <!-- Preenchimento -->
+            <div class="cm-color-channel-row ${isFillNone ? 'is-none' : ''}">
+              <div class="cm-channel-info">
+                <span class="cm-channel-label">Preenchimento</span>
+                <span class="cm-channel-status">${isFillNone ? 'Sem cor (Vazado)' : panel.escapeHtml(effectiveFill)}</span>
+              </div>
+              <div class="cm-channel-controls">
+                <label class="cm-swatch-picker-label ${isFillNone ? 'cm-swatch-none' : ''}" title="${isFillNone ? 'Sem preenchimento (clique para escolher cor)' : `Cor: ${effectiveFill} (clique para alterar)`}">
+                  <span class="cm-swatch-preview" style="${isFillNone ? '' : `background-color: ${effectiveFill};`}"></span>
+                  <input type="color" class="cm-swatch-native-input" data-insp-picker="fillColor" value="${effectiveFill.startsWith('#') && effectiveFill.length === 7 ? effectiveFill : '#00E08A'}" ${disabledAttr} />
+                </label>
+                <button type="button" class="cm-color-toggle-btn ${isFillNone ? 'cm-btn-add' : 'cm-btn-remove'}" data-insp-toggle="fillColor" title="${isFillNone ? 'Ativar cor de preenchimento' : 'Deixar preenchimento sem cor'}" ${disabledAttr}>
+                  ${isFillNone ? '🎨 Colorir' : '🚫 Sem cor'}
+                </button>
+              </div>
+            </div>
+          ` : ''}
+
+          ${isPoly || isCircle || isLine ? `
+            <!-- Borda / Contorno -->
+            <div class="cm-color-channel-row ${isStrokeNone ? 'is-none' : ''}">
+              <div class="cm-channel-info">
+                <span class="cm-channel-label">${isLine ? 'Cor da Linha' : 'Cor da Borda'}</span>
+                <span class="cm-channel-status">${isStrokeNone ? 'Sem cor (Sem linha)' : panel.escapeHtml(effectiveStroke)}</span>
+              </div>
+              <div class="cm-channel-controls">
+                <label class="cm-swatch-picker-label ${isStrokeNone ? 'cm-swatch-none' : ''}" title="${isStrokeNone ? 'Sem borda (clique para escolher cor)' : `Cor da borda: ${effectiveStroke} (clique para alterar)`}">
+                  <span class="cm-swatch-preview ${isLine ? 'cm-swatch-preview--line' : 'cm-swatch-preview--stroke'}" style="${isStrokeNone ? '' : `border-color: ${effectiveStroke}; background: transparent;`}"></span>
+                  <input type="color" class="cm-swatch-native-input" data-insp-picker="strokeColor" value="${effectiveStroke.startsWith('#') && effectiveStroke.length === 7 ? effectiveStroke : '#ffffff'}" ${disabledAttr} />
+                </label>
+                <button type="button" class="cm-color-toggle-btn ${isStrokeNone ? 'cm-btn-add' : 'cm-btn-remove'}" data-insp-toggle="strokeColor" title="${isStrokeNone ? 'Ativar borda' : 'Deixar borda sem cor'}" ${disabledAttr}>
+                  ${isStrokeNone ? '🎨 Colorir' : '🚫 Sem cor'}
+                </button>
+              </div>
+            </div>
+          ` : ''}
+
+          ${isPoint ? `
+            <!-- Marcador -->
+            <div class="cm-color-channel-row">
+              <div class="cm-channel-info">
+                <span class="cm-channel-label">Cor do Marcador</span>
+                <span class="cm-channel-status">${panel.escapeHtml(effectiveFill)}</span>
+              </div>
+              <div class="cm-channel-controls">
+                <label class="cm-swatch-picker-label" title="Cor: ${effectiveFill}">
+                  <span class="cm-swatch-preview" style="background-color: ${effectiveFill}; border-radius: 50%;"></span>
+                  <input type="color" class="cm-swatch-native-input" data-insp-picker="pointColor" value="${effectiveFill.startsWith('#') && effectiveFill.length === 7 ? effectiveFill : '#00E08A'}" ${disabledAttr} />
+                </label>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
   }
 }

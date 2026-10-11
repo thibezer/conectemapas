@@ -68,6 +68,61 @@ export class FeatureInspectorEvents {
     q('[data-insp="fit"]')?.addEventListener('click', () => panel.onFitFeature(featId));
     q('[data-insp="delete"]')?.addEventListener('click', () => FeaturePropertiesAdapter.confirmDelete(panel, featId));
 
+    // 2.1 Controles de Cores CAD do Painel Lateral (Sem Cor, Preenchimento, Borda, Inverter, Ambos Sem Cor)
+    root.querySelectorAll('[data-insp-picker]').forEach(picker => {
+      const prop = picker.getAttribute('data-insp-picker');
+      picker.addEventListener('input', (e) => {
+        if (isLockedNow()) return;
+        FeaturePropertiesAdapter.previewAlteracao(panel, featId, prop, e.target.value);
+      });
+      picker.addEventListener('change', (e) => {
+        if (isLockedNow()) return;
+        FeaturePropertiesAdapter.aplicarAlteracao(panel, featId, prop, e.target.value);
+        panel.refreshSelectedFeature(panel.getLatestFeature(featId), { immediate: true });
+      });
+    });
+
+    root.querySelectorAll('[data-insp-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (isLockedNow()) return;
+        const prop = btn.getAttribute('data-insp-toggle');
+        const feat = panel.getLatestFeature(featId) || panel.selectedFeature;
+        if (prop === 'fillColor') {
+          const isNone = feat.style?.fillColor === 'none' || feat.style?.fillColor === 'transparent';
+          FeaturePropertiesAdapter.aplicarAlteracao(panel, featId, 'fillEnabled', isNone);
+        } else if (prop === 'strokeColor') {
+          const isNone = feat.style?.strokeColor === 'none' || feat.style?.strokeColor === 'transparent';
+          FeaturePropertiesAdapter.aplicarAlteracao(panel, featId, 'strokeEnabled', isNone);
+        }
+        panel.refreshSelectedFeature(panel.getLatestFeature(featId), { immediate: true });
+      });
+    });
+
+    q('[data-insp-action="swap-colors"]')?.addEventListener('click', () => {
+      if (isLockedNow()) return;
+      panel.commitFeatureEdit(featId, (draft) => {
+        if (!draft.style) draft.style = {};
+        const oldFill = draft.style.fillColor !== undefined ? draft.style.fillColor : (draft.color || '#00E08A');
+        const oldStroke = draft.style.strokeColor !== undefined ? draft.style.strokeColor : '#ffffff';
+        draft.style.fillColor = oldStroke;
+        draft.style.strokeColor = oldFill;
+        if (oldStroke !== 'none') draft.color = oldStroke;
+      });
+      panel.refreshSelectedFeature(panel.getLatestFeature(featId), { immediate: true });
+    });
+
+    q('[data-insp-action="clear-both-colors"]')?.addEventListener('click', () => {
+      if (isLockedNow()) return;
+      panel.commitFeatureEdit(featId, (draft) => {
+        if (!draft.style) draft.style = {};
+        if (draft.style.fillColor && draft.style.fillColor !== 'none') draft.style._lastFillColor = draft.style.fillColor;
+        if (draft.style.strokeColor && draft.style.strokeColor !== 'none') draft.style._lastStrokeColor = draft.style.strokeColor;
+        draft.style.fillColor = 'none';
+        draft.style.strokeColor = 'none';
+      });
+      panel.refreshSelectedFeature(panel.getLatestFeature(featId), { immediate: true });
+    });
+
     // 3. Edição de vértices e cópia da geometria
     q('[data-insp="toggle-vertex-edit"]')?.addEventListener('click', () => {
       if (isLockedNow()) return;
