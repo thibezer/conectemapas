@@ -25,23 +25,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // 2. Conexão PDO Singleton
+function loadEnvFileIfNeeded() {
+    static $envLoaded = false;
+    if ($envLoaded) return;
+    $envLoaded = true;
+
+    $candidates = [__DIR__ . '/../.env', __DIR__ . '/.env'];
+    foreach ($candidates as $envFile) {
+        if (file_exists($envFile) && is_readable($envFile)) {
+            $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line === '' || strpos($line, '#') === 0 || strpos($line, '=') === false) continue;
+                list($key, $val) = explode('=', $line, 2);
+                $key = trim($key);
+                $val = trim($val, " \t\n\r\0\x0B\"'");
+                if (getenv($key) === false) {
+                    putenv("$key=$val");
+                    $_ENV[$key] = $val;
+                    $_SERVER[$key] = $val;
+                }
+            }
+            break;
+        }
+    }
+}
+
 function getDatabaseConnection() {
     static $pdo = null;
     if ($pdo !== null) {
         return $pdo;
     }
 
+    loadEnvFileIfNeeded();
+
     $configFile = __DIR__ . '/db_config.php';
     if (file_exists($configFile)) {
         $config = require $configFile;
     } else {
+        $dbPass = getenv('DB_PASS');
+        if ($dbPass === false && !getenv('DB_NAME')) {
+            http_response_code(500);
+            echo json_encode([
+                'error' => 'Configuração de banco de dados ausente',
+                'detail' => 'Arquivo public/db_config.php não encontrado e variáveis de ambiente DB_* não configuradas.'
+            ]);
+            exit;
+        }
+
         $config = [
             'driver'   => getenv('DB_DRIVER')   ?: 'mysql',
             'host'     => getenv('DB_HOST')     ?: 'localhost',
             'port'     => (int)(getenv('DB_PORT') ?: 3306),
             'database' => getenv('DB_NAME')     ?: 'u941736878_conectemapas',
             'username' => getenv('DB_USER')     ?: 'u941736878_conectemapas',
-            'password' => getenv('DB_PASS')     ?: 'Conecte#Mapas2026$Db',
+            'password' => $dbPass !== false     ? $dbPass : '',
             'charset'  => 'utf8mb4',
             'options'  => [
                 PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
