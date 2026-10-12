@@ -99,7 +99,7 @@ export class AppComponentsBuilder {
       UIToast.notificar({
         tipo: 'alerta',
         titulo: label,
-        mensagem: 'Selecione pelo menos 2 feições desbloqueadas, todas linhas ou todas polígonos.',
+        mensagem: 'Selecione pelo menos 2 feições desbloqueadas para unir.',
         duracao: 3500
       });
       return;
@@ -154,11 +154,11 @@ export class AppComponentsBuilder {
       ? ` ${joinRes.bridges} trecho(s) de junção criado(s) (${joinRes.bridgeLength.toFixed(1)} m).`
       : '';
     const left = selected.length - consumed.size;
-    const leftInfo = left > 0 ? ` ${left} feição(ões) sem conexão ficaram de fora.` : '';
+    const leftInfo = left > 0 ? ` ${left} feição(ões) não juntável(is) ou sem conexão foram mantidas intactas.` : '';
     UIToast.notificar({
       tipo: 'sucesso',
       titulo: `Junção Realizada — ${label}`,
-      mensagem: `${consumed.size} feições unidas em ${created.length} resultado(s).${bridgeInfo}${leftInfo}`,
+      mensagem: `${consumed.size} feição(ões) unida(s) em ${created.length} resultado(s).${bridgeInfo}${leftInfo}`,
       duracao: 4500
     });
   }

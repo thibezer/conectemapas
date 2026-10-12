@@ -722,12 +722,18 @@ export class SpatialAlgorithms {
   }
 
   /**
-   * Une dois polígonos em um polígono único (ou MultiPolígono se desconexos)
+   * Une dois polígonos em um polígono único (ou MultiPolígono se desconexos).
+   * Suporta:
+   * - Arestas compartilhadas simples e múltiplas contíguas
+   * - Nós em T (vértices colineares / subdivisão na aresta de contato)
+   * - Sobreposição parcial (overlap)
+   * - Tolerância geodésica configurável (metros)
    * @param {Array<[number, number]>} polyA
    * @param {Array<[number, number]>} polyB
+   * @param {number} [tolerance=0.5] tolerância em metros
    * @returns {{ success: boolean, type: string, coordinates: Array, reason?: string }}
    */
-  static joinPolygons(polyA, polyB) {
+  static joinPolygons(polyA, polyB, tolerance = 0.5) {
     if (!Array.isArray(polyA) || polyA.length < 3 || !Array.isArray(polyB) || polyB.length < 3) {
       return { success: false, reason: 'Polígonos inválidos para junção.' };
     }
@@ -740,66 +746,229 @@ export class SpatialAlgorithms {
       return res;
     };
 
-    const rA = norm(polyA);
-    const rB = norm(polyB);
-
-    let sharedEdge = null;
-    const TOL = 0.5; // tolerância em metros
-
-    for (let i = 0; i < rA.length; i++) {
-      const a1 = rA[i];
-      const a2 = rA[(i + 1) % rA.length];
-
-      for (let j = 0; j < rB.length; j++) {
-        const b1 = rB[j];
-        const b2 = rB[(j + 1) % rB.length];
-
-        if (this.pointDistance(a1, b2) <= TOL && this.pointDistance(a2, b1) <= TOL) {
-          sharedEdge = { idxA: i, idxB: j, sameDir: false };
-          break;
-        }
-        if (this.pointDistance(a1, b1) <= TOL && this.pointDistance(a2, b2) <= TOL) {
-          sharedEdge = { idxA: i, idxB: j, sameDir: true };
-          break;
-        }
-      }
-      if (sharedEdge) break;
+    const rA_latlng = norm(polyA);
+    const rB_latlng = norm(polyB);
+    if (rA_latlng.length < 3 || rB_latlng.length < 3) {
+      return { success: false, reason: 'Polígono com menos de 3 vértices válidos.' };
     }
 
-    if (sharedEdge) {
-      const nA = rA.length;
-      const nB = rB.length;
-      const merged = [];
+    const tol = Number(tolerance) > 0 ? Number(tolerance) : 0.5;
 
-      for (let k = 0; k < nA - 1; k++) {
-        const idx = (sharedEdge.idxA + 1 + k) % nA;
-        merged.push(rA[idx]);
+    // Projeção métrica local em torno do baricentro conjunto
+    const allPts = [...rA_latlng, ...rB_latlng];
+    const centerLat = allPts.reduce((acc, p) => acc + p[0], 0) / allPts.length;
+    const centerLng = allPts.reduce((acc, p) => acc + p[1], 0) / allPts.length;
+    const latM = 111139;
+    const lngM = 111139 * Math.cos((centerLat * Math.PI) / 180);
+
+    const toM = (p) => [(p[0] - centerLat) * latM, (p[1] - centerLng) * lngM];
+    const toLatLng = (p) => [centerLat + p[0] / latM, centerLng + p[1] / lngM];
+
+    let rA = this._ensureCCW(rA_latlng.map(toM));
+    let rB = this._ensureCCW(rB_latlng.map(toM));
+
+    // 1. Compatibilizar vértices existentes próximos (snap mútuo dentro de tol)
+    for (let i = 0; i < rA.length; i++) {
+      for (let j = 0; j < rB.length; j++) {
+        if (Math.hypot(rA[i][0] - rB[j][0], rA[i][1] - rB[j][1]) <= tol) {
+          rB[j] = [rA[i][0], rA[i][1]];
+        }
+      }
+    }
+
+    // 2. Inserir nós em T (vértices de um polígono colineares sobre arestas do outro)
+    const insertNodesOnEdges = (ringTarget, ringSource) => {
+      const result = [];
+      for (let i = 0; i < ringTarget.length; i++) {
+        const p1 = ringTarget[i];
+        const p2 = ringTarget[(i + 1) % ringTarget.length];
+        result.push(p1);
+
+        const toInsert = [];
+        for (const sPt of ringSource) {
+          const { d, t, proj } = this._perpDistToSegment2D(sPt, p1, p2);
+          if (d <= tol && t > 1e-4 && t < 1 - 1e-4) {
+            toInsert.push({ pt: proj, t });
+          }
+        }
+        toInsert.sort((a, b) => a.t - b.t);
+        for (const item of toInsert) {
+          if (Math.hypot(result[result.length - 1][0] - item.pt[0], result[result.length - 1][1] - item.pt[1]) > tol) {
+            result.push(item.pt);
+          }
+        }
+      }
+      return result;
+    };
+
+    rA = insertNodesOnEdges(rA, rB);
+    rB = insertNodesOnEdges(rB, rA);
+
+    // 3. Interseções entre segmentos (para tratar sobreposição/overlap)
+    const insertIntersections = (ring1, ring2) => {
+      const res1 = [...ring1];
+      const res2 = [...ring2];
+      for (let i = 0; i < res1.length; i++) {
+        const p1 = res1[i];
+        const p2 = res1[(i + 1) % res1.length];
+        for (let j = 0; j < res2.length; j++) {
+          const q1 = res2[j];
+          const q2 = res2[(j + 1) % res2.length];
+          const inter = this._segIntersection2D(p1, p2, q1, q2);
+          if (inter) {
+            res1.splice(i + 1, 0, inter);
+            res2.splice(j + 1, 0, inter);
+            i--;
+            break;
+          }
+        }
+      }
+      return { res1, res2 };
+    };
+
+    const inters = insertIntersections(rA, rB);
+    rA = inters.res1;
+    rB = inters.res2;
+
+    // Snap final para alinhar pontos de interseção/contato
+    for (let i = 0; i < rA.length; i++) {
+      for (let j = 0; j < rB.length; j++) {
+        if (Math.hypot(rA[i][0] - rB[j][0], rA[i][1] - rB[j][1]) <= tol) {
+          rB[j] = [rA[i][0], rA[i][1]];
+        }
+      }
+    }
+
+    // 4. Classificação das arestas de A e B
+    const isEdgeMatch = (p1, p2, q1, q2) => {
+      const d1 = Math.hypot(p1[0] - q1[0], p1[1] - q1[1]);
+      const d2 = Math.hypot(p2[0] - q2[0], p2[1] - q2[1]);
+      const d3 = Math.hypot(p1[0] - q2[0], p1[1] - q2[1]);
+      const d4 = Math.hypot(p2[0] - q1[0], p2[1] - q1[1]);
+      return (d1 <= tol && d2 <= tol) || (d3 <= tol && d4 <= tol);
+    };
+
+    const edgesA = [];
+    for (let i = 0; i < rA.length; i++) {
+      const p1 = rA[i], p2 = rA[(i + 1) % rA.length];
+      if (Math.hypot(p1[0] - p2[0], p1[1] - p2[1]) <= tol) continue;
+      edgesA.push({ p1, p2 });
+    }
+
+    const edgesB = [];
+    for (let j = 0; j < rB.length; j++) {
+      const q1 = rB[j], q2 = rB[(j + 1) % rB.length];
+      if (Math.hypot(q1[0] - q2[0], q1[1] - q2[1]) <= tol) continue;
+      edgesB.push({ p1: q1, p2: q2 });
+    }
+
+    const isSharedA = new Array(edgesA.length).fill(false);
+    const isSharedB = new Array(edgesB.length).fill(false);
+
+    for (let i = 0; i < edgesA.length; i++) {
+      for (let j = 0; j < edgesB.length; j++) {
+        if (isEdgeMatch(edgesA[i].p1, edgesA[i].p2, edgesB[j].p1, edgesB[j].p2)) {
+          isSharedA[i] = true;
+          isSharedB[j] = true;
+        }
+      }
+    }
+
+    const sharedCount = isSharedA.filter(Boolean).length;
+
+    // Segmentos do contorno externo (exclui compartilhados e internos ao outro polígono)
+    const outerEdges = [];
+    for (let i = 0; i < edgesA.length; i++) {
+      if (isSharedA[i]) continue;
+      const mid = [(edgesA[i].p1[0] + edgesA[i].p2[0]) / 2, (edgesA[i].p1[1] + edgesA[i].p2[1]) / 2];
+      if (!this._isPointInPolygon2D(mid, rB)) {
+        outerEdges.push({ ...edgesA[i] });
+      }
+    }
+
+    for (let j = 0; j < edgesB.length; j++) {
+      if (isSharedB[j]) continue;
+      const mid = [(edgesB[j].p1[0] + edgesB[j].p2[0]) / 2, (edgesB[j].p1[1] + edgesB[j].p2[1]) / 2];
+      if (!this._isPointInPolygon2D(mid, rA)) {
+        outerEdges.push({ ...edgesB[j] });
+      }
+    }
+
+    // Se não há arestas compartilhadas nem sobreposição, permanecem desconexos
+    if (sharedCount === 0 && outerEdges.length === edgesA.length + edgesB.length) {
+      return {
+        success: true,
+        type: 'MultiPolygon',
+        coordinates: [rA_latlng, rB_latlng]
+      };
+    }
+
+    // Se um polígono contém o outro inteiramente ou são idênticos
+    if (outerEdges.length < 3) {
+      const aInB = rA.every(p => this._isPointInPolygon2D(p, rB));
+      const bInA = rB.every(p => this._isPointInPolygon2D(p, rA));
+      if (aInB) return { success: true, type: 'Polygon', coordinates: rB_latlng };
+      if (bInA) return { success: true, type: 'Polygon', coordinates: rA_latlng };
+    }
+
+    // 5. Encadeamento das arestas externas para formar o polígono unificado
+    if (outerEdges.length >= 3) {
+      const chain = [];
+      const used = new Array(outerEdges.length).fill(false);
+      chain.push(outerEdges[0].p1);
+      let currPt = outerEdges[0].p2;
+      chain.push(currPt);
+      used[0] = true;
+
+      for (let step = 1; step < outerEdges.length; step++) {
+        let nextIdx = -1;
+        let reverseNext = false;
+        let bestDist = Infinity;
+
+        for (let k = 0; k < outerEdges.length; k++) {
+          if (used[k]) continue;
+          const dDirect = Math.hypot(currPt[0] - outerEdges[k].p1[0], currPt[1] - outerEdges[k].p1[1]);
+          const dRev = Math.hypot(currPt[0] - outerEdges[k].p2[0], currPt[1] - outerEdges[k].p2[1]);
+          if (dDirect <= tol && dDirect < bestDist) {
+            bestDist = dDirect;
+            nextIdx = k;
+            reverseNext = false;
+          } else if (dRev <= tol && dRev < bestDist) {
+            bestDist = dRev;
+            nextIdx = k;
+            reverseNext = true;
+          }
+        }
+
+        if (nextIdx === -1) break;
+
+        used[nextIdx] = true;
+        currPt = reverseNext ? outerEdges[nextIdx].p1 : outerEdges[nextIdx].p2;
+        chain.push(currPt);
+
+        if (Math.hypot(currPt[0] - chain[0][0], currPt[1] - chain[0][1]) <= tol) {
+          break;
+        }
       }
 
-      if (sharedEdge.sameDir) {
-        for (let k = 0; k < nB - 1; k++) {
-          const idx = (sharedEdge.idxB + nB - k) % nB;
-          merged.push(rB[idx]);
-        }
-      } else {
-        for (let k = 0; k < nB - 1; k++) {
-          const idx = (sharedEdge.idxB + 1 + k) % nB;
-          merged.push(rB[idx]);
-        }
+      if (chain.length > 3 && Math.hypot(chain[0][0] - chain[chain.length - 1][0], chain[0][1] - chain[chain.length - 1][1]) <= tol) {
+        chain.pop();
       }
 
       const cleaned = [];
-      for (const pt of merged) {
-        if (cleaned.length === 0 || this.pointDistance(cleaned[cleaned.length - 1], pt) > 0.05) {
+      for (const pt of chain) {
+        if (cleaned.length === 0 || Math.hypot(cleaned[cleaned.length - 1][0] - pt[0], cleaned[cleaned.length - 1][1] - pt[1]) > 0.05) {
           cleaned.push(pt);
         }
       }
 
-      if (cleaned.length >= 3) {
+      const simplified = this._cleanCollinearNodes(cleaned, 0.05);
+
+      if (simplified.length >= 3) {
         return {
           success: true,
           type: 'Polygon',
-          coordinates: cleaned
+          coordinates: simplified.map(toLatLng)
         };
       }
     }
@@ -807,17 +976,88 @@ export class SpatialAlgorithms {
     return {
       success: true,
       type: 'MultiPolygon',
-      coordinates: [rA, rB]
+      coordinates: [rA_latlng, rB_latlng]
     };
+  }
+
+  /** Distância perpendicular 2D métrica a segmento */
+  static _perpDistToSegment2D(p, a, b) {
+    const dy = b[0] - a[0];
+    const dx = b[1] - a[1];
+    const lenSq = dy * dy + dx * dx;
+    if (lenSq === 0) return { d: Math.hypot(p[0] - a[0], p[1] - a[1]), t: 0, proj: a };
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dy + (p[1] - a[1]) * dx) / lenSq));
+    const proj = [a[0] + t * dy, a[1] + t * dx];
+    return { d: Math.hypot(p[0] - proj[0], p[1] - proj[1]), t, proj };
+  }
+
+  /** Interseção 2D métrica entre dois segmentos */
+  static _segIntersection2D(p1, p2, q1, q2) {
+    const y1 = p1[0], x1 = p1[1];
+    const y2 = p2[0], x2 = p2[1];
+    const y3 = q1[0], x3 = q1[1];
+    const y4 = q2[0], x4 = q2[1];
+
+    const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (Math.abs(denom) < 1e-10) return null;
+
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+    const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+    if (t > 1e-4 && t < 1 - 1e-4 && u > 1e-4 && u < 1 - 1e-4) {
+      return [y1 + t * (y2 - y1), x1 + t * (x2 - x1)];
+    }
+    return null;
+  }
+
+  /** Ray casting 2D métrico */
+  static _isPointInPolygon2D(pt, ring) {
+    let inside = false;
+    const y = pt[0], x = pt[1];
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const yi = ring[i][0], xi = ring[i][1];
+      const yj = ring[j][0], xj = ring[j][1];
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi || 1e-12) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
+  /** Garante sentido anti-horário (CCW) para polígonos */
+  static _ensureCCW(pts) {
+    let a = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const next = (i + 1) % pts.length;
+      a += pts[i][1] * pts[next][0] - pts[next][1] * pts[i][0];
+    }
+    return a < 0 ? [...pts].reverse() : [...pts];
+  }
+
+  /** Remove vértices estritamente colineares consecutivos */
+  static _cleanCollinearNodes(pts, tol = 0.05) {
+    if (pts.length <= 3) return pts;
+    const res = [];
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const prev = pts[(i - 1 + n) % n];
+      const curr = pts[i];
+      const next = pts[(i + 1) % n];
+      const { d } = this._perpDistToSegment2D(curr, prev, next);
+      if (d > tol) {
+        res.push(curr);
+      }
+    }
+    return res.length >= 3 ? res : pts;
   }
 
   /**
    * Une duas feições (sejam linhas ou polígonos)
    * @param {Object} featA
    * @param {Object} featB
+   * @param {Object} [options]
    * @returns {{ success: boolean, type?: string, coordinates?: any, reason?: string }}
    */
-  static joinFeatures(featA, featB) {
+  static joinFeatures(featA, featB, options = {}) {
     if (!featA || !featB) {
       return { success: false, reason: 'Duas feições são necessárias para a junção.' };
     }
@@ -828,7 +1068,7 @@ export class SpatialAlgorithms {
     }
 
     if (featA.type === 'Polygon' && featB.type === 'Polygon') {
-      return this.joinPolygons(featA.coordinates, featB.coordinates);
+      return this.joinPolygons(featA.coordinates, featB.coordinates, options.tolerance || 0.5);
     }
 
     return {
@@ -838,35 +1078,107 @@ export class SpatialAlgorithms {
   }
 
   /**
-   * Une N feições do mesmo tipo (todas Linhas ou todos Polígonos).
-   * - strict (bridge=false): une apenas o que está conectado (pontas coincidentes / aresta compartilhada),
-   *   formando um resultado para CADA grupo conectado (ex.: 8 linhas = 2 quadrados). Feições sem
-   *   conexão ficam de fora. Falha só se nada puder ser unido.
-   * - bridge=true: além disso, liga os grupos restantes pelo par de pontas/vértices mais próximo,
-   *   criando o trecho de junção (segmento reto em linhas; "ponte" de largura zero em polígonos).
-   * Linhas que se fecham sobre si mesmas viram Polígono.
+   * Une N feições selecionadas. Suporta:
+   * - Peças não juntáveis selecionadas no meio de juntáveis (são preservadas intactas sem causar erro).
+   * - Seleção mista com linhas e polígonos (cada grupo juntável é processado).
+   * - strict (bridge=false): une o que se toca e mantém desconectados intactos.
+   * - bridge=true: une também desconectados criando trechos de ponte.
    * @param {Array<Object>} features
    * @param {{bridge?: boolean, tolerance?: number}} [options] tolerance em metros
    * @returns {{ success: boolean, results?: Array<{type: string, coordinates: Array, sources: number[]}>,
-   *   type?: string, coordinates?: Array, bridges?: number, bridgeLength?: number, reason?: string }}
-   *   `sources` = índices (em `features`) consumidos por cada resultado.
+   *   type?: string, coordinates?: Array, bridges?: number, bridgeLength?: number, consumedSources?: number[], unmergedCount?: number, reason?: string }}
    */
   static joinMany(features, { bridge = false, tolerance = 0.5 } = {}) {
-    const list = (features || []).filter(Boolean);
-    if (list.length < 2) {
+    const rawList = (features || []).filter(Boolean);
+    if (rawList.length < 2) {
       return { success: false, reason: 'Selecione pelo menos 2 feições para unir.' };
     }
-    const types = new Set(list.map(f => f.type));
-    if (types.size !== 1 || !(types.has('LineString') || types.has('Polygon'))) {
-      return { success: false, reason: 'As feições devem ser todas Linhas ou todas Polígonos para junção.' };
-    }
-    const res = types.has('LineString')
-      ? this._joinManyLines(list, bridge, tolerance)
-      : this._joinManyPolygons(list, bridge, tolerance);
 
-    if (res.success && res.results.length === 1) {
-      res.type = res.results[0].type;
-      res.coordinates = res.results[0].coordinates;
+    // Segrega candidatos válidos por tipo preservando os índices originais
+    const lineCandidates = [];
+    const polyCandidates = [];
+    let ignoredCount = 0;
+
+    rawList.forEach((f, origIdx) => {
+      const type = f.type;
+      const coords = f.coordinates;
+      if (type === 'LineString' && Array.isArray(coords) && coords.length >= 2) {
+        lineCandidates.push({ feature: f, origIdx });
+      } else if (type === 'Polygon' && Array.isArray(coords) && coords.length >= 3) {
+        polyCandidates.push({ feature: f, origIdx });
+      } else {
+        ignoredCount++;
+      }
+    });
+
+    const results = [];
+    let totalBridges = 0;
+    let totalBridgeLength = 0;
+    const consumedOrigIndices = new Set();
+
+    // 1. Processa Linhas (se houver pelo menos 2 candidatas)
+    if (lineCandidates.length >= 2) {
+      const lineFeats = lineCandidates.map(c => c.feature);
+      const lineRes = this._joinManyLines(lineFeats, bridge, tolerance);
+      if (lineRes.success && lineRes.results?.length > 0) {
+        totalBridges += lineRes.bridges || 0;
+        totalBridgeLength += lineRes.bridgeLength || 0;
+        lineRes.results.forEach(r => {
+          const origSources = r.sources.map(localIdx => lineCandidates[localIdx].origIdx);
+          origSources.forEach(idx => consumedOrigIndices.add(idx));
+          results.push({
+            type: r.type,
+            coordinates: r.coordinates,
+            sources: origSources
+          });
+        });
+      }
+    }
+
+    // 2. Processa Polígonos (se houver pelo menos 2 candidatos)
+    if (polyCandidates.length >= 2) {
+      const polyFeats = polyCandidates.map(c => c.feature);
+      const polyRes = this._joinManyPolygons(polyFeats, bridge, tolerance);
+      if (polyRes.success && polyRes.results?.length > 0) {
+        totalBridges += polyRes.bridges || 0;
+        totalBridgeLength += polyRes.bridgeLength || 0;
+        polyRes.results.forEach(r => {
+          const origSources = r.sources.map(localIdx => polyCandidates[localIdx].origIdx);
+          origSources.forEach(idx => consumedOrigIndices.add(idx));
+          results.push({
+            type: r.type,
+            coordinates: r.coordinates,
+            sources: origSources
+          });
+        });
+      }
+    }
+
+    if (results.length === 0) {
+      if (lineCandidates.length < 2 && polyCandidates.length < 2) {
+        return {
+          success: false,
+          reason: 'Nenhuma combinação de feições juntáveis encontrada (selecione pelo menos 2 linhas ou 2 polígonos).'
+        };
+      }
+      return {
+        success: false,
+        reason: 'Nenhuma das feições selecionadas está conectada entre si. Use "Unir com Ponte [Shift+J]" para ligá-las.'
+      };
+    }
+
+    const res = {
+      success: true,
+      results,
+      bridges: totalBridges,
+      bridgeLength: totalBridgeLength,
+      consumedSources: Array.from(consumedOrigIndices),
+      unmergedCount: rawList.length - consumedOrigIndices.size
+    };
+
+    if (results.length === 1) {
+      res.type = results[0].type;
+      res.coordinates = results[0].coordinates;
     }
     return res;
   }
@@ -918,8 +1230,9 @@ export class SpatialAlgorithms {
         bridges++;
         bridgeLength += best.d;
       }
+      // Solda nó se dentro da tolerância de contato
       const merged = {
-        pts: best.d <= 0.05 ? [...a, ...b.slice(1)] : [...a, ...b],
+        pts: best.d <= tol ? [...a, ...b.slice(1)] : [...a, ...b],
         src: [...chains[best.i].src, ...chains[best.j].src]
       };
       chains = chains.filter((_, idx) => idx !== best.i && idx !== best.j);
@@ -944,17 +1257,19 @@ export class SpatialAlgorithms {
   }
 
   static _joinManyPolygons(list, bridge, tol) {
-    let groups = list.map((f, i) => ({ ring: this._toLatLngList(f.coordinates), src: [i] }));
-    if (groups.some(g => g.ring.length < 3)) return { success: false, reason: 'Polígonos inválidos para junção.' };
+    let groups = list
+      .map((f, i) => ({ ring: this._toLatLngList(f.coordinates), src: [i] }))
+      .filter(g => g.ring.length >= 3);
+    if (groups.length < 2) return { success: false, reason: 'Polígonos insuficientes ou inválidos para junção.' };
 
-    // 1) Une os que compartilham aresta, até não haver mais pares
+    // 1) Une os que compartilham aresta ou sobrepõem, até não haver mais pares
     let progressed = true;
     while (progressed && groups.length > 1) {
       progressed = false;
       outer:
       for (let i = 0; i < groups.length; i++) {
         for (let j = i + 1; j < groups.length; j++) {
-          const res = this.joinPolygons(groups[i].ring, groups[j].ring);
+          const res = this.joinPolygons(groups[i].ring, groups[j].ring, tol);
           if (res.success && res.type === 'Polygon') {
             const merged = { ring: res.coordinates, src: [...groups[i].src, ...groups[j].src] };
             groups = groups.filter((_, idx) => idx !== i && idx !== j);
@@ -982,6 +1297,7 @@ export class SpatialAlgorithms {
             }
           }
         }
+        if (!best) break;
         const rot = (ring, k) => [...ring.slice(k), ...ring.slice(0, k), ring[k]];
         const merged = {
           ring: [...rot(groups[best.i].ring, best.a), ...rot(groups[best.j].ring, best.b)],
@@ -1000,9 +1316,10 @@ export class SpatialAlgorithms {
     if (results.length === 0) {
       return {
         success: false,
-        reason: 'Nenhum dos polígonos selecionados compartilha aresta com outro. Use "Unir com Ponte" para ligá-los.'
+        reason: 'Nenhum dos polígonos selecionados compartilha aresta ou sobreposição com outro. Use "Unir com Ponte" para ligá-los.'
       };
     }
     return { success: true, results, bridges, bridgeLength };
   }
 }
+

@@ -115,8 +115,110 @@ const polyBridge = SpatialAlgorithms.joinMany([pA, pB, pFar], { bridge: true });
 assert(polyBridge.success && polyBridge.type === 'Polygon' && polyBridge.bridges === 1, 'Ponte deve gerar polígono único');
 console.log('✔ joinMany polígonos: estrito e com ponte');
 
-// 9. Tipos misturados
-assert(!SpatialAlgorithms.joinMany([l1, pA], { bridge: true }).success, 'Tipos mistos não podem ser unidos');
-console.log('✔ joinMany recusa tipos mistos');
+// 9. Apenas 1 feição de cada tipo juntável (nenhuma tem par)
+assert(!SpatialAlgorithms.joinMany([l1, pA], { bridge: true }).success, 'Sem pares compatíveis a junção deve falhar');
+console.log('✔ joinMany recusa quando não há pares compatíveis para unir');
+
+// 10. Peças não juntáveis selecionadas no meio de juntáveis (ex: Linhas + Ponto)
+const ptNonJoinable = { type: 'Point', coordinates: [-23.7650, -53.3250] };
+const resMixedWithPoint = SpatialAlgorithms.joinMany([l1, ptNonJoinable, l2]);
+assert(resMixedWithPoint.success, 'Deve unir as linhas mesmo com ponto no meio');
+assert.strictEqual(resMixedWithPoint.results.length, 1);
+assert.deepStrictEqual(resMixedWithPoint.results[0].sources, [0, 2], 'Deve consumir apenas as linhas (índices 0 e 2) e preservar o ponto');
+assert.strictEqual(resMixedWithPoint.unmergedCount, 1, 'Ponto deve ser contado como não unido');
+console.log('✔ joinMany tolera pontos e peças não juntáveis no meio de peças juntáveis');
+
+// 11. Seleção mista: 2 Linhas conectadas + 2 Polígonos adjacentes + Círculo
+const circleNonJoinable = { type: 'Circle', coordinates: [-23.76, -53.32], radius: 100 };
+const resMultiType = SpatialAlgorithms.joinMany([l1, ptNonJoinable, pA, circleNonJoinable, l2, pB]);
+assert(resMultiType.success, 'Deve realizar junções simultâneas de tipos suportados');
+assert.strictEqual(resMultiType.results.length, 2, 'Deve gerar 1 Linha unida e 1 Polígono unido');
+assert.deepStrictEqual(resMultiType.consumedSources.sort((a, b) => a - b), [0, 2, 4, 5], 'Deve consumir as 2 linhas e os 2 polígonos');
+assert.strictEqual(resMultiType.unmergedCount, 2, 'Ponto e Círculo devem ser preservados');
+console.log('✔ joinMany realiza união simultânea de linhas e polígonos mantendo peças não juntáveis intactas');
+
+// 12. Polígonos com 2 arestas consecutivas compartilhadas (L-shape e Quina)
+const pL = {
+  type: 'Polygon',
+  coordinates: [
+    [-23.7600, -53.3200],
+    [-23.7600, -53.3220],
+    [-23.7610, -53.3220],
+    [-23.7610, -53.3210],
+    [-23.7620, -53.3210],
+    [-23.7620, -53.3200]
+  ]
+};
+const pCorner = {
+  type: 'Polygon',
+  coordinates: [
+    [-23.7610, -53.3210],
+    [-23.7610, -53.3220],
+    [-23.7620, -53.3220],
+    [-23.7620, -53.3210]
+  ]
+};
+const resMultiEdge = SpatialAlgorithms.joinMany([pL, pCorner]);
+assert(resMultiEdge.success, 'Deve unir polígonos que compartilham 2 arestas');
+assert.strictEqual(resMultiEdge.type, 'Polygon');
+console.log('✔ joinMany polígonos com múltiplas arestas contíguas passou com sucesso');
+
+// 13. Polígonos com nó em T (sub-aresta colinear)
+const pLong = {
+  type: 'Polygon',
+  coordinates: [
+    [-23.7600, -53.3200],
+    [-23.7600, -53.3210],
+    [-23.7620, -53.3210],
+    [-23.7620, -53.3200]
+  ]
+};
+const pSubEdge = {
+  type: 'Polygon',
+  coordinates: [
+    [-23.7600, -53.3210],
+    [-23.7600, -53.3220],
+    [-23.7610, -53.3220],
+    [-23.7610, -53.3210]
+  ]
+};
+const resTJunction = SpatialAlgorithms.joinMany([pLong, pSubEdge]);
+assert(resTJunction.success, 'Deve unir polígonos com nó em T');
+assert.strictEqual(resTJunction.type, 'Polygon');
+console.log('✔ joinMany polígonos com T-junction (vértice em aresta) passou com sucesso');
+
+// 14. Polígonos com sobreposição parcial (overlap)
+const pOver1 = {
+  type: 'Polygon',
+  coordinates: [
+    [-23.7600, -53.3200],
+    [-23.7600, -53.3210],
+    [-23.7610, -53.3210],
+    [-23.7610, -53.3200]
+  ]
+};
+const pOver2 = {
+  type: 'Polygon',
+  coordinates: [
+    [-23.7605, -53.3200],
+    [-23.7605, -53.3210],
+    [-23.7615, -53.3210],
+    [-23.7615, -53.3200]
+  ]
+};
+const resOverlap = SpatialAlgorithms.joinMany([pOver1, pOver2]);
+assert(resOverlap.success, 'Deve unir polígonos com sobreposição');
+assert.strictEqual(resOverlap.type, 'Polygon');
+console.log('✔ joinMany polígonos com sobreposição (overlap) passou com sucesso');
+
+// 15. Feição com geometria degenerada no meio de feições válidas
+const corruptedLine = { type: 'LineString', coordinates: [[-23.76, -53.32]] }; // apenas 1 ponto
+const corruptedPoly = { type: 'Polygon', coordinates: [] }; // vazio
+const resCorrupted = SpatialAlgorithms.joinMany([l1, corruptedLine, corruptedPoly, l2]);
+assert(resCorrupted.success, 'Não deve quebrar se houver feições corrompidas no meio');
+assert.strictEqual(resCorrupted.results.length, 1);
+assert.deepStrictEqual(resCorrupted.results[0].sources, [0, 3], 'Deve unir l1 (0) e l2 (3)');
+console.log('✔ joinMany ignora com resiliência feições corrompidas e une as válidas');
 
 console.log('🎉 Todos os testes de junção CAD passaram com 100% de sucesso!');
+
