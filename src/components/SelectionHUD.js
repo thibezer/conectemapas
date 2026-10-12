@@ -3,7 +3,9 @@
    Barra Flutuante Indicadora de Feições Selecionadas com Ações Rápidas
    ========================================================================== */
 
-import './SelectionHUD.css';
+if (typeof window !== 'undefined' && !globalThis.process?.versions?.node) {
+  import('./SelectionHUD.css');
+}
 import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
 export class SelectionHUD {
@@ -27,6 +29,7 @@ export class SelectionHUD {
     this.onClear = options.onClear || (() => {});
     this.onOpenTable = options.onOpenTable || (() => {});
     this.onMoveToLayer = options.onMoveToLayer || (() => {});
+    this.onStyle = options.onStyle || (() => {});
     this.layers = [];
 
     this.selectedFeatures = [];
@@ -121,6 +124,9 @@ export class SelectionHUD {
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Centralizar no mapa">
             🎯 Zoom
           </button>
+          <button class="cm-sel-btn" id="btn-sel-color" title="Alterar cor de preenchimento, traço e opacidade">
+            🎨 Estilo
+          </button>
           <button class="cm-sel-btn" id="btn-sel-layer" title="Mover para outra camada" aria-haspopup="menu" aria-expanded="false">
             📁 Camada
           </button>
@@ -153,6 +159,9 @@ export class SelectionHUD {
           </button>
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Enquadrar todas as feições selecionadas">
             🎯 Enquadrar
+          </button>
+          <button class="cm-sel-btn" id="btn-sel-color" title="Alterar cores em lote">
+            🎨 Estilo
           </button>
           <button class="cm-sel-btn" id="btn-sel-layer" title="Mover para outra camada" aria-haspopup="menu" aria-expanded="false">
             📁 Camada
@@ -200,6 +209,16 @@ export class SelectionHUD {
       btnZoom.addEventListener('click', (e) => {
         e.stopPropagation();
         this.onZoom(this.selectedFeatures);
+      });
+    }
+
+    const btnColor = this.element.querySelector('#btn-sel-color');
+    if (btnColor) {
+      btnColor.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.selectedFeatures.length > 0) {
+          this.onStyle(this.selectedFeatures, btnColor);
+        }
       });
     }
 

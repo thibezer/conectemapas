@@ -12,6 +12,7 @@ import { FeaturePropertiesAdapter } from './FeaturePropertiesAdapter.js';
 import { GeoFormats } from '../../services/GeoFormats.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
 import { UIToast } from '@thibezer/ui-components-kit';
+import { ColorPickerPopover } from '../ColorPicker/ColorPickerPopover.js';
 
 // O seletor de cor nativo dispara 'input' a cada movimento: só grava após uma pausa
 const COLOR_COMMIT_DELAY_MS = 300;
@@ -68,7 +69,83 @@ export class FeatureInspectorEvents {
     q('[data-insp="fit"]')?.addEventListener('click', () => panel.onFitFeature(featId));
     q('[data-insp="delete"]')?.addEventListener('click', () => FeaturePropertiesAdapter.confirmDelete(panel, featId));
 
-    // 2.1 Controles de Cores CAD do Painel Lateral (Sem Cor, Preenchimento, Borda, Inverter, Ambos Sem Cor)
+    // 2.1 Controles de Cores CAD do Painel Lateral (ColorPickerPopover + Fallback Nativo)
+    root.querySelectorAll('.cm-swatch-picker-label').forEach(label => {
+      const picker = label.querySelector('[data-insp-picker]');
+      const prop = picker?.getAttribute('data-insp-picker');
+      if (!prop) return;
+
+      label.addEventListener('click', (e) => {
+        if (isLockedNow()) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const feat = panel.getLatestFeature(featId) || panel.selectedFeature;
+        const isStroke = prop === 'strokeColor';
+        const isPoint = prop === 'pointColor';
+        const currentColor = isStroke
+          ? (feat.style?.strokeColor || '#ffffff')
+          : (feat.style?.fillColor || feat.color || '#00E08A');
+        const currentOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
+
+        ColorPickerPopover.open({
+          anchorEl: label,
+          title: isStroke ? 'Cor do Traço / Borda' : (isPoint ? 'Cor do Marcador' : 'Cor do Preenchimento'),
+          color: currentColor,
+          opacity: currentOpacity,
+          showOpacity: !isStroke && !isPoint,
+          layers: panel.layers || [],
+          onChange: ({ color, opacity }) => {
+            if (isStroke) {
+              FeaturePropertiesAdapter.previewAlteracao(panel, featId, 'strokeColor', color);
+            } else {
+              FeaturePropertiesAdapter.previewAlteracao(panel, featId, prop, color);
+              if (opacity !== undefined) {
+                FeaturePropertiesAdapter.previewAlteracao(panel, featId, 'fillOpacity', Math.round(opacity * 100));
+              }
+            }
+          },
+          onCommit: ({ color, opacity }) => {
+            panel.commitFeatureEdit(featId, (draft) => {
+              if (!draft.style) draft.style = {};
+              if (isStroke) {
+                draft.style.strokeColor = color;
+                if (color !== 'none') draft.style._lastStrokeColor = color;
+              } else {
+                if (isPoint) draft.color = color;
+                draft.style[prop === 'fillColor' ? 'fillColor' : 'textColor'] = color;
+                if (color !== 'none') {
+                  draft.color = color;
+                  draft.style._lastFillColor = color;
+                }
+                if (opacity !== undefined) {
+                  draft.style.fillOpacity = Math.max(0, Math.min(1, opacity));
+                }
+              }
+            });
+            panel.refreshSelectedFeature(panel.getLatestFeature(featId), { immediate: true });
+          }
+        });
+      });
+    });
+
+    // Slider rápido de Opacidade no Painel Lateral
+    root.querySelectorAll('[data-insp-opacity-slider]').forEach(slider => {
+      slider.addEventListener('input', (e) => {
+        if (isLockedNow()) return;
+        const val = Number(e.target.value);
+        const valSpan = root.querySelector('[data-insp-opacity-val]');
+        if (valSpan) valSpan.textContent = `${val}%`;
+        FeaturePropertiesAdapter.previewAlteracao(panel, featId, 'fillOpacity', val);
+      });
+      slider.addEventListener('change', (e) => {
+        if (isLockedNow()) return;
+        const val = Number(e.target.value);
+        FeaturePropertiesAdapter.aplicarAlteracao(panel, featId, 'fillOpacity', val);
+        panel.refreshSelectedFeature(panel.getLatestFeature(featId), { immediate: true });
+      });
+    });
+
     root.querySelectorAll('[data-insp-picker]').forEach(picker => {
       const prop = picker.getAttribute('data-insp-picker');
       picker.addEventListener('input', (e) => {

@@ -197,6 +197,7 @@ export class FeatureInspectorRenderer {
     const rawFill = feat.style?.fillColor;
     const isFillNone = rawFill === 'none' || rawFill === 'transparent';
     const effectiveFill = isFillNone ? (feat.style?._lastFillColor || defaultColor) : (rawFill || defaultColor);
+    const currentFillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
 
     const rawStroke = feat.style?.strokeColor;
     const isStrokeNone = rawStroke === 'none' || rawStroke === 'transparent';
@@ -232,6 +233,17 @@ export class FeatureInspectorRenderer {
                 <button type="button" class="cm-color-toggle-btn ${isFillNone ? 'cm-btn-add' : 'cm-btn-remove'}" data-insp-toggle="fillColor" title="${isFillNone ? 'Ativar cor de preenchimento' : 'Deixar preenchimento sem cor'}" ${disabledAttr}>
                   ${isFillNone ? '🎨 Colorir' : '🚫 Sem cor'}
                 </button>
+              </div>
+            </div>
+
+            <!-- Opacidade do Preenchimento -->
+            <div class="cm-color-channel-row ${isFillNone ? 'is-none' : ''}">
+              <div class="cm-channel-info">
+                <span class="cm-channel-label">Opacidade</span>
+                <span class="cm-channel-status" data-insp-opacity-val>${isFillNone ? '0%' : `${Math.round(currentFillOpacity * 100)}%`}</span>
+              </div>
+              <div class="cm-channel-controls" style="flex: 1; justify-content: flex-end;">
+                <input type="range" class="cm-inspector-opacity-slider" min="0" max="100" step="5" value="${Math.round(currentFillOpacity * 100)}" data-insp-opacity-slider ${disabledAttr || (isFillNone ? 'disabled' : '')} style="width: 90px; height: 5px; accent-color: var(--cm-primary, #00E08A); cursor: pointer;" />
               </div>
             </div>
           ` : ''}

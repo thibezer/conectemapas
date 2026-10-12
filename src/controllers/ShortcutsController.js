@@ -185,8 +185,20 @@ export class ShortcutsController {
 
         if (key === 'x') {
           e.preventDefault();
-          if (app.drawingToolbar && typeof app.drawingToolbar.swapColors === 'function') {
-            app.drawingToolbar.swapColors();
+          if (app.drawingToolbar) {
+            if (e.shiftKey) {
+              app.drawingToolbar.swapColors?.();
+            } else {
+              app.drawingToolbar.toggleActiveColorTarget?.();
+            }
+          }
+          return;
+        }
+
+        if (e.key === '/' || e.code === 'Slash') {
+          e.preventDefault();
+          if (app.drawingToolbar && typeof app.drawingToolbar.setNoneColor === 'function') {
+            app.drawingToolbar.setNoneColor();
           }
           return;
         }

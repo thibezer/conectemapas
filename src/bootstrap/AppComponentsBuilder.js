@@ -18,6 +18,7 @@ import { LayerPanel } from '../components/LayerPanel.js';
 import { AttributeTable } from '../components/AttributeTable.js';
 import { ContextMenu } from '../components/ContextMenu.js';
 import { SelectionHUD } from '../components/SelectionHUD.js';
+import { ColorPickerPopover } from '../components/ColorPicker/ColorPickerPopover.js';
 
 import { ProjectActionsController } from '../controllers/ProjectActionsController.js';
 import { ShortcutsController } from '../controllers/ShortcutsController.js';
@@ -67,6 +68,9 @@ export class AppComponentsBuilder {
           if (isLine) draft.color = colors.strokeColor;
           draft.style._lastStrokeColor = colors.strokeColor;
         }
+      }
+      if ((changed.includes('fillOpacity') || colors.fillOpacity !== undefined) && colors.fillOpacity !== undefined && !isLine) {
+        draft.style.fillOpacity = Math.max(0, Math.min(1, Number(colors.fillOpacity)));
       }
     };
 
@@ -678,6 +682,40 @@ export class AppComponentsBuilder {
       },
       onMoveToLayer: (features, layerId, opts) => {
         app.batchActions?.moveToLayer(features.map(f => f.id), layerId, opts);
+      },
+      onStyle: (features, anchorEl) => {
+        if (!features || features.length === 0) return;
+        const isSingle = features.length === 1;
+        const targetFeat = isSingle ? features[0] : null;
+
+        const defaultFill = targetFeat?.style?.fillColor || targetFeat?.color || '#00E08A';
+        const defaultStroke = targetFeat?.style?.strokeColor || '#ffffff';
+        const defaultOpacity = targetFeat?.style?.fillOpacity !== undefined ? Number(targetFeat.style.fillOpacity) : 0.35;
+
+        ColorPickerPopover.open({
+          anchorEl,
+          title: isSingle ? `Estilo de "${targetFeat.name || 'Feição'}"` : `Estilo em Lote (${features.length})`,
+          activeTarget: 'fill',
+          fillColor: defaultFill,
+          strokeColor: defaultStroke,
+          opacity: defaultOpacity,
+          layers: app.layers || [],
+          onChange: (res) => {
+            AppComponentsBuilder.applyColorsToSelection(app, {
+              fillColor: res.fillColor,
+              strokeColor: res.strokeColor,
+              fillOpacity: res.opacity
+            }, ['fillColor', 'strokeColor', 'fillOpacity']);
+          },
+          onCommit: (res) => {
+            AppComponentsBuilder.applyColorsToSelection(app, {
+              fillColor: res.fillColor,
+              strokeColor: res.strokeColor,
+              fillOpacity: res.opacity
+            }, ['fillColor', 'strokeColor', 'fillOpacity']);
+            AppGeometryCoordinator.syncToolbarColors(app, features);
+          }
+        });
       },
       onClear: () => {
         if (app.mapEngine) app.mapEngine.clearSelection();

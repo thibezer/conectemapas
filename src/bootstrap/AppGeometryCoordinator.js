@@ -68,29 +68,75 @@ export class AppGeometryCoordinator {
   }
 
   /**
-   * Espelha no seletor de cores o estilo da feição selecionada (seleção única),
-   * para que o que a barra mostra seja o que será editado/aplicado.
+   * Espelha no seletor de cores o estilo da feição selecionada (seleção única ou múltipla),
+   * exibindo estado misto (?) quando houver divergência de cores entre elementos.
    */
   static syncToolbarColors(app, list) {
     const toolbar = app.drawingToolbar;
     if (!toolbar || typeof toolbar.setColors !== 'function') return;
 
-    if (list.length !== 1) {
+    if (!list || list.length === 0) {
       toolbar.setStrokeOnly(false);
+      toolbar.setMixedState?.({ fill: false, stroke: false });
       return;
     }
 
-    const feat = list[0];
-    const layer = (app.layers || []).find(l => l.id === feat.layerId);
-    const isLine = /LineString/.test(feat.type);
-    const style = feat.style || {};
+    if (list.length === 1) {
+      toolbar.setMixedState?.({ fill: false, stroke: false });
+      const feat = list[0];
+      const layer = (app.layers || []).find(l => l.id === feat.layerId);
+      const isLine = /LineString/.test(feat.type);
+      const style = feat.style || {};
 
-    toolbar.setStrokeOnly(isLine);
-    toolbar.setColors({
-      fillColor: isLine ? undefined : (style.fillColor || style.textColor || feat.color || layer?.color),
-      strokeColor: style.strokeColor || (isLine ? feat.color : undefined)
-    });
-    app.mapEngine?.setActiveDrawingStyles(toolbar.getColors());
+      toolbar.setStrokeOnly(isLine);
+      if (style.fillOpacity !== undefined) {
+        toolbar.fillOpacity = Number(style.fillOpacity);
+      }
+      toolbar.setColors({
+        fillColor: isLine ? undefined : (style.fillColor || style.textColor || feat.color || layer?.color),
+        strokeColor: style.strokeColor || (isLine ? feat.color : undefined)
+      });
+      app.mapEngine?.setActiveDrawingStyles(toolbar.getColors());
+      return;
+    }
+
+    // Seleção Múltipla (> 1 elemento)
+    const fillColors = new Set();
+    const strokeColors = new Set();
+    let allLines = true;
+
+    for (const feat of list) {
+      const isLine = /LineString/.test(feat.type);
+      if (!isLine) allLines = false;
+      const layer = (app.layers || []).find(l => l.id === feat.layerId);
+      const s = feat.style || {};
+
+      if (!isLine) {
+        const rawFill = s.fillColor || s.textColor || feat.color || layer?.color || '';
+        const fCol = String(rawFill).toLowerCase();
+        if (fCol) fillColors.add(fCol);
+      }
+      const rawStroke = s.strokeColor || (isLine ? feat.color : undefined) || '#ffffff';
+      const sCol = String(rawStroke).toLowerCase();
+      if (sCol) strokeColors.add(sCol);
+    }
+
+    toolbar.setStrokeOnly(allLines);
+
+    const isMixedFill = fillColors.size > 1;
+    const isMixedStroke = strokeColors.size > 1;
+
+    toolbar.setMixedState?.({ fill: isMixedFill, stroke: isMixedStroke });
+
+    const commonFill = (!isMixedFill && fillColors.size === 1) ? Array.from(fillColors)[0] : undefined;
+    const commonStroke = (!isMixedStroke && strokeColors.size === 1) ? Array.from(strokeColors)[0] : undefined;
+
+    if (commonFill || commonStroke) {
+      toolbar.setColors({
+        fillColor: commonFill,
+        strokeColor: commonStroke
+      });
+    }
   }
 
   static updateHUD(app, selectedCount = null) {
