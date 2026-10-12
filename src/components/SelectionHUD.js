@@ -30,6 +30,7 @@ export class SelectionHUD {
     this.onOpenTable = options.onOpenTable || (() => {});
     this.onMoveToLayer = options.onMoveToLayer || (() => {});
     this.onStyle = options.onStyle || (() => {});
+    this.onOpenPopup = options.onOpenPopup || (() => {});
     this.layers = [];
 
     this.selectedFeatures = [];
@@ -116,6 +117,9 @@ export class SelectionHUD {
           <button class="cm-sel-btn primary" id="btn-sel-inspect" title="Inspecionar e editar propriedades">
             🔍 Inspecionar
           </button>
+          <button class="cm-sel-btn" id="btn-sel-popup" title="Ver balão de detalhes flutuante no mapa">
+            💬 Balão
+          </button>
           ${canEditNodes ? `
           <button class="cm-sel-btn" id="btn-sel-edit-nodes" title="Editar vértices / nós no mapa">
             ✏️ Vértices
@@ -188,6 +192,16 @@ export class SelectionHUD {
         e.stopPropagation();
         if (this.selectedFeatures.length > 0) {
           this.onInspect(this.selectedFeatures[0]);
+        }
+      });
+    }
+
+    const btnPopup = this.element.querySelector('#btn-sel-popup');
+    if (btnPopup) {
+      btnPopup.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.selectedFeatures.length > 0) {
+          this.onOpenPopup(this.selectedFeatures[0]);
         }
       });
     }

@@ -193,6 +193,13 @@ export class ContextMenu {
           </div>
         </div>
 
+        <div class="cm-ctx-item" data-action="open-popup">
+          <div class="cm-ctx-item-left">
+            <span class="cm-ctx-icon">💬</span>
+            <span class="cm-ctx-text">Ver Balão no Mapa</span>
+          </div>
+        </div>
+
         <div class="cm-ctx-divider"></div>
 
         <div class="cm-ctx-item" data-action="copy-coords">
@@ -293,6 +300,14 @@ export class ContextMenu {
           <span class="cm-ctx-shortcut">Z</span>
         </div>
 
+        <div class="cm-ctx-item" data-action="toggle-popup-mode">
+          <div class="cm-ctx-item-left">
+            <span class="cm-ctx-icon">💬</span>
+            <span class="cm-ctx-text">${this.app.mapEngine?.isFeaturePopupEnabled() ? 'Desativar Balão ao Clicar' : 'Ativar Balão ao Clicar'}</span>
+          </div>
+          <span class="cm-ctx-shortcut">${this.app.mapEngine?.isFeaturePopupEnabled() ? 'On' : 'Off'}</span>
+        </div>
+
         ${(this.app.mapEngine?.selectedFeatureIds?.size > 0 || this.app.mapEngine?.selectedFeatureId) ? `
           <div class="cm-ctx-divider"></div>
           <div class="cm-ctx-item" data-action="clear-selection">
@@ -351,8 +366,17 @@ export class ContextMenu {
           const isLocked = !feat.locked;
           feat.locked = isLocked;
           this.app.saveFeature(feat);
-        } else if (action === 'delete' && feat) {
-          this.app.deleteFeature(feat.id);
+        } else if (action === 'open-popup' && feat) {
+          this.app.mapEngine?.openFeaturePopup(feat.id);
+        } else if (action === 'toggle-popup-mode') {
+          const isEnabled = this.app.mapEngine?.toggleFeaturePopupEnabled();
+          this.app.headerBar?.updateFeaturePopupMode(isEnabled);
+          UIToast.notificar({
+            tipo: isEnabled ? 'sucesso' : 'informativo',
+            titulo: 'Balão no Mapa',
+            mensagem: isEnabled ? 'Popups ao clicar nas formas ativados.' : 'Popups ao clicar nas formas desativados.',
+            duracao: 2500
+          });
         } else if (action === 'copy-coords') {
           const coordsText = latlng 
             ? `${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`

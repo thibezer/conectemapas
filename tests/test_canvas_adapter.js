@@ -126,4 +126,13 @@ assert.strictEqual(engine._coordinatesOf({ geometria: { tipo: 'Polygon', aneis: 
 assert.strictEqual(engine._zIndexFor(0, 3), 430, 'a primeira camada da árvore fica no topo');
 assert.strictEqual(engine._zIndexFor(2, 3), 410);
 
+// --- 7. Controle do popup de feição (desativado por padrão) ---
+console.log('  7. Controle do popup de feição...');
+engine.popupEnabled = false;
+assert.strictEqual(engine.isFeaturePopupEnabled(), false, 'popup deve vir desativado por padrão');
+assert.strictEqual(engine.toggleFeaturePopupEnabled(), true, 'toggle deve ativar');
+assert.strictEqual(engine.isFeaturePopupEnabled(), true);
+assert.strictEqual(engine.setFeaturePopupEnabled(false), false, 'set deve desativar');
+assert.strictEqual(engine.isFeaturePopupEnabled(), false);
+
 console.log('✅ Todos os testes do adaptador CanvasMapEngine passaram!');

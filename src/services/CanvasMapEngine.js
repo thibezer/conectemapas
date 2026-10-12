@@ -95,6 +95,7 @@ export class CanvasMapEngine {
 
     this.showPreviewGeometries = false;
     this.individualPreviewToggles = new Set();
+    this.popupEnabled = typeof localStorage !== 'undefined' ? (localStorage.getItem('cm_feature_popup_enabled') === 'true') : false;
 
     this._tool = 'select';
     this._features = [];
@@ -207,6 +208,13 @@ export class CanvasMapEngine {
       // O componente abre o popup logo depois deste evento: ajusta o auto-pan antes
       this._updatePopupMargins();
       this.onFeaturesSelected(features);
+
+      // Se popups automáticos estiverem desativados (padrão), fecha o popup na mesma rodada
+      if (!this.popupEnabled) {
+        queueMicrotask(() => {
+          this.closeFeaturePopup();
+        });
+      }
     });
 
     this._on('cad-feicao-selecionada', (e) => {
@@ -680,7 +688,35 @@ export class CanvasMapEngine {
   }
 
   closeFeaturePopup() {
-    this.host.fecharPopupFeicao();
+    this.host?.fecharPopupFeicao?.();
+  }
+
+  setFeaturePopupEnabled(enabled) {
+    this.popupEnabled = Boolean(enabled);
+    try {
+      localStorage.setItem('cm_feature_popup_enabled', String(this.popupEnabled));
+    } catch {}
+    if (!this.popupEnabled) {
+      this.closeFeaturePopup();
+    }
+    return this.popupEnabled;
+  }
+
+  toggleFeaturePopupEnabled() {
+    return this.setFeaturePopupEnabled(!this.popupEnabled);
+  }
+
+  isFeaturePopupEnabled() {
+    return Boolean(this.popupEnabled);
+  }
+
+  openFeaturePopup(featureId) {
+    if (!featureId) return;
+    const feat = this._featureMap?.get(featureId);
+    const ref = this._ref?.(featureId);
+    if (!feat || !ref) return;
+    this._updatePopupMargins?.();
+    this.host?.selecionarFeicoes?.([ref], true);
   }
 
   // ------------------------------------------------------------------------

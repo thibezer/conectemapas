@@ -300,9 +300,22 @@ export class AppComponentsBuilder {
       onToggleGeometryVersion: () => {
         app.toggleGlobalGeometryVersion();
       },
+      onToggleFeaturePopup: () => {
+        const isEnabled = app.mapEngine?.toggleFeaturePopupEnabled();
+        app.headerBar.updateFeaturePopupMode(isEnabled);
+        UIToast.notificar({
+          tipo: isEnabled ? 'sucesso' : 'informativo',
+          titulo: 'Balão de Detalhes',
+          mensagem: isEnabled ? 'Popup ativado ao clicar nas formas.' : 'Popup desativado ao clicar nas formas.',
+          duracao: 2500
+        });
+      },
       onOpenAdvancedSearch: () => app.advancedSearch?.toggle()
     });
     app.headerBar.render(document.getElementById('header-mount'));
+    if (app.mapEngine) {
+      app.headerBar.updateFeaturePopupMode(app.mapEngine.isFeaturePopupEnabled());
+    }
 
     const initialLayer = app.layers.find(l => l.id === app.activeLayerId) || app.layers[0];
 
@@ -651,6 +664,10 @@ export class AppComponentsBuilder {
           const btnExpand = document.getElementById('btn-expand-sidebar');
           if (btnExpand) btnExpand.style.display = 'none';
         }
+      },
+      onOpenPopup: (feature) => {
+        if (!feature || !app.mapEngine) return;
+        app.mapEngine.openFeaturePopup(feature.id);
       },
       onEditVertices: (feature) => {
         app.mapEngine.startVertexEditing(feature, (updated) => {

@@ -21,6 +21,7 @@ export class HeaderBar {
     this.onOpenPrintComposer = options.onOpenPrintComposer || (() => {});
     this.onOpenAdvancedSearch = options.onOpenAdvancedSearch || (() => {});
     this.onToggleGeometryVersion = options.onToggleGeometryVersion || (() => {});
+    this.onToggleFeaturePopup = options.onToggleFeaturePopup || (() => {});
     this.onOpenAccount = options.onOpenAccount || (() => {});
     this.accountName = options.accountName || '';
     this.container = null;
@@ -113,6 +114,19 @@ export class HeaderBar {
                 <polyline points="2 12 12 17 22 12"/>
               </svg>
               <span id="cm-geom-version-text">Geometria: Oficial</span>
+            </div>
+          </ui-botao-primario>
+
+          <ui-botao-primario 
+            inline 
+            id="btn-toggle-popup" 
+            variante="secundario" 
+            title="Balão de detalhes ao clicar na forma: Desativado (clique para ativar)">
+            <div class="cm-header-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span id="cm-popup-toggle-text">Popup: Off</span>
             </div>
           </ui-botao-primario>
 
@@ -328,6 +342,13 @@ export class HeaderBar {
         this.onToggleGeometryVersion();
       });
     }
+
+    const btnPopup = this.container.querySelector('#btn-toggle-popup');
+    if (btnPopup) {
+      btnPopup.addEventListener('click', () => {
+        this.onToggleFeaturePopup();
+      });
+    }
   }
 
   /**
@@ -342,6 +363,24 @@ export class HeaderBar {
     }
     if (btn) {
       btn.setAttribute('variante', isShowingPreviews ? 'aviso' : 'secundario');
+    }
+  }
+
+  /**
+   * Atualiza dinamicamente o estado visual do botão de exibição de popup
+   * @param {boolean} isEnabled
+   */
+  updateFeaturePopupMode(isEnabled) {
+    const textEl = document.getElementById('cm-popup-toggle-text');
+    const btn = document.getElementById('btn-toggle-popup');
+    if (textEl) {
+      textEl.textContent = isEnabled ? 'Popup: On' : 'Popup: Off';
+    }
+    if (btn) {
+      btn.setAttribute('variante', isEnabled ? 'aviso' : 'secundario');
+      btn.title = isEnabled
+        ? 'Balão de detalhes ao clicar na forma: Ativado (clique para desativar)'
+        : 'Balão de detalhes ao clicar na forma: Desativado (clique para ativar)';
     }
   }
 }
