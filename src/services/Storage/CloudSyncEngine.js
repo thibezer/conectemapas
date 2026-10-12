@@ -206,34 +206,47 @@ export class CloudSyncEngine {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
 
-      const res = await this._postJson('sync_deltas', {
-        projectId,
-        clientId: _clientId,
-        toUpsert: merged.dirty.map(packFeatureForCloud),
-        toDelete: merged.deleted
-      });
+      const BATCH_CHUNK_SIZE = 250;
+      const dirtyChunks = [];
+      for (let i = 0; i < merged.dirty.length; i += BATCH_CHUNK_SIZE) {
+        dirtyChunks.push(merged.dirty.slice(i, i + BATCH_CHUNK_SIZE));
+      }
+      if (dirtyChunks.length === 0) dirtyChunks.push([]);
 
-      if (res.status === 409) {
-        // Trava anti-exclusão em massa do servidor: não reenfileira (evitaria loop infinito)
-        LocalStore.clearPendingDeltas(projectId, projectId);
-        _cloudStatus.error = 'Exclusão em massa bloqueada pelo servidor';
-        console.warn('[CloudSyncEngine] Exclusão em massa bloqueada pelo servidor; nuvem preservada.');
-        return false;
-      }
-      if (res.status === 401 || res.status === 403) {
-        // Sem permissão de escrita: reenviar nunca vai funcionar, então descarta a fila local
-        AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
-        LocalStore.clearPendingDeltas(projectId, projectId);
-        _cloudStatus.error = 'Sem permissão de edição neste projeto';
-        return false;
-      }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      for (let c = 0; c < dirtyChunks.length; c++) {
+        const chunkDirty = dirtyChunks[c];
+        const chunkDelete = c === 0 ? merged.deleted : [];
 
-      const resData = await res.json().catch(() => null);
-      if (resData && Number.isFinite(resData.rev)) {
-        for (const f of merged.dirty) _localWriteRev.set(f.id, resData.rev);
-        for (const id of merged.deleted) _localWriteRev.set(id, resData.rev);
+        const res = await this._postJson('sync_deltas', {
+          projectId,
+          clientId: _clientId,
+          toUpsert: chunkDirty.map(packFeatureForCloud),
+          toDelete: chunkDelete
+        });
+
+        if (res.status === 409) {
+          // Trava anti-exclusão em massa do servidor: não reenfileira (evitaria loop infinito)
+          LocalStore.clearPendingDeltas(projectId, projectId);
+          _cloudStatus.error = 'Exclusão em massa bloqueada pelo servidor';
+          console.warn('[CloudSyncEngine] Exclusão em massa bloqueada pelo servidor; nuvem preservada.');
+          return false;
+        }
+        if (res.status === 401 || res.status === 403) {
+          // Sem permissão de escrita: reenviar nunca vai funcionar, então descarta a fila local
+          AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
+          LocalStore.clearPendingDeltas(projectId, projectId);
+          _cloudStatus.error = 'Sem permissão de edição neste projeto';
+          return false;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const resData = await res.json().catch(() => null);
+        if (resData && Number.isFinite(resData.rev)) {
+          for (const f of chunkDirty) _localWriteRev.set(f.id, resData.rev);
+          for (const id of chunkDelete) _localWriteRev.set(id, resData.rev);
+        }
       }
+
       _cloudStatus.connected = true;
       _cloudStatus.lastSyncedAt = new Date().toISOString();
       _cloudStatus.error = null;

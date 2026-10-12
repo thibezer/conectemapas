@@ -74,11 +74,11 @@ export class AppComponentsBuilder {
       app.layerPanel.commitFeatureEdit(targets[0].id, mutate);
       return;
     }
-    targets.forEach((feat) => {
-      const draft = JSON.parse(JSON.stringify(feat));
-      mutate(draft);
-      FeatureSyncController.updateFeature(app, draft);
-    });
+
+    // Para seleções múltiplas / lotes (centenas ou milhares de feições):
+    // Delega diretamente para BatchActions para garantir:
+    // 1 histórico único, 1 re-render único de mapa/tabela e gravação em lote consolidada!
+    BatchActions.applyColors(app, targets.map(t => t.id), colors);
   }
 
   /**

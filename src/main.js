@@ -170,6 +170,12 @@ class ConecteMapasApp {
     }
   }
 
+  saveFeaturesBulk(features) {
+    if (!Array.isArray(features) || features.length === 0) return;
+    StorageService.queueFeaturesBulkUpsert(features, this.projectId);
+    this.saveMetadata(false);
+  }
+
   removeFeature(featureId) {
     if (featureId) {
       StorageService.deleteFeature(featureId);

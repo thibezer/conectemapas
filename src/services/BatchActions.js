@@ -5,6 +5,8 @@
    persiste/sincroniza cada feição alterada e devolve um resumo.
    ========================================================================== */
 
+import { StorageService } from './StorageService.js';
+
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 /** Resolve ids em feições, separando as que serão alteradas das ignoradas. */
