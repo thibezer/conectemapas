@@ -9,7 +9,7 @@
    - Seletor rápido de camada ativa integrado com popover
    ========================================================================== */
 
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined' && !globalThis.process?.versions?.node) {
   import('./DrawingToolbar.css');
 }
 
@@ -280,15 +280,15 @@ export class DrawingToolbar {
           <div class="cm-color-stack">
             <label class="cm-color-chip cm-color-chip--stroke ${this.activeColorTarget === 'stroke' ? 'cm-color-chip--active' : ''}"
                    id="cm-stroke-block"
-                   title="Traço / Contorno: ${this.strokeColor} (clique para alterar)">
-              <span class="cm-chip-face cm-chip-face--stroke" style="border-color: ${this.strokeColor};"></span>
+                   title="Traço / Contorno: ${this.strokeColor === 'none' ? 'Sem cor' : this.strokeColor} (clique para alterar)">
+              <span class="cm-chip-face cm-chip-face--stroke ${this.strokeColor === 'none' ? 'cm-chip-face--none' : ''}" style="${this.strokeColor === 'none' ? '' : `border-color: ${this.strokeColor};`}"></span>
               <input type="color" class="cm-color-input" id="cm-stroke-picker" value="${this._toPickerValue(this.strokeColor)}" aria-label="Cor do traço">
             </label>
 
             <label class="cm-color-chip cm-color-chip--fill ${this.activeColorTarget === 'fill' ? 'cm-color-chip--active' : ''}"
                    id="cm-fill-block"
-                   title="Preenchimento: ${this.fillColor} (clique para alterar)">
-              <span class="cm-chip-face cm-chip-face--fill" style="background-color: ${this.fillColor};"></span>
+                   title="Preenchimento: ${this.fillColor === 'none' ? 'Sem cor' : this.fillColor} (clique para alterar)">
+              <span class="cm-chip-face cm-chip-face--fill ${this.fillColor === 'none' ? 'cm-chip-face--none' : ''}" style="${this.fillColor === 'none' ? '' : `background-color: ${this.fillColor};`}"></span>
               <input type="color" class="cm-color-input" id="cm-fill-picker" value="${this._toPickerValue(this.fillColor)}" aria-label="Cor do preenchimento">
             </label>
 
@@ -296,6 +296,14 @@ export class DrawingToolbar {
                     title="Inverter Preenchimento e Traço [X]" aria-label="Inverter preenchimento e traço">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                 <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
+              </svg>
+            </button>
+
+            <button type="button" class="cm-color-corner-btn cm-color-corner-btn--none" id="cm-color-none"
+                    title="Sem cor no alvo ativo (Preenchimento ou Traço) [/]" aria-label="Sem cor">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round">
+                <circle cx="12" cy="12" r="8" stroke="currentColor"/>
+                <line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="#ef4444"/>
               </svg>
             </button>
 
@@ -425,18 +433,21 @@ export class DrawingToolbar {
   _normalizeHex(color) {
     if (typeof color !== 'string') return null;
     const c = color.trim();
+    const lower = c.toLowerCase();
+    if (lower === 'none' || lower === 'transparent') return 'none';
     if (/^#[0-9a-f]{6}$/i.test(c)) return c;
     const short = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(c);
     return short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}` : null;
   }
 
   _toPickerValue(color) {
-    return (this._normalizeHex(color) || '#000000').toLowerCase();
+    const hex = this._normalizeHex(color);
+    return (hex && hex !== 'none' ? hex : '#000000').toLowerCase();
   }
 
   /**
    * Define cores de preenchimento e traço (apenas visual/estado; não dispara onColorChange).
-   * Valores fora do formato hexadecimal são ignorados.
+   * Suporta hexadecimais e 'none' (transparente).
    * @param {Object} colors
    * @param {string} [colors.fillColor]
    * @param {string} [colors.strokeColor]
@@ -448,20 +459,36 @@ export class DrawingToolbar {
     if (fill) {
       this.fillColor = fill;
       const face = this.container?.querySelector('.cm-chip-face--fill');
-      if (face) face.style.backgroundColor = fill;
+      if (face) {
+        if (fill === 'none') {
+          face.style.backgroundColor = 'transparent';
+          face.classList.add('cm-chip-face--none');
+        } else {
+          face.style.backgroundColor = fill;
+          face.classList.remove('cm-chip-face--none');
+        }
+      }
       const picker = this.container?.querySelector('#cm-fill-picker');
-      if (picker) picker.value = this._toPickerValue(fill);
+      if (picker && fill !== 'none') picker.value = this._toPickerValue(fill);
       const block = this.container?.querySelector('#cm-fill-block');
-      if (block) block.title = `Preenchimento: ${fill} (clique para alterar)`;
+      if (block) block.title = `Preenchimento: ${fill === 'none' ? 'Sem cor' : fill} (clique para alterar)`;
     }
     if (stroke) {
       this.strokeColor = stroke;
       const face = this.container?.querySelector('.cm-chip-face--stroke');
-      if (face) face.style.borderColor = stroke;
+      if (face) {
+        if (stroke === 'none') {
+          face.style.borderColor = 'transparent';
+          face.classList.add('cm-chip-face--none');
+        } else {
+          face.style.borderColor = stroke;
+          face.classList.remove('cm-chip-face--none');
+        }
+      }
       const picker = this.container?.querySelector('#cm-stroke-picker');
-      if (picker) picker.value = this._toPickerValue(stroke);
+      if (picker && stroke !== 'none') picker.value = this._toPickerValue(stroke);
       const block = this.container?.querySelector('#cm-stroke-block');
-      if (block) block.title = `Traço / Contorno: ${stroke} (clique para alterar)`;
+      if (block) block.title = `Traço / Contorno: ${stroke === 'none' ? 'Sem cor' : stroke} (clique para alterar)`;
     }
   }
 
@@ -512,6 +539,15 @@ export class DrawingToolbar {
       strokeColor: '#ffffff'
     });
     this.onColorChange(this.getColors(), { commit: true, changed: ['fillColor', 'strokeColor'] });
+  }
+
+  /**
+   * Define o alvo ativo (Preenchimento ou Traço) como sem cor / transparente (atalho /)
+   */
+  setNoneColor() {
+    const prop = this.activeColorTarget === 'stroke' ? 'strokeColor' : 'fillColor';
+    this.setColors({ [prop]: 'none' });
+    this.onColorChange(this.getColors(), { commit: true, changed: [prop] });
   }
 
   /**
@@ -581,6 +617,10 @@ export class DrawingToolbar {
     this.container.querySelector('#cm-color-swap')?.addEventListener('click', (e) => {
       e.stopPropagation();
       this.swapColors();
+    });
+    this.container.querySelector('#cm-color-none')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setNoneColor();
     });
     this.container.querySelector('#cm-color-default')?.addEventListener('click', (e) => {
       e.stopPropagation();

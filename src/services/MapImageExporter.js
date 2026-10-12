@@ -268,18 +268,24 @@ export class MapImageExporter {
         ctx.closePath();
 
         // Preenchimento
-        ctx.fillStyle = this.hexToRgba(feat.style?.fillColor || color, fillOpacity);
-        ctx.fill();
+        const isFillNone = feat.style?.fillColor === 'none' || feat.style?.fillColor === 'transparent';
+        if (!isFillNone && fillOpacity > 0) {
+          ctx.fillStyle = this.hexToRgba(feat.style?.fillColor || color, fillOpacity);
+          ctx.fill();
+        }
 
         // Contorno
-        ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = strokeWidth;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-        if (feat.style?.strokeDashArray) {
-          ctx.setLineDash(feat.style.strokeDashArray.split(',').map((n) => Number(n) * scale));
+        const isStrokeNone = strokeColor === 'none' || strokeColor === 'transparent';
+        if (!isStrokeNone && strokeWidth > 0) {
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = strokeWidth;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          if (feat.style?.strokeDashArray) {
+            ctx.setLineDash(feat.style.strokeDashArray.split(',').map((n) => Number(n) * scale));
+          }
+          ctx.stroke();
         }
-        ctx.stroke();
 
         // Rótulo no centroide do polígono
         if (feat.name) {

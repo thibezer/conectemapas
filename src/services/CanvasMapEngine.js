@@ -361,14 +361,19 @@ export class CanvasMapEngine {
     const s = feat.style || {};
     const base = feat.color || layer?.color || '#00E08A';
     const isText = feat.type === 'Text';
+    const isFillNone = s.fillColor === 'none' || s.fillColor === 'transparent';
+    const isStrokeNone = s.strokeColor === 'none' || s.strokeColor === 'transparent';
     const stroke = isText
       ? (s.textColor || '#ffffff')
-      : (s.strokeColor || (feat.type === 'LineString' ? base : (s.fillColor ? '#ffffff' : base)));
+      : (isStrokeNone
+          ? 'none'
+          : (s.strokeColor || (feat.type === 'LineString' ? base : (s.fillColor && !isFillNone ? '#ffffff' : base))));
+    const fill = isFillNone ? 'none' : (s.fillColor || base);
     return {
       corTraco: stroke,
-      corPreenchimento: s.fillColor || base,
-      opacidadePreenchimento: s.fillOpacity !== undefined ? Number(s.fillOpacity) : 0.35,
-      espessuraTraco: s.strokeWidth !== undefined ? Number(s.strokeWidth) : 2.5,
+      corPreenchimento: fill,
+      opacidadePreenchimento: isFillNone ? 0 : (s.fillOpacity !== undefined ? Number(s.fillOpacity) : 0.35),
+      espessuraTraco: isStrokeNone ? 0 : (s.strokeWidth !== undefined ? Number(s.strokeWidth) : 2.5),
       dashArray: s.strokeDashArray || undefined,
       icone: SVG_MARKER_ICONS.has(s.markerIcon) ? s.markerIcon : undefined,
       tamanhoIcone: s.markerSize !== undefined ? Number(s.markerSize) : 24,
@@ -702,11 +707,13 @@ export class CanvasMapEngine {
     this.host.definirCamadaDesenho(layerId);
     const s = this.activeDrawingStyles || {};
     const estilo = {};
-    if (s.strokeColor) estilo.corTraco = s.strokeColor;
-    if (s.fillColor) estilo.corPreenchimento = s.fillColor;
+    if (s.strokeColor !== undefined) estilo.corTraco = s.strokeColor;
+    if (s.fillColor !== undefined) estilo.corPreenchimento = s.fillColor;
     else if (this.activeDrawingLayer?.color) estilo.corPreenchimento = this.activeDrawingLayer.color;
-    if (s.fillOpacity !== undefined) estilo.opacidadePreenchimento = Number(s.fillOpacity);
-    if (s.strokeWidth !== undefined) estilo.espessuraTraco = Number(s.strokeWidth);
+    if (s.fillColor === 'none' || s.fillColor === 'transparent') estilo.opacidadePreenchimento = 0;
+    else if (s.fillOpacity !== undefined) estilo.opacidadePreenchimento = Number(s.fillOpacity);
+    if (s.strokeColor === 'none' || s.strokeColor === 'transparent') estilo.espessuraTraco = 0;
+    else if (s.strokeWidth !== undefined) estilo.espessuraTraco = Number(s.strokeWidth);
     this.host.definirEstiloDesenho(estilo);
   }
 
@@ -781,11 +788,13 @@ export class CanvasMapEngine {
 
   _shapeStyle() {
     const s = this.activeDrawingStyles || {};
+    const isFillNone = s.fillColor === 'none' || s.fillColor === 'transparent';
+    const isStrokeNone = s.strokeColor === 'none' || s.strokeColor === 'transparent';
     return {
-      fillColor: s.fillColor || this.activeDrawingLayer?.color || '#00E08A',
-      strokeColor: s.strokeColor || '#ffffff',
-      fillOpacity: s.fillOpacity !== undefined ? s.fillOpacity : 0.35,
-      strokeWidth: s.strokeWidth !== undefined ? s.strokeWidth : 2.5
+      fillColor: isFillNone ? 'none' : (s.fillColor || this.activeDrawingLayer?.color || '#00E08A'),
+      strokeColor: isStrokeNone ? 'none' : (s.strokeColor || '#ffffff'),
+      fillOpacity: isFillNone ? 0 : (s.fillOpacity !== undefined ? s.fillOpacity : 0.35),
+      strokeWidth: isStrokeNone ? 0 : (s.strokeWidth !== undefined ? s.strokeWidth : 2.5)
     };
   }
 

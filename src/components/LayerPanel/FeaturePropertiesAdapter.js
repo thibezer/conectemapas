@@ -110,10 +110,21 @@ export class FeaturePropertiesAdapter {
     // 2. Estilo (0 é valor válido: não usar "|| padrão")
     const defaultColor = feat.color || '#00E08A';
     const numOr = (v, fallback) => (v !== undefined && v !== null && v !== '' && Number.isFinite(Number(v)) ? Number(v) : fallback);
+
+    const rawFill = feat.style?.fillColor;
+    const isFillNone = rawFill === 'none' || rawFill === 'transparent';
+    const effectiveFillColor = isFillNone ? (feat.style?._lastFillColor || feat.color || '#00E08A') : (rawFill || defaultColor);
+
+    const rawStroke = feat.style?.strokeColor;
+    const isStrokeNone = rawStroke === 'none' || rawStroke === 'transparent';
+    const effectiveStrokeColor = isStrokeNone ? (feat.style?._lastStrokeColor || '#ffffff') : (rawStroke || (isLine ? defaultColor : '#ffffff'));
+
     const style = {
-      fillColor: feat.style?.fillColor || defaultColor,
+      fillColor: isFillNone ? 'none' : effectiveFillColor,
+      effectiveFillColor,
       fillOpacity: numOr(feat.style?.fillOpacity, isLine ? 1 : 0.35),
-      strokeColor: feat.style?.strokeColor || (isLine ? defaultColor : '#ffffff'),
+      strokeColor: isStrokeNone ? 'none' : effectiveStrokeColor,
+      effectiveStrokeColor,
       strokeWidth: numOr(feat.style?.strokeWidth, 2.5),
       strokeDashArray: feat.style?.strokeDashArray || '',
       markerIcon: feat.style?.markerIcon || 'pin',
@@ -238,17 +249,26 @@ export class FeaturePropertiesAdapter {
 
     if (isPoly || isCircle) {
       estiloProps.push(
-        { id: 'fillColor', rotulo: 'Preenchimento', tipo: 'cor', valor: style.fillColor, somenteLeitura: isLocked },
-        { id: 'fillOpacity', rotulo: 'Opacidade Preenchimento', tipo: 'numero', valor: Math.round(style.fillOpacity * 100), unidade: '%', casasDecimais: 0, somenteLeitura: isLocked },
-        { id: 'strokeColor', rotulo: 'Cor da Borda', tipo: 'cor', valor: style.strokeColor, somenteLeitura: isLocked },
-        { id: 'strokeWidth', rotulo: 'Espessura da Borda', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
-        { id: 'strokeDashArray', rotulo: 'Padrão do Traço', tipo: 'selecao', valor: style.strokeDashArray || 'continuous', somenteLeitura: isLocked, opcoes: DASH_OPTIONS }
+        { id: 'fillEnabled', rotulo: 'Exibir Preenchimento', tipo: 'booleano', valor: !isFillNone, somenteLeitura: isLocked },
+        ...(!isFillNone ? [
+          { id: 'fillColor', rotulo: 'Cor do Preenchimento', tipo: 'cor', valor: style.effectiveFillColor, somenteLeitura: isLocked },
+          { id: 'fillOpacity', rotulo: 'Opacidade Preenchimento', tipo: 'numero', valor: Math.round(style.fillOpacity * 100), unidade: '%', casasDecimais: 0, somenteLeitura: isLocked }
+        ] : []),
+        { id: 'strokeEnabled', rotulo: 'Exibir Borda', tipo: 'booleano', valor: !isStrokeNone, somenteLeitura: isLocked },
+        ...(!isStrokeNone ? [
+          { id: 'strokeColor', rotulo: 'Cor da Borda', tipo: 'cor', valor: style.effectiveStrokeColor, somenteLeitura: isLocked },
+          { id: 'strokeWidth', rotulo: 'Espessura da Borda', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
+          { id: 'strokeDashArray', rotulo: 'Padrão do Traço', tipo: 'selecao', valor: style.strokeDashArray || 'continuous', somenteLeitura: isLocked, opcoes: DASH_OPTIONS }
+        ] : [])
       );
     } else if (isLine) {
       estiloProps.push(
-        { id: 'strokeColor', rotulo: 'Cor da Linha', tipo: 'cor', valor: style.strokeColor, somenteLeitura: isLocked },
-        { id: 'strokeWidth', rotulo: 'Espessura da Linha', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
-        { id: 'strokeDashArray', rotulo: 'Padrão do Traço', tipo: 'selecao', valor: style.strokeDashArray || 'continuous', somenteLeitura: isLocked, opcoes: DASH_OPTIONS }
+        { id: 'strokeEnabled', rotulo: 'Exibir Linha', tipo: 'booleano', valor: !isStrokeNone, somenteLeitura: isLocked },
+        ...(!isStrokeNone ? [
+          { id: 'strokeColor', rotulo: 'Cor da Linha', tipo: 'cor', valor: style.effectiveStrokeColor, somenteLeitura: isLocked },
+          { id: 'strokeWidth', rotulo: 'Espessura da Linha', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
+          { id: 'strokeDashArray', rotulo: 'Padrão do Traço', tipo: 'selecao', valor: style.strokeDashArray || 'continuous', somenteLeitura: isLocked, opcoes: DASH_OPTIONS }
+        ] : [])
       );
     } else if (isPoint) {
       const iconValue = MARKER_ICON_OPTIONS.some(o => o.id === style.markerIcon) ? style.markerIcon : 'pin';
@@ -476,18 +496,50 @@ export class FeaturePropertiesAdapter {
           return;
 
         // Estilo Visual
-        case 'fillColor':
-          draft.style.fillColor = novoValor;
+        case 'fillEnabled': {
+          const enabled = Boolean(novoValor);
+          if (!enabled) {
+            if (draft.style.fillColor && draft.style.fillColor !== 'none' && draft.style.fillColor !== 'transparent') {
+              draft.style._lastFillColor = draft.style.fillColor;
+            }
+            draft.style.fillColor = 'none';
+          } else {
+            draft.style.fillColor = draft.style._lastFillColor || draft.color || '#00E08A';
+          }
           return;
+        }
+        case 'fillColor': {
+          draft.style.fillColor = novoValor;
+          if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
+            draft.style._lastFillColor = novoValor;
+          }
+          return;
+        }
         case 'fillOpacity': {
           const n = parseNumber(novoValor);
           if (n === null) return false;
           draft.style.fillOpacity = clamp(n, 0, 100) / 100;
           return;
         }
-        case 'strokeColor':
-          draft.style.strokeColor = novoValor;
+        case 'strokeEnabled': {
+          const enabled = Boolean(novoValor);
+          if (!enabled) {
+            if (draft.style.strokeColor && draft.style.strokeColor !== 'none' && draft.style.strokeColor !== 'transparent') {
+              draft.style._lastStrokeColor = draft.style.strokeColor;
+            }
+            draft.style.strokeColor = 'none';
+          } else {
+            draft.style.strokeColor = draft.style._lastStrokeColor || '#ffffff';
+          }
           return;
+        }
+        case 'strokeColor': {
+          draft.style.strokeColor = novoValor;
+          if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
+            draft.style._lastStrokeColor = novoValor;
+          }
+          return;
+        }
         case 'pointColor':
           draft.style.fillColor = novoValor;
           draft.style.strokeColor = novoValor;

@@ -229,6 +229,35 @@
   border: 1.5px solid #ffffff;
 }
 
+.cm-color-corner-btn--none {
+  left: 11px;
+  bottom: 0;
+}
+
+.cm-color-corner-btn--none svg {
+  width: 10px;
+  height: 10px;
+}
+
+.cm-color-corner-btn--none:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* Face sem cor (preenchimento ou traço transparente com diagonal vermelha) */
+.cm-chip-face--none {
+  background: repeating-conic-gradient(#33333d 0% 25%, #222228 0% 50%) 50% / 4px 4px !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
+}
+
+.cm-chip-face--none::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top right, transparent calc(50% - 1px), #ef4444 calc(50% - 1px), #ef4444 calc(50% + 1px), transparent calc(50% + 1px));
+  pointer-events: none;
+}
+
 /* ==========================================================================
    Seletor Rápido de Camada Ativa
    ========================================================================== */

@@ -452,3 +452,219 @@ ui-tabela-propriedades {
   padding: 1px 5px;
   border-radius: 3px;
 }
+
+/* Card de Controle Rápido de Cores CAD */
+.cm-inspector-color-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cm-color-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-color-card-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--cm-text, #ffffff);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.cm-color-quick-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.cm-color-mini-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  color: var(--cm-text-muted, #888899);
+  font-size: 9.5px;
+  font-weight: 500;
+  padding: 2px 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.cm-color-mini-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--cm-text, #ffffff);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.cm-color-mini-btn--clear:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.cm-color-mini-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cm-color-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cm-color-channel-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 4px 8px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.cm-color-channel-row.is-none {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.cm-channel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cm-channel-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--cm-text, #ffffff);
+}
+
+.cm-channel-status {
+  font-size: 9px;
+  font-family: var(--cm-fonte-mono, monospace);
+  color: var(--cm-text-muted, #888899);
+}
+
+.cm-color-channel-row.is-none .cm-channel-status {
+  color: #f87171;
+  font-style: italic;
+}
+
+.cm-channel-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-swatch-picker-label {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  box-sizing: border-box;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1e1e24;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.cm-swatch-picker-label:hover {
+  transform: scale(1.08);
+  border-color: var(--cm-primary, #00E08A);
+}
+
+.cm-swatch-preview {
+  position: absolute;
+  inset: 1px;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.cm-swatch-preview--stroke {
+  border: 3px solid #ffffff;
+  background: transparent !important;
+}
+
+.cm-swatch-preview--line {
+  height: 4px;
+  top: 8px;
+  border-radius: 1px;
+}
+
+/* Efeito Universal de Transparência / Sem Cor */
+.cm-swatch-none {
+  background: repeating-conic-gradient(#2a2a34 0% 25%, #18181e 0% 50%) 50% / 6px 6px !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+
+.cm-swatch-none::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top right, transparent calc(50% - 1.2px), #ef4444 calc(50% - 1.2px), #ef4444 calc(50% + 1.2px), transparent calc(50% + 1.2px));
+  pointer-events: none;
+}
+
+.cm-swatch-native-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.cm-color-toggle-btn {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 3px 7px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.cm-color-toggle-btn.cm-btn-remove {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+.cm-color-toggle-btn.cm-btn-remove:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #ffffff;
+}
+
+.cm-color-toggle-btn.cm-btn-add {
+  background: rgba(0, 224, 138, 0.12);
+  border-color: rgba(0, 224, 138, 0.3);
+  color: var(--cm-primary, #00E08A);
+}
+
+.cm-color-toggle-btn.cm-btn-add:hover:not(:disabled) {
+  background: rgba(0, 224, 138, 0.25);
+  border-color: var(--cm-primary, #00E08A);
+  color: #ffffff;
+}
+
+.cm-color-toggle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

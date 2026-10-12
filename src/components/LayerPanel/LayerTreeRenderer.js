@@ -173,14 +173,23 @@ export class LayerTreeRenderer {
                     const isFeatLocked = feat.locked === true || isLocked;
                     const isFeatSelected = panel.selectedFeatureIds.has(feat.id);
 
+                    const rawFill = feat.style?.fillColor;
+                    const isFillNone = rawFill === 'none' || rawFill === 'transparent';
+                    const rawStroke = feat.style?.strokeColor;
+                    const isStrokeNone = rawStroke === 'none' || rawStroke === 'transparent';
+                    const fillHex = isFillNone ? 'none' : (rawFill || featColor);
+                    const strokeHex = isStrokeNone ? 'none' : (rawStroke || featColor);
+
                     let thumbSvg = '';
                     if (feat.type === 'Polygon') {
-                      thumbSvg = `<svg viewBox="0 0 16 16" width="12" height="12"><polygon points="2,14 14,14 12,2 4,4" fill="${featColor}" fill-opacity="0.5" stroke="${featColor}" stroke-width="1.5"/></svg>`;
+                      thumbSvg = `<svg viewBox="0 0 16 16" width="12" height="12"><polygon points="2,14 14,14 12,2 4,4" fill="${fillHex}" fill-opacity="${isFillNone ? '0' : '0.5'}" stroke="${strokeHex}" stroke-width="${isStrokeNone ? '0' : '1.5'}"/></svg>`;
                     } else if (feat.type === 'LineString') {
-                      thumbSvg = `<svg viewBox="0 0 16 16" width="12" height="12"><polyline points="2,13 8,3 14,10" fill="none" stroke="${featColor}" stroke-width="2"/></svg>`;
+                      thumbSvg = `<svg viewBox="0 0 16 16" width="12" height="12"><polyline points="2,13 8,3 14,10" fill="none" stroke="${strokeHex}" stroke-width="${isStrokeNone ? '0' : '2'}"/></svg>`;
                     } else {
-                      thumbSvg = `<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="4.5" fill="${featColor}" stroke="#fff" stroke-width="1.2"/></svg>`;
+                      thumbSvg = `<svg viewBox="0 0 16 16" width="12" height="12"><circle cx="8" cy="8" r="4.5" fill="${fillHex}" stroke="${strokeHex}" stroke-width="1.2"/></svg>`;
                     }
+
+                    const barBg = isFillNone && isStrokeNone ? 'transparent' : (isFillNone ? strokeHex : fillHex);
 
                     return `
                       <div class="cm-ai-feat-row ${isFeatSelected ? 'selected-row' : ''} ${!isFeatVisible ? 'hidden-row' : ''}" data-feat-row="${featId}" data-feat-select="${featId}" data-feat-layer="${safeId}" draggable="true" title="Clique para selecionar | Arraste para reordenar">
@@ -190,7 +199,7 @@ export class LayerTreeRenderer {
                         <div class="cm-ai-col cm-ai-col-lock" data-feat-lock="${featId}" title="${isFeatLocked ? 'Desbloquear' : 'Bloquear'}">
                           ${isFeatLocked ? `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="#f59e0b" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` : ''}
                         </div>
-                        <div class="cm-ai-col cm-ai-col-colorbar" style="background: ${featColor};"></div>
+                        <div class="cm-ai-col cm-ai-col-colorbar" style="background: ${barBg};"></div>
                         <div class="cm-ai-col cm-ai-col-branch"><span class="cm-ai-branch-line">└</span></div>
                         <div class="cm-ai-col cm-ai-col-thumb"><div class="cm-ai-thumb-box">${thumbSvg}</div></div>
                         <div class="cm-ai-col cm-ai-col-name" data-feat-name-trigger="${featId}" title="Duplo clique para renomear">
