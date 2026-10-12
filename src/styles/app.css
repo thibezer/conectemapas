@@ -25,7 +25,7 @@
   position: relative;
   overflow: hidden;
   width: 100%;
-  height: calc(100vh - 38px);
+  height: calc(100vh - 30px);
 }
 
 /* Map Container */
@@ -396,18 +396,18 @@
 }
 
 /* Salvaguarda: Caso algum HUD seja montado diretamente no body (fallback),
-   nunca sobrepõe a HeaderBar de 38px (fica ancorado a 52px do topo) */
+   nunca sobrepõe a HeaderBar de 30px (fica ancorado a 42px do topo) */
 body > .cm-cad-hud,
 body > .cm-vertex-hud,
 body > .cm-selection-hud {
-  top: 52px !important;
+  top: 42px !important;
 }
 
 /* Salvaguarda de empilhamento: se por qualquer motivo SelectionHUD coexistir com Vertex/CAD HUD,
    o SelectionHUD se posiciona logo abaixo sem sobreposição */
 .cm-workspace:has(#cm-cad-hud:not([style*="none"])) #cm-selection-hud,
 .cm-workspace:has(#cm-vertex-edit-hud:not([style*="none"])) #cm-selection-hud {
-  top: 60px !important;
+  top: 50px !important;
 }
 
 .cm-cad-hud-pulse {

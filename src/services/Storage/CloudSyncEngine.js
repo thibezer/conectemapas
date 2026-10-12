@@ -505,10 +505,14 @@ export class CloudSyncEngine {
       if (!data || !data.success) return null;
       if (data.role) AccessManager.setRole(projectId, data.role);
 
+      const wasConnected = _cloudStatus.connected;
+      const hadError = _cloudStatus.error !== null;
       _cloudStatus.connected = true;
       _cloudStatus.lastSyncedAt = new Date().toISOString();
       _cloudStatus.error = null;
-      this._notifyCloudStatus();
+      if (!wasConnected || hadError) {
+        this._notifyCloudStatus();
+      }
 
       const layers = Array.isArray(data.layers) ? data.layers : [];
 

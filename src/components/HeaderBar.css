@@ -1,22 +1,22 @@
 /* ==========================================================================
    ConecteMapas - HeaderBar Component Styles (SRP Encapsulated)
-   Barra superior compacta de alta densidade (40px) para ambiente GIS
+   Barra superior ultra-fina (30px) de alta densidade técnica para ambiente GIS
    ========================================================================== */
 
 .cm-header {
-  height: 38px;
-  min-height: 38px;
-  max-height: 38px;
-  background: var(--cm-glass-bg, rgba(17, 17, 20, 0.95));
-  backdrop-filter: var(--cm-glass-blur, blur(12px));
-  -webkit-backdrop-filter: var(--cm-glass-blur, blur(12px));
-  border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  height: 30px;
+  min-height: 30px;
+  max-height: 30px;
+  background: var(--cm-glass-bg, rgba(13, 14, 18, 0.94));
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 10px;
+  padding: 0 8px;
   z-index: 1000;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
   box-sizing: border-box;
 }
 
@@ -24,25 +24,27 @@
 .cm-header-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .cm-logo {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--cm-text, #e1e1e6);
   letter-spacing: -0.2px;
   text-decoration: none;
   padding-right: 6px;
-  border-right: 1px solid var(--cm-border, rgba(255, 255, 255, 0.12));
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  line-height: 1;
 }
 
 .cm-logo svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
 }
 
@@ -56,71 +58,120 @@
 .cm-project-title-wrapper {
   display: flex;
   align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 0 6px;
-  height: 22px;
-  border-radius: var(--ui-raio-borda, 4px);
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 0 5px;
+  height: 20px;
+  border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.cm-project-title-icon {
+  width: 10px;
+  height: 10px;
+  color: var(--cm-text-muted, #888899);
+  flex-shrink: 0;
+  opacity: 0.7;
 }
 
 .cm-project-title-wrapper:hover,
 .cm-project-title-wrapper:focus-within {
-  border-color: var(--cm-border, rgba(255, 255, 255, 0.25));
-  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(0, 224, 138, 0.35);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 0 0 1px rgba(0, 224, 138, 0.12);
 }
 
 .cm-project-title-input {
   background: transparent;
   border: none;
   color: var(--cm-text, #e1e1e6);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   font-family: inherit;
   outline: none;
-  width: 170px;
+  width: 135px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: width 0.2s ease;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  line-height: 1;
+  padding: 0;
 }
 
 .cm-project-title-input:focus {
-  width: 230px;
+  width: 185px;
 }
 
+/* --- Indicador de Conexão e Sincronização Estável --- */
 .cm-sync-badge {
-  font-size: 9px;
-  padding: 1px 5px;
-  height: 16px;
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 0 6px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   line-height: 1;
+  border-radius: 999px;
+  user-select: none;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cm-sync-badge[variante="sucesso"] {
+  background: rgba(0, 224, 138, 0.08);
+  border: 1px solid rgba(0, 224, 138, 0.22);
+  color: #00E08A;
+  text-shadow: 0 0 5px rgba(0, 224, 138, 0.35);
+}
+
+.cm-sync-badge[variante="sucesso"]:hover {
+  background: rgba(0, 224, 138, 0.14);
+  border-color: rgba(0, 224, 138, 0.45);
+  box-shadow: 0 0 8px rgba(0, 224, 138, 0.2);
+}
+
+.cm-sync-badge[variante="alerta"] {
+  background: rgba(255, 184, 108, 0.08);
+  border: 1px solid rgba(255, 184, 108, 0.25);
+  color: #ffb86c;
+  text-shadow: 0 0 5px rgba(255, 184, 108, 0.3);
+}
+
+.cm-sync-badge[variante="informativo"] {
+  background: rgba(0, 180, 216, 0.08);
+  border: 1px solid rgba(0, 180, 216, 0.25);
+  color: #00b4d8;
+  text-shadow: 0 0 5px rgba(0, 180, 216, 0.3);
 }
 
 /* --- Centro: Lista de Colaboradores (Avatares) --- */
 .cm-header-center {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .cm-collaborators-list {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
 }
 
 .cm-collaborators-list ui-avatar {
   cursor: pointer;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   transition: transform 0.15s ease;
 }
 
 .cm-collaborators-list ui-avatar:hover {
-  transform: translateY(-1px) scale(1.1);
+  transform: translateY(-1px) scale(1.12);
   z-index: 10;
 }
 
@@ -128,18 +179,21 @@
 .cm-header-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-/* Estilização dos Botões da Barra Superior para altura compacta (26px) em barra de 38px */
+/* Estilização compacta (22px) em barra fina de 30px */
 .cm-header-btn {
-  height: 26px !important;
-  font-size: 11px !important;
+  height: 100% !important;
+  font-size: 10.5px !important;
+  font-weight: 500 !important;
+  letter-spacing: -0.1px !important;
   line-height: 1 !important;
   white-space: nowrap !important;
   display: inline-flex !important;
   align-items: center !important;
-  gap: 5px !important;
+  gap: 4px !important;
   padding: 0 4px !important;
   cursor: pointer;
 }
@@ -147,17 +201,38 @@
 .cm-header-btn svg {
   shape-rendering: geometricPrecision;
   vertical-align: middle;
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   flex-shrink: 0;
 }
 
-.cm-header-right ui-botao-primario {
-  height: 26px;
+.cm-header-btn span {
   display: inline-flex;
-  --ui-campo-altura: 26px;
-  --ui-altura-campo: 26px;
-  --ui-altura-minima: 22px;
-  --ui-touch-target-min: 26px;
-  --ui-raio-borda: 5px;
+  align-items: center;
+  line-height: 1;
+  transform: translateY(-0.75px);
+}
+
+.cm-header-right ui-botao-primario {
+  height: 22px;
+  display: inline-flex;
+  --ui-campo-altura: 22px;
+  --ui-altura-campo: 22px;
+  --ui-altura-minima: 20px;
+  --ui-touch-target-min: 22px;
+  --ui-raio-borda: 4px;
+}
+
+/* Adaptação para telas menores sem quebrar a barra */
+@media (max-width: 1280px) {
+  #btn-open-print-composer .cm-header-btn span,
+  #btn-open-templates .cm-header-btn span,
+  #btn-open-import-export .cm-header-btn span {
+    display: none;
+  }
+  #btn-open-print-composer .cm-header-btn,
+  #btn-open-templates .cm-header-btn,
+  #btn-open-import-export .cm-header-btn {
+    padding: 0 4px !important;
+  }
 }

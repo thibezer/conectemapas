@@ -302,26 +302,43 @@ export class AppBootstrapSync {
     if (!syncChip) return;
 
     const cloud = StorageService.getCloudStatus();
+    let variante = 'sucesso';
+    let texto = '● Conectado';
+    let title = '';
+
+    const count = Array.isArray(app.features) ? app.features.length : 0;
+
     if (!CLOUD_ENABLED) {
-      syncChip.setAttribute('variante', 'alerta');
-      syncChip.textContent = `● Modo local de testes (${app.features.length} feições, sem nuvem)`;
-      syncChip.title = 'Ambiente de desenvolvimento: nada é enviado à Hostinger. Para usar um backend, defina VITE_CLOUD_API_URL em .env.local.';
+      variante = 'alerta';
+      texto = `● Modo Local (${count})`;
+      title = `Ambiente de desenvolvimento: persistência local ativa (${count} feições no IndexedDB). Nada é enviado à Hostinger.`;
     } else if (cloud.syncing) {
-      syncChip.setAttribute('variante', 'alerta');
-      syncChip.textContent = '● Sincronizando com Hostinger MySQL...';
-      syncChip.title = 'Gravando alterações em tempo real no banco u941736878_conectemapas';
+      variante = 'alerta';
+      texto = '● Salvando...';
+      title = 'Gravando alterações em tempo real no banco MySQL';
     } else if (cloud.connected) {
-      syncChip.setAttribute('variante', 'sucesso');
-      syncChip.textContent = `● MySQL Hostinger: Conectado (${cloud.latencyMs || 0}ms)`;
-      syncChip.title = `Banco: ${cloud.database} | ${app.features.length} feições ativas | Clique para verificar conexão`;
+      variante = 'sucesso';
+      texto = '● Conectado';
+      title = `MySQL Hostinger: Conectado (${cloud.latencyMs || 0}ms) | Banco: ${cloud.database || 'u941736878_conectemapas'} | ${count} feições | Clique para testar conexão`;
     } else if (cloud.error) {
-      syncChip.setAttribute('variante', 'informativo');
-      syncChip.textContent = `● Salvo Localmente (${app.features.length} feições no IndexedDB)`;
-      syncChip.title = `Banco local ativo. Nuvem em reconexão: ${cloud.error}`;
+      variante = 'informativo';
+      texto = `● Salvo Local (${count})`;
+      title = `Banco local ativo no IndexedDB (${count} feições). Nuvem em reconexão: ${cloud.error}`;
     } else {
-      syncChip.setAttribute('variante', 'sucesso');
-      syncChip.textContent = `● Salvo (${app.features.length} feições no IndexedDB)`;
-      syncChip.title = 'Persistência ativa';
+      variante = 'sucesso';
+      texto = `● Salvo (${count})`;
+      title = `Persistência ativa (${count} feições no IndexedDB)`;
+    }
+
+    // Memoização contra repaints: só toca no DOM se os valores realmente mudaram
+    if (syncChip.getAttribute('variante') !== variante) {
+      syncChip.setAttribute('variante', variante);
+    }
+    if (syncChip.textContent !== texto) {
+      syncChip.textContent = texto;
+    }
+    if (syncChip.title !== title) {
+      syncChip.title = title;
     }
 
     if (!syncChip._hasCloudClickHandler) {

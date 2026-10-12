@@ -58,6 +58,9 @@ export class HeaderBar {
           </a>
 
           <div class="cm-project-title-wrapper" title="Clique para editar o nome do projeto">
+            <svg class="cm-project-title-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M2.5 13.5h11M9.5 2.5l4 4-8.5 8.5H2v-3l8.5-8.5 3-3-4-4Z" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
             <input 
               type="text" 
               class="cm-project-title-input" 
@@ -67,10 +70,11 @@ export class HeaderBar {
               spellcheck="false" 
               autocomplete="off"
             />
-            <ui-chip id="cm-sync-chip" variante="sucesso" class="cm-sync-badge">
-              ● Salvo no Banco Local
-            </ui-chip>
           </div>
+
+          <ui-chip id="cm-sync-chip" variante="sucesso" class="cm-sync-badge" title="Conexão com Banco de Dados">
+            ● Conectado
+          </ui-chip>
         </div>
 
         <!-- Centro: Operadores Colaborativos Ativos -->
@@ -259,11 +263,15 @@ export class HeaderBar {
    * @param {'sucesso'|'alerta'|'erro'} variante
    * @param {string} texto
    */
-  updateSyncStatus(variante = 'sucesso', texto = '● Sincronizado') {
+  updateSyncStatus(variante = 'sucesso', texto = '● Conectado') {
     const chip = document.getElementById('cm-sync-chip');
     if (chip) {
-      chip.setAttribute('variante', variante);
-      chip.textContent = texto;
+      if (chip.getAttribute('variante') !== variante) {
+        chip.setAttribute('variante', variante);
+      }
+      if (chip.textContent !== texto) {
+        chip.textContent = texto;
+      }
     }
   }
 
