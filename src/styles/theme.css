@@ -37,7 +37,8 @@
   --cm-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
   --cm-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.5);
   --cm-shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.65);
-  /* Ergonomia e Altura de Campos (Inputs, Dropdowns e Formulários) */
+  /* Ergonomia e Altura de Cabeçalho e Campos */
+  --cm-header-height: 32px;
   --ui-campo-altura: 34px;
   --ui-altura-campo: 34px;
   --ui-altura-minima: 34px;

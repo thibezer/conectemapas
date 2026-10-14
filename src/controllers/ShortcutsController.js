@@ -167,6 +167,16 @@ export class ShortcutsController {
       }
       // Atalhos Simples de Ferramentas CAD e Navegação (Sem modificadores)
       else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === '?' || e.key === 'F1') {
+          e.preventDefault();
+          const modal = document.getElementById('modal-shortcuts');
+          if (modal) {
+            if (typeof modal.abrir === 'function') modal.abrir();
+            else modal.setAttribute('aberto', '');
+          }
+          return;
+        }
+
         const key = e.key.toLowerCase();
         const toolMap = {
           v: 'select',

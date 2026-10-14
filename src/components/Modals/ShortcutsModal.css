@@ -1,0 +1,111 @@
+/* ==========================================================================
+   ConecteMapas - ShortcutsModal Styles (SRP Encapsulated)
+   Guia visual de atalhos e comandos cartográficos em tema dark e alta densidade
+   ========================================================================== */
+
+.cm-shortcuts-container {
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cm-shortcuts-subtitle {
+  font-size: 12px;
+  color: var(--cm-text-muted, #888899);
+  line-height: 1.4;
+  margin: 0;
+}
+
+.cm-shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .cm-shortcuts-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cm-shortcuts-card {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-shortcuts-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cm-shortcuts-card-icon {
+  font-size: 14px;
+}
+
+.cm-shortcuts-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--cm-text, #e1e1e6);
+}
+
+.cm-shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cm-shortcuts-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.cm-shortcut-desc {
+  color: var(--cm-text-muted, #a0a0b2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-shortcuts-list kbd {
+  font-family: var(--cm-fonte-mono, 'Fira Code', monospace);
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  padding: 2px 6px;
+  color: var(--cm-primary, #00E08A);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.cm-shortcuts-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cm-shortcuts-hint {
+  font-size: 10.5px;
+  color: var(--cm-text-dim, #626270);
+  font-style: italic;
+}

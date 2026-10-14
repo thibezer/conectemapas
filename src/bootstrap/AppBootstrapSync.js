@@ -91,11 +91,7 @@ export class AppBootstrapSync {
         }
       }
 
-      const hasLocalProjectData = saved && (
-        (Array.isArray(saved.features) && saved.features.length > 0) ||
-        (Array.isArray(saved.layers) && saved.layers.length > 0) ||
-        saved.updatedAt
-      );
+      const hasLocalFeatures = Array.isArray(app.features) && app.features.length > 0;
 
       try {
         await StorageService.commitDeltas();
@@ -103,57 +99,18 @@ export class AppBootstrapSync {
         console.warn('[AppBootstrapSync] Commit de deltas pendentes no boot:', e);
       }
 
-      if (!hasLocalProjectData) {
-        const cloudData = await StorageService.loadProjectFromCloud(app.projectId);
-        if (cloudData && cloudData.exists) {
-          let updated = false;
-
-          if (cloudData.project && cloudData.project.name) {
-            app.projectName = cloudData.project.name;
-            const titleInput = document.getElementById('cm-project-name-input');
-            if (titleInput) titleInput.value = app.projectName;
-            updated = true;
-          }
-
-          if (Array.isArray(cloudData.layers) && cloudData.layers.length > 0) {
-            app.layers = cloudData.layers;
-            updated = true;
-          }
-
-          if (Array.isArray(cloudData.features)) {
-            app.features = cloudData.features
-              .filter(f => !StorageService.hasLocalTombstone(f.id, app.projectId))
-              .map(normalizeFeature);
-            updated = true;
-          }
-
-          if (cloudData.project && cloudData.project.basemap) {
-            app.currentBasemap = cloudData.project.basemap;
-            if (app.mapEngine) app.mapEngine.setBaseLayer(app.currentBasemap);
-            if (app.layerPanel) app.layerPanel.currentBasemap = app.currentBasemap;
-            const seletor = document.getElementById('cm-seletor-mapa-base');
-            if (seletor) seletor.mapaBaseAtivo = app.currentBasemap;
-          }
-
-          if (updated) {
-            app.refreshMapAndTable(true);
-            if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
-            if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
-            if (app.textPromptModal) app.textPromptModal.updateLayers(app.layers);
-            if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-            if (app.mapEngine && app.features.length > 0) {
-              setTimeout(() => app.mapEngine.fitAllFeatures(), 300);
+      // Auto-cura preventiva: se localmente não há feições, SEMPRE consulta a nuvem
+      if (!hasLocalFeatures) {
+        const hydrated = await this.hydrateFromCloud(app);
+        if (!hydrated && saved) {
+          // Fallback se a nuvem estiver indisponível no momento: tenta deltas incrementais
+          try {
+            const deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
+            if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
+              FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
             }
-
-            StorageService.saveMetadata({
-              id: app.projectId,
-              name: app.projectName,
-              basemap: app.currentBasemap,
-              layers: app.layers,
-              featureCount: app.features.length
-            });
-            StorageService.applyRemoteChangesLocally(app.features, [], app.projectId);
-
+          } catch (e) {
+            console.warn('[AppBootstrapSync] Falha no pull de deltas inicial:', e);
           }
         }
       } else {
@@ -188,6 +145,72 @@ export class AppBootstrapSync {
       }
       this.updateSyncChip(app);
       this.startCloudSyncLoop(app);
+    }
+  }
+
+  /**
+   * Hidrata o estado da aplicação a partir de um payload da nuvem com resiliência
+   */
+  static async hydrateFromCloud(app, providedCloudData = null) {
+    try {
+      const cloudData = providedCloudData || await StorageService.loadProjectFromCloud(app.projectId);
+      if (!cloudData || !cloudData.exists) return false;
+
+      let updated = false;
+
+      if (cloudData.project && cloudData.project.name) {
+        app.projectName = cloudData.project.name;
+        const titleInput = document.getElementById('cm-project-name-input');
+        if (titleInput) titleInput.value = app.projectName;
+        updated = true;
+      }
+
+      if (Array.isArray(cloudData.layers) && cloudData.layers.length > 0) {
+        app.layers = cloudData.layers;
+        updated = true;
+      }
+
+      if (Array.isArray(cloudData.features)) {
+        app.features = cloudData.features
+          .filter(f => !StorageService.hasLocalTombstone(f.id, app.projectId))
+          .map(normalizeFeature);
+        updated = true;
+      }
+
+      if (cloudData.project && cloudData.project.basemap) {
+        app.currentBasemap = cloudData.project.basemap;
+        if (app.mapEngine) app.mapEngine.setBaseLayer(app.currentBasemap);
+        if (app.layerPanel) app.layerPanel.currentBasemap = app.currentBasemap;
+        const seletor = document.getElementById('cm-seletor-mapa-base');
+        if (seletor) seletor.mapaBaseAtivo = app.currentBasemap;
+      }
+
+      if (updated) {
+        app.refreshMapAndTable?.(true);
+        if (app.layerPanel) {
+          const layersWithCounts = typeof app.getLayersWithCounts === 'function' ? app.getLayersWithCounts() : app.layers;
+          app.layerPanel.updateLayers(layersWithCounts, app.features);
+        }
+        if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+        if (app.textPromptModal) app.textPromptModal.updateLayers(app.layers);
+        if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+        if (app.mapEngine && app.features.length > 0) {
+          setTimeout(() => app.mapEngine.fitAllFeatures?.(), 300);
+        }
+
+        StorageService.saveMetadata({
+          id: app.projectId,
+          name: app.projectName,
+          basemap: app.currentBasemap,
+          layers: app.layers,
+          featureCount: app.features.length
+        });
+        await StorageService.applyRemoteChangesLocally(app.features, [], app.projectId);
+      }
+      return true;
+    } catch (err) {
+      console.warn('[AppBootstrapSync] Falha ao hidratar da nuvem:', err);
+      return false;
     }
   }
 
@@ -257,6 +280,12 @@ export class AppBootstrapSync {
           nextDelay = app._cloudSyncBackoff;
         } else {
           app._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
+
+          // Auto-cura contínua: se o servidor tem feições mas o cliente está com 0 feições locais
+          if (changes.project && typeof changes.project.featureCount === 'number' && changes.project.featureCount > 0 && app.features.length === 0) {
+            console.warn(`[AppBootstrapSync] Auto-cura ativada: servidor tem ${changes.project.featureCount} feições e local está com 0. Re-hidratando...`);
+            await this.hydrateFromCloud(app);
+          }
 
           const hasUpserted = changes.upserted.length > 0;
           const hasDeleted = changes.deleted.length > 0;
@@ -350,8 +379,8 @@ export class AppBootstrapSync {
             UIToast.notificar({
               tipo: 'sucesso',
               titulo: 'Diagnóstico Hostinger MySQL',
-              mensagem: `Banco "${st.database}" ativo. Latência: ${st.latencyMs}ms.`,
-              duracao: 3500
+              mensagem: `Banco "${st.database}" ativo (${st.latencyMs}ms). Clique duplo para forçar recarga da nuvem.`,
+              duracao: 4000
             });
           } else {
             UIToast.notificar({
@@ -362,6 +391,13 @@ export class AppBootstrapSync {
             });
           }
         });
+      });
+      syncChip.addEventListener('dblclick', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (app.reloadFromCloud) {
+          app.reloadFromCloud();
+        }
       });
     }
   }

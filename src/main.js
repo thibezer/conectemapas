@@ -336,6 +336,37 @@ class ConecteMapasApp {
   toggleFeatureGeometryVersion(featureId) {
     AppGeometryCoordinator.toggleFeatureGeometryVersion(this, featureId);
   }
+
+  async reloadFromCloud() {
+    UIToast.notificar({
+      tipo: 'informativo',
+      titulo: 'Sincronização Nuvem',
+      mensagem: 'Recarregando projeto completo do servidor...',
+      duracao: 3000
+    });
+    try {
+      const { LocalStore } = await import('./services/Storage/LocalStore.js');
+      LocalStore.saveSyncCursor(this.projectId, { rev: 0, id: '' });
+      const success = await AppBootstrapSync.hydrateFromCloud(this);
+      if (success) {
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Projeto Atualizado',
+          mensagem: `${this.features.length} feições carregadas da nuvem com sucesso.`,
+          duracao: 4000
+        });
+      } else {
+        UIToast.notificar({
+          tipo: 'alerta',
+          titulo: 'Servidor Indisponível',
+          mensagem: 'Não foi possível recarregar os dados da Hostinger no momento.',
+          duracao: 4000
+        });
+      }
+    } catch (e) {
+      console.warn('[App] Erro ao recarregar da nuvem:', e);
+    }
+  }
 }
 
 window.addEventListener('DOMContentLoaded', () => {

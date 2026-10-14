@@ -1,7 +1,7 @@
 /* ==========================================================================
    ConecteMapas - HeaderBar Component (SRP Module)
-   Responsabilidade Única: Gerenciamento completo da barra superior,
-   branding, edição de título do projeto, presença de operadores e ações rápidas.
+   Responsabilidade Única: Gerenciamento da barra superior, branding,
+   edição de título do projeto, presença de operadores e ações rápidas.
    ========================================================================== */
 
 import './HeaderBar.css';
@@ -12,6 +12,13 @@ export class HeaderBar {
    * @param {string} options.projectName - Nome inicial do projeto
    * @param {Array} options.collaborators - Lista de operadores ativos
    * @param {Function} options.onProjectNameChange - Callback ao renomear o projeto
+   * @param {Function} options.onSaveProject - Callback ao salvar projeto
+   * @param {Function} options.onOpenPrintComposer - Callback para abrir compositor de impressão
+   * @param {Function} options.onOpenAdvancedSearch - Callback para abrir busca avançada
+   * @param {Function} options.onToggleGeometryVersion - Callback para alternar versão de geometria
+   * @param {Function} options.onToggleFeaturePopup - Callback para alternar balões de popup
+   * @param {Function} options.onOpenAccount - Callback para abrir modal de conta
+   * @param {string} options.accountName - Nome do operador logado
    */
   constructor(options = {}) {
     this.projectName = options.projectName || 'Levantamento Planialtimétrico';
@@ -44,11 +51,13 @@ export class HeaderBar {
   render(container) {
     this.container = container;
     const safeProjectName = this.escapeHtml(this.projectName);
+    const safeAccountName = this.escapeHtml(this.accountName || 'Entrar');
+
     this.container.innerHTML = `
       <header class="cm-header" role="banner">
-        <!-- Esquerda: Logo e Nome do Projeto -->
+        <!-- Esquerda: Logo, Nome do Projeto e Status -->
         <div class="cm-header-left">
-          <a href="#" class="cm-logo" title="ConecteMapas GIS Platform">
+          <a href="#" class="cm-logo" id="cm-brand-link" title="ConecteMapas - Pressione ? para atalhos">
             <svg viewBox="0 0 32 32" fill="none">
               <rect width="32" height="32" rx="8" fill="#141417"/>
               <path d="M16 4C10.477 4 6 8.477 6 14C6 21 16 28 16 28C16 28 26 21 26 14C26 8.477 21.523 4 16 4Z" fill="#00E08A" fill-opacity="0.25" stroke="#00E08A" stroke-width="2"/>
@@ -58,7 +67,7 @@ export class HeaderBar {
             <span>ConecteMapas</span>
           </a>
 
-          <div class="cm-project-title-wrapper" title="Clique para editar o nome do projeto">
+          <div class="cm-project-title-wrapper" title="Clique para editar o nome do projeto (Enter para salvar)">
             <svg class="cm-project-title-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M2.5 13.5h11M9.5 2.5l4 4-8.5 8.5H2v-3l8.5-8.5 3-3-4-4Z" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
@@ -85,14 +94,14 @@ export class HeaderBar {
           </div>
         </div>
 
-        <!-- Direita: Ações Principais -->
+        <!-- Direita: Ações Principais (Na ordem canônica original) -->
         <div class="cm-header-right">
           <ui-botao-primario 
             inline 
             id="btn-manual-save" 
             variante="primary" 
-            title="Salvar Projeto no Banco de Dados Local (Ctrl+S)">
-            <div class="cm-header-btn">
+            title="Salvar Projeto no Banco de Dados (Ctrl+S)">
+            <div class="cm-header-btn cm-btn-save">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
                 <polyline points="17 21 17 13 7 13 7 21"/>
@@ -106,7 +115,7 @@ export class HeaderBar {
             inline 
             id="btn-toggle-geom-version" 
             variante="secundario" 
-            title="Alternar Modo de Geometria: Oficial (Padrão) vs Prévias Solicitadas">
+            title="Alternar Modo de Geometria: Oficial vs Prévias Solicitadas">
             <div class="cm-header-btn">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/>
@@ -201,7 +210,7 @@ export class HeaderBar {
                 <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
                 <circle cx="12" cy="7" r="4"/>
               </svg>
-              <span id="cm-account-label">${this.escapeHtml(this.accountName || 'Entrar')}</span>
+              <span id="cm-account-label">${safeAccountName}</span>
             </div>
           </ui-botao-primario>
 
@@ -228,10 +237,14 @@ export class HeaderBar {
   }
 
   /**
-   * Renderiza os avatares dos operadores conectados
+   * Renderiza os avatares dos operadores conectados na sala
    * @returns {string}
    */
   renderCollaboratorsAvatars() {
+    if (!this.collaborators || this.collaborators.length === 0) {
+      return '';
+    }
+
     return this.collaborators.map(c => {
       const safeName = this.escapeHtml(c.name || 'Operador');
       const safeAvatar = this.escapeHtml(c.avatar || '');
@@ -239,14 +252,14 @@ export class HeaderBar {
       const statusText = c.status === 'online' ? 'Online' : 'Ocupado';
       const safeStatus = this.escapeHtml(c.status || 'online');
       return `
-      <ui-avatar 
-        nome="${safeName}" 
-        foto="${safeAvatar}" 
-        status="${safeStatus}"
-        title="${safeName} (${safeRole}) - ${statusText}"
-        tamanho="sm">
-      </ui-avatar>
-    `;
+        <ui-avatar 
+          nome="${safeName}" 
+          foto="${safeAvatar}" 
+          status="${safeStatus}"
+          title="${safeName} (${safeRole}) - ${statusText}"
+          tamanho="sm">
+        </ui-avatar>
+      `;
     }).join('');
   }
 
@@ -274,7 +287,7 @@ export class HeaderBar {
 
   /**
    * Atualiza o estado de sincronização
-   * @param {'sucesso'|'alerta'|'erro'} variante
+   * @param {'sucesso'|'alerta'|'erro'|'informativo'} variante
    * @param {string} texto
    */
   updateSyncStatus(variante = 'sucesso', texto = '● Conectado') {
@@ -290,11 +303,12 @@ export class HeaderBar {
   }
 
   /**
-   * Vincula eventos do HeaderBar
+   * Vincula eventos e interações do HeaderBar
    */
   bindEvents() {
     if (!this.container) return;
 
+    // Edição do Nome do Projeto
     const input = this.container.querySelector('#cm-project-name-input');
     if (input) {
       input.addEventListener('change', (e) => {
@@ -307,7 +321,6 @@ export class HeaderBar {
         }
       });
 
-      // Salva ao pressionar Enter
       input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           input.blur();
@@ -315,6 +328,20 @@ export class HeaderBar {
       });
     }
 
+    // Clique na Logo -> Abre modal de atalhos
+    const brandLink = this.container.querySelector('#cm-brand-link');
+    if (brandLink) {
+      brandLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const shortcutsModal = document.getElementById('modal-shortcuts');
+        if (shortcutsModal) {
+          if (typeof shortcutsModal.abrir === 'function') shortcutsModal.abrir();
+          else shortcutsModal.setAttribute('aberto', '');
+        }
+      });
+    }
+
+    // Salvar Manual
     const btnSave = this.container.querySelector('#btn-manual-save');
     if (btnSave) {
       btnSave.addEventListener('click', () => {
@@ -322,13 +349,16 @@ export class HeaderBar {
       });
     }
 
+    // Conta / Autenticação
     const btnAccount = this.container.querySelector('#btn-open-account');
     if (btnAccount) {
       btnAccount.addEventListener('click', () => this.onOpenAccount());
     }
 
+    // Busca Avançada
     this.container.querySelector('#btn-open-adv-search')?.addEventListener('click', () => this.onOpenAdvancedSearch());
 
+    // Compositor de Impressão QGIS
     const btnComposer = this.container.querySelector('#btn-open-print-composer');
     if (btnComposer) {
       btnComposer.addEventListener('click', () => {
@@ -336,6 +366,7 @@ export class HeaderBar {
       });
     }
 
+    // Versão de Geometria
     const btnGeomVersion = this.container.querySelector('#btn-toggle-geom-version');
     if (btnGeomVersion) {
       btnGeomVersion.addEventListener('click', () => {
@@ -343,6 +374,7 @@ export class HeaderBar {
       });
     }
 
+    // Popup de Detalhes
     const btnPopup = this.container.querySelector('#btn-toggle-popup');
     if (btnPopup) {
       btnPopup.addEventListener('click', () => {

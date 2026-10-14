@@ -1,13 +1,13 @@
 /* ==========================================================================
    ConecteMapas - HeaderBar Component Styles (SRP Encapsulated)
-   Barra superior ultra-fina (30px) de alta densidade técnica para ambiente GIS
+   Barra superior ultra-fina (32px), de alta densidade e proporções confortáveis
    ========================================================================== */
 
 .cm-header {
-  height: 30px;
-  min-height: 30px;
-  max-height: 30px;
-  background: var(--cm-glass-bg, rgba(13, 14, 18, 0.94));
+  height: var(--cm-header-height, 32px);
+  min-height: var(--cm-header-height, 32px);
+  max-height: var(--cm-header-height, 32px);
+  background: var(--cm-glass-bg, rgba(13, 14, 18, 0.95));
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border-bottom: 1px solid var(--cm-border, rgba(255, 255, 255, 0.08));
@@ -18,6 +18,7 @@
   z-index: 1000;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
   box-sizing: border-box;
+  white-space: nowrap;
 }
 
 /* --- Lado Esquerdo: Logo, Título e Status --- */
@@ -31,9 +32,9 @@
 .cm-logo {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   font-weight: 700;
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--cm-text, #e1e1e6);
   letter-spacing: -0.2px;
   text-decoration: none;
@@ -43,8 +44,8 @@
 }
 
 .cm-logo svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 
@@ -58,10 +59,10 @@
 .cm-project-title-wrapper {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   background: rgba(255, 255, 255, 0.035);
-  padding: 0 5px;
-  height: 20px;
+  padding: 0 6px;
+  height: 22px;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   transition: all 0.15s ease;
@@ -69,8 +70,8 @@
 }
 
 .cm-project-title-icon {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   color: var(--cm-text-muted, #888899);
   flex-shrink: 0;
   opacity: 0.7;
@@ -95,78 +96,84 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   line-height: 1;
   padding: 0;
 }
 
-.cm-project-title-input:focus {
-  width: 185px;
+/* --- Indicador de Conexão (Sem duplicidade de cápsula no Shadow DOM) --- */
+.cm-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0;
+  box-shadow: none !important;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
 }
 
-/* --- Indicador de Conexão e Sincronização Estável --- */
-.cm-sync-badge {
-  font-size: 9.5px;
+/* Estilização exclusiva e unificada na cápsula interna (Shadow DOM part) */
+.cm-sync-badge::part(base) {
+  font-size: 10px;
   font-weight: 600;
-  padding: 0 6px;
-  height: 18px;
+  padding: 2px 8px;
+  height: 20px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
-  border-radius: 999px;
-  user-select: none;
-  cursor: pointer;
-  box-sizing: border-box;
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 
-.cm-sync-badge[variante="sucesso"] {
-  background: rgba(0, 224, 138, 0.08);
-  border: 1px solid rgba(0, 224, 138, 0.22);
+.cm-sync-badge[variante="sucesso"]::part(base) {
+  background-color: rgba(0, 224, 138, 0.12);
+  border: 1px solid rgba(0, 224, 138, 0.3);
   color: #00E08A;
-  text-shadow: 0 0 5px rgba(0, 224, 138, 0.35);
 }
 
-.cm-sync-badge[variante="sucesso"]:hover {
-  background: rgba(0, 224, 138, 0.14);
-  border-color: rgba(0, 224, 138, 0.45);
-  box-shadow: 0 0 8px rgba(0, 224, 138, 0.2);
+.cm-sync-badge[variante="sucesso"]:hover::part(base) {
+  background-color: rgba(0, 224, 138, 0.18);
+  border-color: rgba(0, 224, 138, 0.5);
 }
 
-.cm-sync-badge[variante="alerta"] {
-  background: rgba(255, 184, 108, 0.08);
-  border: 1px solid rgba(255, 184, 108, 0.25);
+.cm-sync-badge[variante="alerta"]::part(base) {
+  background-color: rgba(255, 184, 108, 0.12);
+  border: 1px solid rgba(255, 184, 108, 0.35);
   color: #ffb86c;
-  text-shadow: 0 0 5px rgba(255, 184, 108, 0.3);
 }
 
-.cm-sync-badge[variante="informativo"] {
-  background: rgba(0, 180, 216, 0.08);
-  border: 1px solid rgba(0, 180, 216, 0.25);
+.cm-sync-badge[variante="informativo"]::part(base),
+.cm-sync-badge[variante="info"]::part(base) {
+  background-color: rgba(0, 180, 216, 0.12);
+  border: 1px solid rgba(0, 180, 216, 0.35);
   color: #00b4d8;
-  text-shadow: 0 0 5px rgba(0, 180, 216, 0.3);
 }
 
-/* --- Centro: Lista de Colaboradores (Avatares) --- */
+/* --- Centro: Espaço Fluido e Avatares de Colaboradores --- */
 .cm-header-center {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  flex: 1;
+  min-width: 20px;
+  padding: 0 8px;
 }
 
 .cm-collaborators-list {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 
 .cm-collaborators-list ui-avatar {
   cursor: pointer;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   transition: transform 0.15s ease;
 }
 
@@ -183,7 +190,17 @@
   flex-shrink: 0;
 }
 
-/* Estilização compacta (22px) em barra fina de 30px */
+.cm-header-right ui-botao-primario {
+  height: 22px;
+  display: inline-flex;
+  --ui-campo-altura: 22px;
+  --ui-altura-campo: 22px;
+  --ui-altura-minima: 20px;
+  --ui-touch-target-min: 22px;
+  --ui-raio-borda: 4px;
+  flex-shrink: 0;
+}
+
 .cm-header-btn {
   height: 100% !important;
   font-size: 10.5px !important;
@@ -194,7 +211,7 @@
   display: inline-flex !important;
   align-items: center !important;
   gap: 4px !important;
-  padding: 0 4px !important;
+  padding: 0 5px !important;
   cursor: pointer;
 }
 
@@ -210,29 +227,34 @@
   display: inline-flex;
   align-items: center;
   line-height: 1;
-  transform: translateY(-0.75px);
+  white-space: nowrap !important;
 }
 
-.cm-header-right ui-botao-primario {
-  height: 22px;
-  display: inline-flex;
-  --ui-campo-altura: 22px;
-  --ui-altura-campo: 22px;
-  --ui-altura-minima: 20px;
-  --ui-touch-target-min: 22px;
-  --ui-raio-borda: 4px;
-}
-
-/* Adaptação para telas menores sem quebrar a barra */
-@media (max-width: 1280px) {
+/* Adaptação inteligente para telas menores sem quebrar ou truncar textos */
+@media (max-width: 1366px) {
   #btn-open-print-composer .cm-header-btn span,
   #btn-open-templates .cm-header-btn span,
   #btn-open-import-export .cm-header-btn span {
     display: none;
   }
-  #btn-open-print-composer .cm-header-btn,
-  #btn-open-templates .cm-header-btn,
-  #btn-open-import-export .cm-header-btn {
-    padding: 0 4px !important;
+}
+
+@media (max-width: 1100px) {
+  #btn-open-adv-search .cm-header-btn span,
+  #btn-toggle-popup .cm-header-btn span {
+    display: none;
+  }
+  .cm-header-center {
+    display: none;
+  }
+}
+
+@media (max-width: 850px) {
+  #btn-open-share .cm-header-btn span,
+  #btn-toggle-geom-version .cm-header-btn span {
+    display: none;
+  }
+  .cm-project-title-input {
+    width: 110px;
   }
 }

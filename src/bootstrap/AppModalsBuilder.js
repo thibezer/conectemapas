@@ -12,6 +12,7 @@ import { NewFeatureModal } from '../components/Modals/NewFeatureModal.js';
 import { NewLayerModal } from '../components/Modals/NewLayerModal.js';
 import { PrintComposerModal } from '../components/PrintComposer/PrintComposerModal.js';
 import { TextPromptModal } from '../components/Modals/TextPromptModal.js';
+import { ShortcutsModal } from '../components/Modals/ShortcutsModal.js';
 
 import { ProjectActionsController } from '../controllers/ProjectActionsController.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
@@ -36,8 +37,8 @@ export class AppModalsBuilder {
     app.shareModal.render(document.getElementById('share-modal-mount'));
 
     app.authModal = new AuthModal({
-      onInviteAccepted: ({ projectId }) => app.openProjectAfterInvite(projectId)
       currentProjectId: app.projectId,
+      onInviteAccepted: ({ projectId }) => app.openProjectAfterInvite(projectId)
     });
     app.authModal.render(document.getElementById('auth-modal-mount'));
 
@@ -83,5 +84,8 @@ export class AppModalsBuilder {
       currentBasemap: app.currentBasemap
     });
     app.printComposerModal.render(document.getElementById('print-composer-mount'));
+
+    app.shortcutsModal = new ShortcutsModal();
+    app.shortcutsModal.render(document.getElementById('shortcuts-modal-mount'));
   }
 }
