@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { AuthService } from '../../services/Storage/AuthService.js';
+import { AccessManager } from '../../services/Storage/AccessManager.js';
 
 const ERROR_STYLE = 'min-height: 16px; font-size: 11.5px; color: var(--ui-cor-erro, #ef4444);';
 const HINT_STYLE = 'font-size: 11.5px; color: var(--ui-cor-texto-secundario, #888899); line-height: 1.4;';
@@ -19,6 +20,7 @@ export class AuthModal {
     this.container = null;
     this.onAuthenticated = options.onAuthenticated || (() => {});
     this.onInviteAccepted = options.onInviteAccepted || (() => {});
+    this.currentProjectId = options.currentProjectId || '';
     this.view = 'login';
     this.inviteCode = '';
   }
@@ -117,6 +119,10 @@ export class AuthModal {
           <div><div style="font-weight: 600;">${this.escapeHtml(user.name)}</div>
           <div style="${HINT_STYLE}">${this.escapeHtml(user.email)}</div></div>
         </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span class="cm-share-label">Meus projetos</span>
+          <div id="cm-my-projects" style="${HINT_STYLE}">Carregando...</div>
+        </div>
         <form id="cm-auth-form" style="display: flex; flex-direction: column; gap: 10px;" novalidate>
           <span class="cm-share-label">Trocar senha</span>
           <ui-campo-texto name="current" label="Senha atual" tipo="password" alternar-senha obrigatorio></ui-campo-texto>
@@ -129,7 +135,34 @@ export class AuthModal {
       </div>`;
   }
 
+  async _loadMyProjects(body) {
+    const box = body.querySelector('#cm-my-projects');
+    if (!box) return;
+    try {
+      const projects = await AuthService.listMyProjects();
+      if (!box.isConnected) return;
+      if (!projects.length) {
+        box.textContent = 'Você ainda não participa de nenhum projeto. Aceite um convite para começar.';
+        return;
+      }
+      const roles = { owner: 'Dono', editor: 'Editor', viewer: 'Leitor' };
+      const fmt = (d) => { const t = Date.parse(String(d).replace(' ', 'T')); return t ? new Date(t).toLocaleDateString('pt-BR') : ''; };
+      const rows = projects.map((p) => {
+        const current = p.id === this.currentProjectId ? ' (aberto)' : '';
+        return `<a href="${this.escapeHtml(AccessManager.buildShareUrl(p.id))}"
+            style="display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 6px; text-decoration: none; color: inherit; background: var(--ui-cor-fundo-secundario, rgba(255,255,255,0.05));">
+            <span style="min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${this.escapeHtml(p.name || p.id)}${current}</span>
+            <span style="${HINT_STYLE} white-space: nowrap;">${roles[p.role] || ''} · ${this.escapeHtml(fmt(p.updatedAt))}</span>
+          </a>`;
+      });
+      box.innerHTML = `<div style="display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto;">${rows.join('')}</div>`;
+    } catch (err) {
+      if (box.isConnected) box.textContent = err.message || 'Não foi possível carregar seus projetos.';
+    }
+  }
+
   _bind(body) {
+    if (this.view === 'account') this._loadMyProjects(body);
     body.querySelector('#cm-auth-go-register')?.addEventListener('click', (e) => { e.preventDefault(); this.show('register'); });
     body.querySelector('#cm-auth-go-login')?.addEventListener('click', (e) => { e.preventDefault(); this.show('login'); });
     body.querySelector('#cm-auth-logout')?.addEventListener('click', async () => {
@@ -151,7 +184,7 @@ export class AuthModal {
       try {
         if (this.view === 'login') {
           const user = await AuthService.login(val('email'), rawVal('password'));
-          this.close();
+          this.show('account'); // mostra "Meus projetos" logo após entrar
           this.onAuthenticated(user);
         } else if (this.view === 'register') {
           const res = await AuthService.register({ code: val('code'), name: val('name'), email: val('email'), password: rawVal('password') });

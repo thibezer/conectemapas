@@ -790,6 +790,21 @@ switch ($action) {
         echo json_encode(['success' => true, 'user' => currentUser($pdo)]);
         exit;
 
+    // Projetos da conta logada: a lista nasce do token de sessão, nunca de um id enviado pelo cliente
+    case 'my_projects':
+        $user = requireUser($pdo);
+        $stmt = $pdo->prepare("
+            SELECT p.id, p.name, p.feature_count AS featureCount, p.updated_at AS updatedAt, m.role
+            FROM cm_members m
+            JOIN cm_projects p ON p.id = m.project_id
+            WHERE m.user_id = ?
+            ORDER BY p.updated_at DESC
+            LIMIT 200
+        ");
+        $stmt->execute([$user['id']]);
+        echo json_encode(['success' => true, 'projects' => $stmt->fetchAll()]);
+        exit;
+
     case 'auth_change_password':
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
         $user = requireUser($pdo);

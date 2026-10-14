@@ -99,6 +99,19 @@ export class AuthService {
     await this._post('auth_change_password', { current, new: next });
   }
 
+  /** Projetos dos quais a conta logada é membro: [{id, name, featureCount, updatedAt, role}]. */
+  static async listMyProjects() {
+    const token = this.getToken();
+    if (!token) return [];
+    const res = await cloudFetch(`${CLOUD_API_URL}?action=my_projects`, { headers: { 'X-Auth-Token': token }, cache: 'no-cache' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (res.status === 401) this._setSession(null, null);
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    return data.projects || [];
+  }
+
   static async logout() {
     try { await this._post('auth_logout', {}); } catch {}
     this._setSession(null, null);
