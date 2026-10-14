@@ -372,7 +372,7 @@ export class FeaturePropertiesAdapter {
       { id: 'acao_duplicar', rotulo: 'Clonagem', tipo: 'acao', valor: 'Duplicar', rotuloAcao: '📑 Duplicar Feição (+30m)', dica: 'Cria uma cópia do elemento deslocada em 30 metros' }
     );
 
-    if (isPoly || isLine) {
+    if (isPoly || isLine || isCircle) {
       acoesProps.push(
         {
           id: 'acao_editar_vertices',
@@ -381,9 +381,9 @@ export class FeaturePropertiesAdapter {
           valor: panel.isVertexEditing ? 'Concluir' : 'Editar',
           rotuloAcao: panel.isVertexEditing ? '✔ Concluir Edição de Vértices' : '✏️ Editar Vértices no Mapa',
           somenteLeitura: isLocked,
-          dica: 'Habilita alças arrastáveis em cada vértice no mapa'
+          dica: isCircle ? 'Habilita alças no centro (mover) e na borda (raio) no mapa' : 'Habilita alças arrastáveis em cada vértice no mapa'
         },
-        { id: 'acao_simplificar', rotulo: 'Otimização', tipo: 'acao', valor: 'Simplificar', rotuloAcao: '📉 Simplificar Vértices (DP 5m)', somenteLeitura: isLocked, dica: 'Aplica algoritmo Douglas-Peucker com 5m de tolerância' }
+        ...(isCircle ? [] : [{ id: 'acao_simplificar', rotulo: 'Otimização', tipo: 'acao', valor: 'Simplificar', rotuloAcao: '📉 Simplificar Vértices (DP 5m)', somenteLeitura: isLocked, dica: 'Aplica algoritmo Douglas-Peucker com 5m de tolerância' }])
       );
     }
 

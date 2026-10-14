@@ -931,6 +931,8 @@ export class CanvasMapEngine {
     const coordinates = this._coordinatesOf(feicao);
     if (!coordinates) return;
     const updated = { ...original, coordinates };
+    // a alça de borda do círculo muda o raio, não as coordenadas
+    if (feicao.geometria.tipo === 'Circle') updated.radius = Math.round(feicao.geometria.raioMetros * 100) / 100;
     if (this._vertexCallback && this.host.editandoVertices) this._vertexCallback(updated);
     else this.onFeatureUpdated(updated);
   }

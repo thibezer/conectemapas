@@ -122,6 +122,18 @@ assert.deepStrictEqual(engine._coordinatesOf({ geometria: { tipo: 'LineString', 
 assert.deepStrictEqual(engine._coordinatesOf({ geometria: { tipo: 'Polygon', aneis: [[[1, 2], [3, 4], [5, 6]]] } }), [[1, 2], [3, 4], [5, 6]], 'um anel volta como lista simples');
 assert.strictEqual(engine._coordinatesOf({ geometria: { tipo: 'Polygon', aneis: [[[1, 2]], [[3, 4]]] } }).length, 2, 'com furos volta como multianel');
 
+// edição do círculo: a alça de borda muda o raio, que precisa voltar ao app
+{
+  const got = [];
+  engine._featureMap = new Map();
+  engine._vertexCallback = null;
+  engine._featureMap.set('circ', { id: 'circ', type: 'Circle', coordinates: [1, 2], radius: 100 });
+  engine.onFeatureUpdated = (f) => got.push(f);
+  engine._handleKitUpdated({ feicao: { id: 'circ', geometria: { tipo: 'Circle', centro: [1.5, 2.5], raioMetros: 250.456 } } });
+  assert.deepStrictEqual(got[0].coordinates, [1.5, 2.5]);
+  assert.strictEqual(got[0].radius, 250.46, 'raio editado volta ao app');
+}
+
 // --- 6. Ordem das camadas ---
 assert.strictEqual(engine._zIndexFor(0, 3), 430, 'a primeira camada da árvore fica no topo');
 assert.strictEqual(engine._zIndexFor(2, 3), 410);

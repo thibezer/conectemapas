@@ -132,7 +132,7 @@ export class ContextMenu {
           <span class="cm-ctx-shortcut">Z</span>
         </div>
 
-        ${(isPoly || isLine) ? `
+        ${(isPoly || isLine || isCircle) ? `
           <div class="cm-ctx-item" data-action="edit-vertex">
             <div class="cm-ctx-item-left">
               <span class="cm-ctx-icon">✏️</span>

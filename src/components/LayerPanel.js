@@ -290,8 +290,8 @@ export class LayerPanel {
       this.isVertexEditing = false;
       this.onStopVertexEdit();
     } else {
-      if (!feat || feat.locked === true || (feat.type !== 'Polygon' && feat.type !== 'LineString')) return;
-      if (FeatureGeometryUtils.getVertexRings(feat).length !== 1) {
+      if (!feat || feat.locked === true || (feat.type !== 'Polygon' && feat.type !== 'LineString' && feat.type !== 'Circle')) return;
+      if (feat.type !== 'Circle' && FeatureGeometryUtils.getVertexRings(feat).length !== 1) {
         this.onStartVertexEdit(feat); // o editor do mapa exibe o aviso de multipartes
         return;
       }

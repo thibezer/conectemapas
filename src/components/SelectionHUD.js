@@ -116,7 +116,7 @@ export class SelectionHUD {
       const category = feat.category && feat.category !== feat.type
         ? feat.category
         : FeatureGeometryUtils.getTypeLabel(feat.type);
-      const canEditNodes = !feat.locked && (feat.type === 'Polygon' || feat.type === 'LineString' || feat.type === 'Point');
+      const canEditNodes = !feat.locked && (feat.type === 'Polygon' || feat.type === 'LineString' || feat.type === 'Point' || feat.type === 'Circle');
 
       this.element.innerHTML = `
         <div class="cm-sel-info">
@@ -136,8 +136,8 @@ export class SelectionHUD {
             ${ICONS.popup}${lbl('Balão')}
           </button>
           ${canEditNodes ? `
-          <button class="cm-sel-btn" id="btn-sel-edit-nodes" title="Editar vértices / nós no mapa">
-            ${ICONS.nodes}${lbl('Vértices')}
+          <button class="cm-sel-btn" id="btn-sel-edit-nodes" title="${feat.type === 'Circle' ? 'Editar centro e raio no mapa' : 'Editar vértices / nós no mapa'}">
+            ${ICONS.nodes}${lbl(feat.type === 'Circle' ? 'Raio' : 'Vértices')}
           </button>
           ` : ''}
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Centralizar no mapa">
