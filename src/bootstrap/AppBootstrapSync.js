@@ -126,6 +126,7 @@ export class AppBootstrapSync {
             });
           }
           const deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
+          if (deltaChanges) this.applyRemoteProjectName(app, deltaChanges.project);
           if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
             FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
           }
@@ -146,6 +147,31 @@ export class AppBootstrapSync {
       this.updateSyncChip(app);
       this.startCloudSyncLoop(app);
     }
+  }
+
+  /**
+   * Traz para este aparelho um nome de projeto alterado em outro lugar.
+   * Não sobrescreve enquanto há edição local não enviada ou o campo está em digitação.
+   */
+  static applyRemoteProjectName(app, remoteProject) {
+    const name = remoteProject && typeof remoteProject.name === 'string' ? remoteProject.name.trim() : '';
+    if (!name || name === app.projectName) return false;
+    if (StorageService.hasPendingLayerSync()) return false;
+
+    const titleInput = typeof document !== 'undefined' ? document.getElementById('cm-project-name-input') : null;
+    if (titleInput && document.activeElement === titleInput) return false;
+
+    app.projectName = name;
+    if (titleInput) titleInput.value = name;
+    if (app.headerBar) app.headerBar.projectName = name;
+    StorageService.saveMetadata({
+      id: app.projectId,
+      name,
+      basemap: app.currentBasemap,
+      layers: app.layers,
+      featureCount: app.features.length
+    });
+    return true;
   }
 
   /**
@@ -286,6 +312,8 @@ export class AppBootstrapSync {
             console.warn(`[AppBootstrapSync] Auto-cura ativada: servidor tem ${changes.project.featureCount} feições e local está com 0. Re-hidratando...`);
             await this.hydrateFromCloud(app);
           }
+
+          this.applyRemoteProjectName(app, changes.project);
 
           const hasUpserted = changes.upserted.length > 0;
           const hasDeleted = changes.deleted.length > 0;
