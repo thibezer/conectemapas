@@ -8,6 +8,21 @@ if (typeof window !== 'undefined' && !globalThis.process?.versions?.node) {
 }
 import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
+
+const svg = (body) => `<svg class="cm-sel-ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+const ICONS = {
+  inspect: svg('<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>'),
+  popup: svg('<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+  nodes: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  zoom: svg('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>'),
+  style: svg('<path d="M12 22a10 10 0 1 1 10-10c0 3-2 4-4.5 4H15a2 2 0 0 0-1.5 3.3A2 2 0 0 1 12 22z"/><circle cx="7.5" cy="11" r="1"/><circle cx="12" cy="7" r="1"/><circle cx="16.5" cy="11" r="1"/>'),
+  layer: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
+  trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>'),
+  table: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>'),
+  close: svg('<path d="M18 6 6 18M6 6l12 12"/>')
+};
+const lbl = (t) => `<span class="cm-sel-label">${t}</span>`;
+
 export class SelectionHUD {
   /**
    * @param {Object} options
@@ -106,7 +121,7 @@ export class SelectionHUD {
       this.element.innerHTML = `
         <div class="cm-sel-info">
           <span class="cm-sel-badge-count">1</span>
-          <span style="color: ${layer.color || '#38bdf8'}; font-size: 14px;">●</span>
+          <span class="cm-sel-dot" style="background: ${layer.color || '#38bdf8'}"></span>
           <span class="cm-sel-title" title="${this.escape(featName)}">${this.escape(featName)}</span>
           <span class="cm-sel-tag">${this.escape(category)}</span>
         </div>
@@ -115,30 +130,30 @@ export class SelectionHUD {
 
         <div class="cm-sel-actions">
           <button class="cm-sel-btn primary" id="btn-sel-inspect" title="Inspecionar e editar propriedades">
-            🔍 Inspecionar
+            ${ICONS.inspect}${lbl('Inspecionar')}
           </button>
           <button class="cm-sel-btn" id="btn-sel-popup" title="Ver balão de detalhes flutuante no mapa">
-            💬 Balão
+            ${ICONS.popup}${lbl('Balão')}
           </button>
           ${canEditNodes ? `
           <button class="cm-sel-btn" id="btn-sel-edit-nodes" title="Editar vértices / nós no mapa">
-            ✏️ Vértices
+            ${ICONS.nodes}${lbl('Vértices')}
           </button>
           ` : ''}
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Centralizar no mapa">
-            🎯 Zoom
+            ${ICONS.zoom}${lbl('Zoom')}
           </button>
           <button class="cm-sel-btn" id="btn-sel-color" title="Alterar cor de preenchimento, traço e opacidade">
-            🎨 Estilo
+            ${ICONS.style}${lbl('Estilo')}
           </button>
           <button class="cm-sel-btn" id="btn-sel-layer" title="Mover para outra camada" aria-haspopup="menu" aria-expanded="false">
-            📁 Camada
+            ${ICONS.layer}${lbl('Camada')}
           </button>
-          <button class="cm-sel-btn danger" id="btn-sel-delete" title="Excluir feição">
-            🗑️
+          <button class="cm-sel-btn danger" id="btn-sel-delete" title="Excluir feição" aria-label="Excluir feição">
+            ${ICONS.trash}
           </button>
-          <button class="cm-sel-btn close" id="btn-sel-clear" title="Desmarcar (Esc)">
-            ✕
+          <button class="cm-sel-btn close" id="btn-sel-clear" title="Desmarcar (Esc)" aria-label="Desmarcar">
+            ${ICONS.close}
           </button>
         </div>
       `;
@@ -159,22 +174,22 @@ export class SelectionHUD {
 
         <div class="cm-sel-actions">
           <button class="cm-sel-btn primary" id="btn-sel-table" title="Visualizar na tabela de atributos">
-            📊 Tabela
+            ${ICONS.table}${lbl('Tabela')}
           </button>
           <button class="cm-sel-btn" id="btn-sel-zoom" title="Enquadrar todas as feições selecionadas">
-            🎯 Enquadrar
+            ${ICONS.zoom}${lbl('Enquadrar')}
           </button>
           <button class="cm-sel-btn" id="btn-sel-color" title="Alterar cores em lote">
-            🎨 Estilo
+            ${ICONS.style}${lbl('Estilo')}
           </button>
           <button class="cm-sel-btn" id="btn-sel-layer" title="Mover para outra camada" aria-haspopup="menu" aria-expanded="false">
-            📁 Camada
+            ${ICONS.layer}${lbl('Camada')}
           </button>
           <button class="cm-sel-btn danger" id="btn-sel-delete" title="Excluir feições selecionadas">
-            🗑️ Excluir (${count})
+            ${ICONS.trash}${lbl(`Excluir (${count})`)}
           </button>
-          <button class="cm-sel-btn close" id="btn-sel-clear" title="Desmarcar todas (Esc)">
-            ✕
+          <button class="cm-sel-btn close" id="btn-sel-clear" title="Desmarcar todas (Esc)" aria-label="Desmarcar todas">
+            ${ICONS.close}
           </button>
         </div>
       `;
