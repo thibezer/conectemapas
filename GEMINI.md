@@ -111,5 +111,5 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - O `L.map` pertence ao `<ui-canvas-cad>` (`CanvasHost.mount`); o `CanvasMapEngine` só traduz o app para ele. Nunca chamar `map.remove()` no mapa hospedado: o componente o destrói (`CanvasHost.dispose`).
 - O componente usa Shadow DOM: o CSS do documento é espelhado no shadow root (`CanvasHost._mirrorDocumentStyles`). Seletores e consultas ao DOM do mapa devem partir de `map.getContainer()`, não de `document`.
 - Padrões do componente desligados no `CanvasHost`: camadas padrão (satélite Google, WMS SIGEF/INCRA — que consulta o INCRA a cada clique), painel/barra do kit. Pan com a roda, caixa Window/Crossing, snap e menu de contexto do componente ficam ligados.
-- O kit instalado é uma build local do repositório do usuário (D:/Desenvolvimento/UI_Componentes) enquanto não for publicado.
+- O kit instalado é uma build local do repositório do usuário (D:/Programação/UI_Componentes) enquanto não for publicado.
 - Histórico: o que o motor antigo fazia e o mapa de migração estão em `docs/MAPENGINE_INVENTARIO.md`.

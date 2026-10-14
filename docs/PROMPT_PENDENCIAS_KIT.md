@@ -1,4 +1,4 @@
-Você está no repositório do kit `@thibezer/ui-components-kit` (D:\Desenvolvimento\UI_Componentes). O app ConecteMapas já usa o `<ui-canvas-cad>` no lugar do antigo MapEngine, por meio de um adaptador (`CanvasMapEngine`). Ao integrar, apareceram pendências que só se resolvem aqui. Resolva todas, nesta ordem, sem quebrar a API existente (tudo novo é opt-in) e sem fazer commit nem publicar no npm (isso fica comigo).
+Você está no repositório do kit `@thibezer/ui-components-kit` (D:\Programação\UI_Componentes). O app ConecteMapas já usa o `<ui-canvas-cad>` no lugar do antigo MapEngine, por meio de um adaptador (`CanvasMapEngine`). Ao integrar, apareceram pendências que só se resolvem aqui. Resolva todas, nesta ordem, sem quebrar a API existente (tudo novo é opt-in) e sem fazer commit nem publicar no npm (isso fica comigo).
 
 ## Regras de trabalho
 - A cada item: implemente, escreva testes (vitest) e atualize `docs/` (guia de migração e eventos), `README` e `CHANGELOG` (seção "Não lançado").
