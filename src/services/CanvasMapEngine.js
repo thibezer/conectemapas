@@ -317,7 +317,11 @@ export class CanvasMapEngine {
   /** O painel lateral flutua sobre o mapa: o auto-pan do popup precisa desviar dele também. */
   _updatePopupMargins() {
     if (!this.host) return;
-    this.host.definirMargensPopup({ topo: 76, base: 40, esquerda: 24, direita: this._rightOverlayPadding() });
+    const direita = this._rightOverlayPadding();
+    this.host.definirMargensPopup({ topo: 76, base: 40, esquerda: 24, direita });
+    // HUDs de desenho e edição de vértices ficam no topo (ver CanvasHost): centralizam na área livre,
+    // fora da barra de ferramentas à esquerda e do painel lateral à direita
+    this.host.definirMargensHud?.({ topo: 44, esquerda: 72, direita });
   }
 
   _rightOverlayPadding() {

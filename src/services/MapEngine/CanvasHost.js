@@ -15,12 +15,18 @@
 
 import '@thibezer/ui-components-kit/canvas';
 
-// O mapa ocupa a área toda e a barra da tabela de atributos flutua sobre a base dele:
-// os HUDs do componente (desenho e edição de vértices) sobem para ficar acima dela.
+// O mapa ocupa a área toda; a base dele é coberta pela barra de coordenadas e pela tabela de atributos.
+// Os HUDs do componente (desenho e edição de vértices) vão para o topo, centralizados na área livre
+// (margens em CanvasMapEngine._updatePopupMargins), em versão compacta: a dica longa some do HUD de edição.
 const HIDE_KIT_UI_CSS = `
   .qgis-layer-panel, .cad-quick-toolbar { display: none !important; }
   .cad-root, .cad-map-container { width: 100%; height: 100%; }
-  #cm-draw-hud, #cm-vertex-edit-hud { bottom: 56px !important; }
+  #cm-draw-hud, #cm-vertex-edit-hud {
+    top: var(--cad-hud-topo, 44px) !important; bottom: auto !important;
+    gap: 8px !important; padding: 4px 10px !important; font-size: 11px !important; border-radius: 6px !important;
+  }
+  #cm-draw-hud button, #cm-vertex-edit-hud button { padding: 2px 8px !important; font-size: 11px !important; }
+  #cm-vertex-edit-hud [data-campo="dica"] { display: none !important; }
 `;
 
 export class CanvasHost {
