@@ -49,54 +49,54 @@ export class PrintComposerModal {
         <!-- Toolbar Superior Estilo QGIS -->
         <header class="cm-print-topbar">
           <div class="cm-print-title-area">
-            <span class="cm-print-title">📐 Compositor de Impressão (Layout QGIS)</span>
-            <span class="cm-print-zoom-badge" id="cm-print-paper-badge">${this.paperSize.name}</span>
+            <span class="cm-print-title">📐 Layout de Impressão</span>
+            <span class="cm-print-zoom-badge" id="cm-print-paper-badge" title="Tamanho da folha">${this.paperSize.name}</span>
           </div>
 
           <!-- Ferramentas de Inserção de Elementos Cartográficos -->
-          <div class="cm-print-tools-group">
-            <button class="cm-print-tool-btn" id="btn-add-print-map" title="Inserir Novo Mapa">🗺️ + Mapa</button>
-            <button class="cm-print-tool-btn" id="btn-add-print-inset" title="Inserir Mini-mapa de Localização (Overview)">🌎 + Inset</button>
-            <button class="cm-print-tool-btn" id="btn-add-print-arrow" title="Inserir Rosa dos Ventos">🧭 + Norte</button>
-            <button class="cm-print-tool-btn" id="btn-add-print-scale" title="Inserir Barra de Escala">📏 + Escala</button>
-            <button class="cm-print-tool-btn" id="btn-add-print-legend" title="Inserir Legenda Temática">📋 + Legenda</button>
-            <button class="cm-print-tool-btn" id="btn-add-print-vertices" title="Inserir Tabela de Vértices Topográfica">📊 + Vértices</button>
-            <button class="cm-print-tool-btn" id="btn-add-print-text" title="Inserir Bloco de Notas Técnicas">📝 + Notas</button>
-            <button class="cm-print-tool-btn" id="btn-add-print-titleblock" title="Inserir Selo Técnico ABNT NBR 13133">🏛️ + Selo</button>
+          <div class="cm-print-tools-group cm-print-insert-group" role="group" aria-label="Inserir elemento">
+            <button class="cm-print-tool-btn" id="btn-add-print-map" title="Inserir Novo Mapa">🗺️ <span class="cm-tb-label">Mapa</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-inset" title="Inserir Mini-mapa de Localização (Overview)">🌎 <span class="cm-tb-label">Inset</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-arrow" title="Inserir Rosa dos Ventos">🧭 <span class="cm-tb-label">Norte</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-scale" title="Inserir Barra de Escala">📏 <span class="cm-tb-label">Escala</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-legend" title="Inserir Legenda Temática">📋 <span class="cm-tb-label">Legenda</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-vertices" title="Inserir Tabela de Vértices Topográfica">📊 <span class="cm-tb-label">Vértices</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-text" title="Inserir Bloco de Notas Técnicas">📝 <span class="cm-tb-label">Notas</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-titleblock" title="Inserir Selo Técnico ABNT NBR 13133">🏛️ <span class="cm-tb-label">Selo</span></button>
           </div>
 
           <!-- Alternância de Modo: Mover Itens vs Navegar no Conteúdo do Mapa -->
-          <div class="cm-print-tools-group">
-            <button class="cm-print-tool-btn active" id="btn-mode-layout" title="Modo Layout: Mover, alinhar e redimensionar elementos">
-              🖱️ Layout
+          <div class="cm-print-tools-group" role="group" aria-label="Modo de interação">
+            <button class="cm-print-tool-btn active" id="btn-mode-layout" title="Modo Layout: Mover, alinhar e redimensionar elementos (Esc)">
+              🖱️ <span class="cm-tb-label">Layout</span>
             </button>
             <button class="cm-print-tool-btn" id="btn-mode-content-pan" title="Navegar no Mapa: Pan e zoom do terreno dentro da moldura">
-              🖐️ Navegar no Mapa
+              🖐️ <span class="cm-tb-label">Navegar no mapa</span>
             </button>
           </div>
 
           <!-- Controles de Zoom e Enquadramento da Folha -->
-          <div class="cm-print-tools-group">
-            <button class="cm-print-tool-btn" id="btn-print-zoom-out" title="Diminuir Zoom">➖</button>
-            <span class="cm-print-zoom-badge" id="cm-print-zoom-val" style="min-width: 44px; text-align: center;">100%</span>
-            <button class="cm-print-tool-btn" id="btn-print-zoom-in" title="Aumentar Zoom">➕</button>
-            <button class="cm-print-tool-btn" id="btn-print-zoom-fit" title="Enquadrar Folha">🎯 Enquadrar</button>
-            <button class="cm-print-tool-btn" id="btn-print-auto-align" title="Reorganizar e Alinhar Elementos Automaticamente à Norma ABNT" style="background: rgba(0, 224, 138, 0.15); border-color: var(--cm-primary, #00E08A); color: var(--cm-primary, #00E08A);">📐 Alinhar ABNT</button>
+          <div class="cm-print-tools-group" role="group" aria-label="Zoom da prancheta">
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-zoom-out" title="Diminuir zoom (−)" aria-label="Diminuir zoom">−</button>
+            <span class="cm-print-zoom-badge" id="cm-print-zoom-val" title="Ctrl + roda do mouse também ajusta o zoom">100%</span>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-zoom-in" title="Aumentar zoom (+)" aria-label="Aumentar zoom">+</button>
+            <button class="cm-print-tool-btn" id="btn-print-zoom-fit" title="Enquadrar folha na tela (0)">🎯 <span class="cm-tb-label">Enquadrar</span></button>
+            <button class="cm-print-tool-btn cm-print-accent-btn" id="btn-print-auto-align" title="Reorganizar e alinhar os elementos à norma ABNT (descarta posições manuais)">📐 <span class="cm-tb-label">Alinhar ABNT</span></button>
           </div>
 
           <!-- Ações de Exportação em Alta Resolução -->
           <div class="cm-print-actions-group">
-            <select id="print-export-dpi-select" class="cm-native-select" style="height: 28px; font-size: 11px; padding: 2px 4px;" title="Resolução de Exportação">
+            <select id="print-export-dpi-select" class="cm-native-select cm-print-dpi-select" title="Resolução de exportação">
               <option value="300" selected>300 DPI (Plotagem)</option>
               <option value="150">150 DPI (Rápido)</option>
             </select>
             <ui-botao-primario inline id="btn-export-print-png" variante="secundario" style="height: 28px; font-size: 11px;">
               🖼️ PNG
             </ui-botao-primario>
-            <ui-botao-primario inline id="btn-export-print-pdf" variante="primary" style="height: 28px; font-size: 11px;">
+            <ui-botao-primario inline id="btn-export-print-pdf" variante="primary" style="height: 28px; font-size: 11px; white-space: nowrap;">
               📄 PDF Técnico
             </ui-botao-primario>
-            <button id="btn-close-print-composer" class="cm-vertex-del-btn" style="font-size: 20px; margin-left: 6px;" title="Fechar Layout">×</button>
+            <button id="btn-close-print-composer" class="cm-print-close-btn" title="Fechar layout" aria-label="Fechar layout">×</button>
           </div>
         </header>
 
@@ -143,6 +143,7 @@ export class PrintComposerModal {
     const modal = document.getElementById('cm-print-composer-modal');
     if (modal) modal.classList.remove('hidden');
     this.isOpen = true;
+    this.canvasEngine.bindKeyboardShortcuts(); // close() remove os atalhos; reabre-os a cada abertura
 
     // Salvaguarda visual: se os itens estiverem fora da margem ABNT ou desajustados, restabelece o layout ótimo ABNT
     const mainMap = this.items.find(i => i.type === 'map');
@@ -255,6 +256,7 @@ export class PrintComposerModal {
       }
     }
 
+    this.layoutItemsDOM();
     this.canvasEngine.renderRulers();
   }
 
@@ -275,12 +277,14 @@ export class PrintComposerModal {
       const wPx = item.width * this.canvasEngine.mmToPx;
       const hPx = item.height * this.canvasEngine.mmToPx;
 
+      // O conteúdo é montado na medida de 100% (px = mm × 3,78) e escalado por transform:
+      // textos, mapas e a extensão visível ficam idênticos em qualquer zoom da prancheta.
       return `
-        <div class="cm-print-item ${isSel ? 'selected' : ''} ${item.locked ? 'locked' : ''}" 
-             data-item-id="${item.id}" 
+        <div class="cm-print-item ${isSel ? 'selected' : ''} ${item.locked ? 'locked' : ''}"
+             data-item-id="${item.id}"
              data-item-type="${item.type}"
              style="left: ${xPx}px; top: ${yPx}px; width: ${wPx}px; height: ${hPx}px;">
-          ${this.getItemInnerContent(item)}
+          <div class="cm-item-scaler" style="${this.getScalerStyle(item)}">${this.getItemInnerContent(item)}</div>
           ${isSel && !item.locked ? this.getResizeHandlesHTML() : ''}
         </div>
       `;
@@ -416,8 +420,8 @@ export class PrintComposerModal {
               const scaleBar = this.items.find(i => i.type === 'scale_bar');
               if (scaleBar) {
                 scaleBar.scale = item.scale;
-                const sbEl = document.querySelector('[data-item-id="item-scale-bar"]');
-                if (sbEl) sbEl.innerHTML = PrintItemsManager.renderScaleBar(scaleBar, item.scale);
+                const sbEl = document.querySelector('[data-item-id="item-scale-bar"] .cm-item-scale-bar');
+                if (sbEl) sbEl.outerHTML = PrintItemsManager.renderScaleBar(scaleBar, item.scale);
               }
 
               // Sincroniza retângulo no Inset Map
@@ -541,16 +545,30 @@ export class PrintComposerModal {
     this.insetExtentLayer = null;
   }
 
-  updateItemPositionDOM(item) {
+  getScalerStyle(item) {
+    const base = PrintCanvasEngine.BASE_PX_PER_MM;
+    return `width: ${item.width * base}px; height: ${item.height * base}px; transform: scale(${this.canvasEngine.zoom});`;
+  }
+
+  updateItemPositionDOM(item, invalidateMap = true) {
     const el = document.querySelector(`[data-item-id="${item.id}"]`);
     if (el) {
       el.style.left = `${item.x * this.canvasEngine.mmToPx}px`;
       el.style.top = `${item.y * this.canvasEngine.mmToPx}px`;
       el.style.width = `${item.width * this.canvasEngine.mmToPx}px`;
       el.style.height = `${item.height * this.canvasEngine.mmToPx}px`;
+      const scaler = el.querySelector(':scope > .cm-item-scaler');
+      if (scaler) scaler.style.cssText = this.getScalerStyle(item);
     }
     const map = this.leafletMaps.get(item.id);
-    if (map) map.invalidateSize();
+    if (map && invalidateMap) map.invalidateSize();
+  }
+
+  /** Reposiciona todos os itens após mudança de zoom (os mapas não mudam de tamanho: só o transform) */
+  layoutItemsDOM() {
+    this.items.forEach(item => {
+      if (item.visible !== false) this.updateItemPositionDOM(item, false);
+    });
   }
 
   toggleItemLock(itemId) {
@@ -580,7 +598,15 @@ export class PrintComposerModal {
   updatePropertiesPanel() {
     const mount = document.getElementById('cm-print-props-panel-mount');
     if (mount) {
+      // Preserva a rolagem do painel (e a seção aberta) ao reconstruí-lo após cada seleção/arrasto
+      const prevScroll = mount.querySelector('.cm-print-props-scroll')?.scrollTop || 0;
+      const closed = [...mount.querySelectorAll('details.cm-inspector-accordion')].map(d => d.open);
       mount.innerHTML = PrintPropertiesPanel.render(this);
+      mount.querySelectorAll('details.cm-inspector-accordion').forEach((d, i) => {
+        if (closed[i] === false) d.open = false;
+      });
+      const scroller = mount.querySelector('.cm-print-props-scroll');
+      if (scroller) scroller.scrollTop = prevScroll;
       PrintPropertiesPanel.bindEvents(this);
     }
   }

@@ -294,14 +294,19 @@ export class PrintExporter {
         });
       }
 
+      // Coordenadas de contêiner do Leaflet (latLngToContainerPoint) são em px CSS sem o zoom da prancheta
+      // (o item é escalado por transform), então a razão para a folha usa offsetWidth/offsetHeight.
+      const cssScaleX = w / (domEl.offsetWidth || mapRect.width);
+      const cssScaleY = h / (domEl.offsetHeight || mapRect.height);
+
       // 2. Renderiza Feições Vetoriais em Resolução Nativa Subpixel
       if (item.type === 'map' && composer.features.length > 0) {
-        this.drawNativeVectorFeatures(ctx, map, mapRect, composer.features, composer.layers, x, y, scaleX, scaleY, scaleFactor);
+        this.drawNativeVectorFeatures(ctx, map, mapRect, composer.features, composer.layers, x, y, cssScaleX, cssScaleY, scaleFactor);
       }
 
       // 3. Se for Inset Map, desenha o Retângulo de Abrangência (Extent Box) do mapa principal
       if (item.type === 'inset_map') {
-        this.drawInsetMapExtentBox(ctx, map, mapRect, composer, x, y, scaleX, scaleY);
+        this.drawInsetMapExtentBox(ctx, map, mapRect, composer, x, y, cssScaleX, cssScaleY);
       }
     }
 

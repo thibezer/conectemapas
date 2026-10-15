@@ -5,6 +5,11 @@
    ========================================================================== */
 
 export class PrintCanvasEngine {
+  // Pixels CSS por mm no zoom 100% (96 dpi). Os itens são desenhados nessa medida e escalados por transform.
+  static BASE_PX_PER_MM = 3.78;
+  static MIN_ZOOM = 0.1;
+  static MAX_ZOOM = 4;
+
   constructor(composer) {
     this.composer = composer;
     this.zoom = 1.0;
@@ -32,35 +37,66 @@ export class PrintCanvasEngine {
 
   // 1 mm em pixels de tela para o nível atual de zoom
   get mmToPx() {
-    return 3.78 * this.zoom;
+    return PrintCanvasEngine.BASE_PX_PER_MM * this.zoom;
   }
 
-  setZoom(val) {
-    this.zoom = Math.max(0.2, Math.min(3.0, val));
+  /**
+   * Muda o zoom mantendo fixo o ponto da folha sob `anchor` (coordenadas de tela) ou, sem âncora,
+   * o centro da área visível.
+   */
+  setZoom(val, anchor = null) {
+    const vp = document.getElementById('cm-print-viewport');
+    const next = Math.max(PrintCanvasEngine.MIN_ZOOM, Math.min(PrintCanvasEngine.MAX_ZOOM, val));
+    if (next === this.zoom && vp) {
+      this.updateZoomBadge();
+      return;
+    }
+
+    let ax = 0, ay = 0, fx = 0, fy = 0;
+    if (vp) {
+      const rect = vp.getBoundingClientRect();
+      ax = anchor ? anchor.x - rect.left : vp.clientWidth / 2;
+      ay = anchor ? anchor.y - rect.top : vp.clientHeight / 2;
+      fx = (vp.scrollLeft + ax) / Math.max(1, vp.scrollWidth);
+      fy = (vp.scrollTop + ay) / Math.max(1, vp.scrollHeight);
+    }
+
+    this.zoom = next;
     this.composer.updatePaperSheetDOM();
     this.updateZoomBadge();
+
+    if (vp) {
+      vp.scrollLeft = fx * vp.scrollWidth - ax;
+      vp.scrollTop = fy * vp.scrollHeight - ay;
+      this.renderRulers();
+    }
   }
 
-  zoomIn() {
-    this.setZoom(this.zoom + 0.15);
+  zoomIn(anchor = null) {
+    this.setZoom(this.zoom * 1.2, anchor);
   }
 
-  zoomOut() {
-    this.setZoom(this.zoom - 0.15);
+  zoomOut(anchor = null) {
+    this.setZoom(this.zoom / 1.2, anchor);
   }
 
   zoomFit() {
     const vp = document.getElementById('cm-print-viewport');
     if (!vp) return;
-    const availW = vp.clientWidth - 80;
-    const availH = vp.clientHeight - 80;
-    const paperW = this.composer.paperSize.width * 3.78;
-    const paperH = this.composer.paperSize.height * 3.78;
+    const style = getComputedStyle(vp);
+    const padX = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+    const padY = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+    const availW = vp.clientWidth - padX;
+    const availH = vp.clientHeight - padY;
+    const paperW = this.composer.paperSize.width * PrintCanvasEngine.BASE_PX_PER_MM;
+    const paperH = this.composer.paperSize.height * PrintCanvasEngine.BASE_PX_PER_MM;
+    if (availW <= 0 || availH <= 0) return;
 
-    const scaleX = availW / paperW;
-    const scaleY = availH / paperH;
-    const fitZoom = Math.min(scaleX, scaleY, 1.5);
-    this.setZoom(Math.max(0.25, fitZoom));
+    const fitZoom = Math.min(availW / paperW, availH / paperH, 1.5);
+    this.setZoom(fitZoom);
+    vp.scrollLeft = 0;
+    vp.scrollTop = 0;
+    this.renderRulers();
   }
 
   updateZoomBadge() {
@@ -79,10 +115,18 @@ export class PrintCanvasEngine {
 
     const ctxH = rulerH.getContext('2d');
     const ctxV = rulerV.getContext('2d');
-    const wH = rulerH.width = rulerH.offsetWidth;
-    const hH = rulerH.height = rulerH.offsetHeight;
-    const wV = rulerV.width = rulerV.offsetWidth;
-    const hV = rulerV.height = rulerV.offsetHeight;
+    const dpr = window.devicePixelRatio || 1;
+    const wH = rulerH.offsetWidth;
+    const hH = rulerH.offsetHeight;
+    const wV = rulerV.offsetWidth;
+    const hV = rulerV.offsetHeight;
+    if (!wH || !hH || !wV || !hV) return;
+    rulerH.width = Math.round(wH * dpr);
+    rulerH.height = Math.round(hH * dpr);
+    rulerV.width = Math.round(wV * dpr);
+    rulerV.height = Math.round(hV * dpr);
+    ctxH.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctxV.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     ctxH.fillStyle = '#1e1e24';
     ctxH.fillRect(0, 0, wH, hH);
@@ -159,30 +203,38 @@ export class PrintCanvasEngine {
     if (!paperSheet) return;
     const vp = document.getElementById('cm-print-viewport');
 
-    // Sincroniza réguas com scroll e resize
+    // Sincroniza réguas com scroll e resize (inclui a barra superior quebrando de linha)
     if (vp && !vp._rulerBound) {
       vp._rulerBound = true;
       vp.addEventListener('scroll', () => requestAnimationFrame(() => this.renderRulers()));
-      window.addEventListener('resize', () => requestAnimationFrame(() => this.renderRulers()));
+      if (typeof ResizeObserver !== 'undefined') {
+        this.viewportObserver = new ResizeObserver(() => requestAnimationFrame(() => this.renderRulers()));
+        this.viewportObserver.observe(vp);
+      } else {
+        window.addEventListener('resize', () => requestAnimationFrame(() => this.renderRulers()));
+      }
 
-      // Zoom com Wheel (Ctrl + Roda ou Roda direta na prancheta fora do mapa)
+      // Zoom com Ctrl + roda, ancorado no cursor
       vp.addEventListener('wheel', (e) => {
         if (e.ctrlKey || e.metaKey || e.altKey) {
           e.preventDefault();
-          const delta = e.deltaY < 0 ? 0.1 : -0.1;
-          this.setZoom(this.zoom + delta);
+          const anchor = { x: e.clientX, y: e.clientY };
+          if (e.deltaY < 0) this.zoomIn(anchor);
+          else this.zoomOut(anchor);
         }
       }, { passive: false });
 
       // Pan da prancheta com Botão do Meio ou arrasto fora dos itens
       vp.addEventListener('mousedown', (e) => {
-        if (e.button === 1 || (e.button === 0 && (e.target === vp || e.target.id === 'cm-print-paper-sheet'))) {
+        const onEmptySpace = e.target === vp || e.target.id === 'cm-print-paper-sheet' || e.target.id === 'cm-print-items-layer' || e.target.id === 'cm-abnt-margins-frame';
+        if (e.button === 1 || (e.button === 0 && onEmptySpace)) {
+          if (e.button === 1) e.preventDefault();
           this.isPanning = true;
           this.panStartX = e.clientX;
           this.panStartY = e.clientY;
           this.scrollStartX = vp.scrollLeft;
           this.scrollStartY = vp.scrollTop;
-          vp.style.cursor = 'grab';
+          vp.style.cursor = 'grabbing';
         }
       });
     }
@@ -255,7 +307,7 @@ export class PrintCanvasEngine {
     this.mouseUpHandler = () => {
       if (this.isPanning && vp) {
         this.isPanning = false;
-        vp.style.cursor = 'default';
+        vp.style.cursor = '';
       }
       if (this.isDraggingItem || this.isResizing) {
         this.isDraggingItem = false;
@@ -310,6 +362,16 @@ export class PrintCanvasEngine {
       // Preserva modificadores do sistema
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
+      // Atalhos da prancheta (independem de haver item selecionado)
+      if (e.key === 'Escape') {
+        if (this.composer.interactionMode === 'content_pan') this.composer.setInteractionMode('layout');
+        else this.composer.selectItem(null);
+        return;
+      }
+      if (e.key === '0') { e.preventDefault(); this.zoomFit(); return; }
+      if (e.key === '+' || e.key === '=') { e.preventDefault(); this.zoomIn(); return; }
+      if (e.key === '-' || e.key === '_') { e.preventDefault(); this.zoomOut(); return; }
+
       const selectedId = this.composer.selectedItemId;
       if (!selectedId) return;
 
@@ -339,12 +401,6 @@ export class PrintCanvasEngine {
       } else if (e.key === 'ArrowRight') {
         item.x = Math.min(this.composer.paperSize.width - item.width, item.x + step);
         moved = true;
-      } else if (e.key === 'Escape') {
-        if (this.composer.interactionMode === 'content_pan') {
-          this.composer.setInteractionMode('layout');
-        } else {
-          this.composer.selectItem(null);
-        }
       }
 
       if (moved) {

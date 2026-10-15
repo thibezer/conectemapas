@@ -12,22 +12,22 @@ export class PrintPropertiesPanel {
     });
 
     return `
-      <div style="width: 300px; background: #18181c; border-left: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; height: 100%;">
+      <div class="cm-print-props-panel" style="background: #18181c; border-left: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; box-sizing: border-box;">
         <div style="height: 40px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; padding: 0 12px; font-weight: 700; font-size: 11.5px; color: #fff; justify-content: space-between;">
           <span>⚙️ PROPRIEDADES DO ITEM</span>
           <span style="font-size: 10px; color: var(--cm-primary); font-family: monospace;">${composer.paperSize.name}</span>
         </div>
 
-        <div style="flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px;">
+        <div class="cm-print-props-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px;">
           <!-- 1. Configurações da Folha de Papel -->
           <details class="cm-inspector-accordion" open>
             <summary style="font-size: 11px; font-weight: 600; padding: 6px 8px; cursor: pointer; color: #fff; background: rgba(255,255,255,0.02);">
               📄 Folha de Impressão (${composer.paperSize.name})
             </summary>
             <div style="padding: 8px; display: flex; flex-direction: column; gap: 8px;">
-              <div class="cm-param-row">
+              <div class="cm-param-row" style="flex-direction: column; align-items: stretch;">
                 <span class="cm-param-label">Tamanho do Papel:</span>
-                <select id="print-paper-size-select" class="cm-native-select" style="width: 145px;">
+                <select id="print-paper-size-select" class="cm-native-select" style="width: 100%;">
                   <option value="A4_L" ${composer.paperSize.id === 'A4_L' ? 'selected' : ''}>A4 Paisagem (297x210 mm)</option>
                   <option value="A4_P" ${composer.paperSize.id === 'A4_P' ? 'selected' : ''}>A4 Retrato (210x297 mm)</option>
                   <option value="A3_L" ${composer.paperSize.id === 'A3_L' ? 'selected' : ''}>A3 Paisagem (420x297 mm)</option>

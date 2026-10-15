@@ -68,10 +68,15 @@
   bottom: 0;
   overflow: auto;
   display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 40px;
   background: #25252b;
+}
+
+/* margin:auto centraliza a folha quando ela cabe e deixa o scroll alcançar todas as bordas quando não cabe
+   (justify/align-items:center cortaria o lado esquerdo/topo, inacessível por rolagem). */
+.cm-print-viewport > .cm-print-paper-sheet {
+  margin: auto;
+  flex: 0 0 auto;
 }
 
 .cm-print-guide-line {

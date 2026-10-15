@@ -38,8 +38,36 @@
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.1);
   position: relative;
   overflow: hidden;
-  transition: width 0.15s ease, height 0.15s ease;
-  transform-origin: center center;
+  flex-shrink: 0;
+}
+
+/* Conteúdo do item na medida de 100% (px = mm × 3,78), escalado pelo zoom via transform inline */
+.cm-item-scaler {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+/* Painel lateral: largura fluida, nunca espremido pela prancheta */
+#cm-print-props-panel-mount {
+  flex: 0 0 auto;
+  width: clamp(260px, 22vw, 340px);
+  min-height: 0;
+}
+
+#cm-print-props-panel-mount .cm-print-props-panel {
+  width: 100%;
+  height: 100%;
+}
+
+#cm-print-props-panel-mount .cm-param-row {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+#cm-print-props-panel-mount .cm-native-select {
+  max-width: 100%;
 }
 
 /* Itens Cartográficos Posicionados */
