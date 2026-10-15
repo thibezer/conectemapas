@@ -3,7 +3,7 @@
    Montagem dos componentes de interface e motor cartográfico Leaflet.
    ========================================================================== */
 
-import { UIToast } from '@thibezer/ui-components-kit';
+import { UIToast, abrirSeletorCor } from '@thibezer/ui-components-kit';
 import { AuthService } from '../services/Storage/AuthService.js';
 import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../utils/toastHelpers.js';
 import { CanvasMapEngine } from '../services/CanvasMapEngine.js';
@@ -18,12 +18,12 @@ import { LayerPanel } from '../components/LayerPanel.js';
 import { AttributeTable } from '../components/AttributeTable.js';
 import { ContextMenu } from '../components/ContextMenu.js';
 import { SelectionHUD } from '../components/SelectionHUD.js';
-import { ColorPickerPopover } from '../components/ColorPicker/ColorPickerPopover.js';
 
 import { ProjectActionsController } from '../controllers/ProjectActionsController.js';
 import { ShortcutsController } from '../controllers/ShortcutsController.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { AppModalsBuilder } from './AppModalsBuilder.js';
+import { AppGeometryCoordinator } from './AppGeometryCoordinator.js';
 
 export class AppComponentsBuilder {
   /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
@@ -700,8 +700,12 @@ export class AppComponentsBuilder {
       onMoveToLayer: (features, layerId, opts) => {
         app.batchActions?.moveToLayer(features.map(f => f.id), layerId, opts);
       },
-      onStyle: (features, anchorEl) => {
-        if (!features || features.length === 0) return;
+      onStyle: (hudFeatures, anchorEl) => {
+        if (!hudFeatures || hudFeatures.length === 0) return;
+        // O HUD guarda a seleção de quando foi aberto; o seletor parte das cores atuais
+        // (o "Cancelar" restaura exatamente esse estado inicial)
+        const latest = (list) => list.map(f => (app.features || []).find(x => x.id === f.id) || f);
+        const features = latest(hudFeatures);
         const isSingle = features.length === 1;
         const targetFeat = isSingle ? features[0] : null;
 
@@ -709,28 +713,26 @@ export class AppComponentsBuilder {
         const defaultStroke = targetFeat?.style?.strokeColor || '#ffffff';
         const defaultOpacity = targetFeat?.style?.fillOpacity !== undefined ? Number(targetFeat.style.fillOpacity) : 0.35;
 
-        ColorPickerPopover.open({
-          anchorEl,
-          title: isSingle ? `Estilo de "${targetFeat.name || 'Feição'}"` : `Estilo em Lote (${features.length})`,
-          activeTarget: 'fill',
-          fillColor: defaultFill,
-          strokeColor: defaultStroke,
-          opacity: defaultOpacity,
-          layers: app.layers || [],
-          onChange: (res) => {
-            AppComponentsBuilder.applyColorsToSelection(app, {
-              fillColor: res.fillColor,
-              strokeColor: res.strokeColor,
-              fillOpacity: res.opacity
-            }, ['fillColor', 'strokeColor', 'fillOpacity']);
-          },
-          onCommit: (res) => {
-            AppComponentsBuilder.applyColorsToSelection(app, {
-              fillColor: res.fillColor,
-              strokeColor: res.strokeColor,
-              fillOpacity: res.opacity
-            }, ['fillColor', 'strokeColor', 'fillOpacity']);
-            AppGeometryCoordinator.syncToolbarColors(app, features);
+        const applyStyle = (res) => {
+          AppComponentsBuilder.applyColorsToSelection(app, {
+            fillColor: res.preenchimento,
+            strokeColor: res.traco,
+            fillOpacity: res.opacidade
+          }, ['fillColor', 'strokeColor', 'fillOpacity']);
+        };
+        abrirSeletorCor({
+          ancora: anchorEl || document.body,
+          titulo: isSingle ? `Estilo de "${targetFeat.name || 'Feição'}"` : `Estilo em Lote (${features.length})`,
+          modo: 'duplo',
+          alvo: 'preenchimento',
+          preenchimento: defaultFill,
+          traco: defaultStroke,
+          opacidade: defaultOpacity,
+          coresProjeto: (app.layers || []).map(l => l.color),
+          aoAlterar: applyStyle,
+          aoConfirmar: (res) => {
+            applyStyle(res);
+            AppGeometryCoordinator.syncToolbarColors(app, latest(features));
           }
         });
       },

@@ -11,8 +11,7 @@
 import { FeaturePropertiesAdapter } from './FeaturePropertiesAdapter.js';
 import { GeoFormats } from '../../services/GeoFormats.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
-import { UIToast } from '@thibezer/ui-components-kit';
-import { ColorPickerPopover } from '../ColorPicker/ColorPickerPopover.js';
+import { UIToast, abrirSeletorCor } from '@thibezer/ui-components-kit';
 
 // O seletor de cor nativo dispara 'input' a cada movimento: só grava após uma pausa
 const COLOR_COMMIT_DELAY_MS = 300;
@@ -69,7 +68,7 @@ export class FeatureInspectorEvents {
     q('[data-insp="fit"]')?.addEventListener('click', () => panel.onFitFeature(featId));
     q('[data-insp="delete"]')?.addEventListener('click', () => FeaturePropertiesAdapter.confirmDelete(panel, featId));
 
-    // 2.1 Controles de Cores CAD do Painel Lateral (ColorPickerPopover + Fallback Nativo)
+    // 2.1 Controles de Cores CAD do Painel Lateral (seletor de cor do kit)
     root.querySelectorAll('.cm-swatch-picker-label').forEach(label => {
       const picker = label.querySelector('[data-insp-picker]');
       const prop = picker?.getAttribute('data-insp-picker');
@@ -88,14 +87,16 @@ export class FeatureInspectorEvents {
           : (feat.style?.fillColor || feat.color || '#00E08A');
         const currentOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
 
-        ColorPickerPopover.open({
-          anchorEl: label,
-          title: isStroke ? 'Cor do Traço / Borda' : (isPoint ? 'Cor do Marcador' : 'Cor do Preenchimento'),
-          color: currentColor,
-          opacity: currentOpacity,
-          showOpacity: !isStroke && !isPoint,
-          layers: panel.layers || [],
-          onChange: ({ color, opacity }) => {
+        abrirSeletorCor({
+          ancora: label,
+          titulo: isStroke ? 'Cor do Traço / Borda' : (isPoint ? 'Cor do Marcador' : 'Cor do Preenchimento'),
+          modo: 'simples',
+          alvo: isStroke ? 'traco' : 'preenchimento',
+          cor: currentColor,
+          opacidade: currentOpacity,
+          mostrarOpacidade: !isStroke && !isPoint,
+          coresProjeto: (panel.layers || []).map(l => l.color),
+          aoAlterar: ({ cor: color, opacidade: opacity }) => {
             if (isStroke) {
               FeaturePropertiesAdapter.previewAlteracao(panel, featId, 'strokeColor', color);
             } else {
@@ -105,7 +106,7 @@ export class FeatureInspectorEvents {
               }
             }
           },
-          onCommit: ({ color, opacity }) => {
+          aoConfirmar: ({ cor: color, opacidade: opacity }) => {
             panel.commitFeatureEdit(featId, (draft) => {
               if (!draft.style) draft.style = {};
               if (isStroke) {

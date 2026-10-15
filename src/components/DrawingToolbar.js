@@ -5,7 +5,7 @@
    - Ferramentas completas de seleção, vetor, conta-gotas, formas e divisão (faca)
    - Toggle de Snap Magnético sincronizado com luz indicadora
    - Ações rápidas de Undo/Redo, Enquadrar, GPS, Limpar e Excluir
-   - Seletor de Cores estilo Illustrator (Fill / Stroke), aplicado à seleção e aos novos desenhos
+   - Par de cores Fill / Stroke (<ui-controle-cores> do kit), aplicado à seleção e aos novos desenhos
    - Seletor rápido de camada ativa integrado com popover
    ========================================================================== */
 
@@ -13,7 +13,14 @@ if (typeof window !== 'undefined' && !globalThis.process?.versions?.node) {
   import('./DrawingToolbar.css');
 }
 
-import { ColorPickerPopover } from './ColorPicker/ColorPickerPopover.js';
+import '@thibezer/ui-components-kit/cores';
+
+const DEFAULT_FILL = '#00E08A';
+const DEFAULT_STROKE = '#ffffff';
+// O app fala fill/stroke; o <ui-controle-cores> do kit fala preenchimento/traco
+const TO_KIT_TARGET = { fill: 'preenchimento', stroke: 'traco' };
+const FROM_KIT_TARGET = { preenchimento: 'fill', traco: 'stroke' };
+const FROM_KIT_PROP = { preenchimento: 'fillColor', traco: 'strokeColor', opacidade: 'fillOpacity' };
 
 export class DrawingToolbar {
   /**
@@ -49,6 +56,7 @@ export class DrawingToolbar {
 
     this.container = null;
     this.paleta = null;
+    this.colorControl = null; // <ui-controle-cores>, depois do render
     this.isLayerMenuOpen = false;
 
     this._handleDocClick = this._handleDocClick.bind(this);
@@ -280,46 +288,18 @@ export class DrawingToolbar {
           aria-label="Ferramentas de Desenho e Medição">
         </ui-paleta-ferramentas>
 
-        <!-- Seletor de Cores CAD/GIS: Preenchimento (frente) e Traço (atrás) sobrepostos -->
+        <!-- Par de cores de desenho (preenchimento/traço) do kit: <ui-controle-cores> -->
         <div class="cm-color-controller" id="cm-color-controller">
-          <div class="cm-color-stack">
-            <div class="cm-color-chip cm-color-chip--stroke ${this.activeColorTarget === 'stroke' ? 'cm-color-chip--active' : ''}"
-                 id="cm-stroke-block"
-                 tabindex="0"
-                 role="button"
-                 title="Traço / Contorno: ${this.strokeColor === 'none' ? 'Sem cor' : this.strokeColor} [X para focar, clique duplo para alterar]">
-              <span class="cm-chip-face cm-chip-face--stroke ${this.strokeColor === 'none' ? 'cm-chip-face--none' : ''} ${this.isMixedStroke ? 'cm-chip-face--mixed' : ''}" style="${this.strokeColor === 'none' || this.isMixedStroke ? '' : `border-color: ${this.strokeColor};`}"></span>
-            </div>
-
-            <div class="cm-color-chip cm-color-chip--fill ${this.activeColorTarget === 'fill' ? 'cm-color-chip--active' : ''}"
-                 id="cm-fill-block"
-                 tabindex="0"
-                 role="button"
-                 title="Preenchimento: ${this.fillColor === 'none' ? 'Sem cor' : this.fillColor} [X para focar, clique duplo para alterar]">
-              <span class="cm-chip-face cm-chip-face--fill ${this.fillColor === 'none' ? 'cm-chip-face--none' : ''} ${this.isMixedFill ? 'cm-chip-face--mixed' : ''}" style="${this.fillColor === 'none' || this.isMixedFill ? '' : `background-color: ${this.fillColor};`}"></span>
-            </div>
-
-            <button type="button" class="cm-color-corner-btn cm-color-corner-btn--swap" id="cm-color-swap"
-                    title="Inverter Preenchimento e Traço [Shift+X]" aria-label="Inverter preenchimento e traço">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>
-              </svg>
-            </button>
-
-            <button type="button" class="cm-color-corner-btn cm-color-corner-btn--none" id="cm-color-none"
-                    title="Sem cor no alvo ativo (Preenchimento ou Traço) [/]" aria-label="Sem cor">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round">
-                <circle cx="12" cy="12" r="8" stroke="currentColor"/>
-                <line x1="6.5" y1="6.5" x2="17.5" y2="17.5" stroke="#ef4444"/>
-              </svg>
-            </button>
-
-            <button type="button" class="cm-color-corner-btn cm-color-corner-btn--reset" id="cm-color-default"
-                    title="Restaurar cores padrão da camada [D]" aria-label="Restaurar cores padrão da camada">
-              <span class="cm-reset-dot cm-reset-dot--layer" style="background-color: ${this.activeLayer?.color || '#00E08A'}"></span>
-              <span class="cm-reset-dot cm-reset-dot--white"></span>
-            </button>
-          </div>
+          <ui-controle-cores
+            id="cm-controle-cores"
+            preenchimento="${this._esc(this.fillColor)}"
+            traco="${this._esc(this.strokeColor)}"
+            opacidade="${this.fillOpacity}"
+            alvo="${this.activeColorTarget === 'stroke' ? 'traco' : 'preenchimento'}"
+            padrao-preenchimento="${this._esc(this.activeLayer?.color || DEFAULT_FILL)}"
+            padrao-traco="${DEFAULT_STROKE}"
+            titulo-seletor="Cores & Estilo CAD">
+          </ui-controle-cores>
         </div>
 
         <!-- Seletor Rápido de Camada Ativa Integrado -->
@@ -403,10 +383,8 @@ export class DrawingToolbar {
       if (name) name.textContent = layer.name;
     }
 
-    const resetDotLayer = this.container.querySelector('.cm-reset-dot--layer');
-    if (resetDotLayer && layer?.color) {
-      resetDotLayer.style.backgroundColor = layer.color;
-    }
+    // "Restaurar padrão" do controle de cores usa a cor da camada ativa
+    if (layer?.color) this.colorControl?.setAttribute('padrao-preenchimento', layer.color);
   }
 
   /**
@@ -432,8 +410,8 @@ export class DrawingToolbar {
   }
 
   /**
-   * Normaliza uma cor para #rrggbb (exigido por <input type="color">).
-   * Aceita #rgb e #rrggbb; devolve null para qualquer outro formato.
+   * Normaliza uma cor para #rrggbb (mantém a caixa recebida) ou 'none'.
+   * Aceita #rgb, #rrggbb, 'none' e 'transparent'; devolve null para qualquer outro formato.
    * @param {string} color
    * @returns {string|null}
    */
@@ -447,11 +425,6 @@ export class DrawingToolbar {
     return short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}` : null;
   }
 
-  _toPickerValue(color) {
-    const hex = this._normalizeHex(color);
-    return (hex && hex !== 'none' ? hex : '#000000').toLowerCase();
-  }
-
   /**
    * Define cores de preenchimento e traço (apenas visual/estado; não dispara onColorChange).
    * Suporta hexadecimais e 'none' (transparente).
@@ -462,41 +435,18 @@ export class DrawingToolbar {
   setColors({ fillColor, strokeColor }) {
     const fill = this._normalizeHex(fillColor);
     const stroke = this._normalizeHex(strokeColor);
-
     if (fill) {
       this.fillColor = fill;
       this.isMixedFill = false;
-      const face = this.container?.querySelector('.cm-chip-face--fill');
-      if (face) {
-        face.classList.remove('cm-chip-face--mixed');
-        if (fill === 'none') {
-          face.style.backgroundColor = 'transparent';
-          face.classList.add('cm-chip-face--none');
-        } else {
-          face.style.backgroundColor = fill;
-          face.classList.remove('cm-chip-face--none');
-        }
-      }
-      const block = this.container?.querySelector('#cm-fill-block');
-      if (block) block.title = `Preenchimento: ${fill === 'none' ? 'Sem cor' : fill} [X para focar, clique duplo para alterar]`;
     }
     if (stroke) {
       this.strokeColor = stroke;
       this.isMixedStroke = false;
-      const face = this.container?.querySelector('.cm-chip-face--stroke');
-      if (face) {
-        face.classList.remove('cm-chip-face--mixed');
-        if (stroke === 'none') {
-          face.style.borderColor = 'transparent';
-          face.classList.add('cm-chip-face--none');
-        } else {
-          face.style.borderColor = stroke;
-          face.classList.remove('cm-chip-face--none');
-        }
-      }
-      const block = this.container?.querySelector('#cm-stroke-block');
-      if (block) block.title = `Traço / Contorno: ${stroke === 'none' ? 'Sem cor' : stroke} [X para focar, clique duplo para alterar]`;
     }
+    this.colorControl?.definirCores({
+      preenchimento: fill || undefined,
+      traco: stroke || undefined
+    });
   }
 
   getColors() {
@@ -512,8 +462,7 @@ export class DrawingToolbar {
    */
   setActiveColorTarget(target) {
     this.activeColorTarget = target === 'stroke' ? 'stroke' : 'fill';
-    this.container?.querySelector('#cm-fill-block')?.classList.toggle('cm-color-chip--active', this.activeColorTarget === 'fill');
-    this.container?.querySelector('#cm-stroke-block')?.classList.toggle('cm-color-chip--active', this.activeColorTarget === 'stroke');
+    this.colorControl?.definirAlvo(TO_KIT_TARGET[this.activeColorTarget]);
   }
 
   /**
@@ -529,86 +478,18 @@ export class DrawingToolbar {
   setMixedState({ fill = false, stroke = false } = {}) {
     this.isMixedFill = !!fill;
     this.isMixedStroke = !!stroke;
-
-    const fillFace = this.container?.querySelector('.cm-chip-face--fill');
-    if (fillFace) {
-      fillFace.classList.toggle('cm-chip-face--mixed', this.isMixedFill);
-      if (this.isMixedFill) {
-        fillFace.style.backgroundColor = '';
-        fillFace.classList.remove('cm-chip-face--none');
-      }
-    }
-    const fillBlock = this.container?.querySelector('#cm-fill-block');
-    if (fillBlock && this.isMixedFill) {
-      fillBlock.title = 'Preenchimento: Misto (?) [várias cores na seleção]';
-    }
-
-    const strokeFace = this.container?.querySelector('.cm-chip-face--stroke');
-    if (strokeFace) {
-      strokeFace.classList.toggle('cm-chip-face--mixed', this.isMixedStroke);
-      if (this.isMixedStroke) {
-        strokeFace.style.borderColor = '';
-        strokeFace.classList.remove('cm-chip-face--none');
-      }
-    }
-    const strokeBlock = this.container?.querySelector('#cm-stroke-block');
-    if (strokeBlock && this.isMixedStroke) {
-      strokeBlock.title = 'Traço / Contorno: Misto (?) [várias cores na seleção]';
-    }
+    this.colorControl?.definirMisto({ preenchimento: this.isMixedFill, traco: this.isMixedStroke });
   }
 
   /**
-   * Abre o ColorPickerPopover ancorado no chip de Preenchimento ou Traço
+   * Abre o seletor de cor do kit ancorado na amostra de Preenchimento ou Traço
    * @param {'fill'|'stroke'} [target]
    */
   openColorPicker(target = this.activeColorTarget) {
     this.setActiveColorTarget(target);
-    const anchor = this.container?.querySelector(target === 'stroke' ? '#cm-stroke-block' : '#cm-fill-block');
-
-    ColorPickerPopover.open({
-      anchorEl: anchor || this.container,
-      title: 'Cores & Estilo CAD',
-      activeTarget: target,
-      fillColor: this.fillColor,
-      strokeColor: this.strokeColor,
-      opacity: this.fillOpacity !== undefined ? this.fillOpacity : 0.35,
-      isMixed: target === 'stroke' ? this.isMixedStroke : this.isMixedFill,
-      layers: typeof this.getLayers === 'function' ? this.getLayers() : [],
-      onChange: (res) => {
-        if (res.target && res.target !== this.activeColorTarget) {
-          this.setActiveColorTarget(res.target);
-        }
-        if (res.fillColor) this.fillColor = res.fillColor;
-        if (res.strokeColor) this.strokeColor = res.strokeColor;
-        if (res.opacity !== undefined) this.fillOpacity = res.opacity;
-
-        this.setColors({
-          fillColor: this.fillColor,
-          strokeColor: this.strokeColor
-        });
-        this.onColorChange(
-          { ...this.getColors(), fillOpacity: this.fillOpacity },
-          { commit: false, changed: ['fillColor', 'strokeColor', 'fillOpacity'] }
-        );
-      },
-      onCommit: (res) => {
-        if (res.target && res.target !== this.activeColorTarget) {
-          this.setActiveColorTarget(res.target);
-        }
-        if (res.fillColor) this.fillColor = res.fillColor;
-        if (res.strokeColor) this.strokeColor = res.strokeColor;
-        if (res.opacity !== undefined) this.fillOpacity = res.opacity;
-
-        this.setColors({
-          fillColor: this.fillColor,
-          strokeColor: this.strokeColor
-        });
-        this.onColorChange(
-          { ...this.getColors(), fillOpacity: this.fillOpacity },
-          { commit: true, changed: ['fillColor', 'strokeColor', 'fillOpacity'] }
-        );
-      }
-    });
+    if (!this.colorControl) return;
+    this._refreshProjectColors();
+    this.colorControl.abrirSeletor(TO_KIT_TARGET[this.activeColorTarget]);
   }
 
   /**
@@ -616,11 +497,11 @@ export class DrawingToolbar {
    * @param {boolean} strokeOnly
    */
   setStrokeOnly(strokeOnly) {
-    this.container?.querySelector('#cm-fill-block')?.classList.toggle('cm-color-chip--muted', !!strokeOnly);
+    this.colorControl?.toggleAttribute('so-traco', !!strokeOnly);
   }
 
   /**
-   * Inverte as cores de preenchimento e traço (atalho X)
+   * Inverte as cores de preenchimento e traço (atalho Shift+X)
    */
   swapColors() {
     const temp = this.fillColor;
@@ -635,10 +516,10 @@ export class DrawingToolbar {
    * Reseta as cores para os padrões da camada ativa (atalho D)
    */
   resetDefaultColors() {
-    const layerColor = this.activeLayer?.color || '#00E08A';
+    const layerColor = this.activeLayer?.color || DEFAULT_FILL;
     this.setColors({
       fillColor: layerColor,
-      strokeColor: '#ffffff'
+      strokeColor: DEFAULT_STROKE
     });
     this.onColorChange(this.getColors(), { commit: true, changed: ['fillColor', 'strokeColor'] });
   }
@@ -650,6 +531,13 @@ export class DrawingToolbar {
     const prop = this.activeColorTarget === 'stroke' ? 'strokeColor' : 'fillColor';
     this.setColors({ [prop]: 'none' });
     this.onColorChange(this.getColors(), { commit: true, changed: [prop] });
+  }
+
+  /** As cores das camadas aparecem como "Cores do projeto" no seletor */
+  _refreshProjectColors() {
+    if (!this.colorControl) return;
+    const layers = typeof this.getLayers === 'function' ? this.getLayers() : [];
+    this.colorControl.coresProjeto = (layers || []).map(l => l?.color).filter(Boolean);
   }
 
   /**
@@ -692,72 +580,44 @@ export class DrawingToolbar {
   }
 
   /**
-   * Vincula eventos do seletor de cores.
-   * O <input type="color"> cobre a amostra (opacity 0), então o clique abre o seletor nativo ancorado nela.
-   * `input` = pré-visualização ao arrastar (sem gravar); `change` = confirmação (grava feição + histórico).
-   */
-  /**
-   * Vincula eventos do seletor de cores estilo Illustrator.
-   * - Clique simples no chip inativo: foca e traz para a frente (sem abrir modal).
-   * - Clique no chip já ativo OU duplo clique: abre o ColorPickerPopover.
+   * Liga o <ui-controle-cores> ao estado da barra.
+   * Botões do controle (inverter, sem cor, padrão) seguem o mesmo contrato dos atalhos;
+   * o seletor de cor pré-visualiza com commit: false e grava com commit: true.
    */
   bindColorEvents() {
-    const fillBlock = this.container?.querySelector('#cm-fill-block');
-    const strokeBlock = this.container?.querySelector('#cm-stroke-block');
+    const control = this.container?.querySelector('#cm-controle-cores');
+    this.colorControl = control || null;
+    if (!control) return;
 
-    const handleChipClick = (key) => {
-      if (this.activeColorTarget !== key) {
-        this.setActiveColorTarget(key);
+    control.atalhos = { alternar: 'X', inverter: 'Shift+X', semCor: '/', padrao: 'D' };
+    this._refreshProjectColors();
+    // Antes do clique que pode abrir o seletor, atualiza as cores das camadas
+    control.addEventListener('pointerdown', () => this._refreshProjectColors(), true);
+    control.addEventListener('keydown', () => this._refreshProjectColors(), true);
+
+    control.addEventListener('ui-alvo-change', (e) => {
+      this.activeColorTarget = FROM_KIT_TARGET[e.detail?.alvo] || 'fill';
+    });
+
+    control.addEventListener('ui-cores-change', (e) => {
+      const d = e.detail || {};
+      this.fillColor = d.preenchimento;
+      this.strokeColor = d.traco;
+      if (typeof d.opacidade === 'number') this.fillOpacity = d.opacidade;
+      if (d.alvo) this.activeColorTarget = FROM_KIT_TARGET[d.alvo] || this.activeColorTarget;
+      if (d.alterados?.includes('preenchimento')) this.isMixedFill = false;
+      if (d.alterados?.includes('traco')) this.isMixedStroke = false;
+
+      if (d.origem === 'seletor') {
+        // Mesmo contrato do antigo popover: as três propriedades, com opacidade
+        this.onColorChange(
+          { ...this.getColors(), fillOpacity: this.fillOpacity },
+          { commit: d.confirmado === true, changed: ['fillColor', 'strokeColor', 'fillOpacity'] }
+        );
       } else {
-        this.openColorPicker(key);
+        const changed = (d.alterados || []).map(k => FROM_KIT_PROP[k]).filter(Boolean);
+        this.onColorChange(this.getColors(), { commit: true, changed });
       }
-    };
-
-    if (fillBlock) {
-      fillBlock.addEventListener('click', (e) => {
-        e.stopPropagation();
-        handleChipClick('fill');
-      });
-      fillBlock.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        this.openColorPicker('fill');
-      });
-      fillBlock.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          this.openColorPicker('fill');
-        }
-      });
-    }
-
-    if (strokeBlock) {
-      strokeBlock.addEventListener('click', (e) => {
-        e.stopPropagation();
-        handleChipClick('stroke');
-      });
-      strokeBlock.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        this.openColorPicker('stroke');
-      });
-      strokeBlock.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          this.openColorPicker('stroke');
-        }
-      });
-    }
-
-    this.container?.querySelector('#cm-color-swap')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.swapColors();
-    });
-    this.container?.querySelector('#cm-color-none')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setNoneColor();
-    });
-    this.container?.querySelector('#cm-color-default')?.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.resetDefaultColors();
     });
   }
 

@@ -49,7 +49,6 @@ globalThis.CSSStyleSheet = class { replaceSync() {} };
 
 // Imports dos módulos do sistema
 const { DrawingToolbar } = await import('../src/components/DrawingToolbar.js');
-const { ColorPickerPopover } = await import('../src/components/ColorPicker/ColorPickerPopover.js');
 const { ShortcutsController } = await import('../src/controllers/ShortcutsController.js');
 const { AppGeometryCoordinator } = await import('../src/bootstrap/AppGeometryCoordinator.js');
 const { BatchActions } = await import('../src/services/BatchActions.js');
@@ -217,53 +216,97 @@ assert.strictEqual(lastMixedState.stroke, true, 'Traços diferentes devem marcar
 console.log('✔ Detecção automática de estado misto (?) em seleção múltipla testada com sucesso!');
 
 // --------------------------------------------------------------------------
-// 4. Validação do ColorPickerPopover: Modo Dual e Suporte a Alpha
+// 4. Contrato DrawingToolbar ↔ <ui-controle-cores> (componente do kit)
+//    O comportamento do componente é testado no kit; aqui validamos a ponte do app.
 // --------------------------------------------------------------------------
-console.log('▶ Testando ColorPickerPopover (modo dual, alpha, swatches)...');
+console.log('▶ Testando a ponte entre DrawingToolbar e <ui-controle-cores>...');
 
-let popoverChange = null;
-let popoverCommit = null;
+class FakeControleCores extends EventTarget {
+  constructor() {
+    super();
+    this.calls = [];
+    this.attrs = {};
+    this.atalhos = null;
+    this.coresProjeto = [];
+  }
+  definirCores(c) { this.calls.push(['definirCores', c]); }
+  definirAlvo(a) { this.calls.push(['definirAlvo', a]); }
+  definirMisto(m) { this.calls.push(['definirMisto', m]); }
+  abrirSeletor(a) { this.calls.push(['abrirSeletor', a]); }
+  toggleAttribute(n, v) { this.calls.push(['toggleAttribute', n, v]); }
+  setAttribute(n, v) { this.attrs[n] = v; }
+}
 
-const popover = new ColorPickerPopover({
-  anchorEl: globalThis.document.createElement('div'),
-  activeTarget: 'fill',
-  fillColor: '#10b981',
-  strokeColor: '#ef4444',
-  opacity: 0.35,
-  layers: [{ id: 'l1', name: 'Lotes', color: '#10b981' }],
-  onChange: (res) => { popoverChange = res; },
-  onCommit: (res) => { popoverCommit = res; }
+const fakeControl = new FakeControleCores();
+const bridgeEvents = [];
+const bridge = new DrawingToolbar({
+  initialFillColor: '#10b981',
+  initialStrokeColor: '#ffffff',
+  initialLayer: { id: 'l1', name: 'Lotes', color: '#10b981' },
+  getLayers: () => [{ id: 'l1', color: '#10b981' }, { id: 'l2', color: '#3b82f6' }],
+  onColorChange: (cols, meta) => bridgeEvents.push({ cols, meta })
 });
+bridge.container = { querySelector: (sel) => (sel === '#cm-controle-cores' ? fakeControl : null) };
+bridge.bindColorEvents();
 
-assert.strictEqual(popover.activeTarget, 'fill');
-assert.strictEqual(popover.currentColor, '#10b981');
-assert.strictEqual(popover.fillOpacity, 0.35);
+assert.strictEqual(bridge.colorControl, fakeControl, 'A barra deve guardar a referência ao <ui-controle-cores>');
+assert.deepStrictEqual(fakeControl.atalhos, { alternar: 'X', inverter: 'Shift+X', semCor: '/', padrao: 'D' });
+assert.deepStrictEqual(fakeControl.coresProjeto, ['#10b981', '#3b82f6'], 'Cores das camadas viram "cores do projeto"');
 
-// Alternar para traço
-popover.switchTarget('stroke');
-assert.strictEqual(popover.activeTarget, 'stroke');
-assert.strictEqual(popover.currentColor, '#ef4444');
-assert.strictEqual(popover.showOpacity, false, 'Traço não deve exibir controle de opacidade por padrão');
+const emitCores = (detail) => fakeControl.dispatchEvent(new CustomEvent('ui-cores-change', { detail }));
 
-// Alterar cor do traço
-popover.setColor('#38bdf8', true);
-assert.strictEqual(popover.strokeColor, '#38bdf8');
-assert.strictEqual(popoverChange.strokeColor, '#38bdf8');
+// Pré-visualização do seletor: commit false, as três propriedades, com opacidade
+emitCores({ preenchimento: '#000000', traco: '#ffffff', opacidade: 0.6, alvo: 'preenchimento', confirmado: false, alterados: ['preenchimento'], origem: 'seletor' });
+assert.deepStrictEqual(bridgeEvents.at(-1), {
+  cols: { fillColor: '#000000', strokeColor: '#ffffff', fillOpacity: 0.6 },
+  meta: { commit: false, changed: ['fillColor', 'strokeColor', 'fillOpacity'] }
+});
+assert.strictEqual(bridge.fillColor, '#000000');
+assert.strictEqual(bridge.fillOpacity, 0.6);
 
-// Voltar para preenchimento e alterar opacidade
-popover.switchTarget('fill');
-assert.strictEqual(popover.showOpacity, true);
-popover.setOpacity(0.75, true);
-assert.strictEqual(popover.fillOpacity, 0.75);
-assert.strictEqual(popoverChange.fillOpacity, 0.75);
+// Confirmação do seletor: commit true
+emitCores({ preenchimento: '#000000', traco: '#ffffff', opacidade: 0.6, alvo: 'preenchimento', confirmado: true, alterados: ['preenchimento', 'opacidade'], origem: 'seletor' });
+assert.strictEqual(bridgeEvents.at(-1).meta.commit, true);
+assert.deepStrictEqual(bridgeEvents.at(-1).meta.changed, ['fillColor', 'strokeColor', 'fillOpacity']);
 
-// Testar fechamento e onCommit
-popover.close(true);
-assert.strictEqual(popoverCommit.fillColor, '#10b981');
-assert.strictEqual(popoverCommit.strokeColor, '#38bdf8');
-assert.strictEqual(popoverCommit.fillOpacity, 0.75);
+// Botões do controle: mesmo contrato dos atalhos (sem opacidade, só o que mudou)
+emitCores({ preenchimento: '#ffffff', traco: '#000000', opacidade: 0.6, alvo: 'preenchimento', confirmado: true, alterados: ['preenchimento', 'traco'], origem: 'inverter' });
+assert.deepStrictEqual(bridgeEvents.at(-1), {
+  cols: { fillColor: '#ffffff', strokeColor: '#000000' },
+  meta: { commit: true, changed: ['fillColor', 'strokeColor'] }
+});
+emitCores({ preenchimento: '#ffffff', traco: 'none', opacidade: 0.6, alvo: 'traco', confirmado: true, alterados: ['traco'], origem: 'sem-cor' });
+assert.deepStrictEqual(bridgeEvents.at(-1).meta, { commit: true, changed: ['strokeColor'] });
+assert.strictEqual(bridge.strokeColor, 'none');
+assert.strictEqual(bridge.activeColorTarget, 'stroke', 'O alvo do evento atualiza a barra');
 
-console.log('✔ ColorPickerPopover com modo dual e alpha validado!');
+// Troca de alvo vinda do componente
+fakeControl.dispatchEvent(new CustomEvent('ui-alvo-change', { detail: { alvo: 'preenchimento' } }));
+assert.strictEqual(bridge.activeColorTarget, 'fill');
+
+// Métodos da barra repassam ao componente (sem emitir eventos de volta)
+fakeControl.calls = [];
+const eventsBefore = bridgeEvents.length;
+bridge.setColors({ fillColor: '#ABC', strokeColor: 'transparent' });
+bridge.setActiveColorTarget('stroke');
+bridge.setMixedState({ fill: true });
+bridge.setStrokeOnly(true);
+bridge.openColorPicker('fill');
+assert.deepStrictEqual(fakeControl.calls, [
+  ['definirCores', { preenchimento: '#AABBCC', traco: 'none' }],
+  ['definirAlvo', 'traco'],
+  ['definirMisto', { preenchimento: true, traco: false }],
+  ['toggleAttribute', 'so-traco', true],
+  ['definirAlvo', 'preenchimento'],
+  ['abrirSeletor', 'preenchimento']
+]);
+assert.strictEqual(bridgeEvents.length, eventsBefore, 'Métodos definir* não disparam onColorChange');
+
+// Camada ativa define a cor de "restaurar padrão" do componente
+bridge.setActiveLayer({ id: 'l2', name: 'Vias', color: '#3b82f6' });
+assert.strictEqual(fakeControl.attrs['padrao-preenchimento'], '#3b82f6');
+
+console.log('✔ Ponte DrawingToolbar ↔ <ui-controle-cores> validada!');
 
 // --------------------------------------------------------------------------
 // 5. Validação do SelectionHUD com Ação de Estilo
