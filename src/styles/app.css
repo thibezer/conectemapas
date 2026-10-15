@@ -24,8 +24,21 @@
   display: flex;
   position: relative;
   overflow: hidden;
+  overflow: clip; /* nunca rola por foco/scrollIntoView (deslocava o mapa e os painéis) */
   width: 100%;
   height: calc(100vh - var(--cm-header-height, 32px));
+}
+
+/* Altura da tabela de atributos: fluida e compartilhada com os painéis flutuantes,
+   que se acomodam acima dela em vez de ficarem escondidos por baixo. */
+:root {
+  --cm-table-bar-h: 34px;
+  --cm-table-open-h: clamp(180px, 38vh, 340px);
+  --cm-table-h: var(--cm-table-bar-h);
+}
+
+:root:has(#cm-bottom-table-wrapper:not(.collapsed)) {
+  --cm-table-h: var(--cm-table-open-h);
 }
 
 /* Map Container */
@@ -530,10 +543,11 @@ body > .cm-selection-hud {
   transition: height var(--cm-trans-normal), transform var(--cm-trans-normal);
   display: flex;
   flex-direction: column;
+  height: var(--cm-table-open-h);
 }
 
 .cm-bottom-table-container.collapsed {
-  height: 34px !important;
+  height: var(--cm-table-bar-h) !important;
 }
 
 .cm-bottom-table-bar {
@@ -596,8 +610,8 @@ body > .cm-selection-hud {
 /* HUD Overlay */
 .cm-map-hud {
   position: absolute;
-  bottom: 46px;
-  left: 16px;
+  bottom: calc(var(--cm-table-h) + 12px);
+  left: 104px; /* à direita da barra de ferramentas (82px + 10px de margem) */
   z-index: 400;
   display: flex;
   align-items: center;
@@ -611,10 +625,6 @@ body > .cm-selection-hud {
   font-size: 11px;
   color: var(--cm-text-muted);
   transition: bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
-}
-
-body:has(#cm-bottom-table-wrapper:not(.collapsed)) .cm-map-hud {
-  bottom: 304px;
 }
 
 /* Toggle Buttons Floating */
@@ -770,14 +780,10 @@ path.cm-feature-selected {
 /* Seletor Discreto de Mapa Base Flutuante sobre o Mapa */
 .cm-map-basemap-container {
   position: absolute;
-  bottom: 84px;
-  left: 16px;
+  bottom: calc(var(--cm-table-h) + 50px);
+  left: 104px;
   z-index: 450;
   transition: bottom 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
-}
-
-body:has(#cm-bottom-table-wrapper:not(.collapsed)) .cm-map-basemap-container {
-  bottom: 342px;
 }
 
 /* Modo leitura/sem acesso (papel viewer ou chave ausente): oculta as ferramentas de edição */

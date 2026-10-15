@@ -24,6 +24,15 @@
   transition: width 0.22s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s ease;
 }
 
+/* Em telas baixas (ou com a tabela de atributos aberta) a paleta rola em vez de passar por baixo da tabela;
+   a rolagem fica só na paleta para não cortar o menu de camadas, que é posicionado fora da barra. */
+#cm-paleta-ferramentas {
+  max-height: max(130px, calc(100vh - var(--cm-header-height, 32px) - var(--cm-table-h, 34px) - 150px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
 /* Larguras dinâmicas para 1 ou 2 colunas */
 .cm-drawing-toolbar-wrapper--cols-1 {
   width: 44px;

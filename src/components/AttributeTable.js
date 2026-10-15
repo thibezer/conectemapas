@@ -27,7 +27,7 @@ export class AttributeTable {
 
   render(container) {
     container.innerHTML = `
-      <div class="cm-bottom-table-container ${this.isCollapsed ? 'collapsed' : ''}" id="cm-bottom-table-wrapper" style="height: 290px;">
+      <div class="cm-bottom-table-container ${this.isCollapsed ? 'collapsed' : ''}" id="cm-bottom-table-wrapper">
         <div class="cm-bottom-table-bar" id="cm-bottom-table-header">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span id="cm-attribute-table-title" style="font-size: 12px; font-weight: 600; color: var(--cm-text); line-height: 1;">
@@ -386,6 +386,12 @@ export class AttributeTable {
     if (header) {
       header.addEventListener('click', () => this.toggleCollapse());
     }
+
+    // O botão Expandir/Recolher fica numa área que bloqueia o clique da barra; precisa de handler próprio
+    container.querySelector('#cm-btn-toggle-table')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleCollapse();
+    });
 
     // Botões de Paginação Virtualizada
     const btnPrev = container.querySelector('#cm-btn-prev-page');
