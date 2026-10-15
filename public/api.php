@@ -114,7 +114,7 @@ function getDatabaseConnection() {
 // 3. Auto-Migração do Esquema Relacional (DDL Idempotente)
 // A versão do esquema fica gravada em disco para que as requisições de alta frequência
 // (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
-define('CM_SCHEMA_VERSION', 5);
+define('CM_SCHEMA_VERSION', 6);
 define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
 
 function columnExists(PDO $pdo, $table, $column) {
@@ -306,6 +306,13 @@ function ensureDatabaseSchema(PDO $pdo) {
         if (!columnExists($pdo, 'cm_presence', 'role')) {
             $pdo->exec("ALTER TABLE cm_presence ADD COLUMN role VARCHAR(16) NULL;");
         }
+        // v6: Projetos excluídos pelo dono. O id fica reservado para que escritas atrasadas
+        // (outra aba, fila offline, flush ao fechar a página) não recriem o projeto como "aberto".
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_deleted_projects (
+            id VARCHAR(64) NOT NULL PRIMARY KEY,
+            deleted_by INT NULL,
+            deleted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     } catch (Exception $e) {
         // Mantém a API operante; a migração será tentada novamente na próxima requisição
         return;
@@ -322,6 +329,8 @@ function ensureDatabaseSchema(PDO $pdo) {
  */
 function nextRevision(PDO $pdo, $projectId) {
     $pdo->prepare("INSERT IGNORE INTO cm_projects (id) VALUES (?)")->execute([$projectId]);
+    // Depois do INSERT (que espera a trava de uma exclusão em curso): a leitura travada vê a exclusão já confirmada
+    assertProjectNotDeleted($pdo, $projectId, true);
     $pdo->prepare("UPDATE cm_projects SET rev = rev + 1 WHERE id = ?")->execute([$projectId]);
     $stmt = $pdo->prepare("SELECT rev FROM cm_projects WHERE id = ?");
     $stmt->execute([$projectId]);
@@ -473,6 +482,23 @@ function requestAccessKey() {
     return preg_match('/^cmk_[a-f0-9]{32}$/', $key) ? $key : '';
 }
 
+function isProjectDeleted(PDO $pdo, $projectId, $locking = false) {
+    try {
+        $stmt = $pdo->prepare("SELECT 1 FROM cm_deleted_projects WHERE id = ?" . ($locking ? " LOCK IN SHARE MODE" : ""));
+        $stmt->execute([$projectId]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Exception $e) {
+        return false; // tabela ainda não migrada: nenhum projeto foi excluído
+    }
+}
+
+/** Recusa (410) qualquer ação sobre projeto excluído; desfaz a transação aberta, se houver. */
+function assertProjectNotDeleted(PDO $pdo, $projectId, $locking = false) {
+    if (!isProjectDeleted($pdo, $projectId, $locking)) return;
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    denyAccess(410, 'project_deleted', 'Este projeto foi excluído pelo dono.');
+}
+
 function isProjectProtected(PDO $pdo, $projectId) {
     $stmt = $pdo->prepare("SELECT 1 FROM cm_access WHERE project_id = ? UNION SELECT 1 FROM cm_members WHERE project_id = ? LIMIT 1");
     $stmt->execute([$projectId, $projectId]);
@@ -580,6 +606,7 @@ function denyAccess($status, $code, $message, array $extra = []) {
 
 /** Exige papel mínimo; projeto aberto equivale a editor. Devolve o papel efetivo. */
 function requireRole(PDO $pdo, $projectId, $minRole) {
+    assertProjectNotDeleted($pdo, $projectId);
     $role = resolveRole($pdo, $projectId);
     if ($role === 'open') {
         if (roleRank($minRole) > roleRank('editor')) {
@@ -699,10 +726,15 @@ switch ($action) {
     // --------------------------------------------------------------------------
     case 'access_info':
         $projectId = cleanProjectId($_GET['projectId'] ?? '');
+        if (isProjectDeleted($pdo, $projectId)) {
+            echo json_encode(['success' => true, 'deleted' => true, 'protected' => true, 'role' => null, 'canManage' => false, 'canClaim' => false]);
+            exit;
+        }
         $protected = isProjectProtected($pdo, $projectId);
         $role = resolveRole($pdo, $projectId);
         echo json_encode([
             'success'   => true,
+            'deleted'   => false,
             'protected' => $protected,
             'role'      => $role === 'open' ? 'editor' : ($role !== '' ? $role : null),
             'canManage' => $role === 'owner',
@@ -895,10 +927,17 @@ switch ($action) {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
         $body = getJsonBody();
         $projectId = cleanProjectId($body['projectId'] ?? '');
+        // Nome opcional: só vale para projeto recém-criado (INSERT IGNORE não renomeia um existente)
+        $claimName = trim((string)($body['name'] ?? ''));
         $pdo->beginTransaction();
         try {
             // Trava a linha do projeto: duas reivindicações simultâneas não geram dois donos
-            $pdo->prepare("INSERT IGNORE INTO cm_projects (id) VALUES (?)")->execute([$projectId]);
+            if ($claimName !== '') {
+                $pdo->prepare("INSERT IGNORE INTO cm_projects (id, name) VALUES (?, ?)")->execute([$projectId, mb_substr($claimName, 0, 255)]);
+            } else {
+                $pdo->prepare("INSERT IGNORE INTO cm_projects (id) VALUES (?)")->execute([$projectId]);
+            }
+            assertProjectNotDeleted($pdo, $projectId, true);
             $pdo->prepare("SELECT id FROM cm_projects WHERE id = ? FOR UPDATE")->execute([$projectId]);
             if (isProjectProtected($pdo, $projectId)) {
                 $pdo->rollBack();
@@ -918,6 +957,38 @@ switch ($action) {
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             denyAccess(500, 'claim_failed', 'Falha ao proteger o projeto', ['detail' => $e->getMessage()]);
+        }
+
+    // Exclusão definitiva, só pelo dono. Apaga tudo do projeto numa transação e reserva o id
+    // em cm_deleted_projects (escritas atrasadas de outros clientes recebem 410).
+    case 'delete_project':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        if ($projectId === 'projeto_padrao') denyAccess(400, 'default_project', 'O projeto padrão não pode ser excluído.');
+        requireRole($pdo, $projectId, 'owner');
+        $deleter = currentUser($pdo);
+        $pdo->beginTransaction();
+        try {
+            // Trava a linha do projeto: escritas concorrentes (nextRevision) esperam e depois veem a exclusão
+            $pdo->prepare("SELECT id FROM cm_projects WHERE id = ? FOR UPDATE")->execute([$projectId]);
+            $removed = [];
+            foreach (['cm_features', 'cm_layers', 'cm_audit', 'cm_presence', 'cm_invites', 'cm_access', 'cm_members'] as $table) {
+                $stmt = $pdo->prepare("DELETE FROM `$table` WHERE project_id = ?");
+                $stmt->execute([$projectId]);
+                $removed[$table] = $stmt->rowCount();
+            }
+            $stmt = $pdo->prepare("DELETE FROM cm_projects WHERE id = ?");
+            $stmt->execute([$projectId]);
+            $removed['cm_projects'] = $stmt->rowCount();
+            $pdo->prepare("INSERT INTO cm_deleted_projects (id, deleted_by) VALUES (?, ?) ON DUPLICATE KEY UPDATE deleted_at = NOW()")
+                ->execute([$projectId, $deleter ? $deleter['id'] : null]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'projectId' => $projectId, 'removed' => $removed]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'delete_failed', 'Falha ao excluir o projeto', ['detail' => $e->getMessage()]);
         }
 
     case 'create_share':
@@ -1126,6 +1197,7 @@ switch ($action) {
                 $zoom,
                 $featureCount
             ]);
+            assertProjectNotDeleted($pdo, $projectId, true);
 
             // Se houver camadas, grava/atualiza apenas as que realmente mudaram
             // (evita que cada salvamento "acorde" todos os outros operadores à toa)
@@ -1733,7 +1805,7 @@ switch ($action) {
         http_response_code(400);
         echo json_encode([
             'error'           => 'Ação não informada ou desconhecida.',
-            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite']
+            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite', 'my_projects', 'delete_project']
         ]);
         exit;
 }

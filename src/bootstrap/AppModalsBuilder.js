@@ -4,10 +4,13 @@
    ========================================================================== */
 
 import { StorageService } from '../services/StorageService.js';
+import { CLOUD_ENABLED } from '../services/Storage/StorageConstants.js';
+import { AuthService } from '../services/Storage/AuthService.js';
+import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { ShareModal } from '../components/Modals/ShareModal.js';
 import { AuthModal } from '../components/Modals/AuthModal.js';
 import { ImportExportModal } from '../components/Modals/ImportExportModal.js';
-import { ProjectTemplatesModal } from '../components/Modals/ProjectTemplatesModal.js';
+import { ProjectModal } from '../components/Modals/ProjectModal.js';
 import { NewFeatureModal } from '../components/Modals/NewFeatureModal.js';
 import { NewLayerModal } from '../components/Modals/NewLayerModal.js';
 import { PrintComposerModal } from '../components/PrintComposer/PrintComposerModal.js';
@@ -48,9 +51,14 @@ export class AppModalsBuilder {
       onImport: (content, fileName, options) => ProjectActionsController.handleImport(app, content, fileName, options)
     }).render(document.getElementById('import-export-modal-mount'));
 
-    new ProjectTemplatesModal({
-      onSelectTemplate: (template) => ProjectActionsController.loadTemplate(app, template)
-    }).render(document.getElementById('templates-modal-mount'));
+    app.projectModal = new ProjectModal({
+      getProject: () => ({ id: app.projectId, name: app.projectName }),
+      getDeletePermission: () => ProjectLifecycle.canDelete(app.projectId),
+      getClaimMode: () => (!CLOUD_ENABLED ? 'local' : (AuthService.isLoggedIn() ? 'offer' : 'anonymous')),
+      onCreate: (data) => ProjectActionsController.createProject(app, data),
+      onDelete: () => ProjectActionsController.deleteCurrentProject(app)
+    });
+    app.projectModal.render(document.getElementById('project-modal-mount'));
 
     app.newFeatureModal = new NewFeatureModal({
       layers: app.layers,

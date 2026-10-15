@@ -158,6 +158,18 @@ export class StorageService {
     return CloudSyncEngine.hasPendingLayerSync(_currentProjectId);
   }
 
+  /** Projeto excluído: cancela todo salvamento agendado (local e nuvem) para nada recriá-lo. */
+  static discardPendingWrites() {
+    if (_metaDebounceTimer) clearTimeout(_metaDebounceTimer);
+    if (_projectDebounceTimer) clearTimeout(_projectDebounceTimer);
+    _metaDebounceTimer = null;
+    _projectDebounceTimer = null;
+    _pendingMetaPayload = null;
+    _pendingProjectPayload = null;
+    DeltaQueue.discardPending();
+    CloudSyncEngine.cancelPendingMetadata();
+  }
+
   static hasLayerSyncActive() {
     return CloudSyncEngine.hasLayerSyncActive();
   }

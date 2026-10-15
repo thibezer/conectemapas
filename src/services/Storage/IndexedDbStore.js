@@ -305,7 +305,7 @@ export class IndexedDbStore {
   static async loadCurrentProjectAsync(projectId = 'projeto_padrao') {
     try {
       const db = await this.getDB();
-      if (!db) return LocalStore.loadManifest();
+      if (!db) return LocalStore.loadManifestFor(projectId);
 
       await this.migrateLegacyDataIfNeeded(db, projectId);
 
@@ -322,14 +322,14 @@ export class IndexedDbStore {
         const auditReq = auditStore.index('projectId').getAll(projectId);
 
         tx.oncomplete = () => {
-          const projectData = projectReq.result || LocalStore.loadManifest() || {};
+          const projectData = projectReq.result || LocalStore.loadManifestFor(projectId) || {};
 
           let layers = layersReq.result || [];
           if (layers.length > 0) {
             layers.sort((a, b) => (a.order || 0) - (b.order || 0));
             projectData.layers = layers;
           } else if (!Array.isArray(projectData.layers) || projectData.layers.length === 0) {
-            const syncProject = LocalStore.loadManifest();
+            const syncProject = LocalStore.loadManifestFor(projectId);
             projectData.layers = (syncProject && Array.isArray(syncProject.layers)) ? syncProject.layers : [];
           }
 
@@ -344,11 +344,11 @@ export class IndexedDbStore {
         };
 
         tx.onerror = () => {
-          resolve(LocalStore.loadManifest());
+          resolve(LocalStore.loadManifestFor(projectId));
         };
       });
     } catch {
-      return LocalStore.loadManifest();
+      return LocalStore.loadManifestFor(projectId);
     }
   }
 
@@ -389,28 +389,41 @@ export class IndexedDbStore {
   }
 
   static async clearCurrentProject(projectId = 'projeto_padrao') {
+    LocalStore.clearManifest();
+    await this.deleteProjectData(projectId);
+  }
+
+  /** Apaga projeto, camadas, feições e auditoria do projeto; resolve quando a transação termina. */
+  static async deleteProjectData(projectId) {
     try {
-      LocalStore.clearManifest();
       const db = await this.getDB();
-      if (!db) return;
-      const tx = db.transaction([STORE_PROJECTS, STORE_LAYERS, STORE_FEATURES, STORE_AUDIT], 'readwrite');
-      tx.objectStore(STORE_PROJECTS).delete(projectId);
+      if (!db) return false;
+      return await new Promise((resolve) => {
+        const tx = db.transaction([STORE_PROJECTS, STORE_LAYERS, STORE_FEATURES, STORE_AUDIT], 'readwrite');
+        tx.objectStore(STORE_PROJECTS).delete(projectId);
 
-      const deleteByIndex = (storeName, indexName) => {
-        const store = tx.objectStore(storeName);
-        const req = store.index(indexName).openKeyCursor(IDBKeyRange.only(projectId));
-        req.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (cursor) {
-            store.delete(cursor.primaryKey);
-            cursor.continue();
-          }
+        const deleteByIndex = (storeName, indexName) => {
+          const store = tx.objectStore(storeName);
+          const req = store.index(indexName).openKeyCursor(IDBKeyRange.only(projectId));
+          req.onsuccess = (e) => {
+            const cursor = e.target.result;
+            if (cursor) {
+              store.delete(cursor.primaryKey);
+              cursor.continue();
+            }
+          };
         };
-      };
 
-      deleteByIndex(STORE_LAYERS, 'projectId');
-      deleteByIndex(STORE_FEATURES, 'projectId');
-      deleteByIndex(STORE_AUDIT, 'projectId');
-    } catch {}
+        deleteByIndex(STORE_LAYERS, 'projectId');
+        deleteByIndex(STORE_FEATURES, 'projectId');
+        deleteByIndex(STORE_AUDIT, 'projectId');
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+      });
+    } catch (e) {
+      console.warn('[IndexedDbStore] Erro ao apagar dados locais do projeto:', e);
+      return false;
+    }
   }
 }

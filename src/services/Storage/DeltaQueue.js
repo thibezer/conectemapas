@@ -119,6 +119,13 @@ export class DeltaQueue {
     return await IndexedDbStore.commitDeltasToDb(toUpsert, toDelete);
   }
 
+  /** Esquece o que está na fila sem gravar (projeto excluído). */
+  static discardPending() {
+    this.cancelTimers();
+    _dirtyFeatures.clear();
+    _deletedFeatureIds.clear();
+  }
+
   static cancelTimers() {
     if (_deltaDebounceTimer) {
       clearTimeout(_deltaDebounceTimer);

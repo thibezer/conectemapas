@@ -233,7 +233,6 @@
 /* Adaptação inteligente para telas menores sem quebrar ou truncar textos */
 @media (max-width: 1366px) {
   #btn-open-print-composer .cm-header-btn span,
-  #btn-open-templates .cm-header-btn span,
   #btn-open-import-export .cm-header-btn span {
     display: none;
   }
@@ -250,8 +249,7 @@
 }
 
 @media (max-width: 850px) {
-  #btn-open-share .cm-header-btn span,
-  #btn-toggle-geom-version .cm-header-btn span {
+  #btn-open-share .cm-header-btn span {
     display: none;
   }
   .cm-project-title-input {

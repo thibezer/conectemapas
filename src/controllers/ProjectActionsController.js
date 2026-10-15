@@ -5,9 +5,11 @@
    ========================================================================== */
 
 import { GeoFormats } from '../services/GeoFormats.js';
-import { normalizeFeature } from '../services/MockData.js';
+import { normalizeFeature, DEFAULT_LAYERS } from '../services/MockData.js';
 import { MapImageExporter } from '../services/MapImageExporter.js';
 import { StorageService } from '../services/StorageService.js';
+import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
+import { AccessManager } from '../services/Storage/AccessManager.js';
 import { FeatureSyncController } from './FeatureSyncController.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
@@ -255,21 +257,39 @@ export class ProjectActionsController {
     });
   }
 
-  static loadTemplate(app, template) {
-    app.projectName = template.title;
-    app.layers = [...template.layers];
-    app.features = [];
-    if (typeof app.setActiveLayer === 'function' && app.layers.length > 0) {
-      app.setActiveLayer(app.layers[0].id);
-    }
-    app.mapEngine.map.setView(template.center, template.zoom);
-    app.refreshMapAndTable();
-    app.layerPanel.updateLayers(app.getLayersWithCounts());
-    app.newFeatureModal.updateLayers(app.layers);
-    StorageService.saveFeaturesBatch([], app.projectId);
-    StorageService.saveLayersBatch(app.layers, app.projectId);
-    app.saveMetadata(true);
+  /** Cria um projeto e o abre: camadas padrão, no enquadramento atual do mapa. O aberto não muda. */
+  static async createProject(app, { name, claim = false }) {
+    const map = app.mapEngine && app.mapEngine.map;
+    const { id } = await ProjectLifecycle.createProject({
+      name,
+      claim,
+      layers: DEFAULT_LAYERS,
+      center: map ? [map.getCenter().lat, map.getCenter().lng] : null,
+      zoom: map ? map.getZoom() : null
+    });
+    window.location.assign(AccessManager.buildShareUrl(id));
+    return id;
+  }
 
+  /** Exclui o projeto aberto (nuvem + cópia local) e abre outro. */
+  static async deleteCurrentProject(app) {
+    const deletedName = app.projectName;
+    app._deletingProject = true;
+    try {
+      await ProjectLifecycle.deleteProject(app.projectId, { beforePurge: () => app.closeProject() });
+    } catch (err) {
+      app._deletingProject = false;
+      throw err;
+    }
+    const next = await ProjectLifecycle.pickFallbackProject(app.projectId);
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: 'Projeto excluído',
+      mensagem: `"${deletedName}" foi excluído. Abrindo outro projeto...`,
+      duracao: 4000
+    });
+    window.location.assign(AccessManager.buildShareUrl(next));
+    return next;
   }
 
   static locateUser(app) {

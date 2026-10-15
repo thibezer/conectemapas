@@ -204,6 +204,7 @@ export class AppComponentsBuilder {
       collaborators: app.collabHub.getActiveCollaboratorsList(),
       accountName: AuthService.getUser()?.name || '',
       onOpenAccount: () => app.authModal && app.authModal.open(),
+      onOpenProject: () => app.projectModal && app.projectModal.open(),
       onProjectNameChange: (newName) => {
         app.projectName = newName;
         app.saveMetadata(true);
@@ -247,9 +248,6 @@ export class AppComponentsBuilder {
         if (app.printComposerModal) {
           app.printComposerModal.open(app.projectName, app.layers, app.features, app.currentBasemap);
         }
-      },
-      onToggleGeometryVersion: () => {
-        app.toggleGlobalGeometryVersion();
       },
       onToggleFeaturePopup: () => {
         const isEnabled = app.mapEngine?.toggleFeaturePopupEnabled();

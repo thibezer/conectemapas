@@ -177,14 +177,6 @@ export class AppGeometryCoordinator {
     }
   }
 
-  static toggleGlobalGeometryVersion(app) {
-    const isShowingPreviews = app.mapEngine.toggleGlobalShowPreviews();
-    if (app.headerBar) {
-      app.headerBar.updateGeometryVersionMode(isShowingPreviews);
-    }
-    app.refreshMapAndTable();
-  }
-
   static toggleFeatureGeometryVersion(app, featureId) {
     if (!featureId) return;
     const feat = app.features.find(f => f.id === featureId);

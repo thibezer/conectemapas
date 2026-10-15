@@ -7,6 +7,7 @@
 import { UIToast } from '@thibezer/ui-components-kit';
 import { StorageService } from '../services/StorageService.js';
 import { CLOUD_ENABLED } from '../services/Storage/StorageConstants.js';
+import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { normalizeFeature } from '../services/MockData.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 
@@ -34,6 +35,16 @@ export class AppBootstrapSync {
       if (Array.isArray(saved.auditLog)) app.auditLog = saved.auditLog;
       if (saved.basemap) app.currentBasemap = saved.basemap;
     } else {
+      // Projeto recém-criado pelo app: nome, camadas e enquadramento vêm da semente
+      const seed = ProjectLifecycle.takeSeed(app.projectId);
+      if (seed) {
+        app.projectName = seed.name;
+        if (seed.layers.length > 0) {
+          app.layers = seed.layers;
+          app.activeLayerId = app.layers[0].id;
+        }
+        app._projectSeed = seed;
+      }
       app.features = [];
       app.auditLog.push({
         id: 'aud_init',
@@ -262,7 +273,7 @@ export class AppBootstrapSync {
 
     const tick = async () => {
       app._cloudSyncTimer = null;
-      if (app._cloudSyncRunning) return;
+      if (app._cloudSyncRunning || app._projectClosed) return;
 
       if ((typeof document !== 'undefined' && document.hidden) ||
           (typeof navigator !== 'undefined' && !navigator.onLine)) {

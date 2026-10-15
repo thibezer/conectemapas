@@ -231,8 +231,8 @@ export class CloudSyncEngine {
           console.warn('[CloudSyncEngine] Exclusão em massa bloqueada pelo servidor; nuvem preservada.');
           return false;
         }
-        if (res.status === 401 || res.status === 403) {
-          // Sem permissão de escrita: reenviar nunca vai funcionar, então descarta a fila local
+        if (res.status === 401 || res.status === 403 || res.status === 410) {
+          // Sem permissão de escrita (ou projeto excluído): reenviar nunca vai funcionar, então descarta a fila local
           AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
           LocalStore.clearPendingDeltas(projectId, projectId);
           _cloudStatus.error = 'Sem permissão de edição neste projeto';
@@ -318,6 +318,15 @@ export class CloudSyncEngine {
     }, delayMs);
   }
 
+  /** Descarta o metadado agendado sem enviá-lo (projeto excluído). */
+  static cancelPendingMetadata() {
+    if (_cloudMetaDebounceTimer) clearTimeout(_cloudMetaDebounceTimer);
+    _cloudMetaDebounceTimer = null;
+    _pendingMetaForCloud = null;
+    if (_cloudProjectDebounceTimer) clearTimeout(_cloudProjectDebounceTimer);
+    _cloudProjectDebounceTimer = null;
+  }
+
   /** Envia já o metadado pendente (usado ao fechar/recarregar a página). */
   static flushMetadataToCloud() {
     if (!_cloudMetaDebounceTimer) return;
@@ -352,7 +361,7 @@ export class CloudSyncEngine {
       };
 
       const res = await this._postJson('save_metadata', payload);
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401 || res.status === 403 || res.status === 410) {
         AccessManager.handleDenied(projId, res.status, await res.json().catch(() => null));
         this._setLayerDirty(dirtyProjectId, false);
         _cloudStatus.error = 'Sem permissão de edição neste projeto';
@@ -407,7 +416,7 @@ export class CloudSyncEngine {
         body: JSON.stringify(payload)
       });
 
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401 || res.status === 403 || res.status === 410) {
         AccessManager.handleDenied(projId, res.status, await res.json().catch(() => null));
         throw new Error('Sem permissão de edição neste projeto');
       }

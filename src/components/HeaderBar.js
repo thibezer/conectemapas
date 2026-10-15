@@ -15,9 +15,9 @@ export class HeaderBar {
    * @param {Function} options.onSaveProject - Callback ao salvar projeto
    * @param {Function} options.onOpenPrintComposer - Callback para abrir compositor de impressão
    * @param {Function} options.onOpenAdvancedSearch - Callback para abrir busca avançada
-   * @param {Function} options.onToggleGeometryVersion - Callback para alternar versão de geometria
    * @param {Function} options.onToggleFeaturePopup - Callback para alternar balões de popup
    * @param {Function} options.onOpenAccount - Callback para abrir modal de conta
+   * @param {Function} options.onOpenProject - Callback para abrir o modal de projeto (novo / excluir)
    * @param {string} options.accountName - Nome do operador logado
    */
   constructor(options = {}) {
@@ -27,9 +27,9 @@ export class HeaderBar {
     this.onSaveProject = options.onSaveProject || (() => {});
     this.onOpenPrintComposer = options.onOpenPrintComposer || (() => {});
     this.onOpenAdvancedSearch = options.onOpenAdvancedSearch || (() => {});
-    this.onToggleGeometryVersion = options.onToggleGeometryVersion || (() => {});
     this.onToggleFeaturePopup = options.onToggleFeaturePopup || (() => {});
     this.onOpenAccount = options.onOpenAccount || (() => {});
+    this.onOpenProject = options.onOpenProject || (() => {});
     this.accountName = options.accountName || '';
     this.container = null;
   }
@@ -98,6 +98,21 @@ export class HeaderBar {
         <div class="cm-header-right">
           <ui-botao-primario 
             inline 
+            id="btn-open-project" 
+            variante="secundario" 
+            title="Novo projeto ou excluir o projeto aberto">
+            <div class="cm-header-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                <line x1="12" y1="10" x2="12" y2="16"/>
+                <line x1="9" y1="13" x2="15" y2="13"/>
+              </svg>
+              <span>Projeto</span>
+            </div>
+          </ui-botao-primario>
+
+          <ui-botao-primario 
+            inline 
             id="btn-manual-save" 
             variante="primary" 
             title="Salvar Projeto no Banco de Dados (Ctrl+S)">
@@ -108,21 +123,6 @@ export class HeaderBar {
                 <polyline points="7 3 7 8 15 8"/>
               </svg>
               <span>Salvar</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-toggle-geom-version" 
-            variante="secundario" 
-            title="Alternar Modo de Geometria: Oficial vs Prévias Solicitadas">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-                <polyline points="2 17 12 22 22 17"/>
-                <polyline points="2 12 12 17 22 12"/>
-              </svg>
-              <span id="cm-geom-version-text">Geometria: Oficial</span>
             </div>
           </ui-botao-primario>
 
@@ -167,20 +167,6 @@ export class HeaderBar {
                 <path d="M9 21V9"/>
               </svg>
               <span>Layout QGIS</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-open-templates" 
-            variante="secundario" 
-            target-modal="modal-templates" 
-            title="Carregar Modelos Prontos de Mapa">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
-              </svg>
-              <span>Modelos</span>
             </div>
           </ui-botao-primario>
 
@@ -349,6 +335,9 @@ export class HeaderBar {
       });
     }
 
+    // Projeto: novo / excluir
+    this.container.querySelector('#btn-open-project')?.addEventListener('click', () => this.onOpenProject());
+
     // Conta / Autenticação
     const btnAccount = this.container.querySelector('#btn-open-account');
     if (btnAccount) {
@@ -366,35 +355,12 @@ export class HeaderBar {
       });
     }
 
-    // Versão de Geometria
-    const btnGeomVersion = this.container.querySelector('#btn-toggle-geom-version');
-    if (btnGeomVersion) {
-      btnGeomVersion.addEventListener('click', () => {
-        this.onToggleGeometryVersion();
-      });
-    }
-
     // Popup de Detalhes
     const btnPopup = this.container.querySelector('#btn-toggle-popup');
     if (btnPopup) {
       btnPopup.addEventListener('click', () => {
         this.onToggleFeaturePopup();
       });
-    }
-  }
-
-  /**
-   * Atualiza dinamicamente o estado visual do botão de modo de geometria
-   * @param {boolean} isShowingPreviews
-   */
-  updateGeometryVersionMode(isShowingPreviews) {
-    const textEl = document.getElementById('cm-geom-version-text');
-    const btn = document.getElementById('btn-toggle-geom-version');
-    if (textEl) {
-      textEl.textContent = isShowingPreviews ? 'Geometria: Prévia' : 'Geometria: Oficial';
-    }
-    if (btn) {
-      btn.setAttribute('variante', isShowingPreviews ? 'aviso' : 'secundario');
     }
   }
 

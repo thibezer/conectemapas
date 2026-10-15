@@ -1002,11 +1002,6 @@ export class CanvasMapEngine {
     this.host.definirPreviasGlobais(this.showPreviewGeometries);
   }
 
-  toggleGlobalShowPreviews() {
-    this.setGlobalShowPreviews(!this.showPreviewGeometries);
-    return this.showPreviewGeometries;
-  }
-
   toggleIndividualPreview(featureId) {
     const ref = this._ref(featureId);
     if (!ref) return false;

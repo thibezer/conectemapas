@@ -61,6 +61,28 @@ export class LocalStore {
     }
   }
 
+  /** Manifesto só se for deste projeto (o manifesto é único; outro projeto aberto antes não pode vazar). */
+  static loadManifestFor(projectId) {
+    const manifest = this.loadManifest();
+    return manifest && (!manifest.id || manifest.id === projectId) ? manifest : null;
+  }
+
+  /** Apaga as chaves síncronas do projeto: manifesto (se for dele), índice, tombstones, fila offline e cursor. */
+  static purgeProject(projectId) {
+    if (!projectId || typeof localStorage === 'undefined') return;
+    try {
+      const manifest = this.loadManifest();
+      if (manifest && manifest.id === projectId) this.clearManifest();
+      const list = this.listProjects().filter(p => p && p.id !== projectId);
+      localStorage.setItem(PROJECTS_LIST_KEY, JSON.stringify(list));
+      localStorage.removeItem(TOMBSTONES_KEY_PREFIX + projectId);
+      localStorage.removeItem(PENDING_DELTAS_KEY_PREFIX + projectId);
+      localStorage.removeItem(SYNC_CURSOR_KEY_PREFIX + projectId);
+    } catch (e) {
+      console.warn('[LocalStore] Falha ao limpar dados locais do projeto:', e);
+    }
+  }
+
   // ---- ÍNDICE DE PROJETOS ----
 
   static listProjects() {

@@ -51,6 +51,8 @@ class ConecteMapasApp {
     this.historyUndo = [];
     this.historyRedo = [];
     this._isStorageHydrated = false;
+    this._projectSeed = null;
+    this._projectClosed = false;
 
     this.init();
   }
@@ -60,6 +62,7 @@ class ConecteMapasApp {
     this.initCollaboration();
     AppComponentsBuilder.initMap(this);
     AppComponentsBuilder.initComponents(this);
+    if (this._projectSeed) this.applyProjectSeed(this._projectSeed);
     AppGeometryCoordinator.updateHUD(this);
     AppBootstrapSync.loadStateAsync(this);
 
@@ -86,6 +89,35 @@ class ConecteMapasApp {
     if (inviteCode && this.authModal) this.authModal.openInvite(inviteCode);
   }
 
+  /**
+   * Projeto recém-criado (Novo projeto / Modelos): grava já nome e camadas, local e na nuvem,
+   * para que um F5 antes da primeira edição não o devolva ao nome e às camadas padrão.
+   */
+  applyProjectSeed(seed) {
+    if (seed.center && this.mapEngine?.map) this.mapEngine.map.setView(seed.center, seed.zoom || 14, { animate: false });
+    this.saveMetadata(true);
+  }
+
+  /**
+   * Projeto excluído (aqui ou pelo dono em outro lugar): para de salvar e sincronizar.
+   * Sem isso o salvamento ao fechar a página (ou um agendado) recriaria o projeto.
+   */
+  closeProject() {
+    if (this._projectClosed) return;
+    this._projectClosed = true;
+    if (this._cloudSyncTimer) {
+      clearTimeout(this._cloudSyncTimer);
+      this._cloudSyncTimer = null;
+    }
+    if (this._orphanTimer) {
+      clearTimeout(this._orphanTimer);
+      this._orphanTimer = null;
+    }
+    StorageService.discardPendingWrites();
+    document.body.classList.add('cm-readonly');
+    if (this.mapEngine) this.mapEngine.setTool('select');
+  }
+
   /** Nome da conta no cabeçalho e na presença; o servidor ainda decide o papel. */
   applyAccount(user) {
     if (this.headerBar) this.headerBar.updateAccount(user ? user.name : '');
@@ -106,6 +138,15 @@ class ConecteMapasApp {
    * O servidor é quem garante (403); aqui só evitamos oferecer ações que falhariam.
    */
   applyAccessMode(role) {
+    if (role === 'deleted') {
+      const alreadyClosed = this._projectClosed;
+      this._lastAccessRole = role;
+      this.closeProject();
+      if (!alreadyClosed && !this._deletingProject) {
+        UIToast.notificar({ tipo: 'erro', titulo: 'Projeto excluído', mensagem: 'O dono excluiu este projeto. Nada mais será salvo nele.', duracao: 8000 });
+      }
+      return;
+    }
     // Projeto protegido que estava sem acesso e agora liberou (login/convite): recarrega para baixar os dados
     if (this._lastAccessRole === 'none' && role && role !== 'none') {
       window.location.reload();
@@ -146,6 +187,7 @@ class ConecteMapasApp {
   }
 
   saveMetadata(isImmediate = false) {
+    if (this._projectClosed) return;
     const payload = {
       id: this.projectId,
       name: this.projectName,
@@ -164,14 +206,14 @@ class ConecteMapasApp {
   }
 
   saveFeature(feature) {
-    if (feature) {
+    if (feature && !this._projectClosed) {
       StorageService.saveFeature(feature, this.projectId);
       this.saveMetadata(true);
     }
   }
 
   saveFeaturesBulk(features) {
-    if (!Array.isArray(features) || features.length === 0) return;
+    if (this._projectClosed || !Array.isArray(features) || features.length === 0) return;
     StorageService.queueFeaturesBulkUpsert(features, this.projectId);
     this.saveMetadata(false);
   }
@@ -200,6 +242,7 @@ class ConecteMapasApp {
   }
 
   saveState(isImmediate = false, options = { featuresChanged: true }) {
+    if (this._projectClosed) return;
     if (options.featuresChanged === false || !this._isStorageHydrated) {
       this.saveMetadata(isImmediate);
       return;
@@ -327,10 +370,6 @@ class ConecteMapasApp {
 
   getToolName(tool) {
     return AppGeometryCoordinator.getToolName(tool);
-  }
-
-  toggleGlobalGeometryVersion() {
-    AppGeometryCoordinator.toggleGlobalGeometryVersion(this);
   }
 
   toggleFeatureGeometryVersion(featureId) {

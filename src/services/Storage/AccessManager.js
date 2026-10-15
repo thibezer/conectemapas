@@ -79,10 +79,14 @@ export class AccessManager {
     return () => _listeners.delete(listener);
   }
 
-  /** Ajusta o papel conforme uma resposta de erro do servidor (401/403 com code). */
+  /** Ajusta o papel conforme uma resposta de erro do servidor (401/403 com code; 410 = projeto excluído). */
   static handleDenied(projectId, status, body) {
-    if (status !== 401 && status !== 403) return false;
     const code = body && body.code;
+    if (status === 410 && code === 'project_deleted') {
+      this.setRole(projectId, 'deleted');
+      return true;
+    }
+    if (status !== 401 && status !== 403) return false;
     if (code === 'insufficient_role') this.setRole(projectId, body.role || 'viewer');
     else if (code === 'key_required' || code === 'invalid_key' || code === 'not_a_member') this.setRole(projectId, 'none');
     return true;
@@ -110,15 +114,16 @@ export class AccessManager {
   static async refresh(projectId) {
     try {
       const info = await this._call('access_info', projectId);
-      this.setRole(projectId, info.role || 'none');
+      this.setRole(projectId, info.deleted ? 'deleted' : (info.role || 'none'));
       return info;
     } catch {
       return null;
     }
   }
 
-  static async claimProject(projectId, label) {
-    const data = await this._call('claim_project', projectId, { method: 'POST', payload: { label } });
+  /** @param {string} [name] nome inicial, usado só se o projeto ainda não existir na nuvem */
+  static async claimProject(projectId, label, name) {
+    const data = await this._call('claim_project', projectId, { method: 'POST', payload: name ? { label, name } : { label } });
     this.setKey(projectId, data.key);
     this.setRole(projectId, 'owner');
     return data;
@@ -160,6 +165,13 @@ export class AccessManager {
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
     } catch {}
     return code;
+  }
+
+  /** Exclusão definitiva (só o dono). Em caso de sucesso o papel local vira 'deleted'. */
+  static async deleteProject(projectId) {
+    const data = await this._call('delete_project', projectId, { method: 'POST', payload: {} });
+    this.setRole(projectId, 'deleted');
+    return data;
   }
 
   static async revokeAccess(projectId, accessId) {

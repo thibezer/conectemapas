@@ -61,6 +61,7 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **`save_all` não poda por padrão**: só marca ausentes como excluídas com `prune: true`, e respeita `baseRev` para não sobrescrever edições de outros operadores.
 - **Presença**: o pull (≈1 s, aba visível) envia nome/cor/cursor e recebe os demais operadores ativos (`cm_presence`). Nomes remotos são sempre escapados antes de ir ao DOM.
 - **Esquema**: ao alterar o DDL, incrementar `CM_SCHEMA_VERSION` em `api.php` (o marcador `.cm_schema_version` evita DDL a cada requisição).
+- **Criar e excluir projeto** (`ProjectLifecycle`): o id novo é slug + sufixo aleatório; nome, camadas (com ids próprios, pois `cm_layers.id` é global) e enquadramento vão numa semente em localStorage que o boot consome e grava na hora. `delete_project` é só do dono, apaga tudo numa transação e reserva o id em `cm_deleted_projects`: qualquer ação posterior recebe **410 `project_deleted`** (inclusive dentro de `nextRevision`), para que fila offline, flush ao fechar a aba ou outro operador não recriem o projeto. No cliente, `app.closeProject()` cancela todo salvamento agendado antes de apagar a cópia local. O `projeto_padrao` não pode ser excluído.
 
 ---
 

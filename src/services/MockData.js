@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ConecteMapas - Mock Data & Templates
+   ConecteMapas - Mock Data
    Dados realistas de topografia, zoneamento, rotas e marcos geodésicos
    ========================================================================== */
 
@@ -276,50 +276,5 @@ export const DEFAULT_FEATURES = [
     },
     createdBy: 'Thiago',
     createdAt: new Date(Date.now() - 3600000 * 5).toISOString()
-  }
-];
-
-export const PROJECT_TEMPLATES = [
-  {
-    id: 'template-topografia',
-    title: 'Topografia & Agrimensura',
-    icon: '📐',
-    badge: 'Georreferenciamento',
-    description: 'Configurado para levantamento planialtimétrico, marcos do IBGE, cálculo de azimutes e memoriais descritivos.',
-    center: [-23.7661, -53.3206],
-    zoom: 14,
-    layers: [
-      { id: 'layer-marcos', name: 'Marcos & Piquetes', color: '#00E08A', visible: true, opacity: 1, locked: false },
-      { id: 'layer-poligonal', name: 'Poligonal de Apoio', color: '#3b82f6', visible: true, opacity: 0.9, locked: false },
-      { id: 'layer-confrontantes', name: 'Confrontações & Limites', color: '#ef4444', visible: true, opacity: 0.8, locked: false }
-    ]
-  },
-  {
-    id: 'template-ambiental',
-    title: 'Gestão Ambiental & CAR',
-    icon: '🌳',
-    badge: 'Florestal',
-    description: 'Focado em Cadastro Ambiental Rural, nascentes, matas ciliares, áreas antropizadas e Reserva Legal.',
-    center: [-23.7661, -53.3206],
-    zoom: 13,
-    layers: [
-      { id: 'layer-app', name: 'Áreas de Preservação (APP)', color: '#10b981', visible: true, opacity: 0.75, locked: false },
-      { id: 'layer-hidro', name: 'Nascentes e Cursos d’Água', color: '#06b6d4', visible: true, opacity: 1, locked: false },
-      { id: 'layer-antropica', name: 'Uso Consolidado do Solo', color: '#f59e0b', visible: true, opacity: 0.6, locked: false }
-    ]
-  },
-  {
-    id: 'template-urbano',
-    title: 'Planejamento Urbano & Lotes',
-    icon: '🏙️',
-    badge: 'Zoneamento',
-    description: 'Estruturado para delimitação de quadras, arruamento, faixas de servidão e equipamentos públicos.',
-    center: [-23.7661, -53.3206],
-    zoom: 15,
-    layers: [
-      { id: 'layer-lotes', name: 'Lotes e Quadras', color: '#3b82f6', visible: true, opacity: 0.7, locked: false },
-      { id: 'layer-vias', name: 'Malha Viária', color: '#f97316', visible: true, opacity: 1, locked: false },
-      { id: 'layer-equipamentos', name: 'Equipamentos Comunitários', color: '#a855f7', visible: true, opacity: 1, locked: false }
-    ]
   }
 ];
