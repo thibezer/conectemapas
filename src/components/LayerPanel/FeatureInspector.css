@@ -45,120 +45,122 @@ ui-tabela-propriedades {
   line-height: 1.5;
 }
 
+/* Cartão do topo: nome editável, categoria · métrica e ações rápidas */
 .cm-inspector-header-card {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 6px 6px 6px 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-insp-identity {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 6px;
+  gap: 1px;
 }
 
-.cm-inspector-header-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 6px;
+/* Campo do kit com aparência de título: a borda só aparece ao passar o mouse ou editar */
+.cm-insp-name-input {
+  --ui-campo-altura: 24px;
+  --ui-altura-minima: 24px;
 }
 
-.cm-header-badge-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  flex: 1;
+.cm-insp-name-input::part(campo) {
+  background: transparent;
+  border-color: transparent;
+  padding: 0 4px;
 }
 
-.cm-summary-pill-main {
-  font-size: 10px;
-  font-weight: 700;
-  font-family: var(--cm-fonte-mono, monospace);
-  color: var(--cm-primary, #00E08A);
-  background: rgba(0, 224, 138, 0.12);
-  border: 1px solid rgba(0, 224, 138, 0.25);
-  padding: 2px 6px;
-  border-radius: 4px;
+.cm-insp-name-input:hover::part(campo) {
+  border-color: var(--cm-border, rgba(255, 255, 255, 0.12));
+}
+
+.cm-insp-name-input:focus-within::part(campo) {
+  background: var(--cm-bg-sidebar, #131417);
+  border-color: var(--cm-primary, #00E08A);
+}
+
+.cm-insp-name-input::part(input),
+.cm-insp-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cm-text, #e1e1e6);
+  text-overflow: ellipsis;
+}
+
+.cm-insp-name {
+  display: block;
+  line-height: 24px;
+  padding: 0 5px;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 140px;
 }
 
-.cm-inspector-quick-toolbar {
+.cm-insp-subline {
   display: flex;
-  gap: 3px;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 5px;
+  font-size: 10.5px;
+  color: var(--cm-text-muted, #888899);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cm-insp-category {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-insp-metric {
+  flex-shrink: 0;
+  font-family: var(--cm-fonte-mono, monospace);
+  font-weight: 600;
+  color: var(--cm-primary, #00E08A);
+}
+
+.cm-insp-metric::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--cm-text-muted, #888899);
+  font-family: inherit;
+}
+
+.cm-insp-actions {
+  display: flex;
   align-items: center;
+  gap: 1px;
   flex-shrink: 0;
 }
 
-.cm-quick-tool-btn {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
+.cm-insp-tool {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
   padding: 0;
-  background: var(--cm-surface-elevated, #1a1a1e);
-  color: var(--cm-text, #e1e1e6);
-  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.12));
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
+  font-size: 13px;
 }
 
-.cm-quick-tool-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.cm-quick-tool-btn.active-lock {
+.cm-insp-tool.is-active::part(base) {
   background: rgba(239, 68, 68, 0.15);
   border-color: rgba(239, 68, 68, 0.4);
-  color: #ef4444;
 }
 
-.cm-quick-tool-btn.btn-danger:hover {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: #ef4444;
-  color: #ef4444;
+.cm-insp-tool--danger:not([disabled]):hover::part(base) {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.5);
 }
 
-.cm-inspector-meta-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.cm-meta-chip {
-  display: flex;
-  flex-direction: column;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 4px;
-  padding: 3px 6px;
-  min-width: 0;
-}
-
-.cm-meta-label {
-  font-size: 8.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--cm-text-muted, #888899);
-  margin-bottom: 1px;
-}
-
-.cm-meta-val {
-  font-size: 10px;
-  font-family: var(--cm-fonte-mono, monospace);
-  color: var(--cm-text, #e1e1e6);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.cm-insp-actions-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  background: var(--cm-border, rgba(255, 255, 255, 0.12));
 }
 
 .cm-inspector-field-group {
@@ -441,16 +443,6 @@ ui-tabela-propriedades {
   border-radius: 3px;
   margin-left: 6px;
   opacity: 0.8;
-}
-
-.cm-locked-badge {
-  background: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #ef4444;
-  font-size: 9.5px;
-  font-weight: 600;
-  padding: 1px 5px;
-  border-radius: 3px;
 }
 
 /* Card de Controle Rápido de Cores CAD */

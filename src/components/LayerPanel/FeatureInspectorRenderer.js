@@ -40,7 +40,9 @@ export class FeatureInspectorRenderer {
     const isLocked = feat.locked === true;
     const typeLabel = FeatureGeometryUtils.getTypeLabel(feat.type);
     const safeCategory = panel.escapeHtml(feat.category && feat.category !== feat.type ? feat.category : typeLabel);
-    const safeId = panel.escapeHtml(feat.id || '');
+    const safeName = panel.escapeHtml(feat.name || '');
+    // ID técnico fica só na dica (e no seletor da tabela de propriedades)
+    const safeTooltip = panel.escapeHtml(`${typeLabel} · ID ${feat.id || ''}`);
 
     const isPoly = feat.type === 'Polygon';
     const rings = FeatureGeometryUtils.getVertexRings(feat);
@@ -52,33 +54,23 @@ export class FeatureInspectorRenderer {
 
     return `
       <div class="cm-inspector-box">
-        <!-- Topo: Header Card com Toolbar Rápida -->
-        <div class="cm-inspector-header-card">
-          <div class="cm-inspector-header-top">
-            <div class="cm-header-badge-group">
-              <ui-badge variante="primario">${safeCategory}</ui-badge>
-              ${isLocked
-                ? `<span class="cm-locked-badge">🔒 Travado</span>`
-                : `<span class="cm-summary-pill-main" title="${panel.escapeHtml(dimSummary)}">${panel.escapeHtml(dimSummary)}</span>`}
-            </div>
-            <div class="cm-inspector-quick-toolbar">
-              <button data-insp="toggle-lock" class="cm-quick-tool-btn ${isLocked ? 'active-lock' : ''}" title="${isLocked ? 'Feição Bloqueada (Clique para Desbloquear)' : 'Feição Livre (Clique para Bloquear)'}">
-                ${isLocked ? '🔒' : '🔓'}
-              </button>
-              <button data-insp="toggle-float" class="cm-quick-tool-btn" title="${panel.isFloating ? 'Acoplar na barra lateral' : 'Destacar em Janela Flutuante'}">🪟</button>
-              <button data-insp="fit" class="cm-quick-tool-btn" title="Enquadrar no Mapa">🎯</button>
-              <button data-insp="delete" class="cm-quick-tool-btn btn-danger" title="${isLocked ? 'Desbloqueie para excluir' : 'Excluir Feição'}" ${isLocked ? 'disabled' : ''}>🗑️</button>
+        <!-- Topo: nome editável, categoria · métrica e ações rápidas -->
+        <div class="cm-inspector-header-card ${isLocked ? 'is-locked' : ''}">
+          <div class="cm-insp-identity">
+            ${isLocked
+              ? `<span class="cm-insp-name" title="${safeName}">${safeName || 'Sem nome'}</span>`
+              : `<ui-campo-texto data-insp="name" class="cm-insp-name-input" value="${safeName}" placeholder="Sem nome" aria-label="Nome da feição" title="Clique para renomear"></ui-campo-texto>`}
+            <div class="cm-insp-subline" title="${safeTooltip}">
+              <span class="cm-insp-category">${safeCategory}</span>
+              ${dimSummary ? `<span class="cm-insp-metric">${panel.escapeHtml(dimSummary)}</span>` : ''}
             </div>
           </div>
-          <div class="cm-inspector-meta-row">
-            <div class="cm-meta-chip" title="ID: ${safeId}">
-              <span class="cm-meta-label">ID</span>
-              <span class="cm-meta-val">${safeId}</span>
-            </div>
-            <div class="cm-meta-chip" title="Status">
-              <span class="cm-meta-label">STATUS</span>
-              <span class="cm-meta-val">${isLocked ? 'Bloqueada' : 'Editável'}</span>
-            </div>
+          <div class="cm-insp-actions" role="toolbar" aria-label="Ações da feição">
+            <ui-botao-primario inline variante="ghost" data-insp="toggle-lock" class="cm-insp-tool ${isLocked ? 'is-active' : ''}" aria-pressed="${isLocked}" title="${isLocked ? 'Bloqueada — clique para desbloquear' : 'Bloquear edição e exclusão'}">${isLocked ? '🔒' : '🔓'}</ui-botao-primario>
+            <ui-botao-primario inline variante="ghost" data-insp="fit" class="cm-insp-tool" title="Enquadrar no mapa">🎯</ui-botao-primario>
+            ${context === 'sidebar' ? `<ui-botao-primario inline variante="ghost" data-insp="toggle-float" class="cm-insp-tool" title="Abrir em janela flutuante">🪟</ui-botao-primario>` : ''}
+            <span class="cm-insp-actions-sep" aria-hidden="true"></span>
+            <ui-botao-primario inline variante="ghost" data-insp="delete" class="cm-insp-tool cm-insp-tool--danger" title="${isLocked ? 'Desbloqueie para excluir' : 'Excluir feição'}" ${isLocked ? 'disabled' : ''}>🗑️</ui-botao-primario>
           </div>
         </div>
 
@@ -155,24 +147,23 @@ export class FeatureInspectorRenderer {
     `;
   }
 
+  // Resumo para leitura rápida no topo; os valores completos (4 casas) ficam
+  // nas métricas da tabela de propriedades
   static buildDimensionSummary(panel, feat) {
     const coords = feat.coordinates;
+    const fmt = (n, digits) => n.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
     if (feat.type === 'Polygon' && Array.isArray(coords)) {
-      const ha = panel.calculatePolygonArea(coords) / 10000;
-      return ha >= 1000
-        ? `${ha.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ha`
-        : `${ha.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ha`;
+      const m2 = panel.calculatePolygonArea(coords);
+      return m2 < 10000 ? `${fmt(m2, 0)} m²` : `${fmt(m2 / 10000, 2)} ha`;
     }
     if (feat.type === 'LineString' && Array.isArray(coords)) {
       const lengthM = panel.calculatePolylineLength(coords);
-      return lengthM >= 1000
-        ? `${(lengthM / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} km`
-        : `${lengthM.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m`;
+      return lengthM >= 1000 ? `${fmt(lengthM / 1000, 2)} km` : `${fmt(lengthM, 1)} m`;
     }
-    if (feat.type === 'Circle') {
-      return feat.radius ? `R: ${Number(feat.radius).toLocaleString('pt-BR')} m` : 'Círculo';
+    if (feat.type === 'Circle' && feat.radius) {
+      return `raio ${fmt(Number(feat.radius), Number.isInteger(Number(feat.radius)) ? 0 : 1)} m`;
     }
-    return FeatureGeometryUtils.getTypeLabel(feat.type);
+    return '';
   }
 
   // Azimute em graus, minutos e segundos (convenção topográfica)

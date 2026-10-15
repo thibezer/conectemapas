@@ -64,6 +64,22 @@ export class FeatureInspectorEvents {
       if (!saved) return;
     });
 
+    // Nome editável no topo: grava ao sair do campo ou com Enter; Esc desfaz
+    const nameInput = q('[data-insp="name"]');
+    if (nameInput) {
+      const original = panel.selectedFeature.name || '';
+      nameInput.addEventListener('change', () => {
+        const value = String(nameInput.value ?? '').trim();
+        if (value === original) return;
+        if (!value) nameInput.value = original;
+        FeaturePropertiesAdapter.aplicarAlteracao(panel, featId, 'name', value);
+      });
+      nameInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); }
+        else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); nameInput.value = original; nameInput.blur(); }
+      });
+    }
+
     q('[data-insp="toggle-float"]')?.addEventListener('click', () => panel.toggleFloatingWindow());
     q('[data-insp="fit"]')?.addEventListener('click', () => panel.onFitFeature(featId));
     q('[data-insp="delete"]')?.addEventListener('click', () => FeaturePropertiesAdapter.confirmDelete(panel, featId));
