@@ -30,6 +30,12 @@ export class ContextMenu {
   open({ latlng, point, originalEvent, feature = null }) {
     this.close();
 
+    // Editando vértices ou desenhando, o botão direito pertence à ferramenta: o menu só atrapalharia
+    const engine = this.app.mapEngine;
+    const isVertexEditing = Boolean(engine?.vertexEditor?.isEditing?.());
+    const isDrawing = Boolean(engine?.activeTool && engine.activeTool !== 'select');
+    if (isVertexEditing || isDrawing) return;
+
     const clientX = originalEvent ? originalEvent.clientX : (point?.x || 100);
     const clientY = originalEvent ? originalEvent.clientY : (point?.y || 100);
 
@@ -119,7 +125,7 @@ export class ContextMenu {
         <div class="cm-ctx-item" data-action="inspect">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">🔍</span>
-            <span class="cm-ctx-text">Inspecionar Propriedades</span>
+            <span class="cm-ctx-text">Inspecionar</span>
           </div>
           <span class="cm-ctx-shortcut">Enter</span>
         </div>
@@ -127,7 +133,7 @@ export class ContextMenu {
         <div class="cm-ctx-item" data-action="fit">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">🎯</span>
-            <span class="cm-ctx-text">Aproximar / Centralizar</span>
+            <span class="cm-ctx-text">Aproximar</span>
           </div>
           <span class="cm-ctx-shortcut">Z</span>
         </div>
@@ -136,7 +142,7 @@ export class ContextMenu {
           <div class="cm-ctx-item" data-action="edit-vertex">
             <div class="cm-ctx-item-left">
               <span class="cm-ctx-icon">✏️</span>
-              <span class="cm-ctx-text">Editar Vértices CAD</span>
+              <span class="cm-ctx-text">Editar vértices</span>
             </div>
             <span class="cm-ctx-shortcut">F2</span>
           </div>
@@ -145,7 +151,7 @@ export class ContextMenu {
         <div class="cm-ctx-item" data-action="duplicate">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">📋</span>
-            <span class="cm-ctx-text">Duplicar Feição (+30m)</span>
+            <span class="cm-ctx-text">Duplicar (+30 m)</span>
           </div>
           <span class="cm-ctx-shortcut">Ctrl+D</span>
         </div>
@@ -159,7 +165,7 @@ export class ContextMenu {
             <div class="cm-ctx-item" data-action="toggle-geometry-version">
               <div class="cm-ctx-item-left">
                 <span class="cm-ctx-icon">🔄</span>
-                <span class="cm-ctx-text">${featStatus === 'oficial' ? 'Exibir Geometria Prévia' : 'Exibir Geometria Oficial'}</span>
+                <span class="cm-ctx-text">${featStatus === 'oficial' ? 'Ver geometria prévia' : 'Ver geometria oficial'}</span>
               </div>
               <span class="cm-ctx-shortcut">Alt+V</span>
             </div>
@@ -170,7 +176,7 @@ export class ContextMenu {
           <div class="cm-ctx-item" data-action="move-layer-trigger">
             <div class="cm-ctx-item-left">
               <span class="cm-ctx-icon">📁</span>
-              <span class="cm-ctx-text">${this._selectionIdsFor(feat).length > 1 ? `Mover seleção (${this._selectionIdsFor(feat).length}) para Camada...` : 'Mover para Camada...'}</span>
+              <span class="cm-ctx-text">${this._selectionIdsFor(feat).length > 1 ? `Mover seleção (${this._selectionIdsFor(feat).length}) para camada` : 'Mover para camada'}</span>
             </div>
             <span class="cm-ctx-shortcut">▶</span>
           </div>
@@ -189,14 +195,14 @@ export class ContextMenu {
         <div class="cm-ctx-item" data-action="toggle-lock">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">${isLocked ? '🔓' : '🔒'}</span>
-            <span class="cm-ctx-text">${isLocked ? 'Desbloquear Feição' : 'Bloquear contra Edições'}</span>
+            <span class="cm-ctx-text">${isLocked ? 'Desbloquear' : 'Bloquear edição'}</span>
           </div>
         </div>
 
         <div class="cm-ctx-item" data-action="open-popup">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">💬</span>
-            <span class="cm-ctx-text">Ver Balão no Mapa</span>
+            <span class="cm-ctx-text">Ver balão</span>
           </div>
         </div>
 
@@ -205,7 +211,7 @@ export class ContextMenu {
         <div class="cm-ctx-item" data-action="copy-coords">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">📍</span>
-            <span class="cm-ctx-text">Copiar Coordenadas</span>
+            <span class="cm-ctx-text">Copiar coordenadas</span>
           </div>
         </div>
 
@@ -214,7 +220,7 @@ export class ContextMenu {
         <div class="cm-ctx-item cm-ctx-danger" data-action="delete">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">🗑️</span>
-            <span class="cm-ctx-text">Excluir Feição</span>
+            <span class="cm-ctx-text">Excluir</span>
           </div>
           <span class="cm-ctx-shortcut">Del</span>
         </div>

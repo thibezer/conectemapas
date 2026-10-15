@@ -6,15 +6,15 @@
 .cm-context-menu {
   position: fixed;
   z-index: 2000;
-  min-width: 230px;
-  max-width: 290px;
+  min-width: 176px;
+  max-width: 240px;
   background: rgba(20, 20, 26, 0.96);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  border-radius: 7px;
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.35);
-  padding: 5px;
+  padding: 3px;
   font-family: var(--cm-fonte, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
   font-size: 12px;
   color: #e1e1e6;
@@ -35,27 +35,27 @@
 }
 
 .cm-ctx-header {
-  padding: 6px 10px 8px 10px;
+  padding: 4px 7px 5px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .cm-ctx-title-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-weight: 600;
   color: #ffffff;
-  font-size: 12.5px;
+  font-size: 11.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cm-ctx-badge {
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 600;
-  padding: 1px 6px;
+  padding: 0 4px;
   border-radius: 4px;
   background: rgba(56, 189, 248, 0.15);
   color: #38bdf8;
@@ -66,10 +66,10 @@
 }
 
 .cm-ctx-subtitle {
-  font-size: 10.5px;
+  font-size: 9.5px;
   color: var(--cm-text-muted, #888899);
   font-family: var(--cm-fonte-mono, monospace);
-  margin-top: 2px;
+  margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -85,8 +85,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
-  border-radius: 5px;
+  padding: 3px 7px;
+  min-height: 22px;
+  box-sizing: border-box;
+  border-radius: 4px;
   cursor: pointer;
   color: #c9c9d4;
   transition: all 0.1s ease;
@@ -96,21 +98,20 @@
 .cm-ctx-item:hover, .cm-ctx-item:focus {
   background: rgba(255, 255, 255, 0.09);
   color: #ffffff;
-  transform: translateX(1px);
 }
 
 .cm-ctx-item-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .cm-ctx-icon {
-  font-size: 13px;
-  width: 16px;
+  font-size: 11px;
+  width: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -118,7 +119,7 @@
 }
 
 .cm-ctx-text {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -126,17 +127,17 @@
 }
 
 .cm-ctx-shortcut {
-  font-size: 10px;
+  font-size: 9.5px;
   color: rgba(255, 255, 255, 0.35);
   font-family: var(--cm-fonte-mono, monospace);
-  margin-left: 12px;
+  margin-left: 10px;
   flex-shrink: 0;
 }
 
 .cm-ctx-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.08);
-  margin: 3px 4px;
+  margin: 2px 4px;
 }
 
 .cm-ctx-item.cm-ctx-danger {
@@ -157,14 +158,14 @@
   position: absolute;
   top: 0;
   left: 100%;
-  margin-left: 4px;
-  min-width: 180px;
+  margin-left: 3px;
+  min-width: 150px;
   background: rgba(20, 20, 26, 0.98);
   backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  border-radius: 7px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
-  padding: 5px;
+  padding: 3px;
 }
 
 .cm-ctx-submenu-wrap:hover .cm-ctx-submenu {
