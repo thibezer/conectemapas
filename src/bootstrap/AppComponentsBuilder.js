@@ -3,7 +3,7 @@
    Montagem dos componentes de interface e motor cartográfico Leaflet.
    ========================================================================== */
 
-import { UIToast, abrirSeletorCor } from '@thibezer/ui-components-kit';
+import { UIToast } from '@thibezer/ui-components-kit';
 import { AuthService } from '../services/Storage/AuthService.js';
 import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../utils/toastHelpers.js';
 import { CanvasMapEngine } from '../services/CanvasMapEngine.js';
@@ -23,66 +23,17 @@ import { ProjectActionsController } from '../controllers/ProjectActionsControlle
 import { ShortcutsController } from '../controllers/ShortcutsController.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { AppModalsBuilder } from './AppModalsBuilder.js';
-import { AppGeometryCoordinator } from './AppGeometryCoordinator.js';
+import { SelectionStyleController } from '../controllers/SelectionStyleController.js';
 
 export class AppComponentsBuilder {
   /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
   static getSelectedFeatures(app) {
-    const hudFeats = app.selectionHUD?.selectedFeatures || [];
-    if (hudFeats.length > 0) return hudFeats;
-    const ids = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
-    const fromIds = ids.map(id => app.features.find(f => f.id === id)).filter(Boolean);
-    if (fromIds.length > 0) return fromIds;
-    return app.layerPanel?.selectedFeature ? [app.layerPanel.selectedFeature] : [];
+    return SelectionStyleController.getSelectedFeatures(app);
   }
 
-  /**
-   * Grava as cores do seletor nas feições selecionadas.
-   * Só altera as propriedades indicadas em `changed`; linhas usam apenas o traço e textos a cor do texto.
-   * @param {Object} app
-   * @param {{fillColor: string, strokeColor: string}} colors
-   * @param {string[]} [changed]
-   */
-  static applyColorsToSelection(app, colors, changed = ['fillColor', 'strokeColor']) {
-    const targets = AppComponentsBuilder.getSelectedFeatures(app)
-      .filter(f => !FeatureSyncController.isFeatureLocked(app, f.id));
-    if (targets.length === 0) return;
-
-    const mutate = (draft) => {
-      if (!draft.style) draft.style = {};
-      const isLine = /LineString/.test(draft.type);
-      if (changed.includes('fillColor') && !isLine) {
-        if (draft.type === 'Text') {
-          draft.style.textColor = colors.fillColor;
-        } else {
-          draft.style.fillColor = colors.fillColor;
-        }
-        if (colors.fillColor && colors.fillColor !== 'none' && colors.fillColor !== 'transparent') {
-          draft.color = colors.fillColor;
-          draft.style._lastFillColor = colors.fillColor;
-        }
-      }
-      if (changed.includes('strokeColor') && draft.type !== 'Text') {
-        draft.style.strokeColor = colors.strokeColor;
-        if (colors.strokeColor && colors.strokeColor !== 'none' && colors.strokeColor !== 'transparent') {
-          if (isLine) draft.color = colors.strokeColor;
-          draft.style._lastStrokeColor = colors.strokeColor;
-        }
-      }
-      if ((changed.includes('fillOpacity') || colors.fillOpacity !== undefined) && colors.fillOpacity !== undefined && !isLine) {
-        draft.style.fillOpacity = Math.max(0, Math.min(1, Number(colors.fillOpacity)));
-      }
-    };
-
-    if (targets.length === 1 && typeof app.layerPanel?.commitFeatureEdit === 'function') {
-      app.layerPanel.commitFeatureEdit(targets[0].id, mutate);
-      return;
-    }
-
-    // Para seleções múltiplas / lotes (centenas ou milhares de feições):
-    // Delega diretamente para BatchActions para garantir:
-    // 1 histórico único, 1 re-render único de mapa/tabela e gravação em lote consolidada!
-    BatchActions.applyColors(app, targets.map(t => t.id), colors);
+  /** Grava cores nas feições selecionadas (só as propriedades em `changed`). Ver SelectionStyleController. */
+  static applyColorsToSelection(app, colors, changed) {
+    SelectionStyleController.applyColorsToSelection(app, colors, changed);
   }
 
   /**
@@ -701,40 +652,7 @@ export class AppComponentsBuilder {
         app.batchActions?.moveToLayer(features.map(f => f.id), layerId, opts);
       },
       onStyle: (hudFeatures, anchorEl) => {
-        if (!hudFeatures || hudFeatures.length === 0) return;
-        // O HUD guarda a seleção de quando foi aberto; o seletor parte das cores atuais
-        // (o "Cancelar" restaura exatamente esse estado inicial)
-        const latest = (list) => list.map(f => (app.features || []).find(x => x.id === f.id) || f);
-        const features = latest(hudFeatures);
-        const isSingle = features.length === 1;
-        const targetFeat = isSingle ? features[0] : null;
-
-        const defaultFill = targetFeat?.style?.fillColor || targetFeat?.color || '#00E08A';
-        const defaultStroke = targetFeat?.style?.strokeColor || '#ffffff';
-        const defaultOpacity = targetFeat?.style?.fillOpacity !== undefined ? Number(targetFeat.style.fillOpacity) : 0.35;
-
-        const applyStyle = (res) => {
-          AppComponentsBuilder.applyColorsToSelection(app, {
-            fillColor: res.preenchimento,
-            strokeColor: res.traco,
-            fillOpacity: res.opacidade
-          }, ['fillColor', 'strokeColor', 'fillOpacity']);
-        };
-        abrirSeletorCor({
-          ancora: anchorEl || document.body,
-          titulo: isSingle ? `Estilo de "${targetFeat.name || 'Feição'}"` : `Estilo em Lote (${features.length})`,
-          modo: 'duplo',
-          alvo: 'preenchimento',
-          preenchimento: defaultFill,
-          traco: defaultStroke,
-          opacidade: defaultOpacity,
-          coresProjeto: (app.layers || []).map(l => l.color),
-          aoAlterar: applyStyle,
-          aoConfirmar: (res) => {
-            applyStyle(res);
-            AppGeometryCoordinator.syncToolbarColors(app, latest(features));
-          }
-        });
+        SelectionStyleController.openStylePicker(app, hudFeatures, anchorEl);
       },
       onClear: () => {
         if (app.mapEngine) app.mapEngine.clearSelection();

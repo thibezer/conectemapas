@@ -67,6 +67,28 @@ export class AppGeometryCoordinator {
     this.updateHUD(app, list.length);
   }
 
+  /** Ids da seleção atual (HUD, painel de camadas ou feição do inspetor). */
+  static selectedFeatureIds(app) {
+    const hud = app.selectionHUD?.selectedFeatures || [];
+    if (hud.length > 0) return hud.map(f => f.id);
+    const ids = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
+    if (ids.length > 0) return ids;
+    return app.layerPanel?.selectedFeature?.id ? [app.layerPanel.selectedFeature.id] : [];
+  }
+
+  /**
+   * Depois de gravar estilo (barra, HUD, inspetor), a barra volta a espelhar a seleção
+   * com as versões atuais das feições. Sem seleção, a barra fica como está.
+   */
+  static resyncToolbarWithSelection(app, changedIds = null) {
+    const ids = this.selectedFeatureIds(app);
+    if (ids.length === 0) return;
+    if (changedIds && !ids.some(id => changedIds.includes(id))) return;
+    const byId = new Map((app.features || []).map(f => [f.id, f]));
+    const list = ids.map(id => byId.get(id)).filter(Boolean);
+    if (list.length > 0) this.syncToolbarColors(app, list);
+  }
+
   /**
    * Espelha no seletor de cores o estilo da feição selecionada (seleção única ou múltipla),
    * exibindo estado misto (?) quando houver divergência de cores entre elementos.

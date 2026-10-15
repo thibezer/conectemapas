@@ -608,14 +608,15 @@ export class DrawingToolbar {
       if (d.alterados?.includes('preenchimento')) this.isMixedFill = false;
       if (d.alterados?.includes('traco')) this.isMixedStroke = false;
 
+      // Só o que mudou (na confirmação do seletor, desde que ele abriu): numa seleção com
+      // cores diferentes, as propriedades não tocadas continuam diferentes
+      const changed = (d.alterados || []).map(k => FROM_KIT_PROP[k]).filter(Boolean);
       if (d.origem === 'seletor') {
-        // Mesmo contrato do antigo popover: as três propriedades, com opacidade
         this.onColorChange(
           { ...this.getColors(), fillOpacity: this.fillOpacity },
-          { commit: d.confirmado === true, changed: ['fillColor', 'strokeColor', 'fillOpacity'] }
+          { commit: d.confirmado === true, changed }
         );
       } else {
-        const changed = (d.alterados || []).map(k => FROM_KIT_PROP[k]).filter(Boolean);
         this.onColorChange(this.getColors(), { commit: true, changed });
       }
     });

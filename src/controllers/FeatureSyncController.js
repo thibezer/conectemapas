@@ -10,6 +10,7 @@ import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyUndoable } from '../utils/toastHelpers.js';
 import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
+import { AppGeometryCoordinator } from '../bootstrap/AppGeometryCoordinator.js';
 
 export class FeatureSyncController {
   /**
@@ -282,7 +283,8 @@ export class FeatureSyncController {
       StorageService.logAudit(audit);
       if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
       app.saveFeature(updatedFeature);
-
+      // Edição numa feição selecionada (ex.: cores no inspetor) aparece também na barra de cores
+      AppGeometryCoordinator.resyncToolbarWithSelection(app, [updatedFeature.id]);
     }
   }
 

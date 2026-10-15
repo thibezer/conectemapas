@@ -151,6 +151,43 @@ export class BatchActions {
     return parts.join(', ');
   }
 
+  /** Guarda cor e estilo de cada feição para restaurar depois (ex.: "Cancelar" no seletor). */
+  static snapshotStyles(features = []) {
+    return new Map(features.map(f => [f.id, { color: f.color, style: clone(f.style || {}) }]));
+  }
+
+  /**
+   * Devolve a cada feição o valor que ela tinha no snapshot, só nas propriedades indicadas.
+   * Seleção com cores diferentes volta a ter cores diferentes (não recebe a cor de uma delas).
+   * @param {Map<string, {color: string, style: Object}>} snapshots
+   * @param {Array<'fillColor'|'strokeColor'|'fillOpacity'>} props
+   */
+  static restoreStyleProps(app, snapshots, props) {
+    if (!snapshots?.size || !props?.length) return { changed: 0, locked: 0, missing: 0, unchanged: 0, skipped: 0, ids: [] };
+    return commitBatch(app, [...snapshots.keys()], 'Restaurar cores', (draft) => BatchActions._restoreProps(draft, snapshots.get(draft.id), props));
+  }
+
+  static _restoreProps(draft, snap, props) {
+    if (!snap) return false;
+    const before = JSON.stringify([draft.color, draft.style]);
+    const style = draft.style || (draft.style = {});
+    const isLine = /LineString/.test(draft.type);
+    const copy = (key) => {
+      if (snap.style[key] === undefined) delete style[key];
+      else style[key] = snap.style[key];
+    };
+    if (props.includes('fillColor') && !isLine) {
+      ['fillColor', 'textColor', '_lastFillColor'].forEach(copy);
+      draft.color = snap.color;
+    }
+    if (props.includes('strokeColor')) {
+      ['strokeColor', '_lastStrokeColor'].forEach(copy);
+      if (isLine) draft.color = snap.color;
+    }
+    if (props.includes('fillOpacity')) copy('fillOpacity');
+    return JSON.stringify([draft.color, draft.style]) !== before;
+  }
+
   static _paint(draft, colors, changed) {
     if (!draft.style) draft.style = {};
     const isLine = /LineString/.test(draft.type);

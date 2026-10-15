@@ -255,11 +255,11 @@ assert.deepStrictEqual(fakeControl.coresProjeto, ['#10b981', '#3b82f6'], 'Cores 
 
 const emitCores = (detail) => fakeControl.dispatchEvent(new CustomEvent('ui-cores-change', { detail }));
 
-// Pré-visualização do seletor: commit false, as três propriedades, com opacidade
+// Pré-visualização do seletor: commit false, só o que mudou, sempre com a opacidade atual
 emitCores({ preenchimento: '#000000', traco: '#ffffff', opacidade: 0.6, alvo: 'preenchimento', confirmado: false, alterados: ['preenchimento'], origem: 'seletor' });
 assert.deepStrictEqual(bridgeEvents.at(-1), {
   cols: { fillColor: '#000000', strokeColor: '#ffffff', fillOpacity: 0.6 },
-  meta: { commit: false, changed: ['fillColor', 'strokeColor', 'fillOpacity'] }
+  meta: { commit: false, changed: ['fillColor'] }
 });
 assert.strictEqual(bridge.fillColor, '#000000');
 assert.strictEqual(bridge.fillOpacity, 0.6);
@@ -267,7 +267,7 @@ assert.strictEqual(bridge.fillOpacity, 0.6);
 // Confirmação do seletor: commit true
 emitCores({ preenchimento: '#000000', traco: '#ffffff', opacidade: 0.6, alvo: 'preenchimento', confirmado: true, alterados: ['preenchimento', 'opacidade'], origem: 'seletor' });
 assert.strictEqual(bridgeEvents.at(-1).meta.commit, true);
-assert.deepStrictEqual(bridgeEvents.at(-1).meta.changed, ['fillColor', 'strokeColor', 'fillOpacity']);
+assert.deepStrictEqual(bridgeEvents.at(-1).meta.changed, ['fillColor', 'fillOpacity'], 'Confirmação grava só o que mudou desde que o seletor abriu');
 
 // Botões do controle: mesmo contrato dos atalhos (sem opacidade, só o que mudou)
 emitCores({ preenchimento: '#ffffff', traco: '#000000', opacidade: 0.6, alvo: 'preenchimento', confirmado: true, alterados: ['preenchimento', 'traco'], origem: 'inverter' });
