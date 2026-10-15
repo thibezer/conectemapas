@@ -11,6 +11,11 @@ import { CollabAuditTab } from './LayerPanel/CollabAuditTab.js';
 import { FloatingInspector } from './LayerPanel/FloatingInspector.js';
 import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 
+const SIDEBAR_WIDTH_KEY = 'cm-sidebar-width';
+const SIDEBAR_DEFAULT_WIDTH = 335;
+const SIDEBAR_MIN_WIDTH = 280;
+const SIDEBAR_MAX_WIDTH = 720;
+
 export class LayerPanel {
   constructor(options = {}) {
     this.app = options.app || null; // fonte da verdade das feições (estado mais recente)
@@ -120,6 +125,9 @@ export class LayerPanel {
     this.container = container;
     this.container.innerHTML = `
       <aside class="cm-sidebar" id="cm-sidebar-panel" aria-label="Painel de Camadas e Ferramentas">
+        <div class="cm-sidebar-resizer" id="cm-sidebar-resizer" role="separator" aria-orientation="vertical"
+          aria-label="Ajustar largura do painel" tabindex="0"
+          title="Arraste para ajustar a largura (duplo clique restaura)"></div>
         <div class="cm-sidebar-header">
           <ui-segmented id="cm-sidebar-segmented" tamanho="sm" valor="${this.activeTab}" style="flex: 1; margin-right: 4px;">
             <span valor="layers">🗂️ Camadas</span>
@@ -214,7 +222,82 @@ export class LayerPanel {
       });
     }
 
+    this.bindResizer(sidebar);
     this.bindTabEvents();
+  }
+
+  /** Alça na borda esquerda: arrastar (ou setas do teclado) ajusta a largura; duplo clique restaura. */
+  bindResizer(sidebar) {
+    const handle = this.container.querySelector('#cm-sidebar-resizer');
+    if (!sidebar || !handle) return;
+
+    const clamp = (w) => {
+      const max = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, window.innerWidth * 0.6));
+      return Math.round(Math.min(max, Math.max(SIDEBAR_MIN_WIDTH, w)));
+    };
+    const apply = (w) => {
+      const width = clamp(w);
+      sidebar.style.width = `${width}px`;
+      handle.setAttribute('aria-valuenow', String(width));
+      return width;
+    };
+    const save = (w) => {
+      try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w)); } catch { /* armazenamento indisponível */ }
+    };
+
+    let saved = NaN;
+    try { saved = parseInt(localStorage.getItem(SIDEBAR_WIDTH_KEY), 10); } catch { /* idem */ }
+    // `preferred` é a escolha do usuário; `width` é o que cabe na janela atual
+    let preferred = Number.isFinite(saved) ? saved : SIDEBAR_DEFAULT_WIDTH;
+    let width = apply(preferred);
+    const commit = (w) => {
+      width = apply(w);
+      preferred = width;
+      save(width);
+    };
+    handle.setAttribute('aria-valuemin', String(SIDEBAR_MIN_WIDTH));
+    handle.setAttribute('aria-valuemax', String(SIDEBAR_MAX_WIDTH));
+
+    let startX = 0;
+    let startWidth = 0;
+    const onMove = (e) => {
+      // O painel cresce para a esquerda: arrastar para a esquerda aumenta a largura
+      width = apply(startWidth + (startX - e.clientX));
+    };
+    const onUp = (e) => {
+      handle.releasePointerCapture?.(e.pointerId);
+      handle.removeEventListener('pointermove', onMove);
+      handle.removeEventListener('pointerup', onUp);
+      handle.removeEventListener('pointercancel', onUp);
+      sidebar.classList.remove('cm-sidebar--resizing');
+      document.body.classList.remove('cm-resizing-x');
+      commit(width);
+    };
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = sidebar.getBoundingClientRect().width;
+      handle.setPointerCapture?.(e.pointerId);
+      handle.addEventListener('pointermove', onMove);
+      handle.addEventListener('pointerup', onUp);
+      handle.addEventListener('pointercancel', onUp);
+      sidebar.classList.add('cm-sidebar--resizing');
+      document.body.classList.add('cm-resizing-x');
+    });
+    handle.addEventListener('dblclick', () => commit(SIDEBAR_DEFAULT_WIDTH));
+    handle.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 40 : 10;
+      if (e.key === 'ArrowLeft') commit(width + step);
+      else if (e.key === 'ArrowRight') commit(width - step);
+      else return;
+      e.preventDefault();
+    });
+
+    // Janela menor que a largura salva: reajusta sem perder a preferência
+    if (this._onWindowResize) window.removeEventListener('resize', this._onWindowResize);
+    this._onWindowResize = () => { width = apply(preferred); };
+    window.addEventListener('resize', this._onWindowResize);
   }
 
   bindTabEvents() {
