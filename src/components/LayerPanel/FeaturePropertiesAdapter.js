@@ -39,7 +39,7 @@ const HIDDEN_PROP_KEYS = new Set(['radius', 'raio', 'visible', 'status', 'text']
 
 // Ações que alteram ou removem a feição: bloqueadas quando a feição está travada
 const MUTATING_ACTIONS = new Set([
-  'acao_promover_oficial', 'acao_editar_vertices', 'acao_simplificar', 'acao_excluir', 'acao_adicionar_atributo'
+  'acao_promover_oficial', 'acao_editar_vertices', 'acao_simplificar', 'acao_excluir', 'acao_adicionar_atributo', 'acao_inverter_cores'
 ]);
 
 function parseNumber(value) {
@@ -244,6 +244,31 @@ export class FeaturePropertiesAdapter {
 
     categorias.push({ id: 'geometria', titulo: '📐 Dimensões & Geometria', aberto: true, propriedades: geomProps });
 
+    // --- Categoria 2.1: Vértices (coordenadas editáveis por anel) e Azimutes ---
+    if (rings.length > 0) {
+      categorias.push({
+        id: 'vertices',
+        titulo: `📍 Vértices (${vertexCount})`,
+        aberto: false,
+        propriedades: this.buildVertexProps(rings, feat.type, isLocked)
+      });
+      // Azimutes só fazem sentido para geometria de parte única (anel externo ou linha simples)
+      const segments = rings.length === 1 ? FeatureGeometryUtils.calculateSegments(rings[0].points, isPoly) : [];
+      if (segments.length > 0) {
+        categorias.push({
+          id: 'azimutes',
+          titulo: '🧭 Azimutes & Distâncias',
+          aberto: false,
+          propriedades: segments.map((seg, i) => ({
+            id: `seg_${i}`,
+            rotulo: `V${seg.from} → V${seg.to}`,
+            tipo: 'readonly',
+            valor: `${this.formatAzimuth(seg.azimuth)} · ${seg.distance >= 1000 ? `${fmt(seg.distance / 1000, 3, 3)} km` : `${fmt(seg.distance, 2, 2)} m`}`
+          }))
+        });
+      }
+    }
+
     // --- Categoria 3: Simbologia & Aparência ---
     const estiloProps = [];
 
@@ -259,7 +284,8 @@ export class FeaturePropertiesAdapter {
           { id: 'strokeColor', rotulo: 'Cor da Borda', tipo: 'cor', valor: style.effectiveStrokeColor, somenteLeitura: isLocked },
           { id: 'strokeWidth', rotulo: 'Espessura da Borda', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
           { id: 'strokeDashArray', rotulo: 'Padrão do Traço', tipo: 'selecao', valor: style.strokeDashArray || 'continuous', somenteLeitura: isLocked, opcoes: DASH_OPTIONS }
-        ] : [])
+        ] : []),
+        { id: 'acao_inverter_cores', rotulo: 'Inverter Cores', tipo: 'acao', valor: 'Inverter', rotuloAcao: '⇄ Preenchimento ↔ Borda', somenteLeitura: isLocked, dica: 'Troca a cor do preenchimento pela da borda [Shift+X]' }
       );
     } else if (isLine) {
       estiloProps.push(
@@ -395,7 +421,95 @@ export class FeaturePropertiesAdapter {
 
     categorias.push({ id: 'acoes', titulo: '⚡ Operações Rápidas & CAD', aberto: true, propriedades: acoesProps });
 
+    // Cada edição recria a tabela: mantém as categorias como o usuário as deixou
+    const openState = panel._inspectorCategoryOpen || {};
+    categorias.forEach(cat => {
+      if (typeof openState[cat.id] === 'boolean') cat.aberto = openState[cat.id];
+    });
+
     return { tipos, categorias };
+  }
+
+  /**
+   * Linhas de latitude/longitude de cada vértice (ids `vtx_<anel>_<vértice>_<eixo>`)
+   * e, quando o anel permite, uma seleção para remover um vértice (`vtx_remover_<anel>`).
+   */
+  static buildVertexProps(rings, type, isLocked) {
+    const minVertices = type === 'Polygon' ? 3 : 2;
+    const multi = rings.length > 1;
+    const props = [];
+    rings.forEach((ring, ri) => {
+      const prefix = multi ? `${ring.label} · ` : '';
+      const [latLabel, lngLabel] = multi ? ['Lat', 'Lng'] : ['Latitude', 'Longitude'];
+      ring.points.forEach((pt, vi) => {
+        props.push(
+          { id: `vtx_${ri}_${vi}_0`, rotulo: `${prefix}V${vi + 1} · ${latLabel}`, tipo: 'numero', valor: Number(pt[0]), unidade: '°', casasDecimais: COORD_DECIMALS, somenteLeitura: isLocked },
+          { id: `vtx_${ri}_${vi}_1`, rotulo: `${prefix}V${vi + 1} · ${lngLabel}`, tipo: 'numero', valor: Number(pt[1]), unidade: '°', casasDecimais: COORD_DECIMALS, somenteLeitura: isLocked }
+        );
+      });
+      if (!isLocked && ring.points.length > minVertices) {
+        props.push({
+          id: `vtx_remover_${ri}`,
+          rotulo: `${prefix}Remover Vértice`,
+          tipo: 'selecao',
+          valor: '',
+          opcoes: [{ id: '', rotulo: '— escolha —' }, ...ring.points.map((_, vi) => ({ id: String(vi), rotulo: `V${vi + 1}` }))],
+          dica: 'Remove o vértice escolhido (Ctrl+Z desfaz)'
+        });
+      }
+    });
+    return props;
+  }
+
+  // Azimute em graus, minutos e segundos (convenção topográfica)
+  static formatAzimuth(deg) {
+    const total = Math.round(((deg % 360) + 360) % 360 * 3600);
+    const d = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return `${d}°${String(m).padStart(2, '0')}'${String(s).padStart(2, '0')}"`;
+  }
+
+  /**
+   * Edita a coordenada de um vértice ou remove um vértice (ids gerados por buildVertexProps).
+   * Retorna false quando a alteração não se aplica; rejeições informam `reject(msg)`.
+   */
+  static applyVertexEdit(draft, propId, novoValor, reject) {
+    const remove = propId.match(/^vtx_remover_(\d+)$/);
+    const edit = propId.match(/^vtx_(\d+)_(\d+)_([01])$/);
+    if (!remove && !edit) return false;
+    const ringIdx = parseInt((remove || edit)[1], 10);
+    const ring = FeatureGeometryUtils.getVertexRings(draft)[ringIdx];
+    if (!ring) return false;
+
+    if (remove) {
+      if (novoValor === '' || novoValor === null || novoValor === undefined) return false;
+      const vIdx = parseInt(novoValor, 10);
+      const minVertices = draft.type === 'Polygon' ? 3 : 2;
+      if (!ring.points[vIdx]) return false;
+      if (ring.points.length <= minVertices) {
+        reject(draft.type === 'Polygon' ? 'Cada anel precisa de no mínimo 3 vértices.' : 'Linhas precisam de no mínimo 2 vértices.');
+        return false;
+      }
+      const points = ring.points.filter((_, i) => i !== vIdx);
+      draft.coordinates = FeatureGeometryUtils.replaceRing(draft.coordinates, ring.path, points, ring.closed);
+      return true;
+    }
+
+    const vIdx = parseInt(edit[2], 10);
+    const axis = parseInt(edit[3], 10);
+    const val = parseNumber(novoValor);
+    const limit = axis === 0 ? 90 : 180;
+    if (val === null || Math.abs(val) > limit) {
+      reject(`${axis === 0 ? 'Latitude' : 'Longitude'} deve estar entre -${limit} e ${limit}.`);
+      return false;
+    }
+    if (!ring.points[vIdx]) return false;
+    // Coordenadas novas (nunca mutar no lugar): FeatureQuery cacheia pela referência
+    const points = ring.points.map(p => [...p]);
+    points[vIdx][axis] = val;
+    draft.coordinates = FeatureGeometryUtils.replaceRing(draft.coordinates, ring.path, points, ring.closed);
+    return true;
   }
 
   /**
@@ -584,6 +698,10 @@ export class FeaturePropertiesAdapter {
           return;
         }
         default:
+          if (propId.startsWith('vtx_')) {
+            if (!this.applyVertexEdit(draft, propId, novoValor, (msg) => { rejectedMessage = msg; })) return false;
+            return;
+          }
           if (propId.startsWith('prop_')) {
             const key = propId.slice('prop_'.length);
             if (METRIC_KEYS.has(key)) return false;
@@ -676,6 +794,17 @@ export class FeaturePropertiesAdapter {
 
       case 'acao_editar_vertices':
         panel.toggleVertexEditing();
+        break;
+
+      case 'acao_inverter_cores':
+        panel.commitFeatureEdit(featId, (draft) => {
+          if (!draft.style) draft.style = {};
+          const oldFill = draft.style.fillColor !== undefined ? draft.style.fillColor : (draft.color || '#00E08A');
+          const oldStroke = draft.style.strokeColor !== undefined ? draft.style.strokeColor : '#ffffff';
+          draft.style.fillColor = oldStroke;
+          draft.style.strokeColor = oldFill;
+          if (oldStroke !== 'none') draft.color = oldStroke;
+        });
         break;
 
       case 'acao_simplificar': {
