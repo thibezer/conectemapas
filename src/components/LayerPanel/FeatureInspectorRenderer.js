@@ -68,7 +68,7 @@ export class FeatureInspectorRenderer {
         <div class="cm-properties-panel-wrapper">
           <ui-tabela-propriedades
             data-insp="properties"
-            titulo="Propriedades CAD / GIS"
+            titulo="Propriedades"
             modo-aplicar="imediato"
             filtro="true"
             largura-rotulo="44">

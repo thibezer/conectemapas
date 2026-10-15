@@ -14,6 +14,10 @@ import { FeaturePropertiesAdapter } from './FeaturePropertiesAdapter.js';
 const COLOR_COMMIT_DELAY_MS = 300;
 const COLOR_PROPS = new Set(['fillColor', 'strokeColor', 'pointColor', 'textColor']);
 
+// Flutuar e recolher em coluna são do próprio kit e competem com a janela flutuante do
+// inspetor (que já desacopla tudo); os botões não têm `part`, então o estilo vai no shadow root
+const TABLE_HIDDEN_CONTROLS_CSS = '#btn-flutuante, #btn-colapsar-horizontal { display: none !important; }';
+
 export class FeatureInspectorEvents {
   /**
    * @param {Object} panel LayerPanel
@@ -30,6 +34,13 @@ export class FeatureInspectorEvents {
       const { tipos, categorias } = FeaturePropertiesAdapter.gerarConfiguracao(panel, panel.selectedFeature);
       tabelaProps.tipos = tipos;
       tabelaProps.categorias = categorias;
+      const shadow = tabelaProps.shadowRoot;
+      if (shadow && !shadow.querySelector('style[data-cm-inspector]')) {
+        const style = document.createElement('style');
+        style.setAttribute('data-cm-inspector', '');
+        style.textContent = TABLE_HIDDEN_CONTROLS_CSS;
+        shadow.appendChild(style);
+      }
 
       const colorTimers = new Map();
       tabelaProps.addEventListener('ui-propriedade-alterada', (e) => {

@@ -25,21 +25,22 @@ const MARKER_ICON_OPTIONS = [
   { id: 'boundary', rotulo: '◼ Marco de Divisa' }
 ];
 
+// O editor 'linha' do kit desenha a amostra a partir do id (contínua, tracej…, pontilh…, traço-ponto)
 const DASH_OPTIONS = [
-  { id: 'continuous', rotulo: 'Contínua —————' },
-  { id: '5, 5', rotulo: 'Tracejada - - - -' },
-  { id: '2, 4', rotulo: 'Pontilhada · · · ·' },
-  { id: '10, 5, 2, 5', rotulo: 'Traço-Ponto — · — ·' }
+  { id: 'continua', rotulo: 'Contínua', dash: '' },
+  { id: 'tracejada', rotulo: 'Tracejada', dash: '5, 5' },
+  { id: 'pontilhada', rotulo: 'Pontilhada', dash: '2, 4' },
+  { id: 'traço-ponto', rotulo: 'Traço-ponto', dash: '10, 5, 2, 5' }
 ];
 
-// Atributos calculados da geometria: exibidos somente leitura (são recalculados a cada gravação)
+// Métricas gravadas nas propriedades (recalculadas a cada gravação): exibidas só em Geometria
 const METRIC_KEYS = new Set(['Área (ha)', 'Área (m²)', 'Perímetro', 'Extensão', 'Raio', 'Área Coberta']);
 // Campos internos geridos por outros controles do inspetor
 const HIDDEN_PROP_KEYS = new Set(['radius', 'raio', 'visible', 'status', 'text']);
 
 // Ações que alteram ou removem a feição: bloqueadas quando a feição está travada
 const MUTATING_ACTIONS = new Set([
-  'acao_promover_oficial', 'acao_editar_vertices', 'acao_simplificar', 'acao_excluir', 'acao_adicionar_atributo', 'acao_inverter_cores'
+  'acao_promover_oficial', 'acao_editar_vertices', 'acao_simplificar', 'acao_adicionar_atributo', 'acao_inverter_cores'
 ]);
 
 function parseNumber(value) {
@@ -134,115 +135,100 @@ export class FeaturePropertiesAdapter {
       labelField: feat.style?.labelField || 'name'
     };
 
-    const layerName = (panel.layers || []).find(l => l.id === feat.layerId)?.name || 'Padrão';
-
-    // 3. Seletor de Tipos do Topo
-    const tipos = [
-      {
-        id: feat.id,
-        rotulo: `${feat.name || 'Sem Nome'} (${this.translateType(feat.type)})`,
-        subtipo: `Camada: ${layerName} • ID: ${feat.id}`
-      }
-    ];
-
+    // Nome, tipo e ID já estão no cartão do topo: sem seletor de tipo na tabela
+    const tipos = [];
     const categorias = [];
 
-    // --- Categoria 1: Identificação & Camada ---
+    // --- Categoria 1: Identificação (nome e bloqueio ficam no cartão do topo) ---
     const linkedFeat = GeometryVersionManager.findLinkedFeature(feat, allFeatures);
     const featStatus = GeometryVersionManager.getFeatureStatus(feat);
     const hasOfficial = GeometryVersionManager.hasOfficialGeometry(feat, allFeatures);
 
     categorias.push({
       id: 'identificacao',
-      titulo: '📌 Identificação & Camada',
+      titulo: '📌 Identificação',
       aberto: true,
       propriedades: [
-        { id: 'name', rotulo: 'Nome do Elemento', tipo: 'texto', valor: feat.name || '', somenteLeitura: isLocked, placeholder: 'Insira o nome da feição' },
         { id: 'description', rotulo: 'Descrição', tipo: 'texto', valor: feat.description || '', somenteLeitura: isLocked, placeholder: 'Anotações técnicas' },
         {
           id: 'layerId',
-          rotulo: 'Camada de Destino',
+          rotulo: 'Camada',
           tipo: 'selecao',
           valor: feat.layerId || '',
           somenteLeitura: isLocked,
-          opcoes: (panel.layers || []).map(l => ({ id: l.id, rotulo: `📁 ${l.name}` }))
+          opcoes: (panel.layers || []).map(l => ({ id: l.id, rotulo: l.name }))
         },
-        { id: 'locked', rotulo: 'Bloqueado', tipo: 'booleano', valor: isLocked },
-        { id: 'visible', rotulo: 'Visível no Mapa', tipo: 'booleano', valor: feat.visible !== false, somenteLeitura: isLocked },
+        { id: 'visible', rotulo: 'Visível no mapa', tipo: 'booleano', valor: feat.visible !== false, somenteLeitura: isLocked },
         {
           id: 'status_geodesico',
-          rotulo: 'Status Geodésico',
+          rotulo: 'Status geodésico',
           tipo: 'selecao',
           valor: featStatus || 'comum',
           somenteLeitura: isLocked,
           opcoes: [
-            { id: 'oficial', rotulo: '🟢 Oficial (Homologada)' },
-            { id: 'previa', rotulo: '🟡 Prévia (Proposta / Rascunho)' },
-            { id: 'comum', rotulo: '⚪ Padrão / Neutro' }
+            { id: 'oficial', rotulo: '🟢 Oficial (homologada)' },
+            { id: 'previa', rotulo: '🟡 Prévia (proposta)' },
+            { id: 'comum', rotulo: '⚪ Padrão' }
           ]
         },
         ...(linkedFeat ? [{
           id: 'linked_feature_info',
-          rotulo: 'Versão Vinculada',
+          rotulo: 'Versão vinculada',
           tipo: 'readonly',
           valor: `${linkedFeat.name || 'Elemento'} (${GeometryVersionManager.getFeatureStatus(linkedFeat) === 'oficial' ? '🟢 Oficial' : '🟡 Prévia'})`
         }] : []),
         ...(featStatus === 'previa' && !hasOfficial ? [{
           id: 'previa_aviso_info',
-          rotulo: 'Modo de Exibição',
+          rotulo: 'Exibição',
           tipo: 'readonly',
-          valor: '🟡 Padrão (Sem Oficial Cadastrada)'
+          valor: '🟡 Prévia sem oficial cadastrada'
         }] : []),
-        { id: 'id', rotulo: 'Identificador (ID)', tipo: 'readonly', valor: feat.id }
+        { id: 'id', rotulo: 'ID', tipo: 'readonly', valor: feat.id }
       ]
     });
 
-    // --- Categoria 2: Dimensões & Geometria ---
+    // --- Categoria 2: Geometria ---
     const fmt = (n, min, max) => n.toLocaleString('pt-BR', { minimumFractionDigits: min, maximumFractionDigits: max });
+    const fmtLength = (m) => (m >= 1000 ? `${fmt(m, 2, 2)} m · ${fmt(m / 1000, 3, 3)} km` : `${fmt(m, 2, 2)} m`);
     const vertexCount = FeatureGeometryUtils.countVertices(feat);
     const geomProps = [
-      { id: 'geom_type', rotulo: 'Tipo Geométrico', tipo: 'readonly', valor: this.translateType(feat.type) }
+      { id: 'geom_type', rotulo: 'Tipo', tipo: 'readonly', valor: this.translateType(feat.type) }
     ];
 
     if (isPoly) {
       geomProps.push(
-        { id: 'area_ha', rotulo: 'Área (Hectares)', tipo: 'readonly', valor: `${fmt(areaM2 / 10000, 4, 4)} ha` },
+        { id: 'area_ha', rotulo: 'Área (ha)', tipo: 'readonly', valor: `${fmt(areaM2 / 10000, 4, 4)} ha` },
         { id: 'area_m2', rotulo: 'Área (m²)', tipo: 'readonly', valor: `${fmt(areaM2, 2, 2)} m²` },
-        { id: 'area_alqueire', rotulo: 'Área (Alqueire Paulista)', tipo: 'readonly', valor: `${fmt(areaM2 / 24200, 4, 4)} alq` },
-        { id: 'perimetro_m', rotulo: 'Perímetro', tipo: 'readonly', valor: `${fmt(perimeterM, 2, 2)} m` },
-        { id: 'vertices_qtd', rotulo: 'Vértices', tipo: 'readonly', valor: `${vertexCount} nós` }
+        { id: 'area_alqueire', rotulo: 'Área (alqueire SP)', tipo: 'readonly', valor: `${fmt(areaM2 / 24200, 4, 4)} alq` },
+        { id: 'perimetro_m', rotulo: 'Perímetro', tipo: 'readonly', valor: fmtLength(perimeterM) }
       );
       if (rings.length > 1) {
         const holes = rings.filter(r => !r.label.toLowerCase().includes('externo')).length;
         const parts = rings.length - holes;
-        geomProps.push({ id: 'partes_qtd', rotulo: 'Partes / Furos', tipo: 'readonly', valor: `${parts} parte(s) · ${holes} furo(s)` });
+        geomProps.push({ id: 'partes_qtd', rotulo: 'Partes / furos', tipo: 'readonly', valor: `${parts} parte(s) · ${holes} furo(s)` });
       }
     } else if (isLine) {
-      geomProps.push(
-        { id: 'comprimento_km', rotulo: 'Extensão (km)', tipo: 'readonly', valor: `${fmt(lengthM / 1000, 3, 3)} km` },
-        { id: 'comprimento_m', rotulo: 'Extensão (m)', tipo: 'readonly', valor: `${fmt(lengthM, 2, 2)} m` },
-        { id: 'vertices_qtd', rotulo: 'Vértices', tipo: 'readonly', valor: `${vertexCount} nós` }
-      );
+      geomProps.push({ id: 'comprimento_m', rotulo: 'Extensão', tipo: 'readonly', valor: fmtLength(lengthM) });
     } else if (isCircle) {
       const r = Number(feat.radius) || 0;
       geomProps.push(
         { id: 'radius', rotulo: 'Raio', tipo: 'numero', valor: r, unidade: 'm', casasDecimais: 2, somenteLeitura: isLocked },
         { id: 'diametro_m', rotulo: 'Diâmetro', tipo: 'readonly', valor: `${fmt(r * 2, 2, 2)} m` },
-        { id: 'area_m2', rotulo: 'Área do Círculo', tipo: 'readonly', valor: `${fmt(areaM2, 2, 2)} m² (${fmt(areaM2 / 10000, 4, 4)} ha)` }
+        { id: 'area_m2', rotulo: 'Área', tipo: 'readonly', valor: `${fmt(areaM2 / 10000, 4, 4)} ha · ${fmt(areaM2, 2, 2)} m²` }
       );
     }
 
     if (isPoint || isText || isCircle) {
       geomProps.push(
-        { id: 'lat_dd', rotulo: isCircle ? 'Centro — Latitude' : 'Latitude (DD)', tipo: 'numero', valor: refCoord[0], unidade: '°', casasDecimais: COORD_DECIMALS, somenteLeitura: isLocked },
-        { id: 'lng_dd', rotulo: isCircle ? 'Centro — Longitude' : 'Longitude (DD)', tipo: 'numero', valor: refCoord[1], unidade: '°', casasDecimais: COORD_DECIMALS, somenteLeitura: isLocked },
-        { id: 'coords_dms', rotulo: 'Coordenadas DMS', tipo: 'readonly', valor: `${dmsLat} | ${dmsLng}` }
+        { id: 'lat_dd', rotulo: isCircle ? 'Centro · latitude' : 'Latitude', tipo: 'numero', valor: refCoord[0], unidade: '°', casasDecimais: COORD_DECIMALS, somenteLeitura: isLocked },
+        { id: 'lng_dd', rotulo: isCircle ? 'Centro · longitude' : 'Longitude', tipo: 'numero', valor: refCoord[1], unidade: '°', casasDecimais: COORD_DECIMALS, somenteLeitura: isLocked },
+        { id: 'coords_dms', rotulo: 'Em DMS', tipo: 'readonly', valor: `${dmsLat} | ${dmsLng}` }
       );
     } else if (rings.length > 0) {
       geomProps.push({ id: 'centroide_dms', rotulo: 'Centroide (DMS)', tipo: 'readonly', valor: `${dmsLat} | ${dmsLng}` });
     }
 
-    categorias.push({ id: 'geometria', titulo: '📐 Dimensões & Geometria', aberto: true, propriedades: geomProps });
+    categorias.push({ id: 'geometria', titulo: '📐 Geometria', aberto: true, propriedades: geomProps });
 
     // --- Categoria 2.1: Vértices (coordenadas editáveis por anel) e Azimutes ---
     if (rings.length > 0) {
@@ -257,7 +243,7 @@ export class FeaturePropertiesAdapter {
       if (segments.length > 0) {
         categorias.push({
           id: 'azimutes',
-          titulo: '🧭 Azimutes & Distâncias',
+          titulo: '🧭 Azimutes e distâncias',
           aberto: false,
           propriedades: segments.map((seg, i) => ({
             id: `seg_${i}`,
@@ -269,81 +255,78 @@ export class FeaturePropertiesAdapter {
       }
     }
 
-    // --- Categoria 3: Simbologia & Aparência ---
+    // --- Categoria 3: Aparência ---
     const estiloProps = [];
+    const dashValue = DASH_OPTIONS.find(o => o.dash === style.strokeDashArray)?.id || style.strokeDashArray;
+    const strokeRows = (noun) => [
+      { id: 'strokeColor', rotulo: `Cor da ${noun}`, tipo: 'cor', valor: style.effectiveStrokeColor, somenteLeitura: isLocked },
+      { id: 'strokeWidth', rotulo: 'Espessura', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
+      { id: 'strokeDashArray', rotulo: 'Traço', tipo: 'linha', valor: dashValue, somenteLeitura: isLocked, opcoes: DASH_OPTIONS.map(({ id, rotulo }) => ({ id, rotulo })) }
+    ];
 
     if (isPoly || isCircle) {
       estiloProps.push(
-        { id: 'fillEnabled', rotulo: 'Exibir Preenchimento', tipo: 'booleano', valor: !isFillNone, somenteLeitura: isLocked },
+        { id: 'fillEnabled', rotulo: 'Preenchimento', tipo: 'booleano', valor: !isFillNone, somenteLeitura: isLocked },
         ...(!isFillNone ? [
-          { id: 'fillColor', rotulo: 'Cor do Preenchimento', tipo: 'cor', valor: style.effectiveFillColor, somenteLeitura: isLocked },
-          { id: 'fillOpacity', rotulo: 'Opacidade Preenchimento', tipo: 'numero', valor: Math.round(style.fillOpacity * 100), unidade: '%', casasDecimais: 0, somenteLeitura: isLocked }
+          { id: 'fillColor', rotulo: 'Cor do preenchimento', tipo: 'cor', valor: style.effectiveFillColor, somenteLeitura: isLocked },
+          { id: 'fillOpacity', rotulo: 'Opacidade', tipo: 'numero', valor: Math.round(style.fillOpacity * 100), unidade: '%', casasDecimais: 0, somenteLeitura: isLocked }
         ] : []),
-        { id: 'strokeEnabled', rotulo: 'Exibir Borda', tipo: 'booleano', valor: !isStrokeNone, somenteLeitura: isLocked },
-        ...(!isStrokeNone ? [
-          { id: 'strokeColor', rotulo: 'Cor da Borda', tipo: 'cor', valor: style.effectiveStrokeColor, somenteLeitura: isLocked },
-          { id: 'strokeWidth', rotulo: 'Espessura da Borda', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
-          { id: 'strokeDashArray', rotulo: 'Padrão do Traço', tipo: 'selecao', valor: style.strokeDashArray || 'continuous', somenteLeitura: isLocked, opcoes: DASH_OPTIONS }
-        ] : []),
-        { id: 'acao_inverter_cores', rotulo: 'Inverter Cores', tipo: 'acao', valor: 'Inverter', rotuloAcao: '⇄ Preenchimento ↔ Borda', somenteLeitura: isLocked, dica: 'Troca a cor do preenchimento pela da borda [Shift+X]' }
+        { id: 'strokeEnabled', rotulo: 'Borda', tipo: 'booleano', valor: !isStrokeNone, somenteLeitura: isLocked },
+        ...(!isStrokeNone ? strokeRows('borda') : []),
+        { id: 'acao_inverter_cores', rotulo: 'Cores', tipo: 'acao', valor: 'Inverter', rotuloAcao: '⇄ Inverter', somenteLeitura: isLocked, dica: 'Troca a cor do preenchimento pela da borda (Shift+X)' }
       );
     } else if (isLine) {
       estiloProps.push(
-        { id: 'strokeEnabled', rotulo: 'Exibir Linha', tipo: 'booleano', valor: !isStrokeNone, somenteLeitura: isLocked },
-        ...(!isStrokeNone ? [
-          { id: 'strokeColor', rotulo: 'Cor da Linha', tipo: 'cor', valor: style.effectiveStrokeColor, somenteLeitura: isLocked },
-          { id: 'strokeWidth', rotulo: 'Espessura da Linha', tipo: 'numero', valor: style.strokeWidth, unidade: 'px', casasDecimais: 1, somenteLeitura: isLocked },
-          { id: 'strokeDashArray', rotulo: 'Padrão do Traço', tipo: 'selecao', valor: style.strokeDashArray || 'continuous', somenteLeitura: isLocked, opcoes: DASH_OPTIONS }
-        ] : [])
+        { id: 'strokeEnabled', rotulo: 'Linha visível', tipo: 'booleano', valor: !isStrokeNone, somenteLeitura: isLocked },
+        ...(!isStrokeNone ? strokeRows('linha') : [])
       );
     } else if (isPoint) {
       const iconValue = MARKER_ICON_OPTIONS.some(o => o.id === style.markerIcon) ? style.markerIcon : 'pin';
       estiloProps.push(
-        { id: 'pointColor', rotulo: 'Cor do Marcador', tipo: 'cor', valor: style.fillColor || style.strokeColor, somenteLeitura: isLocked },
-        { id: 'markerIcon', rotulo: 'Símbolo do Marcador', tipo: 'selecao', valor: iconValue, somenteLeitura: isLocked, opcoes: MARKER_ICON_OPTIONS },
-        { id: 'markerSize', rotulo: 'Tamanho do Marcador', tipo: 'numero', valor: style.markerSize, unidade: 'px', casasDecimais: 0, somenteLeitura: isLocked },
-        { id: 'markerRotation', rotulo: 'Ângulo de Rotação', tipo: 'numero', valor: style.markerRotation, unidade: '°', casasDecimais: 0, somenteLeitura: isLocked }
+        { id: 'pointColor', rotulo: 'Cor', tipo: 'cor', valor: style.fillColor || style.strokeColor, somenteLeitura: isLocked },
+        { id: 'markerIcon', rotulo: 'Símbolo', tipo: 'selecao', valor: iconValue, somenteLeitura: isLocked, opcoes: MARKER_ICON_OPTIONS },
+        { id: 'markerSize', rotulo: 'Tamanho', tipo: 'numero', valor: style.markerSize, unidade: 'px', casasDecimais: 0, somenteLeitura: isLocked },
+        { id: 'markerRotation', rotulo: 'Rotação', tipo: 'numero', valor: style.markerRotation, unidade: '°', casasDecimais: 0, somenteLeitura: isLocked }
       );
     } else if (isText) {
       estiloProps.push(
         { id: 'text_content', rotulo: 'Texto', tipo: 'texto', valor: feat.properties?.text || feat.name || '', somenteLeitura: isLocked },
-        { id: 'fontSize', rotulo: 'Tamanho da Fonte', tipo: 'numero', valor: numOr(feat.style?.fontSize, 13), unidade: 'px', casasDecimais: 0, somenteLeitura: isLocked },
-        { id: 'textColor', rotulo: 'Cor do Texto', tipo: 'cor', valor: feat.style?.textColor || '#ffffff', somenteLeitura: isLocked }
+        { id: 'fontSize', rotulo: 'Tamanho da fonte', tipo: 'numero', valor: numOr(feat.style?.fontSize, 13), unidade: 'px', casasDecimais: 0, somenteLeitura: isLocked },
+        { id: 'textColor', rotulo: 'Cor do texto', tipo: 'cor', valor: feat.style?.textColor || '#ffffff', somenteLeitura: isLocked }
       );
     }
 
-    // Rótulos dinâmicos no mapa (o texto já é o próprio rótulo)
+    // Rótulos dinâmicos no mapa (o texto já é o próprio rótulo); o campo só aparece com o rótulo ligado
     if (!isText) {
-      estiloProps.push(
-        { id: 'showLabel', rotulo: 'Exibir Rótulo no Mapa', tipo: 'booleano', valor: style.showLabel === true, somenteLeitura: isLocked },
-        {
+      estiloProps.push({ id: 'showLabel', rotulo: 'Rótulo no mapa', tipo: 'booleano', valor: style.showLabel === true, somenteLeitura: isLocked });
+      if (style.showLabel === true) {
+        estiloProps.push({
           id: 'labelField',
-          rotulo: 'Campo do Rótulo',
+          rotulo: 'Texto do rótulo',
           tipo: 'selecao',
           valor: style.labelField || 'name',
           somenteLeitura: isLocked,
           opcoes: [
-            { id: 'name', rotulo: 'Nome do Elemento' },
+            { id: 'name', rotulo: 'Nome' },
             { id: 'description', rotulo: 'Descrição' },
-            { id: 'id', rotulo: 'ID do Elemento' },
+            { id: 'id', rotulo: 'ID' },
             { id: 'category', rotulo: 'Categoria' },
             ...(isPoly ? [{ id: 'area', rotulo: 'Área (ha)' }] : []),
             ...(isLine ? [{ id: 'extensao', rotulo: 'Extensão' }] : [])
           ]
-        }
-      );
+        });
+      }
     }
 
-    categorias.push({ id: 'simbologia', titulo: '🎨 Aparência & Simbologia', aberto: true, propriedades: estiloProps });
+    categorias.push({ id: 'simbologia', titulo: '🎨 Aparência', aberto: true, propriedades: estiloProps });
 
-    // --- Categoria 4: Atributos GIS (Shapefile / Propriedades Customizadas) ---
+    // --- Categoria 4: Atributos GIS (Shapefile / propriedades personalizadas) ---
+    // As métricas gravadas (Área, Perímetro…) já aparecem em Geometria
     const attrProps = [];
     if (feat.properties && typeof feat.properties === 'object' && !Array.isArray(feat.properties)) {
       Object.entries(feat.properties).forEach(([key, val]) => {
-        if (key.startsWith('_') || HIDDEN_PROP_KEYS.has(key) || (val !== null && typeof val === 'object')) return;
-        if (METRIC_KEYS.has(key)) {
-          attrProps.push({ id: `metric_${key}`, rotulo: `${key} (calculado)`, tipo: 'readonly', valor: String(val ?? '') });
-        } else if (typeof val === 'number') {
+        if (key.startsWith('_') || HIDDEN_PROP_KEYS.has(key) || METRIC_KEYS.has(key) || (val !== null && typeof val === 'object')) return;
+        if (typeof val === 'number') {
           attrProps.push({ id: `prop_${key}`, rotulo: key, tipo: 'numero', valor: val, somenteLeitura: isLocked });
         } else if (typeof val === 'boolean') {
           attrProps.push({ id: `prop_${key}`, rotulo: key, tipo: 'booleano', valor: val, somenteLeitura: isLocked });
@@ -362,64 +345,60 @@ export class FeaturePropertiesAdapter {
     }
 
     const attrCount = attrProps.length;
-    attrProps.push({
-      id: 'acao_adicionar_atributo',
-      rotulo: 'Novo Atributo',
-      tipo: 'acao',
-      valor: '+ Adicionar Campo',
-      rotuloAcao: '+ Criar Atributo',
-      somenteLeitura: isLocked,
-      dica: 'Adiciona um novo campo de metadado personalizado'
-    });
+    if (!isLocked) {
+      attrProps.push({
+        id: 'acao_adicionar_atributo',
+        rotulo: 'Novo campo',
+        tipo: 'acao',
+        valor: 'Adicionar',
+        rotuloAcao: '+ Adicionar',
+        dica: 'Cria um atributo personalizado nesta feição'
+      });
+    }
 
     categorias.push({
       id: 'atributos',
-      titulo: `📋 Atributos (${attrCount})`,
+      titulo: attrCount > 0 ? `📋 Atributos (${attrCount})` : '📋 Atributos',
       aberto: attrCount > 0,
       propriedades: attrProps
     });
 
-    // --- Categoria 5: Operações Espaciais & CAD ---
+    // --- Categoria 5: Operações (enquadrar e excluir ficam no cartão do topo) ---
     const acoesProps = [];
 
     if (linkedFeat) {
       if (featStatus === 'oficial') {
-        acoesProps.push({ id: 'acao_alternar_versao_previa', rotulo: 'Versão Geométrica', tipo: 'acao', valor: 'Prévia', rotuloAcao: '🔄 Exibir Geometria Prévia', dica: `Alterna a visualização no mapa para a versão prévia ("${linkedFeat.name || 'Prévia'}")` });
+        acoesProps.push({ id: 'acao_alternar_versao_previa', rotulo: 'Versão', tipo: 'acao', valor: 'Prévia', rotuloAcao: '🔄 Exibir prévia', dica: `Mostra no mapa a versão prévia ("${linkedFeat.name || 'Prévia'}")` });
       } else if (featStatus === 'previa') {
-        acoesProps.push({ id: 'acao_alternar_versao_oficial', rotulo: 'Versão Geométrica', tipo: 'acao', valor: 'Oficial', rotuloAcao: '🔄 Exibir Geometria Oficial', dica: `Alterna a visualização no mapa para a versão oficial ("${linkedFeat.name || 'Oficial'}")` });
+        acoesProps.push({ id: 'acao_alternar_versao_oficial', rotulo: 'Versão', tipo: 'acao', valor: 'Oficial', rotuloAcao: '🔄 Exibir oficial', dica: `Mostra no mapa a versão oficial ("${linkedFeat.name || 'Oficial'}")` });
       }
     } else if (featStatus === 'previa' && !hasOfficial) {
-      acoesProps.push({ id: 'acao_promover_oficial', rotulo: 'Versão Geométrica', tipo: 'acao', valor: 'Promover', rotuloAcao: '⭐️ Tornar Geometria Oficial', somenteLeitura: isLocked, dica: 'Define esta geometria como a versão oficial definitiva' });
+      acoesProps.push({ id: 'acao_promover_oficial', rotulo: 'Versão', tipo: 'acao', valor: 'Promover', rotuloAcao: '⭐ Tornar oficial', somenteLeitura: isLocked, dica: 'Define esta geometria como a versão oficial' });
     }
-
-    acoesProps.push(
-      { id: 'acao_enquadrar', rotulo: 'Localização', tipo: 'acao', valor: 'Centralizar', rotuloAcao: '🎯 Enquadrar Feição no Mapa', dica: 'Ajusta a câmera do mapa na geometria deste elemento' },
-      { id: 'acao_buffer', rotulo: 'Amortecimento', tipo: 'acao', valor: 'Buffer 50m', rotuloAcao: '🔄 Criar Buffer (50m)', dica: 'Cria uma feição de amortecimento de 50 metros no mapa' },
-      { id: 'acao_duplicar', rotulo: 'Clonagem', tipo: 'acao', valor: 'Duplicar', rotuloAcao: '📑 Duplicar Feição (+30m)', dica: 'Cria uma cópia do elemento deslocada em 30 metros' }
-    );
 
     if (isPoly || isLine || isCircle) {
-      acoesProps.push(
-        {
-          id: 'acao_editar_vertices',
-          rotulo: 'Edição Vetorial',
-          tipo: 'acao',
-          valor: panel.isVertexEditing ? 'Concluir' : 'Editar',
-          rotuloAcao: panel.isVertexEditing ? '✔ Concluir Edição de Vértices' : '✏️ Editar Vértices no Mapa',
-          somenteLeitura: isLocked,
-          dica: isCircle ? 'Habilita alças no centro (mover) e na borda (raio) no mapa' : 'Habilita alças arrastáveis em cada vértice no mapa'
-        },
-        ...(isCircle ? [] : [{ id: 'acao_simplificar', rotulo: 'Otimização', tipo: 'acao', valor: 'Simplificar', rotuloAcao: '📉 Simplificar Vértices (DP 5m)', somenteLeitura: isLocked, dica: 'Aplica algoritmo Douglas-Peucker com 5m de tolerância' }])
-      );
+      acoesProps.push({
+        id: 'acao_editar_vertices',
+        rotulo: isCircle ? 'Centro e raio' : 'Vértices',
+        tipo: 'acao',
+        valor: panel.isVertexEditing ? 'Concluir' : 'Editar',
+        rotuloAcao: panel.isVertexEditing ? '✔ Concluir edição' : '✏️ Editar no mapa',
+        somenteLeitura: isLocked,
+        dica: isCircle ? 'Alças no centro (mover) e na borda (raio)' : 'Alças arrastáveis em cada vértice'
+      });
+      if (!isCircle) {
+        acoesProps.push({ id: 'acao_simplificar', rotulo: 'Simplificar', tipo: 'acao', valor: 'Simplificar', rotuloAcao: '📉 Tolerância 5 m', somenteLeitura: isLocked, dica: 'Remove vértices redundantes (Douglas-Peucker, 5 m)' });
+      }
     }
 
     acoesProps.push(
-      { id: 'acao_copiar_geojson', rotulo: 'Exportação', tipo: 'acao', valor: 'GeoJSON', rotuloAcao: '📋 Copiar GeoJSON', dica: 'Copia a geometria GeoJSON para a área de transferência' },
-      { id: 'acao_copiar_wkt', rotulo: 'Exportação', tipo: 'acao', valor: 'WKT', rotuloAcao: '📋 Copiar WKT (CAD)', dica: 'Copia o texto Well-Known Text para CAD/GIS' },
-      { id: 'acao_excluir', rotulo: 'Remoção', tipo: 'acao', valor: 'Excluir', rotuloAcao: '🗑️ Excluir Feição', somenteLeitura: isLocked, dica: 'Remove permanentemente esta feição do projeto' }
+      { id: 'acao_buffer', rotulo: 'Buffer', tipo: 'acao', valor: 'Buffer 50 m', rotuloAcao: '◎ Criar 50 m', dica: 'Cria uma nova feição de amortecimento de 50 m' },
+      { id: 'acao_duplicar', rotulo: 'Duplicar', tipo: 'acao', valor: 'Duplicar', rotuloAcao: '📑 Cópia a 30 m', dica: 'Cria uma cópia deslocada 30 m' },
+      { id: 'acao_copiar_geojson', rotulo: 'GeoJSON', tipo: 'acao', valor: 'GeoJSON', rotuloAcao: '📋 Copiar', dica: 'Copia a feição em GeoJSON' },
+      { id: 'acao_copiar_wkt', rotulo: 'WKT', tipo: 'acao', valor: 'WKT', rotuloAcao: '📋 Copiar', dica: 'Copia a geometria em WKT (CAD/GIS)' }
     );
 
-    categorias.push({ id: 'acoes', titulo: '⚡ Operações Rápidas & CAD', aberto: true, propriedades: acoesProps });
+    categorias.push({ id: 'acoes', titulo: '⚡ Operações', aberto: true, propriedades: acoesProps });
 
     // Cada edição recria a tabela: mantém as categorias como o usuário as deixou
     const openState = panel._inspectorCategoryOpen || {};
@@ -450,10 +429,10 @@ export class FeaturePropertiesAdapter {
       if (!isLocked && ring.points.length > minVertices) {
         props.push({
           id: `vtx_remover_${ri}`,
-          rotulo: `${prefix}Remover Vértice`,
+          rotulo: `${prefix}Remover vértice`,
           tipo: 'selecao',
           valor: '',
-          opcoes: [{ id: '', rotulo: '— escolha —' }, ...ring.points.map((_, vi) => ({ id: String(vi), rotulo: `V${vi + 1}` }))],
+          opcoes: [{ id: '', rotulo: 'Escolha…' }, ...ring.points.map((_, vi) => ({ id: String(vi), rotulo: `V${vi + 1}` }))],
           dica: 'Remove o vértice escolhido (Ctrl+Z desfaz)'
         });
       }
@@ -665,9 +644,12 @@ export class FeaturePropertiesAdapter {
           draft.style.strokeWidth = clamp(n, 0, 50);
           return;
         }
-        case 'strokeDashArray':
-          draft.style.strokeDashArray = novoValor === 'continuous' ? '' : novoValor;
+        case 'strokeDashArray': {
+          // id da lista; um padrão fora dela (ex.: '6, 4' da medição) é mantido como está
+          const option = DASH_OPTIONS.find(o => o.id === novoValor);
+          draft.style.strokeDashArray = option ? option.dash : (novoValor === 'continuous' ? '' : String(novoValor ?? ''));
           return;
+        }
         case 'markerIcon':
           draft.style.markerIcon = MARKER_ICON_OPTIONS.some(o => o.id === novoValor) ? novoValor : 'pin';
           return;
@@ -771,10 +753,6 @@ export class FeaturePropertiesAdapter {
         break;
       }
 
-      case 'acao_enquadrar':
-        panel.onFitFeature(feat.id);
-        break;
-
       case 'acao_buffer': {
         const radius = 50;
         const bufferFeature = SpatialAlgorithms.generateBuffer(feat, radius);
@@ -839,10 +817,6 @@ export class FeaturePropertiesAdapter {
 
       case 'acao_copiar_wkt':
         this.copyToClipboard(GeoFormats.toWKT(feat), 'WKT Copiado', 'WKT copiado para a área de transferência.');
-        break;
-
-      case 'acao_excluir':
-        this.confirmDelete(panel, featId);
         break;
 
       case 'acao_adicionar_atributo': {
