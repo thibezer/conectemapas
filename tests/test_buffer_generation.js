@@ -96,7 +96,28 @@ if (Math.abs(pFirst[0] - pLast[0]) > 1e-6 || Math.abs(pFirst[1] - pLast[1]) > 1e
   console.error('❌ Buffer de Polígono não está fechado:', pFirst, pLast);
   process.exit(1);
 }
-console.log(`✔ Buffer de Polígono validado com sucesso (${polyPts.length} vértices, anel fechado).`);
+
+// Verifica que o buffer EXPANDIU para fora (é maior que o original)
+const minLatOrig = Math.min(...polyFeature.coordinates.map(c => c[0]));
+const maxLatOrig = Math.max(...polyFeature.coordinates.map(c => c[0]));
+const minLatBuf = Math.min(...polyPts.map(c => c[0]));
+const maxLatBuf = Math.max(...polyPts.map(c => c[0]));
+
+if (minLatBuf >= minLatOrig || maxLatBuf <= maxLatOrig) {
+  console.error('❌ Buffer de Polígono não expandiu para fora!', { minLatOrig, minLatBuf, maxLatOrig, maxLatBuf });
+  process.exit(1);
+}
+
+// Valida a distância métrica aproximada em latitude (~30 metros)
+const R_EARTH = 6371008.8;
+const distSul = (minLatOrig - minLatBuf) * (Math.PI / 180) * R_EARTH;
+const distNorte = (maxLatBuf - maxLatOrig) * (Math.PI / 180) * R_EARTH;
+if (Math.abs(distSul - 30) > 1.0 || Math.abs(distNorte - 30) > 1.0) {
+  console.error('❌ Distância métrica divergente de 30m:', { distSul, distNorte });
+  process.exit(1);
+}
+
+console.log(`✔ Buffer de Polígono validado com sucesso (${polyPts.length} vértices, expandido exatamente ${distSul.toFixed(1)}m para fora).`);
 
 // 5. Salvaguardas de entrada inválida
 if (SpatialAlgorithms.generateBuffer(null, 50) !== null) {

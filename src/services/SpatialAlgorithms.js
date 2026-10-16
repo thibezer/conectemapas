@@ -356,7 +356,7 @@ export class SpatialAlgorithms {
         area += (p2[0] - p1[0]) * (p2[1] + p1[1]);
       }
       const orientedPts = area > 0 ? ptsM : [...ptsM].reverse();
-      bufferM = offsetPolyline(orientedPts, -d, true);
+      bufferM = offsetPolyline(orientedPts, d, true);
 
       if (bufferM.length < 3) return null;
     }
