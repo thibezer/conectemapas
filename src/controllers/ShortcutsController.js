@@ -84,20 +84,49 @@ export class ShortcutsController {
     }
   }
 
+  /** Tecla vinda de um campo de digitação: os atalhos globais não devem interceptá-la. */
+  static isTypingTarget(e) {
+    const path = e.composedPath ? e.composedPath() : [e.target];
+    return path.some(el =>
+      el && el.tagName && (
+        el.tagName === 'INPUT' ||
+        el.tagName === 'TEXTAREA' ||
+        el.tagName === 'SELECT' ||
+        el.tagName.toLowerCase().includes('campo-texto') ||
+        el.tagName.toLowerCase().includes('lista-flutuante') ||
+        el.isContentEditable
+      )
+    );
+  }
+
+  /** Esc: fecha o menu de contexto e desfaz a seleção (mapa, painel e HUD). */
+  static clearSelectionOnEscape(app) {
+    if (app.contextMenu) {
+      app.contextMenu.close();
+    }
+    if (app.mapEngine) {
+      app.mapEngine.clearSelection();
+    }
+    if (app.layerPanel) {
+      // Passa pelo painel para a árvore de camadas também desmarcar as linhas
+      app.layerPanel.setSelectedFeatures([]);
+      app.layerPanel.updateContent();
+    }
+    app.selectionHUD?.hide();
+  }
+
   static bindGlobalShortcuts(app) {
+    // O Leaflet escuta o teclado no document e engole o Esc (stopPropagation) quando o mapa tem
+    // um popup registrado, o que acontece ao selecionar uma única feição. Por isso o Esc é
+    // tratado na fase de captura, antes de chegar ao Leaflet.
     window.addEventListener('keydown', (e) => {
-      const path = e.composedPath ? e.composedPath() : [e.target];
-      const isInput = path.some(el => 
-        el && el.tagName && (
-          el.tagName === 'INPUT' || 
-          el.tagName === 'TEXTAREA' || 
-          el.tagName === 'SELECT' || 
-          el.tagName.toLowerCase().includes('campo-texto') || 
-          el.tagName.toLowerCase().includes('lista-flutuante') || 
-          el.isContentEditable
-        )
-      );
-      if (isInput) return;
+      if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.isTypingTarget(e)) return;
+      this.clearSelectionOnEscape(app);
+    }, true);
+
+    window.addEventListener('keydown', (e) => {
+      if (this.isTypingTarget(e)) return;
 
       // Undo: Ctrl+Z / Cmd+Z
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
@@ -257,19 +286,6 @@ export class ShortcutsController {
         } else if (e.key === 'ArrowUp') {
           e.preventDefault();
           this.navigateFeature(app, -1);
-        } else if (e.key === 'Escape') {
-          if (app.contextMenu) {
-            app.contextMenu.close();
-          }
-          if (app.mapEngine) {
-            app.mapEngine.clearSelection();
-          }
-          if (app.layerPanel) {
-            // Passa pelo painel para a árvore de camadas também desmarcar as linhas
-            app.layerPanel.setSelectedFeatures([]);
-            app.layerPanel.updateContent();
-          }
-          app.selectionHUD?.hide();
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
           // Com uma figura em andamento, Backspace desfaz o último vértice (tratado pelo mapa)
           if (app.mapEngine?.isDrawing) return;
