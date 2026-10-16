@@ -161,8 +161,8 @@ export class FeatureSyncController {
       app.pushHistory(`${sourceDescription} (${normalized.length} feições)`);
     }
 
-    // 1. Ingestão em lote na memória
-    app.features.push(...normalized);
+    // 1. Ingestão em lote na memória (laço: push(...x) estoura a pilha com dezenas de milhares)
+    for (let i = 0; i < normalized.length; i++) app.features.push(normalized[i]);
 
     // 2. Gravação em lote atômica e assíncrona no IndexedDB
     StorageService.queueFeaturesBulkUpsert(normalized, app.projectId);
@@ -199,8 +199,8 @@ export class FeatureSyncController {
       app.pushHistory(`${sourceDescription} (${normalized.length} feições)`);
     }
 
-    // 1. Ingestão em lote na memória
-    app.features.push(...normalized);
+    // 1. Ingestão em lote na memória (laço: push(...x) estoura a pilha com dezenas de milhares)
+    for (let i = 0; i < normalized.length; i++) app.features.push(normalized[i]);
 
     // 2. Gravação em lote atômica e assíncrona no IndexedDB
     StorageService.queueFeaturesBulkUpsert(normalized, app.projectId);
@@ -483,6 +483,9 @@ export class FeatureSyncController {
 
     // 3. Processa feições criadas ou atualizadas remotamente
     if (Array.isArray(upserted) && upserted.length > 0) {
+      // Índice id -> posição: evita varrer app.features inteiro a cada feição recebida
+      const indexById = new Map();
+      for (let i = 0; i < app.features.length; i++) indexById.set(app.features[i].id, i);
       for (const rawFeat of upserted) {
         if (!rawFeat || !rawFeat.id) continue;
         // Se a feição foi excluída localmente, ignora o upsert remoto (evita ressuscitação)
@@ -491,11 +494,12 @@ export class FeatureSyncController {
         // e o loop de sync não consulta a nuvem durante um desenho ativo.)
 
         const normalized = normalizeFeature(rawFeat);
-        const existingIdx = app.features.findIndex(f => f.id === normalized.id);
+        const existingIdx = indexById.get(normalized.id);
 
-        if (existingIdx >= 0) {
+        if (existingIdx !== undefined) {
           app.features[existingIdx] = normalized;
         } else {
+          indexById.set(normalized.id, app.features.length);
           app.features.push(normalized);
         }
 

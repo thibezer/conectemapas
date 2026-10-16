@@ -82,7 +82,9 @@ import { BatchActions } from '../src/services/BatchActions.js';
     collabHub: { notifyFeatureUpdated() {}, notifyFeatureDeleted() {} },
     pushHistory: () => { log.history++; },
     saveFeature: () => { log.saved++; },
+    saveFeaturesBulk: fs => { log.saved += fs.length; },
     removeFeature: () => {},
+    removeFeaturesBulk: () => {},
     refreshMapAndTable: () => { log.refresh++; }
   };
   const ids = FeatureQuery.run(app.features, { op: 'AND', items: [crit('layer', 'in', ['L0'])] }, { layers }).ids; // 10.000

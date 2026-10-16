@@ -16,6 +16,7 @@ let _metaDebounceTimer = null;
 let _pendingMetaPayload = null;
 let _projectDebounceTimer = null;
 let _pendingProjectPayload = null;
+const _layersSigByProject = new Map();
 
 export class StorageService {
   static setCurrentProjectId(id) {
@@ -23,6 +24,7 @@ export class StorageService {
       const clean = id.trim();
       if (clean !== _currentProjectId) {
         _currentProjectId = clean;
+        _layersSigByProject.clear();
         LocalStore.resetProjectCache();
         CloudSyncEngine.resetProjectState();
       }
@@ -93,8 +95,13 @@ export class StorageService {
       this.saveProjectRecord(projectRecord);
       LocalStore.updateProjectsIndex(manifest);
 
+      // Só regrava as camadas no IndexedDB quando mudaram (editar feição não as altera)
       if (Array.isArray(projectData.layers) && projectData.layers.length > 0) {
-        this.saveLayersBatch(projectData.layers, manifest.id);
+        const sig = JSON.stringify(projectData.layers);
+        if (_layersSigByProject.get(manifest.id) !== sig) {
+          _layersSigByProject.set(manifest.id, sig);
+          this.saveLayersBatch(projectData.layers, manifest.id);
+        }
       }
 
       this.syncMetadataToCloudDebounced(projectData);
@@ -167,6 +174,7 @@ export class StorageService {
     _pendingMetaPayload = null;
     _pendingProjectPayload = null;
     DeltaQueue.discardPending();
+    _layersSigByProject.clear();
     CloudSyncEngine.cancelPendingMetadata();
   }
 
@@ -191,6 +199,7 @@ export class StorageService {
   }
 
   static clearCurrentProject() {
+    _layersSigByProject.clear();
     return IndexedDbStore.clearCurrentProject(_currentProjectId);
   }
 
@@ -249,9 +258,9 @@ export class StorageService {
   static async saveFeature(feature, projectId = null) {
     if (!feature || !feature.id) return;
     const projId = projectId || _currentProjectId || 'projeto_padrao';
-    LocalStore.removeLocalTombstone(feature.id, projId);
+    // queueFeatureUpsert já remove a tombstone, compacta uma vez e grava no IndexedDB
+    // em até DELTA_MAX_WAIT_MS (e no flush ao fechar a aba); gravar direto duplicava o trabalho.
     this.queueFeatureUpsert(feature, projId);
-    await IndexedDbStore.saveFeatureDirect(feature, projId);
   }
 
   static async deleteFeature(featureId, projectId = null) {

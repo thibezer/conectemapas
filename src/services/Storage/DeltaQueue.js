@@ -38,14 +38,17 @@ export class DeltaQueue {
 
   static queueFeaturesBulkUpsert(features, projectId = 'projeto_padrao') {
     if (!Array.isArray(features) || features.length === 0) return;
+    const ids = [];
     for (let i = 0; i < features.length; i++) {
       const feat = features[i];
       if (feat && feat.id) {
         const compacted = GeoCompressor.compactFeatureForStorage(feat);
         _deletedFeatureIds.delete(feat.id);
         _dirtyFeatures.set(feat.id, { ...compacted, projectId });
+        ids.push(feat.id);
       }
     }
+    LocalStore.removeLocalTombstones(ids, projectId);
     this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
   }
 
@@ -63,9 +66,9 @@ export class DeltaQueue {
       if (id) {
         _dirtyFeatures.delete(id);
         _deletedFeatureIds.add(id);
-        LocalStore.addLocalTombstone(id, projectId);
       }
     }
+    LocalStore.addLocalTombstones(featureIds, projectId);
     LocalStore.persistPendingDeltasWithItems([], featureIds, projectId, projectId);
 
     try {

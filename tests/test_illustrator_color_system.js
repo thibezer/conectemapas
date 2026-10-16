@@ -337,6 +337,7 @@ const batchApp = {
   ],
   pushHistory: noop,
   saveFeature: noop,
+  saveFeaturesBulk: noop,
   refreshMapAndTable: noop
 };
 

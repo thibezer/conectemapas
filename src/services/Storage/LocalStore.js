@@ -14,6 +14,7 @@ import {
 
 let _offlinePendingIds = null;
 let _syncCursor = null;
+const _tombstoneCache = new Map();
 
 export class LocalStore {
   /**
@@ -76,6 +77,7 @@ export class LocalStore {
       const list = this.listProjects().filter(p => p && p.id !== projectId);
       localStorage.setItem(PROJECTS_LIST_KEY, JSON.stringify(list));
       localStorage.removeItem(TOMBSTONES_KEY_PREFIX + projectId);
+      _tombstoneCache.delete(projectId);
       localStorage.removeItem(PENDING_DELTAS_KEY_PREFIX + projectId);
       localStorage.removeItem(SYNC_CURSOR_KEY_PREFIX + projectId);
     } catch (e) {
@@ -123,35 +125,65 @@ export class LocalStore {
 
   // ---- TOMBSTONES LOCAIS ----
 
+  // Cache por projeto: só refaz o parse quando o texto gravado mudou (outra aba, testes),
+  // evitando JSON.parse de até 2000 ids a cada consulta/gravação.
   static getLocalTombstones(projectId = 'projeto_padrao') {
     if (typeof localStorage === 'undefined') return new Set();
     try {
       const raw = localStorage.getItem(TOMBSTONES_KEY_PREFIX + projectId);
-      return raw ? new Set(JSON.parse(raw)) : new Set();
+      const cached = _tombstoneCache.get(projectId);
+      if (cached && cached.raw === raw) return cached.set;
+      const set = raw ? new Set(JSON.parse(raw)) : new Set();
+      _tombstoneCache.set(projectId, { raw, set });
+      return set;
     } catch {
       return new Set();
     }
   }
 
+  static _writeTombstones(projectId, set) {
+    const arr = Array.from(set);
+    if (arr.length > 2000) arr.splice(0, arr.length - 2000);
+    const trimmed = arr.length !== set.size ? new Set(arr) : set;
+    const raw = JSON.stringify(arr);
+    localStorage.setItem(TOMBSTONES_KEY_PREFIX + projectId, raw);
+    _tombstoneCache.set(projectId, { raw, set: trimmed });
+  }
+
   static addLocalTombstone(featureId, projectId = 'projeto_padrao') {
-    if (!featureId || typeof localStorage === 'undefined') return;
+    this.addLocalTombstones([featureId], projectId);
+  }
+
+  /** Marca vários ids com uma única gravação (exclusão em lote). */
+  static addLocalTombstones(featureIds, projectId = 'projeto_padrao') {
+    if (!Array.isArray(featureIds) || featureIds.length === 0 || typeof localStorage === 'undefined') return;
     try {
-      const set = this.getLocalTombstones(projectId);
-      set.add(featureId);
-      const arr = Array.from(set);
-      if (arr.length > 2000) arr.splice(0, arr.length - 2000);
-      localStorage.setItem(TOMBSTONES_KEY_PREFIX + projectId, JSON.stringify(arr));
+      const set = new Set(this.getLocalTombstones(projectId));
+      let added = false;
+      for (const id of featureIds) {
+        if (id && !set.has(id)) { set.add(id); added = true; }
+      }
+      if (added) this._writeTombstones(projectId, set);
     } catch {}
   }
 
   static removeLocalTombstone(featureId, projectId = 'projeto_padrao') {
-    if (!featureId || typeof localStorage === 'undefined') return;
+    this.removeLocalTombstones([featureId], projectId);
+  }
+
+  static removeLocalTombstones(featureIds, projectId = 'projeto_padrao') {
+    if (!Array.isArray(featureIds) || featureIds.length === 0 || typeof localStorage === 'undefined') return;
     try {
-      const set = this.getLocalTombstones(projectId);
-      if (set.has(featureId)) {
-        set.delete(featureId);
-        localStorage.setItem(TOMBSTONES_KEY_PREFIX + projectId, JSON.stringify(Array.from(set)));
+      const current = this.getLocalTombstones(projectId);
+      if (current.size === 0) return;
+      let hit = false;
+      for (const id of featureIds) {
+        if (current.has(id)) { hit = true; break; }
       }
+      if (!hit) return;
+      const set = new Set(current);
+      for (const id of featureIds) set.delete(id);
+      this._writeTombstones(projectId, set);
     } catch {}
   }
 

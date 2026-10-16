@@ -72,6 +72,16 @@ const _inFlightCounts = new Map();
 const _localWriteRev = new Map();
 const _appliedRevs = new Map();
 let _offlineFlushPromise = null;
+// Último metadado confirmado pela nuvem (por projeto): editar uma feição não muda
+// nome/camadas, então reenviar o mesmo save_metadata só gasta rede e consultas no servidor.
+const _lastMetaSig = new Map();
+
+function metadataSignature(data) {
+  return JSON.stringify([
+    data.name || '', data.description || '', data.basemap || '',
+    Array.isArray(data.layers) ? data.layers : []
+  ]);
+}
 
 // Conecta o callback do DeltaQueue para disparar o sync remoto
 DeltaQueue.setCommitCallback((toUpsert, toDelete, projectId) => {
@@ -109,6 +119,7 @@ export class CloudSyncEngine {
   static resetProjectState() {
     _localWriteRev.clear();
     _appliedRevs.clear();
+    _lastMetaSig.clear();
   }
 
   static hasPendingLocalChange(featureId, currentProjectId = 'projeto_padrao') {
@@ -307,6 +318,11 @@ export class CloudSyncEngine {
 
   static syncMetadataToCloudDebounced(projectData, delayMs = 400) {
     if (!projectData) return;
+    // Nada mudou desde o último envio confirmado e não há envio em curso/agendado: não reenvia
+    if (!_cloudMetaDebounceTimer && _layerSyncInFlight === 0
+        && _lastMetaSig.get(projectData.id || 'projeto_padrao') === metadataSignature(projectData)) {
+      return;
+    }
     _pendingMetaForCloud = projectData;
     this._setLayerDirty(projectData.id, true);
     if (_cloudMetaDebounceTimer) clearTimeout(_cloudMetaDebounceTimer);
@@ -360,6 +376,7 @@ export class CloudSyncEngine {
         layers: Array.isArray(projectData.layers) ? projectData.layers : []
       };
 
+      const sentSig = metadataSignature(projectData);
       const res = await this._postJson('save_metadata', payload);
       if (res.status === 401 || res.status === 403 || res.status === 410) {
         AccessManager.handleDenied(projId, res.status, await res.json().catch(() => null));
@@ -369,6 +386,7 @@ export class CloudSyncEngine {
         _cloudStatus.connected = true;
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
+        _lastMetaSig.set(projId, sentSig);
         // Só limpa se nenhuma edição mais nova ficou na fila durante o envio
         if (!_cloudMetaDebounceTimer) this._setLayerDirty(dirtyProjectId, false);
       }

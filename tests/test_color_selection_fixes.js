@@ -37,6 +37,7 @@ function makeApp(features) {
     history: [],
     pushHistory(d) { this.history.push(d); },
     saveFeature: noop,
+    saveFeaturesBulk: noop,
     refreshMapAndTable: noop,
     collabHub: { notifyFeatureUpdated: noop, logAudit: (m) => ({ m }) },
     auditLog: [],

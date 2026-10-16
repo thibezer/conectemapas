@@ -46,8 +46,8 @@ function commitBatch(app, ids, label, mutate) {
   for (const draft of drafts) {
     app.features[index.get(draft.id)] = draft;
     app.collabHub?.notifyFeatureUpdated(draft);
-    app.saveFeature(draft);
   }
+  app.saveFeaturesBulk(drafts);
   // Re-renderiza de uma vez (a feição precisa trocar de sub-pane ao mudar de camada)
   app.refreshMapAndTable(true);
   return summary;
@@ -92,14 +92,17 @@ export class BatchActions {
     const targets = [...new Set(ids || [])].filter(id => byId.get(id)?.locked === true);
     if (targets.length === 0) return { changed: 0, locked: 0, missing: 0, unchanged: 0, skipped: 0, ids: [] };
     app.pushHistory(`Desbloquear (${targets.length})`);
+    const index = new Map(app.features.map((f, i) => [f.id, i]));
+    const drafts = [];
     for (const id of targets) {
-      const idx = app.features.findIndex(f => f.id === id);
+      const idx = index.get(id);
       const draft = clone(app.features[idx]);
       draft.locked = false;
       app.features[idx] = draft;
       app.collabHub?.notifyFeatureUpdated(draft);
-      app.saveFeature(draft);
+      drafts.push(draft);
     }
+    app.saveFeaturesBulk(drafts);
     app.refreshMapAndTable(true);
     return { changed: targets.length, locked: 0, missing: 0, unchanged: 0, skipped: 0, ids: targets };
   }
@@ -130,10 +133,8 @@ export class BatchActions {
     app.pushHistory(`Excluir (${targets.length})`);
     const gone = new Set(summary.ids);
     app.features = app.features.filter(f => !gone.has(f.id));
-    for (const id of gone) {
-      app.collabHub?.notifyFeatureDeleted(id);
-      app.removeFeature(id);
-    }
+    for (const id of gone) app.collabHub?.notifyFeatureDeleted(id);
+    app.removeFeaturesBulk(summary.ids);
     app.refreshMapAndTable(true);
     return summary;
   }

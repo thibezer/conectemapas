@@ -159,7 +159,9 @@ function fakeApp() {
     collabHub: { notifyFeatureUpdated: f => log.notified.push(f.id), notifyFeatureDeleted: id => log.notified.push('del:' + id) },
     pushHistory: d => log.history.push(d),
     saveFeature: f => log.saved.push(f.id),
+    saveFeaturesBulk: fs => fs.forEach(f => log.saved.push(f.id)),
     removeFeature: id => log.removed.push(id),
+    removeFeaturesBulk: ids => ids.forEach(id => log.removed.push(id)),
     refreshMapAndTable: () => { log.refresh++; }
   };
 }

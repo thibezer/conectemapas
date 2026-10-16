@@ -208,7 +208,7 @@ class ConecteMapasApp {
   saveFeature(feature) {
     if (feature && !this._projectClosed) {
       StorageService.saveFeature(feature, this.projectId);
-      this.saveMetadata(true);
+      this.saveMetadata(false);
     }
   }
 
@@ -221,8 +221,15 @@ class ConecteMapasApp {
   removeFeature(featureId) {
     if (featureId) {
       StorageService.deleteFeature(featureId);
-      this.saveMetadata(true);
+      this.saveMetadata(false);
     }
+  }
+
+  /** Exclusão em lote: uma gravação de tombstones/fila/IndexedDB e um único saveMetadata. */
+  removeFeaturesBulk(featureIds) {
+    if (this._projectClosed || !Array.isArray(featureIds) || featureIds.length === 0) return;
+    StorageService.queueFeaturesBulkDelete(featureIds, this.projectId);
+    this.saveMetadata(false);
   }
 
   deleteFeature(featureId) {

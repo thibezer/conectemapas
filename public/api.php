@@ -371,7 +371,18 @@ function decodeFeatureRow(array $f) {
  * Grava somente as camadas alteradas, atribuindo-lhes uma nova revisão (dentro da transação ativa).
  */
 function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $rev = null) {
-    $stmtCheck = $pdo->prepare("SELECT project_id, name, color, type, visible, opacity, order_idx FROM cm_layers WHERE id = ?");
+    // Uma única consulta traz o estado atual de todas as camadas enviadas (antes: 2 consultas por camada)
+    $existingById = [];
+    $layerIds = [];
+    foreach ($layers as $l) {
+        if (is_array($l) && !empty($l['id'])) $layerIds[] = (string)$l['id'];
+    }
+    foreach (array_chunk(array_values(array_unique($layerIds)), 500) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $stmtAll = $pdo->prepare("SELECT id, project_id, name, color, type, visible, opacity, order_idx FROM cm_layers WHERE id IN ($ph)");
+        $stmtAll->execute($chunk);
+        foreach ($stmtAll->fetchAll() as $row) $existingById[$row['id']] = $row;
+    }
     $stmtUpdate = $pdo->prepare("
         UPDATE cm_layers
         SET project_id = ?, name = ?, color = ?, type = ?, visible = ?, opacity = ?, order_idx = ?, rev = ?, client_id = ?, updated_at = NOW()
@@ -385,11 +396,9 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
     foreach ($layers as $idx => $layer) {
         if (empty($layer['id'])) continue;
         $lid = $layer['id'];
-        $stmtOwner = $pdo->prepare("SELECT project_id FROM cm_layers WHERE id = ?");
-        $stmtOwner->execute([$lid]);
-        $ownerProject = $stmtOwner->fetchColumn();
+        $existing = $existingById[$lid] ?? false;
         // Isolamento: id de camada de OUTRO projeto nunca é sobrescrito/sequestrado
-        if ($ownerProject !== false && $ownerProject !== $projectId) continue;
+        if ($existing && $existing['project_id'] !== $projectId) continue;
         $lname = $layer['name'] ?? 'Camada';
         $lcolor = $layer['color'] ?? '#00E08A';
         $ltype = $layer['type'] ?? 'custom';
@@ -397,8 +406,6 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
         $lopac = isset($layer['opacity']) ? (float)$layer['opacity'] : 1.0;
         $lord = (int)($layer['order'] ?? $idx);
 
-        $stmtCheck->execute([$lid]);
-        $existing = $stmtCheck->fetch();
         if ($existing) {
             $unchanged = $existing['project_id'] === $projectId
                 && $existing['name'] === $lname
@@ -1276,10 +1283,28 @@ switch ($action) {
             // 2. Insere ou Atualiza feições modificadas (marca deleted = 0)
             $upsertCount = 0;
             $upsertErrors = [];
+            $countMayChange = !empty($toDelete);
             if (!empty($toUpsert)) {
                 $deletedSet = !empty($toDelete) ? array_flip($toDelete) : [];
                 $stmtUpsert = prepareFeatureUpsert($pdo);
                 $foreignIds = foreignFeatureIds($pdo, $projectId, array_column(array_filter($toUpsert, 'is_array'), 'id'));
+
+                // Só vale recontar as feições ativas se algum id enviado ainda não estava ativo
+                // (nova ou ressuscitada); editar feições existentes não muda a contagem.
+                $candidateIds = [];
+                foreach ($toUpsert as $feat) {
+                    if (empty($feat['id']) || isset($foreignIds[$feat['id']]) || isset($deletedSet[$feat['id']])) continue;
+                    $candidateIds[(string)$feat['id']] = true;
+                }
+                $candidateIds = array_keys($candidateIds);
+                $activeBefore = 0;
+                foreach (array_chunk($candidateIds, 500) as $chunk) {
+                    $ph = implode(',', array_fill(0, count($chunk), '?'));
+                    $stmtAct = $pdo->prepare("SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0 AND id IN ($ph)");
+                    $stmtAct->execute(array_merge([$projectId], $chunk));
+                    $activeBefore += (int)$stmtAct->fetchColumn();
+                }
+                if ($activeBefore !== count($candidateIds)) $countMayChange = true;
 
                 foreach ($toUpsert as $feat) {
                     if (empty($feat['id'])) continue;
@@ -1295,14 +1320,18 @@ switch ($action) {
                 }
             }
 
-            // 3. Atualiza contagem de feições ativas no projeto
-            $stmtCount = $pdo->prepare("
-                UPDATE cm_projects
-                SET feature_count = (SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0),
-                    updated_at = NOW()
-                WHERE id = ?
-            ");
-            $stmtCount->execute([$projectId, $projectId]);
+            // 3. Atualiza contagem de feições ativas no projeto (só varre a tabela quando ela pode ter mudado)
+            if ($countMayChange) {
+                $stmtCount = $pdo->prepare("
+                    UPDATE cm_projects
+                    SET feature_count = (SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0),
+                        updated_at = NOW()
+                    WHERE id = ?
+                ");
+                $stmtCount->execute([$projectId, $projectId]);
+            } else {
+                $pdo->prepare("UPDATE cm_projects SET updated_at = NOW() WHERE id = ?")->execute([$projectId]);
+            }
 
             $pdo->commit();
             echo json_encode([
