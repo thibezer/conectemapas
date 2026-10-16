@@ -26,6 +26,14 @@ class ConecteMapasApp {
     StorageService.setCurrentProjectId(this.projectId);
     AccessManager.adoptKeyFromUrl(this.projectId);
 
+    if (typeof window !== 'undefined' && (!urlParams || !urlParams.get('project'))) {
+      try {
+        const hash = window.location.hash || '';
+        const search = `?project=${encodeURIComponent(this.projectId)}`;
+        window.history.replaceState(null, '', `${window.location.pathname}${search}${hash}`);
+      } catch {}
+    }
+
     this.projectName = 'Levantamento Topográfico - Umuarama';
     this.layers = [...DEFAULT_LAYERS];
     this.activeLayerId = this.layers[0]?.id || 'layer-topografia';
@@ -160,7 +168,12 @@ class ConecteMapasApp {
     if (role === 'viewer') {
       UIToast.notificar({ tipo: 'alerta', titulo: 'Modo leitura', mensagem: 'Você pode visualizar o mapa, mas não editá-lo.', duracao: 5000 });
     } else if (role === 'none') {
-      UIToast.notificar({ tipo: 'erro', titulo: 'Acesso negado', mensagem: 'Este projeto exige um link de acesso válido.', duracao: 6000 });
+      UIToast.notificar({
+        tipo: 'erro',
+        titulo: 'Projeto Protegido',
+        mensagem: 'Este projeto é privado. Solicite ao proprietário o link de compartilhamento ou acesse sua conta.',
+        duracao: 8000
+      });
     }
   }
 

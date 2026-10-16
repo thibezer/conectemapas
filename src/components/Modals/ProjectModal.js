@@ -96,7 +96,7 @@ export class ProjectModal {
   _createView() {
     const claimMode = this.getClaimMode();
     const claimBlock = {
-      offer: '<ui-checkbox name="claim" label="Tornar-me dono (só quem eu convidar terá acesso)" marcado></ui-checkbox>',
+      offer: '<ui-checkbox name="claim" label="Tornar-me dono (restringir acesso apenas a convidados)"></ui-checkbox>',
       anonymous: '<div class="cm-project-hint">Sem login, o projeto fica aberto a quem tiver o link. Entre na sua conta para ser o dono, ou proteja-o depois em Compartilhar.</div>',
       local: '<div class="cm-project-hint">Modo local de testes: o projeto fica só neste navegador.</div>'
     }[claimMode] || '';

@@ -88,7 +88,7 @@ export class AccessManager {
     }
     if (status !== 401 && status !== 403) return false;
     if (code === 'insufficient_role') this.setRole(projectId, body.role || 'viewer');
-    else if (code === 'key_required' || code === 'invalid_key' || code === 'not_a_member') this.setRole(projectId, 'none');
+    else if (code === 'key_required' || code === 'invalid_key' || code === 'not_a_member' || code === 'forbidden') this.setRole(projectId, 'none');
     return true;
   }
 
@@ -176,6 +176,50 @@ export class AccessManager {
 
   static async revokeAccess(projectId, accessId) {
     return this._call('revoke_access', projectId, { method: 'POST', payload: { accessId } });
+  }
+
+  static getCachedShareKey(projectId, role) {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem(`cm_cached_share_${projectId}_${role}`) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  static cacheShareKey(projectId, role, key) {
+    try {
+      if (typeof localStorage !== 'undefined' && key) {
+        localStorage.setItem(`cm_cached_share_${projectId}_${role}`, key);
+      }
+    } catch {}
+  }
+
+  /**
+   * Obtém a URL funcional para compartilhamento:
+   * - Se o projeto for aberto (qualquer um acessa), devolve a URL base do projeto.
+   * - Se o projeto for protegido e formos o dono, garante/utiliza uma chave de acesso (leitor/editor).
+   */
+  static async getShareableLink(projectId, preferredRole = 'viewer') {
+    const info = await this.refresh(projectId);
+    if (!info || info.canClaim) {
+      return this.buildShareUrl(projectId);
+    }
+    if (info.canManage) {
+      const cached = this.getCachedShareKey(projectId, preferredRole);
+      if (cached) return this.buildShareUrl(projectId, cached);
+
+      try {
+        const created = await this.createShare(projectId, preferredRole, `Link ${preferredRole === 'editor' ? 'Editor' : 'Leitor'}`);
+        if (created && created.key) {
+          this.cacheShareKey(projectId, preferredRole, created.key);
+          return this.buildShareUrl(projectId, created.key);
+        }
+      } catch (e) {
+        console.warn('[AccessManager] Falha ao gerar chave compartilhável:', e);
+      }
+    }
+    const myKey = this.getKey(projectId);
+    return this.buildShareUrl(projectId, myKey);
   }
 
   /** Link de compartilhamento: a chave vai no fragmento, fora de logs de servidor. */

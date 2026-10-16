@@ -1057,6 +1057,23 @@ switch ($action) {
         $project = $stmtProj->fetch();
 
         if (!$project) {
+            // Auto-recuperação preventiva: se há feições gravadas ou é projeto_padrao, garante o registro em cm_projects
+            $stmtFeatCheck = $pdo->prepare("SELECT COUNT(*) FROM cm_features WHERE project_id = ? AND deleted = 0");
+            $stmtFeatCheck->execute([$projectId]);
+            $featCount = (int)$stmtFeatCheck->fetchColumn();
+
+            if ($featCount > 0 || $projectId === 'projeto_padrao') {
+                $stmtInsert = $pdo->prepare("
+                    INSERT IGNORE INTO cm_projects (id, name, description, basemap, center_lat, center_lng, zoom, feature_count, updated_at)
+                    VALUES (?, 'Levantamento Topográfico - Umuarama', '', 'google_satelite_puro', -23.7661, -53.3206, 14, ?, NOW())
+                ");
+                $stmtInsert->execute([$projectId, $featCount]);
+                $stmtProj->execute([$projectId]);
+                $project = $stmtProj->fetch();
+            }
+        }
+
+        if (!$project) {
             $pdo->commit();
             echo json_encode([
                 'exists'   => false,
@@ -1080,6 +1097,35 @@ switch ($action) {
         foreach ($layers as &$l) {
             $l['visible'] = (bool)$l['visible'];
             $l['opacity'] = (float)$l['opacity'];
+        }
+        unset($l);
+
+        if (empty($layers)) {
+            $stmtFeatLayers = $pdo->prepare("SELECT DISTINCT layer_id FROM cm_features WHERE project_id = ? AND deleted = 0");
+            $stmtFeatLayers->execute([$projectId]);
+            $usedLayerIds = $stmtFeatLayers->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($usedLayerIds)) {
+                $defaultColors = ['#00E08A', '#38BDF8', '#F59E0B', '#EF4444', '#A855F7', '#EC4899'];
+                $idx = 0;
+                foreach ($usedLayerIds as $lid) {
+                    if (empty($lid)) continue;
+                    $color = $defaultColors[$idx % count($defaultColors)];
+                    $cleanName = ucfirst(str_replace(['layer-', '-', '_'], ['Camada ', ' ', ' '], $lid));
+                    $stmtInsLayer = $pdo->prepare("
+                        INSERT IGNORE INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, updated_at)
+                        VALUES (?, ?, ?, ?, 'custom', 1, 1.0, ?, NOW())
+                    ");
+                    $stmtInsLayer->execute([$lid, $projectId, $cleanName, $color, $idx]);
+                    $idx++;
+                }
+                $stmtLayers->execute([$projectId]);
+                $layers = $stmtLayers->fetchAll();
+                foreach ($layers as &$l) {
+                    $l['visible'] = (bool)$l['visible'];
+                    $l['opacity'] = (float)$l['opacity'];
+                }
+                unset($l);
+            }
         }
 
         // 3. Carrega feições ativas (não deletadas)

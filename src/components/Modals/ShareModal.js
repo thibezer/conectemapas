@@ -43,11 +43,37 @@ export class ShareModal {
     const projectId = this.getProjectId();
     const info = await AccessManager.refresh(projectId);
 
+    const banner = this.container.querySelector('.cm-share-banner');
+    const inputLink = this.container.querySelector('#share-link-input');
+    const copyBtn = this.container.querySelector('#btn-copy-share-link');
+    const iframeInput = this.container.querySelector('#share-iframe-code');
+    const iframeCopyBtn = this.container.querySelector('#btn-copy-iframe-code');
+
+    const updateMainLinks = (url) => {
+      if (inputLink) {
+        inputLink.setAttribute('value', url);
+        inputLink.value = url;
+      }
+      if (copyBtn) copyBtn.setAttribute('copiar-texto', url);
+      const embedHtml = `<iframe src="${url}" width="100%" height="600" frameborder="0"></iframe>`;
+      if (iframeInput) {
+        iframeInput.setAttribute('value', embedHtml);
+        iframeInput.value = embedHtml;
+      }
+      if (iframeCopyBtn) iframeCopyBtn.setAttribute('copiar-texto', embedHtml);
+    };
+
     if (!info) {
       panel.innerHTML = '<span class="cm-share-hint">Nuvem indisponível: não foi possível ler as permissões.</span>';
       return;
     }
     if (info.canClaim) {
+      const openUrl = this.getShareUrl();
+      updateMainLinks(openUrl);
+      if (banner) {
+        banner.innerHTML = `<span class="cm-share-banner-icon">🌐</span>
+          <span><b>Projeto Aberto</b>: Qualquer pessoa com este link pode acessar e visualizar o mapa.</span>`;
+      }
       panel.innerHTML = `
         <div class="cm-share-hint">⚠️ Projeto <b>aberto</b>: qualquer pessoa com o endereço pode ver e editar.
           ${AuthService.isLoggedIn() ? 'Você será o dono pela sua conta.' : 'Entre na sua conta antes para ser o dono por ela; sem conta, será criado um link de dono.'}</div>
@@ -58,9 +84,21 @@ export class ShareModal {
       return;
     }
     if (!info.canManage) {
+      const myUrl = AccessManager.buildShareUrl(projectId, AccessManager.getKey(projectId));
+      updateMainLinks(myUrl);
       panel.innerHTML = `<div class="cm-share-hint">Seu acesso: <b>${this.escapeHtml(info.role || 'nenhum')}</b>. Só o dono gerencia acessos.</div>`;
       return;
     }
+
+    // Projeto protegido com você como dono: obtém link funcional com chave para convidados
+    try {
+      const shareableUrl = await AccessManager.getShareableLink(projectId, 'viewer');
+      if (shareableUrl) updateMainLinks(shareableUrl);
+      if (banner) {
+        banner.innerHTML = `<span class="cm-share-banner-icon">🔒</span>
+          <span><b>Projeto Protegido</b>: O link acima inclui permissão de acesso para que convidados sem conta possam abrir diretamente.</span>`;
+      }
+    } catch {}
 
     let access = [], members = [], invites = [];
     try { ({ access, members, invites } = await AccessManager.listAccess(projectId)); } catch {}
@@ -153,6 +191,9 @@ export class ShareModal {
     const label = this.container.querySelector('#share-new-label')?.value || '';
     try {
       const data = await AccessManager.createShare(projectId, role, label);
+      if (data && data.key) {
+        AccessManager.cacheShareKey(projectId, role, data.key);
+      }
       await this.refreshAccessPanel();
       const title = role === 'editor' ? 'Link de editor' : 'Link de leitor';
       this.showNewLink(AccessManager.buildShareUrl(projectId, data.key), `${title} (copie agora: não será exibido de novo)`);
@@ -275,13 +316,24 @@ export class ShareModal {
   }
 
   bindEvents() {
-    // Permissões mudam com login/convites: relê sempre que o modal abre
-    this.container.querySelector('#modal-share')?.addEventListener('ui-abrir', () => this.refreshAccessPanel());
-
-    const btnSync = this.container.querySelector('#btn-sync-before-share');
     const statusSpan = this.container.querySelector('#cm-share-sync-status');
+    const btnSync = this.container.querySelector('#btn-sync-before-share');
     const inputLink = this.container.querySelector('#share-link-input');
     const copyBtn = this.container.querySelector('#btn-copy-share-link');
+
+    // Ao abrir o modal, garante que as feições locais foram enviadas à nuvem e atualiza permissões
+    this.container.querySelector('#modal-share')?.addEventListener('ui-abrir', async () => {
+      if (typeof this.onSyncBeforeShare === 'function') {
+        if (statusSpan) statusSpan.textContent = '⏳ Sincronizando com MySQL...';
+        try {
+          const res = await this.onSyncBeforeShare();
+          if (res && res.success && statusSpan) {
+            statusSpan.textContent = '● Conectado ao MySQL Hostinger (100% Salvo)';
+          }
+        } catch {}
+      }
+      await this.refreshAccessPanel();
+    });
 
     if (btnSync) {
       btnSync.addEventListener('click', async () => {
