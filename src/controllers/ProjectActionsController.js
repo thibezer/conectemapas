@@ -124,7 +124,7 @@ export class ProjectActionsController {
           duracao: 5000
         });
 
-        if (normalized.length > 0 && normalized[0].id) {
+        if (normalized.length > 0 && normalized[0].id && app.mapEngine.autoZoomEnabled !== false) {
           app.mapEngine.zoomToFeature(normalized[0].id);
         }
 

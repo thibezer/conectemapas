@@ -91,6 +91,9 @@ export class CanvasMapEngine {
     this.selectedFeatureId = null;
     this.selectedFeatureIds = new Set();
     this.snappingEnabled = true;
+    // Zoom/enquadramento por conta própria (selecionar, importar, abrir projeto). Os botões de enquadrar
+    // continuam funcionando sempre. Preferência do operador, guardada neste navegador.
+    this.autoZoomEnabled = typeof localStorage !== 'undefined' ? (localStorage.getItem('cm_auto_zoom') !== 'false') : true;
     this.activeDrawingStyles = {};
     this.activeDrawingLayer = null;
 
@@ -809,6 +812,12 @@ export class CanvasMapEngine {
     return this.snappingEnabled;
   }
 
+  setAutoZoomEnabled(enabled) {
+    this.autoZoomEnabled = !!enabled;
+    try { localStorage.setItem('cm_auto_zoom', String(this.autoZoomEnabled)); } catch { /* sem armazenamento */ }
+    return this.autoZoomEnabled;
+  }
+
   toggleSnapping() {
     return this.setSnappingEnabled(!this.host.snapLigado);
   }
@@ -985,6 +994,7 @@ export class CanvasMapEngine {
    * Usado ao selecionar pela tabela/teclado, para não "pular" o mapa a cada seleção.
    */
   revealFeature(featureId) {
+    if (!this.autoZoomEnabled) return;
     const feat = this._featureMap.get(featureId);
     const b = feat && SpatialIndex.computeBounds(feat);
     if (!b || !this.map) return;

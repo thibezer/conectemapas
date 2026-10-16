@@ -231,7 +231,7 @@ export class AppBootstrapSync {
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
         if (app.textPromptModal) app.textPromptModal.updateLayers(app.layers);
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-        if (app.mapEngine && app.features.length > 0) {
+        if (app.mapEngine && app.mapEngine.autoZoomEnabled !== false && app.features.length > 0) {
           setTimeout(() => app.mapEngine.fitAllFeatures?.(), 300);
         }
 

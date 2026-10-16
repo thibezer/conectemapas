@@ -271,6 +271,7 @@ export class AppComponentsBuilder {
     app.drawingToolbar = new DrawingToolbar({
       initialTool: 'select',
       snappingEnabled: app.mapEngine?.snappingEnabled ?? true,
+      autoZoomEnabled: app.mapEngine?.autoZoomEnabled ?? true,
       initialFillColor: initialLayer?.color || '#00E08A',
       initialStrokeColor: '#ffffff',
       initialLayer,
@@ -303,6 +304,15 @@ export class AppComponentsBuilder {
             titulo: isEnabled ? 'Ímã / Snap Ativado' : 'Ímã / Snap Desativado',
             mensagem: isEnabled ? 'Atração magnética a vértices ligada [S].' : 'Cursor livre de atração magnética [S].',
             duracao: 1500
+          });
+        } else if (action === 'auto-zoom') {
+          const isEnabled = app.mapEngine.setAutoZoomEnabled(!app.mapEngine.autoZoomEnabled);
+          app.drawingToolbar.setAutoZoomEnabled(isEnabled);
+          UIToast.notificar({
+            tipo: 'info',
+            titulo: isEnabled ? 'Zoom Automático Ligado' : 'Zoom Automático Desligado',
+            mensagem: isEnabled ? 'O mapa pode enquadrar sozinho ao importar, abrir o projeto ou selecionar fora da vista.' : 'O mapa só dá zoom pelos botões de enquadrar.',
+            duracao: 2000
           });
         } else if (action === 'undo') {
           if (app.mapEngine && (app.mapEngine.isDrawing || (app.mapEngine.drawingEngine && app.mapEngine.drawingEngine.drawingPoints?.length > 0))) {

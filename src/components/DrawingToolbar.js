@@ -39,6 +39,7 @@ export class DrawingToolbar {
   constructor(options = {}) {
     this.activeTool = options.initialTool || 'select';
     this.snappingEnabled = options.snappingEnabled !== undefined ? options.snappingEnabled : true;
+    this.autoZoomEnabled = options.autoZoomEnabled !== undefined ? options.autoZoomEnabled : true;
     this.columns = localStorage.getItem('cm_toolbar_cols') || '2';
     this.fillColor = options.initialFillColor || '#00E08A';
     this.strokeColor = options.initialStrokeColor || '#ffffff';
@@ -224,6 +225,13 @@ export class DrawingToolbar {
         ativo: this.snappingEnabled
       },
       {
+        id: 'auto-zoom',
+        rotulo: 'Zoom Automático (desligado: o mapa só enquadra pelos botões de enquadrar)',
+        icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>',
+        tipo: 'toggle',
+        ativo: this.autoZoomEnabled
+      },
+      {
         id: 'measure',
         rotulo: 'Régua de Medição (Distância & Área)',
         icone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="9" x="2" y="8" rx="1.5"/><line x1="6" y1="8" x2="6" y2="13"/><line x1="10" y1="8" x2="10" y2="11.5"/><line x1="14" y1="8" x2="14" y2="13"/><line x1="18" y1="8" x2="18" y2="11.5"/></svg>',
@@ -365,6 +373,17 @@ export class DrawingToolbar {
     this.snappingEnabled = !!enabled;
     if (this.paleta && typeof this.paleta.atualizarItem === 'function') {
       this.paleta.atualizarItem('snap', { ativo: this.snappingEnabled });
+    }
+  }
+
+  /**
+   * Sincroniza o estado do zoom automático na interface
+   * @param {boolean} enabled
+   */
+  setAutoZoomEnabled(enabled) {
+    this.autoZoomEnabled = !!enabled;
+    if (this.paleta && typeof this.paleta.atualizarItem === 'function') {
+      this.paleta.atualizarItem('auto-zoom', { ativo: this.autoZoomEnabled });
     }
   }
 
@@ -575,8 +594,8 @@ export class DrawingToolbar {
           this.paleta.renderizar?.();
         }
         this.onAction(id);
-      } else if (tipo === 'toggle' && id === 'snap') {
-        this.onAction('snap');
+      } else if (tipo === 'toggle' && (id === 'snap' || id === 'auto-zoom')) {
+        this.onAction(id);
       }
     });
   }
