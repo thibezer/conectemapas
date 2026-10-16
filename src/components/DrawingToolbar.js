@@ -60,9 +60,8 @@ export class DrawingToolbar {
     this.isLayerMenuOpen = false;
 
     this._handleDocClick = this._handleDocClick.bind(this);
-    this._handleDocKeydown = (e) => {
-      if (e.key === 'Escape' && this.isLayerMenuOpen) this.closeLayerMenu();
-    };
+    this._handleDocKeydown = this._handleDocKeydown.bind(this);
+    this._handleWindowResize = this._handleWindowResize.bind(this);
   }
 
   /**
@@ -303,15 +302,18 @@ export class DrawingToolbar {
         </div>
 
         <!-- Seletor Rápido de Camada Ativa Integrado -->
-        <div class="cm-active-layer-pill" id="cm-active-layer-pill" title="Camada de destino dos novos desenhos (clique para alternar)" role="button" tabindex="0">
+        <div class="cm-active-layer-pill" id="cm-active-layer-pill" title="Camada ativa: &quot;${this._esc(this.activeLayer?.name || 'Padrão')}&quot; (clique para alternar)" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false">
           <div class="cm-active-layer-dot" style="background: ${this.activeLayer?.color || '#00E08A'};"></div>
           <span class="cm-active-layer-name">${this._esc(this.activeLayer?.name || 'Padrão')}</span>
           <svg class="cm-active-layer-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
 
         <!-- Popover Flutuante com Menu de Camadas -->
-        <div class="cm-layer-dropdown-menu" id="cm-layer-dropdown-menu" style="display: none;">
-          <div class="cm-layer-dropdown-title">Camada Ativa de Desenho</div>
+        <div class="cm-layer-dropdown-menu" id="cm-layer-dropdown-menu" style="display: none;" role="listbox" aria-label="Camada ativa de desenho">
+          <div class="cm-layer-dropdown-title">
+            <span>Camada Ativa de Desenho</span>
+            <span class="cm-layer-dropdown-badge" id="cm-layer-dropdown-badge">0</span>
+          </div>
           <div class="cm-layer-dropdown-list" id="cm-layer-dropdown-list"></div>
         </div>
       </div>
@@ -625,6 +627,9 @@ export class DrawingToolbar {
   /**
    * Vincula eventos do seletor rápido de camada ativa
    */
+  /**
+   * Vincula eventos do seletor rápido de camada ativa
+   */
   bindLayerEvents() {
     const pill = this.container.querySelector('#cm-active-layer-pill');
     const menu = this.container.querySelector('#cm-layer-dropdown-menu');
@@ -642,14 +647,36 @@ export class DrawingToolbar {
       });
     }
 
-    document.removeEventListener('click', this._handleDocClick);
-    document.removeEventListener('keydown', this._handleDocKeydown);
-    document.addEventListener('click', this._handleDocClick);
-    document.addEventListener('keydown', this._handleDocKeydown);
+    document.removeEventListener('pointerdown', this._handleDocClick, true);
+    document.removeEventListener('keydown', this._handleDocKeydown, true);
+    window.removeEventListener('resize', this._handleWindowResize);
+
+    document.addEventListener('pointerdown', this._handleDocClick, true);
+    document.addEventListener('keydown', this._handleDocKeydown, true);
+    window.addEventListener('resize', this._handleWindowResize);
   }
 
   _handleDocClick(e) {
-    if (this.isLayerMenuOpen && !e.composedPath().includes(this.container)) {
+    if (!this.isLayerMenuOpen) return;
+    const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    const menu = this.container?.querySelector('#cm-layer-dropdown-menu');
+    const pill = this.container?.querySelector('#cm-active-layer-pill');
+    if (menu && !path.includes(menu) && pill && !path.includes(pill)) {
+      this.closeLayerMenu();
+    }
+  }
+
+  _handleDocKeydown(e) {
+    if (e.key === 'Escape' && this.isLayerMenuOpen) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.closeLayerMenu();
+      this.container?.querySelector('#cm-active-layer-pill')?.focus();
+    }
+  }
+
+  _handleWindowResize() {
+    if (this.isLayerMenuOpen) {
       this.closeLayerMenu();
     }
   }
@@ -665,19 +692,32 @@ export class DrawingToolbar {
   openLayerMenu() {
     const menu = this.container?.querySelector('#cm-layer-dropdown-menu');
     const list = this.container?.querySelector('#cm-layer-dropdown-list');
-    if (!menu || !list) return;
+    const badge = this.container?.querySelector('#cm-layer-dropdown-badge');
+    const wrapper = this.container?.querySelector('.cm-drawing-toolbar-wrapper');
+    const pill = this.container?.querySelector('#cm-active-layer-pill');
+    if (!menu || !list || !pill) return;
 
-    const layers = this.getLayers();
-    list.innerHTML = layers.map(layer => {
-      const isSelected = layer.id === this.activeLayer?.id;
-      return `
-        <div class="cm-layer-dropdown-item ${isSelected ? 'cm-layer-dropdown-item--active' : ''}" data-layer-id="${layer.id}">
-          <span class="cm-layer-dropdown-dot" style="background: ${layer.color || '#00E08A'};"></span>
-          <span class="cm-layer-dropdown-name">${this._esc(layer.name)}</span>
-          ${isSelected ? '<svg class="cm-layer-dropdown-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
-        </div>
-      `;
-    }).join('');
+    const layers = typeof this.getLayers === 'function' ? this.getLayers() : [];
+    if (badge) badge.textContent = String(layers.length);
+
+    if (layers.length === 0) {
+      list.innerHTML = `<div class="cm-layer-dropdown-empty">Nenhuma camada cadastrada</div>`;
+    } else {
+      list.innerHTML = layers.map(layer => {
+        const isSelected = layer.id === this.activeLayer?.id;
+        return `
+          <div class="cm-layer-dropdown-item ${isSelected ? 'cm-layer-dropdown-item--active' : ''}" 
+               data-layer-id="${this._esc(layer.id)}" 
+               title="${this._esc(layer.name)}" 
+               role="option" 
+               aria-selected="${isSelected}">
+            <span class="cm-layer-dropdown-dot" style="background: ${layer.color || '#00E08A'};"></span>
+            <span class="cm-layer-dropdown-name">${this._esc(layer.name)}</span>
+            ${isSelected ? '<svg class="cm-layer-dropdown-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+          </div>
+        `;
+      }).join('');
+    }
 
     list.querySelectorAll('.cm-layer-dropdown-item').forEach(item => {
       item.addEventListener('click', (e) => {
@@ -692,20 +732,69 @@ export class DrawingToolbar {
       });
     });
 
-    // Abre ao lado da barra, alinhado à pílula (evita sair da tela por baixo)
-    const pill = this.container.querySelector('#cm-active-layer-pill');
-    menu.style.top = `${pill ? pill.offsetTop : 0}px`;
+    // Eleva o z-index do wrapper acima da tabela de atributos (600) e painéis flutuantes
+    wrapper?.classList.add('cm-toolbar--menu-open');
+    pill.setAttribute('aria-expanded', 'true');
+
+    // Abre e mede para calcular o posicionamento livre de cortes
     menu.style.display = 'flex';
-    const overflow = menu.getBoundingClientRect().bottom - (window.innerHeight - 8);
-    if (overflow > 0) menu.style.top = `${(pill ? pill.offsetTop : 0) - overflow}px`;
+    menu.style.top = '0px';
+
+    // Determina o limite inferior seguro (evita sobrepor a barra da tabela de atributos)
+    const tableEl = document.getElementById('cm-bottom-table-wrapper');
+    let bottomBound = window.innerHeight - 10;
+    if (tableEl) {
+      const tableRect = tableEl.getBoundingClientRect();
+      if (tableRect.top > 60 && tableRect.top < window.innerHeight) {
+        bottomBound = Math.min(bottomBound, tableRect.top - 8);
+      }
+    }
+
+    const wrapperRect = wrapper ? wrapper.getBoundingClientRect() : { top: 10 };
+    const pillOffset = pill.offsetTop;
+
+    // Altura máxima da lista para caber com folga no espaço livre da tela
+    const maxViewportHeight = Math.max(160, bottomBound - 20);
+    const headerHeight = 36;
+    const maxListHeight = Math.max(120, Math.min(360, maxViewportHeight - headerHeight));
+    list.style.maxHeight = `${maxListHeight}px`;
+
+    const finalMenuHeight = menu.offsetHeight;
+
+    // Posição top inicial alinhada ao botão da pílula
+    let topPos = pillOffset;
+
+    // Se ultrapassar o limite inferior (tabela de atributos ou rodapé da tela), desloca para cima
+    const menuBottom = wrapperRect.top + topPos + finalMenuHeight;
+    if (menuBottom > bottomBound) {
+      topPos = topPos - (menuBottom - bottomBound);
+    }
+
+    // Se subir demais além do topo do wrapper, impede sair pelo topo da tela
+    const minTopPos = 10 - wrapperRect.top;
+    if (topPos < minTopPos) {
+      topPos = minTopPos;
+    }
+
+    menu.style.top = `${Math.round(topPos)}px`;
     this.isLayerMenuOpen = true;
+
+    // Se houver item ativo, garante que ele está visível no scroll interno
+    const activeItem = list.querySelector('.cm-layer-dropdown-item--active');
+    if (activeItem) {
+      activeItem.scrollIntoView({ block: 'nearest' });
+    }
   }
 
   closeLayerMenu() {
     const menu = this.container?.querySelector('#cm-layer-dropdown-menu');
+    const wrapper = this.container?.querySelector('.cm-drawing-toolbar-wrapper');
+    const pill = this.container?.querySelector('#cm-active-layer-pill');
     if (menu) {
       menu.style.display = 'none';
     }
+    wrapper?.classList.remove('cm-toolbar--menu-open');
+    pill?.setAttribute('aria-expanded', 'false');
     this.isLayerMenuOpen = false;
   }
 
@@ -715,7 +804,8 @@ export class DrawingToolbar {
   }
 
   destroy() {
-    document.removeEventListener('click', this._handleDocClick);
-    document.removeEventListener('keydown', this._handleDocKeydown);
+    document.removeEventListener('pointerdown', this._handleDocClick, true);
+    document.removeEventListener('keydown', this._handleDocKeydown, true);
+    window.removeEventListener('resize', this._handleWindowResize);
   }
 }

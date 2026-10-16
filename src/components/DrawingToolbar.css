@@ -174,6 +174,11 @@
   flex-shrink: 0;
 }
 
+/* Eleva a barra acima da tabela de atributos (z-index 600) quando o menu flutuante abre */
+.cm-drawing-toolbar-wrapper.cm-toolbar--menu-open {
+  z-index: 1200 !important;
+}
+
 /* ==========================================================================
    Popover Flutuante com Menu de Camadas
    ========================================================================== */
@@ -183,16 +188,17 @@
   top: 0; /* ajustado via JS para alinhar à pílula */
   left: 100%;
   margin-left: 8px;
-  min-width: 180px;
+  min-width: 220px;
+  max-width: 320px;
   background: rgba(22, 22, 26, 0.96);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 2px 10px rgba(0, 0, 0, 0.4);
   flex-direction: column;
-  padding: 5px;
-  z-index: 1050;
+  padding: 6px;
+  z-index: 1250;
   box-sizing: border-box;
   animation: cmFadeInDown 0.14s ease-out;
 }
@@ -209,38 +215,86 @@
 }
 
 .cm-layer-dropdown-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--ui-cor-texto-secundario, #888899);
-  padding: 4px 6px;
+  padding: 4px 6px 6px 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 3px;
+  margin-bottom: 4px;
+}
+
+.cm-layer-dropdown-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ui-cor-primaria, #00E08A);
+  background: rgba(0, 224, 138, 0.12);
+  border: 1px solid rgba(0, 224, 138, 0.25);
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: normal;
 }
 
 .cm-layer-dropdown-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 200px;
+  max-height: 240px;
   overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.cm-layer-dropdown-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.cm-layer-dropdown-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-layer-dropdown-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.cm-layer-dropdown-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.cm-layer-dropdown-empty {
+  font-size: 11px;
+  color: var(--ui-cor-texto-secundario, #888899);
+  padding: 8px;
+  text-align: center;
+  font-style: italic;
 }
 
 .cm-layer-dropdown-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
-  border-radius: 5px;
+  padding: 6px 8px;
+  border-radius: 6px;
   font-size: 12px;
   color: var(--ui-cor-texto, #e1e1e6);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background 0.12s ease, transform 0.08s ease;
 }
 
 .cm-layer-dropdown-item:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.cm-layer-dropdown-item:active {
+  transform: scale(0.99);
 }
 
 .cm-layer-dropdown-item--active {
@@ -250,11 +304,12 @@
 }
 
 .cm-layer-dropdown-dot {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
   border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
 }
 
 .cm-layer-dropdown-name {
@@ -269,3 +324,4 @@
   height: 14px;
   color: var(--ui-cor-primaria, #00E08A);
 }
+
