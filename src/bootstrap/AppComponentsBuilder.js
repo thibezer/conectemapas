@@ -588,7 +588,8 @@ export class AppComponentsBuilder {
       onSelect: (featureId) => {
         const feat = app.features.find(f => f.id === featureId);
         if (feat) {
-          app.mapEngine.zoomToFeature(featureId);
+          // Só traz para a vista se estiver fora dela; o zoom é pedido pelo botão "Enquadrar"
+          app.mapEngine.revealFeature(featureId);
           app.mapEngine.selectFeature(featureId);
           app.layerPanel.setSelectedFeature(feat, false);
         }

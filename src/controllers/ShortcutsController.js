@@ -96,7 +96,7 @@ export class ShortcutsController {
     const nextFeature = app.features[nextIdx];
     if (nextFeature) {
       app.layerPanel.setSelectedFeature(nextFeature);
-      app.mapEngine.zoomToFeature(nextFeature.id);
+      app.mapEngine.revealFeature(nextFeature.id);
     }
   }
 

@@ -17,6 +17,7 @@ import { UIToast } from '@thibezer/ui-components-kit';
 import { CanvasHost } from './MapEngine/CanvasHost.js';
 import { FeatureGeometryUtils } from './MapEngine/FeatureGeometryUtils.js';
 import { GeometryVersionManager } from './GeometryVersionManager.js';
+import { SpatialIndex } from './SpatialIndex.js';
 
 /** Ferramenta do app -> ferramenta do componente (`select` = nenhuma). */
 const TOOL_TO_KIT = {
@@ -977,6 +978,19 @@ export class CanvasMapEngine {
     }
     const ref = this._ref(featureId);
     if (ref) this.host.zoomParaFeicao(ref.camadaId, ref.id);
+  }
+
+  /**
+   * Traz a feição para a tela só se ela estiver fora da vista, sem mexer no zoom.
+   * Usado ao selecionar pela tabela/teclado, para não "pular" o mapa a cada seleção.
+   */
+  revealFeature(featureId) {
+    const feat = this._featureMap.get(featureId);
+    const b = feat && SpatialIndex.computeBounds(feat);
+    if (!b || !this.map) return;
+    const center = L.latLng((b.minLat + b.maxLat) / 2, (b.minLng + b.maxLng) / 2);
+    if (this.map.getBounds().contains(center)) return;
+    this.map.panTo(center, { animate: true, duration: 0.3 });
   }
 
   zoomToFeatures(features = []) {
