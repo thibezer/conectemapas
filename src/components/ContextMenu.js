@@ -8,6 +8,7 @@ import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
 import { GeometryVersionManager } from '../services/GeometryVersionManager.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { copyToClipboardWithToast } from '../utils/toastHelpers.js';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 export class ContextMenu {
   /**
@@ -154,6 +155,13 @@ export class ContextMenu {
             <span class="cm-ctx-text">Duplicar (+30 m)</span>
           </div>
           <span class="cm-ctx-shortcut">Ctrl+D</span>
+        </div>
+
+        <div class="cm-ctx-item" data-action="buffer">
+          <div class="cm-ctx-item-left">
+            <span class="cm-ctx-icon">◎</span>
+            <span class="cm-ctx-text">Criar buffer...</span>
+          </div>
         </div>
 
         ${(() => {
@@ -358,6 +366,34 @@ export class ContextMenu {
           const clone = SpatialAlgorithms.duplicateWithOffset(feat, 30);
           if (clone) {
             this.app.newFeatureModal?.openWithFeature(clone);
+          }
+        } else if (action === 'buffer' && feat) {
+          const defaultRadius = 50;
+          const input = window.prompt(`Informe o raio do buffer em metros para "${feat.name || 'Feição'}":`, String(defaultRadius));
+          if (input !== null) {
+            const radius = parseFloat(input.trim().replace(',', '.'));
+            if (Number.isFinite(radius) && radius !== 0) {
+              const buf = SpatialAlgorithms.generateBuffer(feat, radius);
+              if (buf) {
+                const created = FeatureSyncController.createFeature(this.app, buf);
+                if (created && this.app.mapEngine) {
+                  this.app.mapEngine.selectFeature(created.id);
+                }
+                UIToast.notificar({
+                  tipo: 'sucesso',
+                  titulo: 'Buffer Criado',
+                  mensagem: `Buffer de ${radius} m gerado com sucesso para "${feat.name || 'Feição'}".`,
+                  duracao: 3500
+                });
+              } else {
+                UIToast.notificar({
+                  tipo: 'alerta',
+                  titulo: 'Falha no Buffer',
+                  mensagem: 'Não foi possível gerar a zona de amortecimento para esta feição.',
+                  duracao: 4000
+                });
+              }
+            }
           }
         } else if (action === 'toggle-geometry-version' && feat) {
           if (typeof this.app.toggleFeatureGeometryVersion === 'function') {

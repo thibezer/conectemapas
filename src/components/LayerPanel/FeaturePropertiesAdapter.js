@@ -391,8 +391,10 @@ export class FeaturePropertiesAdapter {
       }
     }
 
+    const bufRadius = Number.isFinite(panel._bufferRadius) && panel._bufferRadius > 0 ? panel._bufferRadius : 50;
     acoesProps.push(
-      { id: 'acao_buffer', rotulo: 'Buffer', tipo: 'acao', valor: 'Buffer 50 m', rotuloAcao: '◎ Criar 50 m', dica: 'Cria uma nova feição de amortecimento de 50 m' },
+      { id: 'buffer_distancia', rotulo: 'Raio Buffer', tipo: 'numero', valor: bufRadius, unidade: 'm', casasDecimais: 1, somenteLeitura: isLocked, dica: 'Distância em metros para criar a zona de amortecimento' },
+      { id: 'acao_buffer', rotulo: 'Buffer', tipo: 'acao', valor: `Criar ${bufRadius} m`, rotuloAcao: `◎ Criar ${bufRadius} m`, somenteLeitura: isLocked, dica: 'Gera zona de amortecimento geodésica com o raio definido' },
       { id: 'acao_duplicar', rotulo: 'Duplicar', tipo: 'acao', valor: 'Duplicar', rotuloAcao: '📑 Cópia a 30 m', dica: 'Cria uma cópia deslocada 30 m' },
       { id: 'acao_copiar_geojson', rotulo: 'GeoJSON', tipo: 'acao', valor: 'GeoJSON', rotuloAcao: '📋 Copiar', dica: 'Copia a feição em GeoJSON' },
       { id: 'acao_copiar_wkt', rotulo: 'WKT', tipo: 'acao', valor: 'WKT', rotuloAcao: '📋 Copiar', dica: 'Copia a geometria em WKT (CAD/GIS)' }
@@ -514,6 +516,15 @@ export class FeaturePropertiesAdapter {
    * @param {any} novoValor - Novo valor recebido
    */
   static aplicarAlteracao(panel, featId, propId, novoValor) {
+    if (propId === 'buffer_distancia') {
+      const val = parseNumber(novoValor);
+      if (val !== null && val > 0) {
+        panel._bufferRadius = val;
+        panel.updateInspector();
+      }
+      return;
+    }
+
     // Cores não alteram nenhum valor derivado: grava sem recriar a tabela (seletor pode seguir aberto)
     const rerender = !['fillColor', 'strokeColor', 'pointColor', 'textColor'].includes(propId);
     const latest = panel.getLatestFeature(featId) || panel.selectedFeature;
@@ -754,10 +765,26 @@ export class FeaturePropertiesAdapter {
       }
 
       case 'acao_buffer': {
-        const radius = 50;
+        const radius = Number.isFinite(panel._bufferRadius) && panel._bufferRadius > 0 ? panel._bufferRadius : 50;
         const bufferFeature = SpatialAlgorithms.generateBuffer(feat, radius);
         if (bufferFeature) {
-          panel.onFeatureCreate(bufferFeature);
+          const created = panel.onFeatureCreate(bufferFeature);
+          if (created && panel.app?.mapEngine) {
+            panel.app.mapEngine.selectFeature(created.id);
+          }
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Buffer Criado',
+            mensagem: `Zona de amortecimento de ${radius} m gerada para "${feat.name || 'Feição'}".`,
+            duracao: 3500
+          });
+        } else {
+          UIToast.notificar({
+            tipo: 'alerta',
+            titulo: 'Falha no Buffer',
+            mensagem: 'Não foi possível gerar a zona de amortecimento para esta feição.',
+            duracao: 4000
+          });
         }
         break;
       }

@@ -131,25 +131,34 @@ export class SpatialAlgorithms {
   }
 
   /**
-   * Gera Polígono de Buffer / Amortecimento Geodésico
+   * Gera Polígono de Buffer / Amortecimento Geodésico Rigoroso (Pontos, Círculos, Linhas e Polígonos).
+   * Utiliza projeção tangencial métrica local (WGS84) e cálculo vetorial com caps e miter limit.
+   *
    * @param {Object} feature Feição de origem
-   * @param {number} radiusMeters Raio do buffer em metros
-   * @returns {Object} Nova feição de buffer (Polygon ou Circle)
+   * @param {number} radiusMeters Raio do buffer em metros (pode ser positivo para expansão ou negativo para retração)
+   * @returns {Object|null} Nova feição de buffer (Polygon ou Circle)
    */
   static generateBuffer(feature, radiusMeters = 50) {
-    if (!feature) return null;
+    if (!feature || !Number.isFinite(radiusMeters) || radiusMeters === 0) return null;
     const type = feature.type;
     const targetLayerId = feature.layerId || 'layer-topografia';
+    const absRadius = Math.abs(radiusMeters);
+    const radiusStr = `${radiusMeters > 0 ? '+' : ''}${radiusMeters} m`;
 
-    if (type === 'Point') {
-      // Gera círculo com o raio especificado
+    // 1. Ponto ou Texto -> Círculo geodésico
+    if (type === 'Point' || type === 'Text') {
+      const coord = Array.isArray(feature.coordinates) && Number.isFinite(feature.coordinates[0])
+        ? [Number(feature.coordinates[0]), Number(feature.coordinates[1])]
+        : null;
+      if (!coord) return null;
+
       return {
         id: `feat-buffer-${Date.now()}`,
-        name: `Buffer ${feature.name} (${radiusMeters}m)`,
+        name: `Buffer ${feature.name || 'Ponto'} (${absRadius}m)`,
         layerId: targetLayerId,
         type: 'Circle',
-        coordinates: [feature.coordinates[0], feature.coordinates[1]],
-        radius: radiusMeters,
+        coordinates: coord,
+        radius: absRadius,
         category: 'Zona de Amortecimento',
         color: '#38bdf8',
         style: {
@@ -165,50 +174,210 @@ export class SpatialAlgorithms {
           labelField: 'name'
         },
         properties: {
-          'Raio do Buffer': `${radiusMeters} m`,
-          'Elemento Origem': feature.name
+          'Raio do Buffer': `${absRadius} m`,
+          'Elemento Origem': feature.name || 'Ponto'
         },
         createdBy: 'Buffer Espacial',
         createdAt: new Date().toISOString()
       };
     }
 
-    // Para Linhas e Polígonos: expande a envoltória geodésica
-    const coords = feature.coordinates;
-    const isMulti = Array.isArray(coords[0]) && Array.isArray(coords[0][0]);
-    const flatPoints = isMulti ? coords.flat() : coords;
+    // 2. Círculo -> Expansão de Círculo
+    if (type === 'Circle') {
+      const currentRadius = Number(feature.radius) || 0;
+      const newRadius = Math.max(1, currentRadius + radiusMeters);
+      const coord = Array.isArray(feature.coordinates) && Number.isFinite(feature.coordinates[0])
+        ? [Number(feature.coordinates[0]), Number(feature.coordinates[1])]
+        : null;
+      if (!coord) return null;
 
-    let bufferPoints = [];
+      return {
+        id: `feat-buffer-${Date.now()}`,
+        name: `Buffer ${feature.name || 'Círculo'} (${radiusStr})`,
+        layerId: targetLayerId,
+        type: 'Circle',
+        coordinates: coord,
+        radius: newRadius,
+        category: 'Zona de Amortecimento',
+        color: '#38bdf8',
+        style: {
+          fillColor: '#38bdf8',
+          fillOpacity: 0.25,
+          strokeColor: '#0284c7',
+          strokeWidth: 2,
+          strokeDashArray: '4, 4',
+          markerIcon: 'pin',
+          markerSize: 24,
+          markerRotation: 0,
+          showLabel: true,
+          labelField: 'name'
+        },
+        properties: {
+          'Raio do Buffer': `${newRadius} m`,
+          'Variação': radiusStr,
+          'Elemento Origem': feature.name || 'Círculo'
+        },
+        createdBy: 'Buffer Espacial',
+        createdAt: new Date().toISOString()
+      };
+    }
 
-    if ((type === 'Polygon' || type === 'LineString') && flatPoints.length > 0) {
-      const centerLat = flatPoints.reduce((acc, c) => acc + c[0], 0) / flatPoints.length;
-      const centerLng = flatPoints.reduce((acc, c) => acc + c[1], 0) / flatPoints.length;
+    // 3. Linhas e Polígonos -> Polígono com caps e miter limit
+    const rawCoords = feature.coordinates;
+    if (!Array.isArray(rawCoords) || rawCoords.length === 0) return null;
 
-      const dLat = this.metersToDegreesLat(radiusMeters);
-      const dLng = this.metersToDegreesLng(radiusMeters, centerLat);
+    const isMulti = Array.isArray(rawCoords[0]) && Array.isArray(rawCoords[0][0]);
+    const inputRing = isMulti ? rawCoords[0] : rawCoords;
+    if (!Array.isArray(inputRing) || inputRing.length < (type === 'Polygon' ? 3 : 2)) return null;
 
-      const offsetRing = (ring) => ring.map(([lat, lng]) => {
-        const dirLat = lat - centerLat;
-        const dirLng = lng - centerLng;
-        const len = Math.sqrt(dirLat * dirLat + dirLng * dirLng) || 1;
-        const normLat = dirLat / len;
-        const normLng = dirLng / len;
-        return [lat + normLat * dLat, lng + normLng * dLng];
-      });
-
-      if (isMulti) {
-        bufferPoints = coords.map(ring => offsetRing(ring));
-      } else {
-        bufferPoints = offsetRing(coords);
+    const pts = [];
+    for (const p of inputRing) {
+      if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+        if (pts.length > 0) {
+          const prev = pts[pts.length - 1];
+          if (Math.abs(prev[0] - p[0]) < 1e-9 && Math.abs(prev[1] - p[1]) < 1e-9) continue;
+        }
+        pts.push([Number(p[0]), Number(p[1])]);
       }
+    }
+
+    if (pts.length < (type === 'Polygon' ? 3 : 2)) return null;
+
+    // Remove vértice de fechamento duplicado no polígono para cálculo vetorial
+    if (type === 'Polygon' && pts.length >= 3) {
+      const first = pts[0];
+      const last = pts[pts.length - 1];
+      if (Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
+        pts.pop();
+      }
+    }
+
+    if (pts.length < (type === 'Polygon' ? 3 : 2)) return null;
+
+    // Sistema de Projeção Métrica Tangencial Local (WGS84)
+    const R_EARTH = 6371008.8;
+    const toRad = Math.PI / 180;
+    const toDeg = 180 / Math.PI;
+
+    const lat0 = pts[0][0];
+    const lon0 = pts[0][1];
+    const cos0 = Math.cos(lat0 * toRad);
+
+    const toMeters = ([lat, lng]) => [
+      (lng - lon0) * toRad * cos0 * R_EARTH,
+      (lat - lat0) * toRad * R_EARTH
+    ];
+
+    const toLatLng = ([x, y]) => [
+      lat0 + (y / R_EARTH) * toDeg,
+      lon0 + (x / (R_EARTH * cos0)) * toDeg
+    ];
+
+    const ptsM = pts.map(toMeters);
+    const d = radiusMeters;
+    let bufferM = [];
+
+    // Normal unitária perpendicular à esquerda do segmento [A -> B]
+    const leftNormal = (p1, p2) => {
+      const dx = p2[0] - p1[0];
+      const dy = p2[1] - p1[1];
+      const len = Math.hypot(dx, dy) || 1;
+      return [-dy / len, dx / len];
+    };
+
+    // Arco semicircular entre angStart e angEnd
+    const arcPoints = (center, r, angStart, angEnd, steps = 16) => {
+      const res = [];
+      for (let s = 0; s <= steps; s++) {
+        const ang = angStart + ((angEnd - angStart) * s) / steps;
+        res.push([center[0] + r * Math.cos(ang), center[1] + r * Math.sin(ang)]);
+      }
+      return res;
+    };
+
+    // Offset paralelo com miter limit
+    const offsetPolyline = (points, dist, isClosed) => {
+      const n = points.length;
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        const prev = isClosed ? points[(i - 1 + n) % n] : points[Math.max(0, i - 1)];
+        const curr = points[i];
+        const next = isClosed ? points[(i + 1) % n] : points[Math.min(n - 1, i + 1)];
+
+        const nPrev = i === 0 && !isClosed ? leftNormal(curr, next) : leftNormal(prev, curr);
+        const nNext = i === n - 1 && !isClosed ? leftNormal(prev, curr) : leftNormal(curr, next);
+
+        let ux = nPrev[0] + nNext[0];
+        let uy = nPrev[1] + nNext[1];
+        const uLen = Math.hypot(ux, uy);
+
+        if (uLen < 1e-9) {
+          out.push([curr[0] + nPrev[0] * dist, curr[1] + nPrev[1] * dist]);
+          continue;
+        }
+
+        ux /= uLen;
+        uy /= uLen;
+        const dot = ux * nPrev[0] + uy * nPrev[1];
+        const miter = Math.min(1 / Math.max(dot, 0.5), 2.0);
+
+        out.push([curr[0] + ux * dist * miter, curr[1] + uy * dist * miter]);
+      }
+      return out;
+    };
+
+    if (type === 'LineString') {
+      if (ptsM.length < 2) return null;
+      const dist = Math.abs(d);
+
+      const leftSide = offsetPolyline(ptsM, dist, false);
+      const reversedPts = [...ptsM].reverse();
+      const rightSide = offsetPolyline(reversedPts, dist, false);
+
+      const pLast = ptsM[ptsM.length - 1];
+      const pPenult = ptsM[ptsM.length - 2];
+      const angEnd = Math.atan2(pLast[1] - pPenult[1], pLast[0] - pPenult[0]);
+
+      const pFirst = ptsM[0];
+      const pSecond = ptsM[1];
+      const angStart = Math.atan2(pFirst[1] - pSecond[1], pFirst[0] - pSecond[0]);
+
+      const endCap = arcPoints(pLast, dist, angEnd + Math.PI / 2, angEnd - Math.PI / 2, 16);
+      const startCap = arcPoints(pFirst, dist, angStart + Math.PI / 2, angStart - Math.PI / 2, 16);
+
+      bufferM = [...leftSide, ...endCap, ...rightSide, ...startCap];
+    } else if (type === 'Polygon') {
+      if (ptsM.length < 3) return null;
+
+      let area = 0;
+      for (let i = 0; i < ptsM.length; i++) {
+        const p1 = ptsM[i];
+        const p2 = ptsM[(i + 1) % ptsM.length];
+        area += (p2[0] - p1[0]) * (p2[1] + p1[1]);
+      }
+      const orientedPts = area > 0 ? ptsM : [...ptsM].reverse();
+      bufferM = offsetPolyline(orientedPts, -d, true);
+
+      if (bufferM.length < 3) return null;
+    }
+
+    if (bufferM.length < 3) return null;
+
+    const bufferLatLng = bufferM.map(toLatLng);
+
+    // Garante fechamento do polígono
+    const f0 = bufferLatLng[0];
+    const flast = bufferLatLng[bufferLatLng.length - 1];
+    if (Math.abs(f0[0] - flast[0]) > 1e-7 || Math.abs(f0[1] - flast[1]) > 1e-7) {
+      bufferLatLng.push([f0[0], f0[1]]);
     }
 
     return {
       id: `feat-buffer-${Date.now()}`,
-      name: `Buffer ${feature.name} (${radiusMeters}m)`,
+      name: `Buffer ${feature.name || 'Geometria'} (${absRadius}m)`,
       layerId: targetLayerId,
       type: 'Polygon',
-      coordinates: bufferPoints.length > 0 ? bufferPoints : coords,
+      coordinates: bufferLatLng,
       category: 'Zona de Amortecimento',
       color: '#38bdf8',
       style: {
@@ -224,8 +393,8 @@ export class SpatialAlgorithms {
         labelField: 'name'
       },
       properties: {
-        'Raio do Buffer': `${radiusMeters} m`,
-        'Elemento Origem': feature.name
+        'Raio do Buffer': `${absRadius} m`,
+        'Elemento Origem': feature.name || 'Geometria'
       },
       createdBy: 'Buffer Espacial',
       createdAt: new Date().toISOString()
