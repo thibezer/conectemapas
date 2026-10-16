@@ -24,6 +24,22 @@ export class ShortcutsController {
     }
   }
 
+  /**
+   * Converte um snapshot em feições reaproveitando a MESMA referência das feições que não mudaram.
+   * Sem isso, o JSON.parse cria objetos novos para todas e o applyDiff (por referência)
+   * regravaria e reenviaria o projeto inteiro a cada Desfazer/Refazer.
+   */
+  static restoreSnapshot(snapshot, current) {
+    const restored = JSON.parse(snapshot);
+    const byId = new Map();
+    for (let i = 0; i < current.length; i++) byId.set(current[i].id, current[i]);
+    for (let i = 0; i < restored.length; i++) {
+      const old = byId.get(restored[i].id);
+      if (old && JSON.stringify(old) === JSON.stringify(restored[i])) restored[i] = old;
+    }
+    return restored;
+  }
+
   static undo(app) {
     if (app.historyUndo.length === 0) {
       UIToast.notificar({
@@ -38,7 +54,7 @@ export class ShortcutsController {
     app.historyRedo.push(JSON.stringify(app.features));
     const previousSnapshot = app.historyUndo.pop();
     const oldFeatures = app.features;
-    app.features = JSON.parse(previousSnapshot);
+    app.features = ShortcutsController.restoreSnapshot(previousSnapshot, oldFeatures);
     StorageService.applyDiff(oldFeatures, app.features);
     app.refreshMapAndTable();
     app.saveMetadata(false);
@@ -59,7 +75,7 @@ export class ShortcutsController {
     app.historyUndo.push(JSON.stringify(app.features));
     const nextSnapshot = app.historyRedo.pop();
     const oldFeatures = app.features;
-    app.features = JSON.parse(nextSnapshot);
+    app.features = ShortcutsController.restoreSnapshot(nextSnapshot, oldFeatures);
     StorageService.applyDiff(oldFeatures, app.features);
     app.refreshMapAndTable();
     app.saveMetadata(false);

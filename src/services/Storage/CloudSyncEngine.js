@@ -217,7 +217,7 @@ export class CloudSyncEngine {
       _cloudStatus.syncing = true;
       this._notifyCloudStatus();
 
-      const BATCH_CHUNK_SIZE = 250;
+      const BATCH_CHUNK_SIZE = 500; // o servidor processa em blocos de 500; menos idas e voltas em lotes grandes
       const dirtyChunks = [];
       for (let i = 0; i < merged.dirty.length; i += BATCH_CHUNK_SIZE) {
         dirtyChunks.push(merged.dirty.slice(i, i + BATCH_CHUNK_SIZE));
