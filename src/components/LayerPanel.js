@@ -313,7 +313,9 @@ export class LayerPanel {
   setSelectedFeature(feat, switchTab = false) {
     const featId = feat?.id || null;
     const currentId = this.selectedFeature?.id || null;
-    if (featId === currentId && !switchTab) return;
+    // Sem feição única (currentId nulo) ainda pode haver seleção múltipla a limpar
+    const idsAtuais = this.selectedFeatureIds.size;
+    if (featId === currentId && !switchTab && idsAtuais === (featId ? 1 : 0)) return;
     if (featId !== currentId) this._stopVertexEditingIfActive();
 
     this.selectedFeature = feat;

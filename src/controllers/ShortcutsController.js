@@ -265,10 +265,11 @@ export class ShortcutsController {
             app.mapEngine.clearSelection();
           }
           if (app.layerPanel) {
-            app.layerPanel.selectedFeatureIds.clear();
-            app.layerPanel.selectedFeature = null;
+            // Passa pelo painel para a árvore de camadas também desmarcar as linhas
+            app.layerPanel.setSelectedFeatures([]);
             app.layerPanel.updateContent();
           }
+          app.selectionHUD?.hide();
         } else if (e.key === 'Delete' || e.key === 'Backspace') {
           // Com uma figura em andamento, Backspace desfaz o último vértice (tratado pelo mapa)
           if (app.mapEngine?.isDrawing) return;
