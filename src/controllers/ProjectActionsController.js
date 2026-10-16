@@ -232,6 +232,7 @@ export class ProjectActionsController {
     });
 
     StorageService.deleteLayer(layerId, remainingLayer.id, app.projectId);
+    StorageService.deleteLayerInCloud(layerId, app.projectId);
     if (app.collabHub) {
       app.collabHub.notifyLayerDeleted(layerId);
     }

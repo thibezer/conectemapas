@@ -440,11 +440,24 @@ export class FeatureSyncController {
     // 1. Processa reconciliação de camadas remotas
     if (Array.isArray(layers) && layers.length > 0) {
       let layersChanged = false;
+      let layersRemoved = false;
       // Edição local de camadas ainda não confirmada na nuvem vence: não reverte nome/cor
       const localLayersPending = StorageService.hasPendingLayerSync();
       for (const remLayer of layers) {
         if (!remLayer || !remLayer.id) continue;
         const localLayer = app.layers.find(l => l.id === remLayer.id);
+        if (remLayer.deleted) {
+          // Camada excluída por outro operador (as feições chegam já movidas, via upsert)
+          if (localLayer && app.layers.length > 1) {
+            const fallback = app.layers.find(l => l.id !== remLayer.id);
+            app.features.forEach(f => { if (f.layerId === remLayer.id) f.layerId = fallback.id; });
+            app.layers = app.layers.filter(l => l.id !== remLayer.id);
+            StorageService.deleteLayer(remLayer.id, fallback.id, app.projectId);
+            layersChanged = true;
+            layersRemoved = true;
+          }
+          continue;
+        }
         if (!localLayer) {
           app.layers.push(remLayer);
           layersChanged = true;
@@ -464,6 +477,7 @@ export class FeatureSyncController {
         StorageService.saveLayersBatch(app.layers, app.projectId);
         if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+        if (layersRemoved && typeof app.refreshMapAndTable === 'function') app.refreshMapAndTable();
       }
     }
 

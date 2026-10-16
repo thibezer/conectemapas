@@ -114,7 +114,7 @@ function getDatabaseConnection() {
 // 3. Auto-Migração do Esquema Relacional (DDL Idempotente)
 // A versão do esquema fica gravada em disco para que as requisições de alta frequência
 // (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
-define('CM_SCHEMA_VERSION', 6);
+define('CM_SCHEMA_VERSION', 7);
 define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
 
 function columnExists(PDO $pdo, $table, $column) {
@@ -225,6 +225,10 @@ function ensureDatabaseSchema(PDO $pdo) {
             $pdo->exec("ALTER TABLE cm_layers ADD COLUMN rev BIGINT NOT NULL DEFAULT 0, ADD COLUMN client_id VARCHAR(64) NULL;");
             $pdo->exec("ALTER TABLE cm_layers ADD INDEX idx_layers_rev (project_id, rev);");
             $pdo->exec("UPDATE cm_layers SET rev = 1, updated_at = updated_at WHERE rev = 0;");
+        }
+        // v7: camada excluída vira tombstone (deleted = 1) com nova rev, para o pull avisar os outros operadores
+        if (!columnExists($pdo, 'cm_layers', 'deleted')) {
+            $pdo->exec("ALTER TABLE cm_layers ADD COLUMN deleted TINYINT(1) NOT NULL DEFAULT 0;");
         }
         $pdo->exec("UPDATE cm_projects SET rev = 1, updated_at = updated_at WHERE rev = 0;");
 
@@ -379,7 +383,7 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
     }
     foreach (array_chunk(array_values(array_unique($layerIds)), 500) as $chunk) {
         $ph = implode(',', array_fill(0, count($chunk), '?'));
-        $stmtAll = $pdo->prepare("SELECT id, project_id, name, color, type, visible, opacity, order_idx FROM cm_layers WHERE id IN ($ph)");
+        $stmtAll = $pdo->prepare("SELECT id, project_id, name, color, type, visible, opacity, order_idx, deleted FROM cm_layers WHERE id IN ($ph)");
         $stmtAll->execute($chunk);
         foreach ($stmtAll->fetchAll() as $row) $existingById[$row['id']] = $row;
     }
@@ -399,6 +403,8 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
         $existing = $existingById[$lid] ?? false;
         // Isolamento: id de camada de OUTRO projeto nunca é sobrescrito/sequestrado
         if ($existing && $existing['project_id'] !== $projectId) continue;
+        // Camada excluída não ressuscita por cópia defasada de outro operador
+        if ($existing && (int)$existing['deleted'] === 1) continue;
         $lname = $layer['name'] ?? 'Camada';
         $lcolor = $layer['color'] ?? '#00E08A';
         $ltype = $layer['type'] ?? 'custom';
@@ -421,6 +427,28 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
             if ($rev === null) $rev = nextRevision($pdo, $projectId);
             $stmtInsert->execute([$lid, $projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $rev, $clientId]);
         }
+    }
+    return $rev;
+}
+
+/**
+ * Marca camadas do projeto como excluídas (tombstone) com uma nova revisão. Dentro da transação ativa.
+ */
+function tombstoneLayers(PDO $pdo, $projectId, array $layerIds, $clientId, $rev = null) {
+    $ids = [];
+    foreach ($layerIds as $lid) {
+        if (is_string($lid) || is_numeric($lid)) $ids[] = (string)$lid;
+    }
+    foreach (array_chunk(array_values(array_unique($ids)), 500) as $chunk) {
+        $ph = implode(',', array_fill(0, count($chunk), '?'));
+        $stmtSel = $pdo->prepare("SELECT id FROM cm_layers WHERE project_id = ? AND deleted = 0 AND id IN ($ph)");
+        $stmtSel->execute(array_merge([$projectId], $chunk));
+        $found = $stmtSel->fetchAll(PDO::FETCH_COLUMN);
+        if (empty($found)) continue;
+        if ($rev === null) $rev = nextRevision($pdo, $projectId);
+        $ph2 = implode(',', array_fill(0, count($found), '?'));
+        $stmtDel = $pdo->prepare("UPDATE cm_layers SET deleted = 1, rev = ?, client_id = ?, updated_at = NOW() WHERE project_id = ? AND id IN ($ph2)");
+        $stmtDel->execute(array_merge([$rev, $clientId, $projectId], $found));
     }
     return $rev;
 }
@@ -1089,7 +1117,7 @@ switch ($action) {
         $stmtLayers = $pdo->prepare("
             SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at
             FROM cm_layers
-            WHERE project_id = ?
+            WHERE project_id = ? AND deleted = 0
             ORDER BY order_idx ASC
         ");
         $stmtLayers->execute([$projectId]);
@@ -1194,6 +1222,36 @@ switch ($action) {
             'auditLog' => $auditLog
         ]);
         exit;
+
+    // --------------------------------------------------------------------------
+    // ACTION: DELETE_LAYER (Exclui camadas como tombstone; o pull avisa os demais operadores)
+    // As feições são movidas para outra camada pelo cliente (sync_deltas), não são apagadas aqui.
+    // --------------------------------------------------------------------------
+    case 'delete_layer':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Método inválido']);
+            exit;
+        }
+
+        $body = getJsonBody();
+        $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
+        $clientId = sanitizeClientId($body['clientId'] ?? '');
+        $layerIds = isset($body['layerIds']) && is_array($body['layerIds']) ? $body['layerIds'] : [];
+        requireRole($pdo, $projectId, 'editor');
+
+        $pdo->beginTransaction();
+        try {
+            $rev = tombstoneLayers($pdo, $projectId, $layerIds, $clientId);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'rev' => $rev]);
+            exit;
+        } catch (Exception $e) {
+            $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Falha ao excluir camada', 'detail' => $e->getMessage()]);
+            exit;
+        }
 
     // --------------------------------------------------------------------------
     // ACTION: SAVE_METADATA (Salva Metadados do Projeto e Camadas)
@@ -1435,7 +1493,7 @@ switch ($action) {
             $stmtLayers = $pdo->prepare("
                 SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at
                 FROM cm_layers
-                WHERE project_id = ?
+                WHERE project_id = ? AND deleted = 0
                 ORDER BY order_idx ASC
             ");
             $stmtLayers->execute([$projectId]);
@@ -1569,7 +1627,7 @@ switch ($action) {
         }
 
         $sqlLayers = "
-            SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at, rev
+            SELECT id, name, color, type, visible, opacity, order_idx AS `order`, updated_at, rev, deleted
             FROM cm_layers
             WHERE project_id = ? AND rev > ? AND rev <= ?" . $echoFilter . "
             ORDER BY order_idx ASC";
@@ -1582,6 +1640,7 @@ switch ($action) {
             $l['visible'] = (bool)$l['visible'];
             $l['opacity'] = (float)$l['opacity'];
             $l['rev'] = (int)$l['rev'];
+            $l['deleted'] = (int)$l['deleted'] === 1;
         }
         unset($l);
         $pdo->commit();

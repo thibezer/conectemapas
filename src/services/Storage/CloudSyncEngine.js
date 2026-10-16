@@ -353,9 +353,58 @@ export class CloudSyncEngine {
     if (payload) this.syncMetadataToCloud(payload);
   }
 
+  // Exclusões de camada pendentes (offline/falha): reenviadas na próxima oportunidade
+  static _pendingLayerDeletes(projectId) {
+    try {
+      const raw = JSON.parse(localStorage.getItem(`cm_pending_layer_deletes_${projectId}`) || '[]');
+      return Array.isArray(raw) ? raw.filter(id => typeof id === 'string' && id) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static _setPendingLayerDeletes(projectId, ids) {
+    try {
+      const key = `cm_pending_layer_deletes_${projectId}`;
+      if (ids.length) localStorage.setItem(key, JSON.stringify(ids));
+      else localStorage.removeItem(key);
+    } catch {}
+  }
+
+  static deleteLayersInCloud(projectId, layerIds) {
+    const pid = projectId || 'projeto_padrao';
+    const merged = new Set(this._pendingLayerDeletes(pid));
+    (Array.isArray(layerIds) ? layerIds : [layerIds]).forEach(id => { if (id) merged.add(String(id)); });
+    this._setPendingLayerDeletes(pid, [...merged]);
+    return this.flushLayerDeletes(pid);
+  }
+
+  static flushLayerDeletes(projectId) {
+    const pid = projectId || 'projeto_padrao';
+    if (this._pendingLayerDeletes(pid).length === 0) return Promise.resolve();
+    return this._enqueuePush([], async () => {
+      const ids = this._pendingLayerDeletes(pid);
+      if (ids.length === 0) return;
+      try {
+        const res = await this._postJson('delete_layer', { projectId: pid, clientId: _clientId, layerIds: ids });
+        if (res.status === 401 || res.status === 403 || res.status === 410) {
+          AccessManager.handleDenied(pid, res.status, await res.json().catch(() => null));
+          this._setPendingLayerDeletes(pid, []);
+        } else if (res.ok) {
+          // Mantém só o que foi marcado para exclusão durante o envio
+          const sent = new Set(ids);
+          this._setPendingLayerDeletes(pid, this._pendingLayerDeletes(pid).filter(id => !sent.has(id)));
+        }
+      } catch (err) {
+        console.warn('[CloudSyncEngine] Exclusão de camada pendente (offline):', err);
+      }
+    });
+  }
+
   static async syncMetadataToCloud(projectData) {
     if (!projectData) return;
     const dirtyProjectId = projectData.id || 'projeto_padrao';
+    this.flushLayerDeletes(dirtyProjectId);
     _layerSyncInFlight++;
     try {
       _cloudStatus.syncing = true;

@@ -221,6 +221,11 @@ export class StorageService {
     return IndexedDbStore.deleteLayer(layerId, fallbackLayerId, projectId || _currentProjectId);
   }
 
+  // Exclusão que também chega aos outros operadores (tombstone na nuvem)
+  static deleteLayerInCloud(layerId, projectId = null) {
+    return CloudSyncEngine.deleteLayersInCloud(projectId || _currentProjectId, [layerId]);
+  }
+
   // ---- FEIÇÕES E DELTAS ----
 
   static queueFeatureUpsert(feature, projectId = null) {
