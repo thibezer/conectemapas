@@ -11,6 +11,7 @@ import { DEFAULT_LAYERS } from './services/MockData.js';
 import { CollaborationHub } from './services/CollaborationHub.js';
 import { AccessManager } from './services/Storage/AccessManager.js';
 import { AuthService } from './services/Storage/AuthService.js';
+import { GuestIdentity } from './services/Storage/GuestIdentity.js';
 
 import { FeatureSyncController } from './controllers/FeatureSyncController.js';
 import { ShortcutsController } from './controllers/ShortcutsController.js';
@@ -95,6 +96,13 @@ class ConecteMapasApp {
 
     const inviteCode = AccessManager.takeInviteFromUrl();
     if (inviteCode && this.authModal) this.authModal.openInvite(inviteCode);
+
+    // Convidado sem conta e sem nome neste dispositivo: pede o nome (o convite abre o cadastro, não o nome)
+    if (!inviteCode) {
+      AuthService.refresh().finally(() => {
+        if (!AuthService.isLoggedIn() && !GuestIdentity.getName()) this.guestNameModal?.open();
+      });
+    }
   }
 
   /**
@@ -129,7 +137,13 @@ class ConecteMapasApp {
   /** Nome da conta no cabeçalho e na presença; o servidor ainda decide o papel. */
   applyAccount(user) {
     if (this.headerBar) this.headerBar.updateAccount(user ? user.name : '');
-    if (this.collabHub) this.collabHub.setAccountName(user ? user.name : null);
+    // Com conta, o nome do convidado deixa de valer; sem conta, vale o nome guardado no dispositivo
+    if (user) GuestIdentity.clear();
+    const displayName = user ? user.name : GuestIdentity.getName();
+    if (this.collabHub) {
+      this.collabHub.setAccountName(displayName || null);
+      this.headerBar?.updateCollaborators(this.collabHub.getActiveCollaboratorsList());
+    }
   }
 
   /** Após aceitar um convite: abre o projeto do convite (recarrega se for outro). */

@@ -4,7 +4,22 @@
    edição de título do projeto, presença de operadores e ações rápidas.
    ========================================================================== */
 
+import '@thibezer/ui-components-kit/tools';
 import './HeaderBar.css';
+
+const svg = (paths) =>
+  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+
+const ICONES = {
+  projeto: svg('<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/>'),
+  salvar: svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>'),
+  popup: svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
+  buscar: svg('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/>'),
+  layout: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>'),
+  importExport: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'),
+  conta: svg('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
+  compartilhar: svg('<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>')
+};
 
 export class HeaderBar {
   /**
@@ -67,20 +82,17 @@ export class HeaderBar {
             <span>ConecteMapas</span>
           </a>
 
-          <div class="cm-project-title-wrapper" title="Clique para editar o nome do projeto (Enter para salvar)">
-            <svg class="cm-project-title-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
-              <path d="M2.5 13.5h11M9.5 2.5l4 4-8.5 8.5H2v-3l8.5-8.5 3-3-4-4Z" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <input 
-              type="text" 
-              class="cm-project-title-input" 
-              id="cm-project-name-input" 
-              value="${safeProjectName}" 
-              placeholder="Nome do Projeto..." 
-              spellcheck="false" 
-              autocomplete="off"
-            />
-          </div>
+          <input
+            type="text"
+            class="cm-project-title-input"
+            id="cm-project-name-input"
+            value="${safeProjectName}"
+            placeholder="Nome do Projeto..."
+            title="Clique para editar o nome do projeto (Enter para salvar)"
+            aria-label="Nome do projeto"
+            spellcheck="false"
+            autocomplete="off"
+          />
 
           <ui-chip id="cm-sync-chip" variante="sucesso" class="cm-sync-badge" title="Conexão com Banco de Dados">
             ● Conectado
@@ -89,137 +101,18 @@ export class HeaderBar {
 
         <!-- Centro: Operadores Colaborativos Ativos -->
         <div class="cm-header-center">
-          <div class="cm-collaborators-list" id="cm-collaborators-avatars" title="Operadores conectados na sala">
+          <div class="cm-collaborators-list" id="cm-collaborators-avatars" role="list" aria-label="Operadores conectados">
             ${this.renderCollaboratorsAvatars()}
           </div>
         </div>
 
-        <!-- Direita: Ações Principais (Na ordem canônica original) -->
-        <div class="cm-header-right">
-          <ui-botao-primario 
-            inline 
-            id="btn-open-project" 
-            variante="secundario" 
-            title="Novo projeto ou excluir o projeto aberto">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
-                <line x1="12" y1="10" x2="12" y2="16"/>
-                <line x1="9" y1="13" x2="15" y2="13"/>
-              </svg>
-              <span>Projeto</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-manual-save" 
-            variante="primary" 
-            title="Salvar Projeto no Banco de Dados (Ctrl+S)">
-            <div class="cm-header-btn cm-btn-save">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                <polyline points="17 21 17 13 7 13 7 21"/>
-                <polyline points="7 3 7 8 15 8"/>
-              </svg>
-              <span>Salvar</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-toggle-popup" 
-            variante="secundario" 
-            title="Balão de detalhes ao clicar na forma: Desativado (clique para ativar)">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
-              <span id="cm-popup-toggle-text">Popup: Off</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-open-adv-search" 
-            variante="secundario" 
-            title="Busca Avançada: filtrar, selecionar, mover de camada e aplicar cores (Ctrl+Shift+F)">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="7"/>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                <line x1="8" y1="11" x2="14" y2="11"/>
-                <line x1="11" y1="8" x2="11" y2="14"/>
-              </svg>
-              <span>Buscar</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-open-print-composer" 
-            variante="secundario" 
-            title="Abrir Compositor de Layout de Impressão (Estilo QGIS)">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect width="18" height="18" x="3" y="3" rx="2"/>
-                <path d="M3 9h18"/>
-                <path d="M9 21V9"/>
-              </svg>
-              <span>Layout QGIS</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-open-import-export" 
-            variante="secundario" 
-            target-modal="modal-import-export" 
-            title="Importar ou Exportar dados GeoJSON / KML / CSV">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              <span>Import / Export</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-open-account" 
-            variante="secundario" 
-            title="Entrar ou gerenciar sua conta">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
-              </svg>
-              <span id="cm-account-label">${safeAccountName}</span>
-            </div>
-          </ui-botao-primario>
-
-          <ui-botao-primario 
-            inline 
-            id="btn-open-share" 
-            variante="secundario" 
-            target-modal="modal-share" 
-            title="Compartilhar sala de colaboração em tempo real">
-            <div class="cm-header-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
-                <polyline points="16 6 12 2 8 6"/>
-                <line x1="12" y1="2" x2="12" y2="15"/>
-              </svg>
-              <span>Compartilhar</span>
-            </div>
-          </ui-botao-primario>
-        </div>
       </header>
+      <ui-ribbon id="cm-ribbon" compacto aria-label="Barra de ferramentas do projeto" rotulo-abas="Abas do ribbon"></ui-ribbon>
     `;
 
+    this.setupRibbon();
     this.bindEvents();
+    this.observeHeight();
   }
 
   /**
@@ -227,26 +120,32 @@ export class HeaderBar {
    * @returns {string}
    */
   renderCollaboratorsAvatars() {
-    if (!this.collaborators || this.collaborators.length === 0) {
-      return '';
-    }
+    const list = this.collaborators || [];
+    if (list.length === 0) return '';
 
-    return this.collaborators.map(c => {
-      const safeName = this.escapeHtml(c.name || 'Operador');
-      const safeAvatar = this.escapeHtml(c.avatar || '');
-      const safeRole = this.escapeHtml(c.role || 'Operador');
-      const statusText = c.status === 'online' ? 'Online' : 'Ocupado';
-      const safeStatus = this.escapeHtml(c.status || 'online');
+    const MAX_VISIVEIS = 4;
+    const visiveis = list.slice(0, MAX_VISIVEIS);
+    const extras = list.slice(MAX_VISIVEIS);
+
+    const chip = (c, index) => {
+      const nome = String(c.name || 'Operador');
+      const eu = index === 0;
+      const cor = /^#[0-9a-f]{3,8}$/i.test(c.color || '') ? c.color : '#00E08A';
+      const inicial = this.escapeHtml((nome.trim()[0] || '?').toUpperCase());
+      const papel = this.escapeHtml(c.role || 'Operador');
+      const status = c.status === 'ocupado' || c.status === 'busy' ? 'Ocupado' : 'Online';
+      const safeNome = this.escapeHtml(nome);
       return `
-        <ui-avatar 
-          nome="${safeName}" 
-          foto="${safeAvatar}" 
-          status="${safeStatus}"
-          title="${safeName} (${safeRole}) - ${statusText}"
-          tamanho="sm">
-        </ui-avatar>
-      `;
-    }).join('');
+        <span class="cm-collab${eu ? ' cm-collab-me' : ''}" style="--cm-collab-color: ${cor}" title="${safeNome} · ${papel} · ${status}">
+          <span class="cm-collab-avatar" aria-hidden="true">${inicial}</span>
+          <span class="cm-collab-name">${safeNome}</span>
+        </span>`;
+    };
+
+    const resumo = extras.length
+      ? `<span class="cm-collab cm-collab-more" title="${this.escapeHtml(extras.map(c => c.name || 'Operador').join(', '))}">+${extras.length}</span>`
+      : '';
+    return visiveis.map(chip).join('') + resumo;
   }
 
   /**
@@ -267,8 +166,7 @@ export class HeaderBar {
    */
   updateAccount(name) {
     this.accountName = name || '';
-    const label = document.getElementById('cm-account-label');
-    if (label) label.textContent = this.accountName || 'Entrar';
+    this.ribbon?.atualizarItem?.('btn-open-account', { rotulo: this.accountName || 'Entrar' });
   }
 
   /**
@@ -327,41 +225,121 @@ export class HeaderBar {
       });
     }
 
-    // Salvar Manual
-    const btnSave = this.container.querySelector('#btn-manual-save');
-    if (btnSave) {
-      btnSave.addEventListener('click', () => {
-        this.onSaveProject();
-      });
-    }
+    this.bindRibbon();
+  }
 
-    // Projeto: novo / excluir
-    this.container.querySelector('#btn-open-project')?.addEventListener('click', () => this.onOpenProject());
+  /**
+   * Monta as abas do ribbon (Projeto / Dados) com as ações antes espalhadas no cabeçalho
+   */
+  setupRibbon() {
+    this.ribbon = this.container.querySelector('#cm-ribbon');
+    if (!this.ribbon) return;
+    this.ribbon.abas = [
+      {
+        id: 'projeto',
+        rotulo: 'Projeto',
+        grupos: [
+          {
+            id: 'grp-projeto',
+            rotulo: 'Projeto',
+            itens: [
+              { id: 'btn-open-project', rotulo: 'Projeto', icone: ICONES.projeto, tamanho: 'grande', rotuloAcessivel: 'Novo projeto ou excluir o projeto aberto' },
+              { id: 'btn-manual-save', rotulo: 'Salvar', icone: ICONES.salvar, tamanho: 'grande', atalho: 'Ctrl+S' }
+            ]
+          },
+          {
+            id: 'grp-mapa',
+            rotulo: 'Mapa',
+            itens: [
+              { id: 'btn-open-adv-search', rotulo: 'Buscar', icone: ICONES.buscar, tamanho: 'grande', atalho: 'Ctrl+Shift+F' },
+              { id: 'btn-toggle-popup', rotulo: 'Popup: Off', icone: ICONES.popup, tamanho: 'grande', tipo: 'toggle', ativo: false }
+            ]
+          },
+          {
+            id: 'grp-conta',
+            rotulo: 'Conta',
+            itens: [
+              { id: 'btn-open-account', rotulo: this.accountName || 'Entrar', icone: ICONES.conta, tamanho: 'grande' }
+            ]
+          }
+        ]
+      },
+      {
+        id: 'dados',
+        rotulo: 'Dados',
+        grupos: [
+          {
+            id: 'grp-dados',
+            rotulo: 'Dados',
+            itens: [
+              { id: 'btn-open-import-export', rotulo: 'Import / Export', icone: ICONES.importExport, tamanho: 'grande' }
+            ]
+          },
+          {
+            id: 'grp-saida',
+            rotulo: 'Saída',
+            itens: [
+              { id: 'btn-open-print-composer', rotulo: 'Layout QGIS', icone: ICONES.layout, tamanho: 'grande' }
+            ]
+          },
+          {
+            id: 'grp-colab',
+            rotulo: 'Colaboração',
+            itens: [
+              { id: 'btn-open-share', rotulo: 'Compartilhar', icone: ICONES.compartilhar, tamanho: 'grande' }
+            ]
+          }
+        ]
+      }
+    ];
+    this.ribbon.abaAtiva = 'projeto';
+  }
 
-    // Conta / Autenticação
-    const btnAccount = this.container.querySelector('#btn-open-account');
-    if (btnAccount) {
-      btnAccount.addEventListener('click', () => this.onOpenAccount());
-    }
+  /**
+   * Mantém --cm-header-height igual à altura real (título + ribbon), pois o
+   * workspace e os painéis flutuantes calculam a altura a partir dela.
+   */
+  observeHeight() {
+    this.resizeObserver?.disconnect();
+    if (typeof ResizeObserver === 'undefined') return;
+    const aplicar = () => {
+      const h = Math.ceil(this.container.getBoundingClientRect().height);
+      if (h > 0) document.documentElement.style.setProperty('--cm-header-height', h + 'px');
+    };
+    this.resizeObserver = new ResizeObserver(aplicar);
+    this.resizeObserver.observe(this.container);
+    aplicar();
+  }
 
-    // Busca Avançada
-    this.container.querySelector('#btn-open-adv-search')?.addEventListener('click', () => this.onOpenAdvancedSearch());
-
-    // Compositor de Impressão QGIS
-    const btnComposer = this.container.querySelector('#btn-open-print-composer');
-    if (btnComposer) {
-      btnComposer.addEventListener('click', () => {
-        this.onOpenPrintComposer();
-      });
-    }
-
-    // Popup de Detalhes
-    const btnPopup = this.container.querySelector('#btn-toggle-popup');
-    if (btnPopup) {
-      btnPopup.addEventListener('click', () => {
-        this.onToggleFeaturePopup();
-      });
-    }
+  /**
+   * Roteia os cliques do ribbon para os callbacks do app
+   */
+  bindRibbon() {
+    if (!this.ribbon) return;
+    const abrirModal = (id) => {
+      const modal = document.getElementById(id);
+      if (!modal) return;
+      if (typeof modal.abrir === 'function') modal.abrir();
+      else modal.setAttribute('aberto', '');
+    };
+    const acoes = {
+      'btn-open-project': () => this.onOpenProject(),
+      'btn-manual-save': () => this.onSaveProject(),
+      'btn-open-account': () => this.onOpenAccount(),
+      'btn-open-adv-search': () => this.onOpenAdvancedSearch(),
+      'btn-open-print-composer': () => this.onOpenPrintComposer(),
+      'btn-toggle-popup': () => this.onToggleFeaturePopup(),
+      'btn-open-import-export': () => abrirModal('modal-import-export'),
+      'btn-open-share': () => abrirModal('modal-share')
+    };
+    this.ribbon.addEventListener('ui-ferramenta', (e) => {
+      const id = e.detail?.id;
+      const acao = acoes[id];
+      if (!acao) return;
+      // O estado do toggle de popup pertence ao app (updateFeaturePopupMode)
+      if (id === 'btn-toggle-popup') e.preventDefault();
+      acao();
+    });
   }
 
   /**
@@ -369,16 +347,9 @@ export class HeaderBar {
    * @param {boolean} isEnabled
    */
   updateFeaturePopupMode(isEnabled) {
-    const textEl = document.getElementById('cm-popup-toggle-text');
-    const btn = document.getElementById('btn-toggle-popup');
-    if (textEl) {
-      textEl.textContent = isEnabled ? 'Popup: On' : 'Popup: Off';
-    }
-    if (btn) {
-      btn.setAttribute('variante', isEnabled ? 'aviso' : 'secundario');
-      btn.title = isEnabled
-        ? 'Balão de detalhes ao clicar na forma: Ativado (clique para desativar)'
-        : 'Balão de detalhes ao clicar na forma: Desativado (clique para ativar)';
-    }
+    this.ribbon?.atualizarItem?.('btn-toggle-popup', {
+      ativo: !!isEnabled,
+      rotulo: isEnabled ? 'Popup: On' : 'Popup: Off'
+    });
   }
 }

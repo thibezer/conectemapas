@@ -39,7 +39,7 @@
 }
 
 .cm-drawing-toolbar-wrapper--cols-2 {
-  width: 82px;
+  width: 92px; /* paleta 2 colunas: 2x34 + gap 2 + padding 8 + borda 2 = 80 (+ padding/borda da barra); o kit 2.6.0 rola se faltar espaço */
 }
 
 /* Cabeçalho com Toggle de Colunas */

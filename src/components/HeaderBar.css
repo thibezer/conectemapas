@@ -1,12 +1,18 @@
 /* ==========================================================================
    ConecteMapas - HeaderBar Component Styles (SRP Encapsulated)
-   Barra superior ultra-fina (32px), de alta densidade e proporções confortáveis
+   Faixa de título fina (26px): logo, nome do projeto e status soltos, sem
+   caixas, e os operadores online à direita. As ações ficam no <ui-ribbon>.
    ========================================================================== */
 
+#header-mount {
+  position: relative;
+  z-index: 1000;
+}
+
 .cm-header {
-  height: var(--cm-header-height, 32px);
-  min-height: var(--cm-header-height, 32px);
-  max-height: var(--cm-header-height, 32px);
+  height: var(--cm-titlebar-height, 26px);
+  min-height: var(--cm-titlebar-height, 26px);
+  max-height: var(--cm-titlebar-height, 26px);
   background: var(--cm-glass-bg, rgba(13, 14, 18, 0.95));
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
@@ -14,19 +20,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
-  z-index: 1000;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  gap: 10px;
+  padding: 0 10px;
   box-sizing: border-box;
   white-space: nowrap;
 }
 
-/* --- Lado Esquerdo: Logo, Título e Status --- */
+/* --- Esquerda: Logo, Título e Status --- */
 .cm-header-left {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 10px;
+  min-width: 0;
 }
 
 .cm-logo {
@@ -38,9 +43,8 @@
   color: var(--cm-text, #e1e1e6);
   letter-spacing: -0.2px;
   text-decoration: none;
-  padding-right: 6px;
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .cm-logo svg {
@@ -53,58 +57,39 @@
   background: linear-gradient(135deg, #ffffff 40%, var(--cm-primary, #00E08A) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  white-space: nowrap;
 }
 
-.cm-project-title-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  background: rgba(255, 255, 255, 0.035);
-  padding: 0 6px;
-  height: 22px;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: all 0.15s ease;
-  box-sizing: border-box;
-}
-
-.cm-project-title-icon {
-  width: 11px;
-  height: 11px;
-  color: var(--cm-text-muted, #888899);
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-.cm-project-title-wrapper:hover,
-.cm-project-title-wrapper:focus-within {
-  border-color: rgba(0, 224, 138, 0.35);
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow: 0 0 0 1px rgba(0, 224, 138, 0.12);
-}
-
+/* Nome do projeto: texto livre; só ganha sublinhado ao passar o mouse / focar */
 .cm-project-title-input {
   background: transparent;
   border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
   color: var(--cm-text, #e1e1e6);
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 600;
   font-family: inherit;
   outline: none;
-  width: 135px;
-  white-space: nowrap;
-  overflow: hidden;
+  width: 220px;
+  max-width: 34vw;
   text-overflow: ellipsis;
-  line-height: 1;
+  line-height: 1.5;
   padding: 0;
+  transition: border-color 0.15s ease;
 }
 
-/* --- Indicador de Conexão (Sem duplicidade de cápsula no Shadow DOM) --- */
+.cm-project-title-input:hover {
+  border-bottom-color: rgba(255, 255, 255, 0.25);
+}
+
+.cm-project-title-input:focus {
+  border-bottom-color: var(--cm-primary, #00E08A);
+}
+
+/* --- Indicador de conexão: ponto + texto, sem cápsula --- */
 .cm-sync-badge {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   background: transparent !important;
   border: none !important;
   padding: 0 !important;
@@ -115,144 +100,111 @@
   line-height: 1;
 }
 
-/* Estilização exclusiva e unificada na cápsula interna (Shadow DOM part) */
 .cm-sync-badge::part(base) {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 8px;
-  height: 20px;
-  border-radius: 999px;
+  padding: 0;
+  height: auto;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   line-height: 1;
-  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
-.cm-sync-badge[variante="sucesso"]::part(base) {
-  background-color: rgba(0, 224, 138, 0.12);
-  border: 1px solid rgba(0, 224, 138, 0.3);
-  color: #00E08A;
-}
-
-.cm-sync-badge[variante="sucesso"]:hover::part(base) {
-  background-color: rgba(0, 224, 138, 0.18);
-  border-color: rgba(0, 224, 138, 0.5);
-}
-
-.cm-sync-badge[variante="alerta"]::part(base) {
-  background-color: rgba(255, 184, 108, 0.12);
-  border: 1px solid rgba(255, 184, 108, 0.35);
-  color: #ffb86c;
-}
-
+.cm-sync-badge[variante="sucesso"]::part(base) { color: #00E08A; }
+.cm-sync-badge[variante="alerta"]::part(base) { color: #ffb86c; }
+.cm-sync-badge[variante="erro"]::part(base) { color: #ff6b6b; }
 .cm-sync-badge[variante="informativo"]::part(base),
-.cm-sync-badge[variante="info"]::part(base) {
-  background-color: rgba(0, 180, 216, 0.12);
-  border: 1px solid rgba(0, 180, 216, 0.35);
-  color: #00b4d8;
-}
+.cm-sync-badge[variante="info"]::part(base) { color: #00b4d8; }
 
-/* --- Centro: Espaço Fluido e Avatares de Colaboradores --- */
+/* --- Direita: operadores online --- */
 .cm-header-center {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   flex: 1;
-  min-width: 20px;
-  padding: 0 8px;
+  min-width: 0;
 }
 
 .cm-collaborators-list {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 8px;
+  min-width: 0;
 }
 
-.cm-collaborators-list ui-avatar {
-  cursor: pointer;
-  width: 20px;
-  height: 20px;
-  transition: transform 0.15s ease;
-}
-
-.cm-collaborators-list ui-avatar:hover {
-  transform: translateY(-1px) scale(1.12);
-  z-index: 10;
-}
-
-/* --- Lado Direito: Botões de Ação --- */
-.cm-header-right {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.cm-header-right ui-botao-primario {
-  height: 22px;
-  display: inline-flex;
-  --ui-campo-altura: 22px;
-  --ui-altura-campo: 22px;
-  --ui-altura-minima: 20px;
-  --ui-touch-target-min: 22px;
-  --ui-raio-borda: 4px;
-  flex-shrink: 0;
-}
-
-.cm-header-btn {
-  height: 100% !important;
-  font-size: 10.5px !important;
-  font-weight: 500 !important;
-  letter-spacing: -0.1px !important;
-  line-height: 1 !important;
-  white-space: nowrap !important;
-  display: inline-flex !important;
-  align-items: center !important;
-  gap: 4px !important;
-  padding: 0 5px !important;
-  cursor: pointer;
-}
-
-.cm-header-btn svg {
-  shape-rendering: geometricPrecision;
-  vertical-align: middle;
-  width: 12px;
-  height: 12px;
-  flex-shrink: 0;
-}
-
-.cm-header-btn span {
+.cm-collab {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
   line-height: 1;
-  white-space: nowrap !important;
+  color: var(--cm-text-muted, #a0a0b0);
+  min-width: 0;
 }
 
-/* Adaptação inteligente para telas menores sem quebrar ou truncar textos */
-@media (max-width: 1366px) {
-  #btn-open-print-composer .cm-header-btn span,
-  #btn-open-import-export .cm-header-btn span {
-    display: none;
-  }
+.cm-collab-me {
+  color: var(--cm-text, #e1e1e6);
 }
 
+.cm-collab-avatar {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--cm-collab-color, #00E08A);
+  color: #0d0e12;
+  font-size: 9px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Ponto de presença (online) */
+.cm-collab-avatar::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00E08A;
+  border: 1.5px solid var(--cm-bg, #0d0e12);
+}
+
+.cm-collab-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-collab-more {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+  cursor: default;
+}
+
+/* Telas menores: só as bolinhas com iniciais */
 @media (max-width: 1100px) {
-  #btn-open-adv-search .cm-header-btn span,
-  #btn-toggle-popup .cm-header-btn span {
-    display: none;
-  }
-  .cm-header-center {
+  .cm-collab-name {
     display: none;
   }
 }
 
 @media (max-width: 850px) {
-  #btn-open-share .cm-header-btn span {
-    display: none;
-  }
   .cm-project-title-input {
-    width: 110px;
+    width: 140px;
+  }
+  .cm-logo span {
+    display: none;
   }
 }

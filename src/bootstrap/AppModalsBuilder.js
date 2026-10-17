@@ -9,6 +9,7 @@ import { AuthService } from '../services/Storage/AuthService.js';
 import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { ShareModal } from '../components/Modals/ShareModal.js';
 import { AuthModal } from '../components/Modals/AuthModal.js';
+import { GuestNameModal } from '../components/Modals/GuestNameModal.js';
 import { ImportExportModal } from '../components/Modals/ImportExportModal.js';
 import { ProjectModal } from '../components/Modals/ProjectModal.js';
 import { NewFeatureModal } from '../components/Modals/NewFeatureModal.js';
@@ -45,6 +46,12 @@ export class AppModalsBuilder {
       onInviteAccepted: ({ projectId }) => app.openProjectAfterInvite(projectId)
     });
     app.authModal.render(document.getElementById('auth-modal-mount'));
+
+    app.guestNameModal = new GuestNameModal({
+      onNameSet: () => app.applyAccount(null),
+      onOpenLogin: () => app.authModal.open('login')
+    });
+    app.guestNameModal.render(document.getElementById('guest-name-modal-mount'));
 
     new ImportExportModal({
       onExport: (format, options) => ProjectActionsController.handleExport(app, format, options),
