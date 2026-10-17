@@ -41,6 +41,7 @@ export class AppModalsBuilder {
 
     app.authModal = new AuthModal({
       currentProjectId: app.projectId,
+      getCurrentProjectId: () => app.projectId,
       onInviteAccepted: ({ projectId }) => app.openProjectAfterInvite(projectId)
     });
     app.authModal.render(document.getElementById('auth-modal-mount'));

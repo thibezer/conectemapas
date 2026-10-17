@@ -1,0 +1,420 @@
+/* ==========================================================================
+   ConecteMapas - AuthModal Styles (SRP Encapsulated)
+   Design System Workbench B2B de Alta Densidade para Hub de Conta e Projetos
+   ========================================================================== */
+
+.cm-auth-workbench {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--cm-text, #e1e1e6);
+  font-family: var(--cm-fonte, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+/* --------------------------------------------------------------------------
+   1. Cabeçalho Compacto do Operador (Workbench Operator Header)
+   -------------------------------------------------------------------------- */
+.cm-auth-header-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+.cm-auth-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cm-auth-user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cm-auth-user-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #f1f5f9;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-auth-user-email {
+  font-size: 11.5px;
+  color: var(--cm-text-muted, #94a3b8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-auth-session-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #00E08A;
+  background: rgba(0, 224, 138, 0.08);
+  border: 1px solid rgba(0, 224, 138, 0.2);
+  padding: 3px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.cm-auth-session-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00E08A;
+  box-shadow: 0 0 6px #00E08A;
+}
+
+/* --------------------------------------------------------------------------
+   2. Barra de Status Operacional Horizontal (Status Bar Compacta)
+   -------------------------------------------------------------------------- */
+.cm-auth-status-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.cm-auth-status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cm-auth-status-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.cm-auth-status-val {
+  font-size: 12px;
+  font-weight: 600;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-auth-status-val.active-project {
+  color: #38bdf8;
+}
+
+/* --------------------------------------------------------------------------
+   3. Navegação por Abas
+   -------------------------------------------------------------------------- */
+.cm-auth-tabs-wrap {
+  margin-top: 2px;
+}
+
+.cm-auth-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   4. Aba Meus Projetos: Barra de Busca e Filtros Rápidos
+   -------------------------------------------------------------------------- */
+.cm-auth-projects-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cm-auth-search-box {
+  flex: 1;
+  position: relative;
+}
+
+.cm-auth-filter-pills {
+  display: flex;
+  gap: 4px;
+}
+
+.cm-auth-pill {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.cm-auth-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f1f5f9;
+}
+
+.cm-auth-pill.is-active {
+  background: rgba(0, 224, 138, 0.12);
+  border-color: rgba(0, 224, 138, 0.35);
+  color: #00E08A;
+  font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   5. Lista / Tabela Densa de Projetos (Workbench Grid)
+   -------------------------------------------------------------------------- */
+.cm-auth-projects-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 290px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.cm-auth-projects-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.cm-auth-projects-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.cm-auth-project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.cm-auth-project-row:hover,
+.cm-auth-project-row.is-selected {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.cm-auth-project-row.is-current {
+  background: rgba(0, 224, 138, 0.05);
+  border-color: rgba(0, 224, 138, 0.25);
+  border-left: 3px solid #00E08A;
+}
+
+.cm-auth-project-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cm-auth-project-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.cm-auth-project-link {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f1f5f9;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  outline: none;
+}
+
+.cm-auth-project-link:hover {
+  color: #00E08A;
+  text-decoration: underline;
+}
+
+.cm-auth-project-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.cm-auth-project-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+/* --------------------------------------------------------------------------
+   6. Skeletons e Empty States
+   -------------------------------------------------------------------------- */
+.cm-auth-skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cm-auth-skeleton-row {
+  height: 44px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 25%, rgba(255, 255, 255, 0.07) 50%, rgba(255, 255, 255, 0.03) 75%);
+  background-size: 200% 100%;
+  animation: cm-auth-shimmer 1.5s infinite;
+}
+
+@keyframes cm-auth-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.cm-auth-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 16px;
+  text-align: center;
+  gap: 8px;
+  color: #94a3b8;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+}
+
+.cm-auth-empty-icon {
+  font-size: 24px;
+  opacity: 0.7;
+}
+
+/* --------------------------------------------------------------------------
+   7. Aba Segurança & Senha
+   -------------------------------------------------------------------------- */
+.cm-auth-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.cm-auth-card-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-auth-password-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #94a3b8;
+  padding: 4px 0;
+}
+
+.cm-auth-check-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-auth-check-item.valid {
+  color: #00E08A;
+}
+
+.cm-auth-check-item.invalid {
+  color: #ef4444;
+}
+
+/* --------------------------------------------------------------------------
+   8. Zona de Confirmação de Logout (Salvaguarda para Ações Irreversíveis)
+   -------------------------------------------------------------------------- */
+.cm-auth-logout-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cm-auth-logout-confirm {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: #fca5a5;
+  animation: cm-auth-fade-in 0.15s ease;
+}
+
+.cm-auth-logout-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@keyframes cm-auth-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --------------------------------------------------------------------------
+   9. Telas de Login, Cadastro e Convite (Clean & Focused)
+   -------------------------------------------------------------------------- */
+.cm-auth-single-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cm-auth-form-footer {
+  font-size: 11.5px;
+  color: var(--ui-cor-texto-secundario, #888899);
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.cm-auth-form-footer a {
+  color: #00E08A;
+  text-decoration: none;
+}
+
+.cm-auth-form-footer a:hover {
+  text-decoration: underline;
+}
