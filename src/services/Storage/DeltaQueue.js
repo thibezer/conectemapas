@@ -33,6 +33,8 @@ export class DeltaQueue {
     const compacted = GeoCompressor.compactFeatureForStorage(feature);
     _deletedFeatureIds.delete(feature.id);
     _dirtyFeatures.set(feature.id, { ...compacted, projectId });
+    // Regravar uma feição excluída antes (ex.: desfazer a exclusão) tira a tombstone local
+    LocalStore.removeLocalTombstone(feature.id, projectId);
     this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
   }
 
