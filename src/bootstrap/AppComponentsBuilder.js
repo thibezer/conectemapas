@@ -91,12 +91,10 @@ export class AppComponentsBuilder {
       };
     });
 
-    consumed.forEach(id => StorageService.deleteFeature(id, app.projectId));
+    StorageService.queueFeaturesBulkDelete([...consumed], app.projectId);
     app.features = app.features.filter(f => !consumed.has(f.id));
-    created.forEach((feat) => {
-      app.features.push(feat);
-      StorageService.saveFeature(feat, app.projectId);
-    });
+    created.forEach((feat) => app.features.push(feat));
+    StorageService.queueFeaturesBulkUpsert(created, app.projectId);
     app.refreshMapAndTable();
     app.saveMetadata(true);
     app.mapEngine?.selectFeatures(created.map(f => f.id));
