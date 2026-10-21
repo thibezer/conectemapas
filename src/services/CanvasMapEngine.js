@@ -877,6 +877,9 @@ export class CanvasMapEngine {
       };
     }
     if (!raw) return;
+    if (raw.type === 'Polygon' || raw.type === 'LineString') {
+      raw.coordinates = FeatureGeometryUtils.mergeCoincidentVertices(raw.coordinates, raw.type);
+    }
 
     // Regra do GEMINI.md: limpar o desenho, voltar para `select` e só então avisar o app
     this.host.definirFerramenta(null);
@@ -945,6 +948,10 @@ export class CanvasMapEngine {
     const coordinates = this._coordinatesOf(feicao);
     if (!coordinates) return;
     const updated = { ...original, coordinates };
+    // vértice arrastado exatamente sobre o vizinho vira um só (a forma fecha); o app devolve a geometria ao componente
+    if (updated.type === 'Polygon' || updated.type === 'LineString') {
+      updated.coordinates = FeatureGeometryUtils.mergeCoincidentVertices(coordinates, updated.type);
+    }
     // a alça de borda do círculo muda o raio, não as coordenadas
     if (feicao.geometria.tipo === 'Circle') updated.radius = Math.round(feicao.geometria.raioMetros * 100) / 100;
     if (this._vertexCallback && this.host.editandoVertices) this._vertexCallback(updated);

@@ -133,6 +133,37 @@ export class FeatureGeometryUtils {
     return clone;
   }
 
+  /**
+   * Funde vértices na MESMA posição exata (comparação sem tolerância) em um só.
+   * Só funde vértices vizinhos: o anel de polígono é circular (último vizinho do primeiro);
+   * numa linha o último ponto sobre o primeiro é um circuito proposital e fica como está.
+   * Um anel/linha nunca é reduzido abaixo do mínimo (3 vértices / 2 pontos).
+   * Devolve a MESMA referência de `coords` quando nada mudou (permite comparar por `===`).
+   * @param {Array} coords coordenadas da feição (não são alteradas)
+   * @param {string} type 'Polygon' ou 'LineString' (outros tipos voltam intactos)
+   */
+  static mergeCoincidentVertices(coords, type) {
+    const feat = { type, coordinates: coords };
+    const isPoly = type === 'Polygon';
+    const min = isPoly ? 3 : 2;
+    let result = coords;
+    for (const ring of this.getVertexRings(feat)) {
+      const kept = [];
+      for (const p of ring.points) {
+        const prev = kept[kept.length - 1];
+        if (!prev || prev[0] !== p[0] || prev[1] !== p[1]) kept.push(p);
+      }
+      if (isPoly && kept.length > 1) {
+        const first = kept[0];
+        const last = kept[kept.length - 1];
+        if (first[0] === last[0] && first[1] === last[1]) kept.pop();
+      }
+      if (kept.length === ring.points.length || kept.length < min) continue;
+      result = this.replaceRing(result, ring.path, kept, ring.closed);
+    }
+    return result;
+  }
+
   /** Remove o vértice de fechamento duplicado de um anel (primeiro == último). */
   static openRing(ring) {
     if (!Array.isArray(ring) || ring.length < 2) return ring || [];

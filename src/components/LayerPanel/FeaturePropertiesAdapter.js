@@ -490,6 +490,7 @@ export class FeaturePropertiesAdapter {
     const points = ring.points.map(p => [...p]);
     points[vIdx][axis] = val;
     draft.coordinates = FeatureGeometryUtils.replaceRing(draft.coordinates, ring.path, points, ring.closed);
+    draft.coordinates = FeatureGeometryUtils.mergeCoincidentVertices(draft.coordinates, draft.type);
     return true;
   }
 

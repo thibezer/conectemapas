@@ -89,6 +89,7 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 ## 6. Geometria e Inspeção de Feições
 - **Fonte única de cálculo**: área, perímetro e extensão vêm sempre de `FeatureGeometryUtils` (área elipsoidal GRS80 com furos subtraídos e multipolígonos somados; perímetro inclui o lado de fechamento). Não duplicar fórmulas em componentes.
 - **Métricas gravadas** (`Área (ha)`, `Área (m²)`, `Perímetro`, `Extensão`, `Raio`, `Área Coberta`) são geradas por `computeMetricProperties()` e recalculadas a cada edição; são somente leitura no inspetor.
+- **Vértices na mesma posição viram um só**: `FeatureGeometryUtils.mergeCoincidentVertices` (comparação exata, só vizinhos, anel de polígono circular, mínimo de 3/2 pontos) é aplicada no arraste do mapa (`_handleKitUpdated`), no desenho novo (`_handleKitCreated`) e na tabela de vértices (`applyVertexEdit`). Novo caminho de edição de geometria deve passar por ela.
 - **Edição pelo inspetor**: sempre via `panel.commitFeatureEdit(id, mutate)`, que parte da versão mais recente em `app.features` (nunca da cópia exibida), preservando alterações de colaboradores.
 - **Bloqueio**: feição com `locked: true` não é excluída (atalho, HUD, lote, inspetor) nem editada; somente o próprio bloqueio pode ser alterado.
 - **Campos sem coluna na API** (`description`, `category`, `locked`, `status`, `customAttributes`) viajam em `properties._cm` (`packFeatureForCloud`/`unpackFeatureFromCloud`); nunca exibir chaves iniciadas por `_`.
