@@ -6,6 +6,8 @@
    ========================================================================== */
 
 import { StorageService } from './StorageService.js';
+import { SpatialAlgorithms } from './SpatialAlgorithms.js';
+import { FeatureGeometryUtils } from './MapEngine/FeatureGeometryUtils.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -121,6 +123,46 @@ export class BatchActions {
     return commitBatch(app, ids, `Atributo "${key}"`, (d) => {
       if (d.properties && d.properties[key] === value) return false;
       d.properties = { ...(d.properties || {}), [key]: value };
+      return true;
+    });
+  }
+
+  /**
+   * Troca preenchimento e traço entre si. Linhas e textos têm uma cor só e ficam de fora.
+   */
+  static invertColors(app, ids) {
+    return commitBatch(app, ids, 'Inverter cores', (d) => {
+      if (/LineString/.test(d.type) || d.type === 'Text') return false;
+      if (!d.style) d.style = {};
+      const oldFill = d.style.fillColor !== undefined ? d.style.fillColor : (d.color || '#00E08A');
+      const oldStroke = d.style.strokeColor !== undefined ? d.style.strokeColor : '#ffffff';
+      if (oldFill === oldStroke) return false;
+      d.style.fillColor = oldStroke;
+      d.style.strokeColor = oldFill;
+      if (oldStroke !== 'none') d.color = oldStroke;
+      return true;
+    });
+  }
+
+  /**
+   * Remove vértices redundantes (Douglas-Peucker) de linhas e polígonos, anel por anel.
+   * Anel que ficaria abaixo do mínimo de vértices é mantido como está.
+   * @param {number} toleranceMeters
+   */
+  static simplify(app, ids, toleranceMeters = 5) {
+    return commitBatch(app, ids, 'Simplificar geometria', (d) => {
+      const isPoly = d.type === 'Polygon';
+      if (!isPoly && d.type !== 'LineString') return false;
+      const minVertices = isPoly ? 3 : 2;
+      let coords = d.coordinates;
+      for (const ring of FeatureGeometryUtils.getVertexRings(d)) {
+        const simplified = SpatialAlgorithms.simplifyDouglasPeucker(ring.points, toleranceMeters, isPoly);
+        if (Array.isArray(simplified) && simplified.length >= minVertices && simplified.length < ring.points.length) {
+          coords = FeatureGeometryUtils.replaceRing(coords, ring.path, simplified, ring.closed);
+        }
+      }
+      if (coords === d.coordinates) return false;
+      d.coordinates = coords;
       return true;
     });
   }

@@ -6,6 +6,7 @@
 
 import '@thibezer/ui-components-kit/tools';
 import './HeaderBar.css';
+import { MODIFY_ITEM_PREFIX, MODIFY_TAB_ID, buildModifyTab } from './ModifyRibbon.js';
 
 const svg = (paths) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
@@ -33,6 +34,7 @@ export class HeaderBar {
    * @param {Function} options.onToggleFeaturePopup - Callback para alternar balões de popup
    * @param {Function} options.onOpenAccount - Callback para abrir modal de conta
    * @param {Function} options.onOpenProject - Callback para abrir o modal de projeto (novo / excluir)
+   * @param {Function} options.onModifyAction - Callback (id, {anchor}) dos comandos da aba Modificar
    * @param {string} options.accountName - Nome do operador logado
    */
   constructor(options = {}) {
@@ -45,8 +47,13 @@ export class HeaderBar {
     this.onToggleFeaturePopup = options.onToggleFeaturePopup || (() => {});
     this.onOpenAccount = options.onOpenAccount || (() => {});
     this.onOpenProject = options.onOpenProject || (() => {});
+    this.onModifyAction = options.onModifyAction || (() => {});
     this.accountName = options.accountName || '';
     this.container = null;
+    this._modifyState = new Map(); // id → último estado aplicado (JSON), para só tocar no que mudou
+    this._hadSelection = false;
+    this._tabBeforeSelection = '';
+    this._autoSwitched = false;
   }
 
   escapeHtml(str) {
@@ -234,7 +241,8 @@ export class HeaderBar {
   setupRibbon() {
     this.ribbon = this.container.querySelector('#cm-ribbon');
     if (!this.ribbon) return;
-    this.ribbon.abas = [
+    this._modifyState.clear();
+    const abas = [
       {
         id: 'projeto',
         rotulo: 'Projeto',
@@ -264,6 +272,7 @@ export class HeaderBar {
           }
         ]
       },
+      buildModifyTab(),
       {
         id: 'dados',
         rotulo: 'Dados',
@@ -292,7 +301,40 @@ export class HeaderBar {
         ]
       }
     ];
+    this.ribbon.abas = abas;
     this.ribbon.abaAtiva = 'projeto';
+  }
+
+  /**
+   * Aplica o estado da aba Modificar (habilitação, rótulos, ferramenta ativa).
+   * Só os itens que mudaram desde a última chamada são atualizados no ribbon.
+   * Com seleção, a aba Modificar assume o foco; ao limpar a seleção, volta a aba anterior
+   * (a menos que o usuário tenha trocado de aba por conta própria nesse meio-tempo).
+   * @param {Record<string, Object>} state id do item → propriedades parciais
+   * @param {boolean} hasSelection
+   */
+  syncModify(state, hasSelection) {
+    if (!this.ribbon) return;
+    for (const [id, parcial] of Object.entries(state)) {
+      const assinatura = JSON.stringify(parcial);
+      if (this._modifyState.get(id) === assinatura) continue;
+      this._modifyState.set(id, assinatura);
+      this.ribbon.atualizarItem?.(id, parcial);
+    }
+
+    if (hasSelection && !this._hadSelection) {
+      if (this.ribbon.abaAtiva !== MODIFY_TAB_ID) {
+        this._tabBeforeSelection = this.ribbon.abaAtiva;
+        this._autoSwitched = true;
+        this.ribbon.selecionarAba(MODIFY_TAB_ID, false);
+      }
+    } else if (!hasSelection && this._hadSelection && this._autoSwitched) {
+      this._autoSwitched = false;
+      if (this.ribbon.abaAtiva === MODIFY_TAB_ID) {
+        this.ribbon.selecionarAba(this._tabBeforeSelection || 'projeto', false);
+      }
+    }
+    this._hadSelection = hasSelection;
   }
 
   /**
@@ -332,8 +374,16 @@ export class HeaderBar {
       'btn-open-import-export': () => abrirModal('modal-import-export'),
       'btn-open-share': () => abrirModal('modal-share')
     };
+    // Troca de aba feita pelo usuário (a automática não emite o evento): para de devolvê-lo à aba anterior
+    this.ribbon.addEventListener('ui-aba-change', () => { this._autoSwitched = false; });
     this.ribbon.addEventListener('ui-ferramenta', (e) => {
       const id = e.detail?.id;
+      if (typeof id === 'string' && id.startsWith(MODIFY_ITEM_PREFIX)) {
+        // O estado (ativo/desabilitado) é do app: o botão se atualiza em syncModify
+        if (e.detail.item?.tipo === 'toggle') e.preventDefault();
+        this.onModifyAction(id, { anchor: e.composedPath?.()[0] || this.ribbon });
+        return;
+      }
       const acao = acoes[id];
       if (!acao) return;
       // O estado do toggle de popup pertence ao app (updateFeaturePopupMode)

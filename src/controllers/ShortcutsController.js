@@ -22,6 +22,7 @@ export class ShortcutsController {
     } catch (e) {
       console.warn('[ShortcutsController] Falha ao capturar snapshot de histórico:', e);
     }
+    app.syncModifyRibbon?.();
   }
 
   /**
@@ -131,6 +132,22 @@ export class ShortcutsController {
     app.selectionHUD?.hide();
   }
 
+  /** Seleciona todas as feições visíveis (feição e camada não ocultas). Ctrl+A e botão da ribbon. */
+  static selectAll(app) {
+    const visibleFeats = app.features.filter(f => {
+      if (f.visible === false) return false;
+      const layer = app.layers.find(l => l.id === f.layerId);
+      return !layer || layer.visible !== false;
+    });
+    const ids = visibleFeats.map(f => f.id);
+    if (app.mapEngine) {
+      app.mapEngine.selectFeatures(ids);
+    }
+    if (app.layerPanel) {
+      app.layerPanel.setSelectedFeatures(visibleFeats, false);
+    }
+  }
+
   static bindGlobalShortcuts(app) {
     // O Leaflet escuta o teclado no document e engole o Esc (stopPropagation) quando o mapa tem
     // um popup registrado, o que acontece ao selecionar uma única feição. Por isso o Esc é
@@ -172,18 +189,7 @@ export class ShortcutsController {
       // Selecionar Tudo: Ctrl+A / Cmd+A
       else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        const visibleFeats = app.features.filter(f => {
-          if (f.visible === false) return false;
-          const layer = app.layers.find(l => l.id === f.layerId);
-          return !layer || layer.visible !== false;
-        });
-        const ids = visibleFeats.map(f => f.id);
-        if (app.mapEngine) {
-          app.mapEngine.selectFeatures(ids);
-        }
-        if (app.layerPanel) {
-          app.layerPanel.setSelectedFeatures(visibleFeats, false);
-        }
+        this.selectAll(app);
       }
       // Busca Avançada: Ctrl+Shift+F / Cmd+Shift+F
       else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {

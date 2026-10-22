@@ -118,3 +118,11 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - Padrões do componente desligados no `CanvasHost`: camadas padrão (satélite Google, WMS SIGEF/INCRA — que consulta o INCRA a cada clique), painel/barra do kit. Pan com a roda, caixa Window/Crossing, snap e menu de contexto do componente ficam ligados.
 - O kit instalado é uma build local do repositório do usuário (D:/Programação/UI_Componentes) enquanto não for publicado.
 - Histórico: o que o motor antigo fazia e o mapa de migração estão em `docs/MAPENGINE_INVENTARIO.md`.
+
+---
+
+## 10. Ribbon: aba "Modificar"
+- **Definição pura**: `ModifyRibbon.js` (sem DOM) declara a aba (`buildModifyTab`) e calcula o estado de cada comando para a seleção (`computeModifyState`: habilitado, rótulo/ícone de bloquear e ocultar, camada marcada, ferramenta ativa, histórico). Comando novo = item na aba + entrada no estado; `tests/test_modify_ribbon.js` falha se um id existir só de um lado.
+- **Sem lógica própria**: `ModifyActionsController` só roteia para o que já existe (barra de desenho via `drawingToolbar.onAction`, `app.batchActions`, `SelectionStyleController`, HUD). Simplificar e inverter cores em lote ficam em `BatchActions` (um passo de histórico) e entram em `app.batchActions`; não duplicar essas regras na ribbon, no HUD ou no menu de contexto.
+- **Sincronização**: `app.syncModifyRibbon()` (agrupa chamadas no mesmo ciclo) é disparada por `AppGeometryCoordinator.updateHUD` (seleção, recarga, desfazer/refazer), `pushHistory` e troca de ferramenta. `HeaderBar.syncModify` só chama `atualizarItem` no que mudou. Com seleção, a aba assume o foco e a anterior volta ao limpar; trocar de aba à mão cancela o retorno.
+- **Estado é do app**: botões de ferramenta (laço, conta-gotas, dividir, régua) refletem `mapEngine.activeTool`; clicar de novo volta para `select`.

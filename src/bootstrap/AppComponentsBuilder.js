@@ -24,6 +24,7 @@ import { ShortcutsController } from '../controllers/ShortcutsController.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { AppModalsBuilder } from './AppModalsBuilder.js';
 import { SelectionStyleController } from '../controllers/SelectionStyleController.js';
+import { ModifyActionsController } from '../controllers/ModifyActionsController.js';
 
 export class AppComponentsBuilder {
   /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
@@ -126,6 +127,7 @@ export class AppComponentsBuilder {
         if (app.drawingToolbar) {
           app.drawingToolbar.setActiveTool(tool);
         }
+        app.syncModifyRibbon?.();
       },
       onFeatureCreated: (rawFeature) => {
         FeatureSyncController.handleDrawingCompleted(app, rawFeature);
@@ -257,9 +259,11 @@ export class AppComponentsBuilder {
           duracao: 2500
         });
       },
-      onOpenAdvancedSearch: () => app.advancedSearch?.toggle()
+      onOpenAdvancedSearch: () => app.advancedSearch?.toggle(),
+      onModifyAction: (id, ctx) => ModifyActionsController.run(app, id, ctx)
     });
     app.headerBar.render(document.getElementById('header-mount'));
+    app.syncModifyRibbon?.();
     if (app.mapEngine) {
       app.headerBar.updateFeaturePopupMode(app.mapEngine.isFeaturePopupEnabled());
     }
@@ -730,6 +734,8 @@ export class AppComponentsBuilder {
       },
       moveToLayer: (ids, layerId, opts) => report('Mover para camada', BatchActions.moveToLayer(app, ids, layerId, opts), 'movidas'),
       applyColors: (ids, colors) => report('Aplicar cores', BatchActions.applyColors(app, ids, colors), 'coloridas'),
+      invertColors: (ids) => report('Inverter cores', BatchActions.invertColors(app, ids), 'invertidas'),
+      simplify: (ids) => report('Simplificar geometria', BatchActions.simplify(app, ids), 'simplificadas'),
       setLocked: (ids, locked) => report(locked ? 'Bloquear' : 'Desbloquear', BatchActions.setLocked(app, ids, locked)),
       setVisible: (ids, visible) => report(visible ? 'Mostrar' : 'Ocultar', BatchActions.setVisible(app, ids, visible)),
       // Reaproveita a exclusão coletiva do painel de camadas (ignora bloqueadas e oferece Desfazer)
