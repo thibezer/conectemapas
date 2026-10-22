@@ -111,6 +111,7 @@ export class ProjectActionsController {
         if (parsed.metadata) {
           const m = parsed.metadata;
           metaMsg = `${normalized.length} feições do Shapefile "${m.baseName}" importadas. Projeção: ${m.projection} | Codificação: ${m.encoding.toUpperCase()}`;
+          if (m.skipped > 0) metaMsg += ` | ${m.skipped} geometria(s) ignorada(s) por coordenadas inválidas`;
         } else if (parsed.isDwg || fileName.toLowerCase().endsWith('.dwg') || fileName.toLowerCase().endsWith('.dxf')) {
           const cadVer = parsed.version?.versionName || 'AutoCAD CAD';
           const layerTotal = parsed.layers?.length || 1;

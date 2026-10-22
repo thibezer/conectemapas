@@ -3,6 +3,8 @@
    Responsabilidade Única: Leitura e extração de geometrias vetoriais .SHP
    ========================================================================== */
 
+import { FeatureGeometryUtils } from '../MapEngine/FeatureGeometryUtils.js';
+
 export class ShpParser {
   /**
    * Parseia a geometria binária do arquivo .SHP
@@ -105,20 +107,25 @@ export class ShpParser {
           const start = parts[p];
           const end = (p + 1 < numParts) ? parts[p + 1] : allPoints.length;
           let ring = allPoints.slice(start, end);
-          if (ring.length >= 3) {
+          if (ring.length >= 2) {
             const first = ring[0];
             const last = ring[ring.length - 1];
             if (first && last && Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
               ring = ring.slice(0, -1);
             }
-            rings.push(ring);
           }
+          if (ring.length >= 3) rings.push(ring);
         }
 
+        // Anéis horários são externos e anti-horários são furos: cada polígono sai como
+        // [externo, furo...]. Partes disjuntas viram polígonos distintos (não "furos" umas das outras).
+        const polygons = FeatureGeometryUtils.groupPolygonRings(rings);
+        const firstPolygon = polygons[0];
         geometries.push({
           type: 'Polygon',
-          isMulti: rings.length > 1,
-          coordinates: rings.length > 1 ? rings : (rings[0] || allPoints)
+          isMulti: polygons.length > 1,
+          polygons,
+          coordinates: firstPolygon ? (firstPolygon.length > 1 ? firstPolygon : firstPolygon[0]) : []
         });
       }
       // MultiPoint (8), MultiPointZ (18), MultiPointM (28)

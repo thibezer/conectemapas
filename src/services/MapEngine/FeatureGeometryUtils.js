@@ -1,8 +1,10 @@
 /* ==========================================================================
    ConecteMapas - FeatureGeometryUtils
-   Cálculos geodésicos puros (área esférica com furos/multipolígonos, extensão Haversine,
+   Cálculos geodésicos puros (área elipsoidal com furos/multipolígonos, distância e azimute geodésicos GRS80,
    azimute/bearing, segmentos) e normalização de coordenadas Leaflet.
    ========================================================================== */
+
+import { Geodesy } from '../Geodesy.js';
 
 export class FeatureGeometryUtils {
   static escapeHtml(str) {
@@ -164,6 +166,69 @@ export class FeatureGeometryUtils {
     return result;
   }
 
+  /**
+   * Área com sinal (shoelace) de um anel [[y,x],...] com x = pt[1], y = pt[0].
+   * Positiva = anti-horário, negativa = horário. Só serve para orientação e comparação de tamanho.
+   */
+  static signedRingArea(ring) {
+    let sum = 0;
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      sum += a[1] * b[0] - b[1] * a[0];
+    }
+    return sum / 2;
+  }
+
+  /** Ponto [y,x] dentro do anel (ray casting). */
+  static pointInRing(pt, ring) {
+    const x = pt[1], y = pt[0];
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const xi = ring[i][1], yi = ring[i][0];
+      const xj = ring[j][1], yj = ring[j][0];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+
+  /**
+   * Agrupa os anéis de um polígono de Shapefile em polígonos independentes: [[externo, furo, ...], ...].
+   * Convenção do formato: anel horário = externo, anti-horário = furo. Se nenhum anel for horário
+   * (arquivo fora da norma), usa o aninhamento: anel dentro de um número ímpar de outros = furo.
+   * Um furo que não está dentro de nenhum anel externo vira polígono próprio (nunca se perde geometria).
+   * Cada polígono resultante tem a forma que o modelo do app entende (anel externo + furos).
+   */
+  static groupPolygonRings(rings) {
+    const valid = (rings || []).filter(r => Array.isArray(r) && r.length >= 3);
+    if (valid.length <= 1) return valid.map(r => [r]);
+
+    const absArea = (r) => Math.abs(this.signedRingArea(r));
+    const hasClockwise = valid.some(r => this.signedRingArea(r) < 0);
+
+    let outers;
+    let holes;
+    if (hasClockwise) {
+      outers = valid.filter(r => this.signedRingArea(r) <= 0);
+      holes = valid.filter(r => this.signedRingArea(r) > 0);
+    } else {
+      const containers = valid.map(r => valid.filter(o => o !== r && this.pointInRing(r[0], o)));
+      outers = valid.filter((r, i) => containers[i].length % 2 === 0);
+      holes = valid.filter((r, i) => containers[i].length % 2 === 1);
+    }
+
+    const polys = outers.map(o => [o]);
+    for (const hole of holes) {
+      let best = -1;
+      outers.forEach((o, i) => {
+        if (this.pointInRing(hole[0], o) && (best < 0 || absArea(o) < absArea(outers[best]))) best = i;
+      });
+      if (best >= 0) polys[best].push(hole);
+      else polys.push([hole]);
+    }
+    return polys;
+  }
+
   /** Remove o vértice de fechamento duplicado de um anel (primeiro == último). */
   static openRing(ring) {
     if (!Array.isArray(ring) || ring.length < 2) return ring || [];
@@ -243,12 +308,9 @@ export class FeatureGeometryUtils {
     return coords;
   }
 
+  /** Distância geodésica em metros no elipsoide GRS80 (Vincenty). */
   static calculateDistance(p1, p2) {
-    const R = 6371000;
-    const dLat = (p2[0] - p1[0]) * Math.PI / 180;
-    const dLon = (p2[1] - p1[1]) * Math.PI / 180;
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(p1[0] * Math.PI / 180) * Math.cos(p2[0] * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Geodesy.distance(p1, p2);
   }
 
   static calculatePolylineLength(coordinates) {
@@ -318,14 +380,10 @@ export class FeatureGeometryUtils {
     return M * N;
   }
 
+  /** Azimute geodésico inicial (0–360°) no elipsoide GRS80. */
   static calculateBearing(p1, p2) {
     if (!p1 || !p2) return 0;
-    const lat1 = p1[0] * Math.PI / 180;
-    const lat2 = p2[0] * Math.PI / 180;
-    const dLon = (p2[1] - p1[1]) * Math.PI / 180;
-    const y = Math.sin(dLon) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    return Geodesy.azimuth(p1, p2);
   }
 
   static calculateSegments(coordinates, isClosed = false) {

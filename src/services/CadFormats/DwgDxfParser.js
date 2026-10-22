@@ -290,7 +290,7 @@ export class DwgDxfParser {
           }
 
           // Converte a entidade CAD em Feição ConecteMapas
-          const parsedFeat = DwgDxfParser.convertCadEntityToFeature(entityData, sourceProj, defaultColor, layersMap);
+          const parsedFeat = DwgDxfParser.convertCadEntityToFeature(entityData, sourceProjection, defaultColor, layersMap);
           if (parsedFeat) {
             features.push(parsedFeat);
           }

@@ -5,7 +5,9 @@
    ========================================================================== */
 
 import proj4 from 'proj4';
-import { BRAZILIAN_PROJECTIONS } from '../../services/Shapefile/Projections.js';
+import { utmProjection } from '../../services/Shapefile/Projections.js';
+import { Geodesy } from '../../services/Geodesy.js';
+import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
 
 export class PrintItemsManager {
   /**
@@ -26,10 +28,11 @@ export class PrintItemsManager {
    */
   static formatDMS(val, isLat) {
     if (typeof val !== 'number' || isNaN(val)) return isLat ? `15°47'00"S` : `47°52'00"W`;
-    const abs = Math.abs(val);
-    const deg = Math.floor(abs);
-    const min = Math.floor((abs - deg) * 60);
-    const sec = Math.round(((abs - deg) * 60 - min) * 60);
+    // Arredonda em segundos inteiros ANTES de separar (evita 59'60" e 10°59'60")
+    const total = Math.round(Math.abs(val) * 3600);
+    const deg = Math.floor(total / 3600);
+    const min = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
     const hemi = isLat ? (val >= 0 ? 'N' : 'S') : (val >= 0 ? 'E' : 'W');
     return `${deg}°${String(min).padStart(2, '0')}'${String(sec).padStart(2, '0')}"${hemi}`;
   }
@@ -40,39 +43,43 @@ export class PrintItemsManager {
   static formatAzimuth(degVal) {
     if (typeof degVal !== 'number' || isNaN(degVal)) return `00°00'00"`;
     const val = (degVal % 360 + 360) % 360;
-    const deg = Math.floor(val);
-    const min = Math.floor((val - deg) * 60);
-    const sec = Math.round(((val - deg) * 60 - min) * 60);
+    const total = Math.round(val * 3600) % (360 * 3600); // 359°59'59,6" arredonda para 0°
+    const deg = Math.floor(total / 3600);
+    const min = Math.floor((total % 3600) / 60);
+    const sec = total % 60;
     return `${String(deg).padStart(2, '0')}°${String(min).padStart(2, '0')}'${String(sec).padStart(2, '0')}"`;
   }
 
   /**
-   * Detecta automaticamente a Zona UTM brasileira a partir da longitude
+   * Fuso UTM (1–60) a partir da longitude
    */
   static detectUtmZone(lng) {
     const zone = Math.floor((lng + 180) / 6) + 1;
-    return Math.max(18, Math.min(25, zone));
+    return Math.max(1, Math.min(60, zone));
   }
 
   /**
-   * Converte coordenadas [lat, lng] (WGS84 / SIRGAS 2000) para UTM em metros
+   * Converte coordenadas [lat, lng] (WGS84 / SIRGAS 2000) para UTM em metros.
+   * O hemisfério vem da latitude (norte: Roraima, Amapá...) a menos que `forcedSouth` seja informado
+   * (um polígono que cruza o equador usa um único hemisfério para todos os vértices).
    */
-  static toUtmCoords(lat, lng, forcedZone = null) {
+  static toUtmCoords(lat, lng, forcedZone = null, forcedSouth = null) {
     const zone = forcedZone || this.detectUtmZone(lng);
-    const epsgCode = `EPSG:${31960 + zone}`; // SIRGAS 2000 UTM Zonas 18S a 25S
-    const projDef = BRAZILIAN_PROJECTIONS[epsgCode] || `+proj=utm +zone=${zone} +south +ellps=GRS80 +units=m +no_defs`;
+    const south = forcedSouth === null ? lat < 0 : forcedSouth;
+    const { epsg, def } = utmProjection('sirgas', zone, south);
 
     try {
-      const [easting, northing] = proj4('EPSG:4326', projDef, [lng, lat]);
+      const [easting, northing] = proj4('EPSG:4326', def, [lng, lat]);
       return {
         easting: Math.round(easting * 100) / 100,
         northing: Math.round(northing * 100) / 100,
         zone,
-        epsgCode
+        south,
+        epsgCode: epsg
       };
     } catch (err) {
       console.warn('[PrintItemsManager] Erro na projeção UTM:', err);
-      return { easting: 0, northing: 0, zone, epsgCode: 'EPSG:4674' };
+      return { easting: 0, northing: 0, zone, south, epsgCode: 'EPSG:4674' };
     }
   }
 
@@ -262,43 +269,44 @@ export class PrintItemsManager {
       return { featureName: 'Nenhuma Feição', vertices: [], totalArea: 0, totalPerimeter: 0 };
     }
 
-    // Normaliza anel de coordenadas
+    // Anel exterior: o primeiro polígono, mesmo que a feição tenha furos ou várias partes
+    const isPolygon = (targetFeature.type || '').toLowerCase() === 'polygon';
     let rawCoords = targetFeature.coordinates;
-    if (Array.isArray(rawCoords[0]) && Array.isArray(rawCoords[0][0])) {
-      rawCoords = rawCoords[0]; // Extrai anel exterior se for MultiPolygon
-    }
+    const depth = FeatureGeometryUtils.coordinateDepth(rawCoords);
+    if (depth >= 4) rawCoords = rawCoords[0][0];
+    else if (depth === 3) rawCoords = rawCoords[0];
 
     // Normaliza para array de [lat, lng]
-    const points = rawCoords.map(c => {
+    let points = rawCoords.map(c => {
       if (Array.isArray(c)) return [c[0], c[1]];
       if (c && typeof c.lat === 'number' && typeof c.lng === 'number') return [c.lat, c.lng];
       return null;
     }).filter(Boolean);
+    if (isPolygon) points = FeatureGeometryUtils.openRing(points);
 
     if (points.length < 2) {
       return { featureName: targetFeature.name || 'Feição', vertices: [], totalArea: 0, totalPerimeter: 0 };
     }
 
-    // Identifica zona UTM média
+    // Fuso e hemisfério médios; todos os vértices usam o mesmo fuso
     const avgLng = points.reduce((s, p) => s + p[1], 0) / points.length;
+    const avgLat = points.reduce((s, p) => s + p[0], 0) / points.length;
     const utmZone = this.detectUtmZone(avgLng);
+    const utmSouth = avgLat < 0;
 
-    // Converte todos os pontos para UTM em metros
-    const utmPoints = points.map(p => this.toUtmCoords(p[0], p[1], utmZone));
+    // Coordenadas UTM (Norte/Leste) de cada vértice
+    const utmPoints = points.map(p => this.toUtmCoords(p[0], p[1], utmZone, utmSouth));
 
+    // Distâncias e azimutes geodésicos no elipsoide (os mesmos do inspetor de feições);
+    // distância e azimute de quadrícula UTM divergem até ~0,08% e pela convergência meridiana.
     const vertices = [];
     let totalPerimeter = 0;
     const n = points.length;
 
     for (let i = 0; i < n; i++) {
       const curr = utmPoints[i];
-      const next = utmPoints[(i + 1) % n];
-
-      const dE = next.easting - curr.easting;
-      const dN = next.northing - curr.northing;
-      const dist = Math.sqrt(dE * dE + dN * dN);
-      let azimuth = (Math.atan2(dE, dN) * 180) / Math.PI;
-      if (azimuth < 0) azimuth += 360;
+      const geo = Geodesy.inverse(points[i], points[(i + 1) % n]);
+      const dist = geo.distance;
 
       totalPerimeter += dist;
 
@@ -309,21 +317,19 @@ export class PrintItemsManager {
         northing: curr.northing.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         easting: curr.easting.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         distance: dist > 0 ? dist.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-',
-        azimuth: dist > 0 ? this.formatAzimuth(azimuth) : '-'
+        azimuth: dist > 0 ? this.formatAzimuth(geo.azimuth) : '-'
       });
     }
 
-    // Cálculo da Área em projeção UTM via Gauss / Shoelace
-    let areaSum = 0;
-    for (let i = 0; i < n; i++) {
-      const j = (i + 1) % n;
-      areaSum += (utmPoints[i].easting * utmPoints[j].northing) - (utmPoints[j].easting * utmPoints[i].northing);
-    }
-    const totalAreaM2 = Math.abs(areaSum) / 2;
+    // Área elipsoidal (a mesma do inspetor: furos subtraídos, partes somadas)
+    const totalAreaM2 = isPolygon
+      ? FeatureGeometryUtils.calculatePolygonArea(targetFeature.coordinates)
+      : FeatureGeometryUtils.calculateSinglePolygonArea(points);
 
     return {
       featureName: targetFeature.name || 'Polígono Cadastrado',
       utmZone,
+      utmHemisphere: utmSouth ? 'S' : 'N',
       vertices,
       totalAreaM2,
       totalAreaHa: totalAreaM2 / 10000,
@@ -342,7 +348,7 @@ export class PrintItemsManager {
       <div class="cm-item-vertices-table">
         <div class="cm-tb-vert-header">
           <span>TABELA DE COORDENADAS E CONFRONTAÇÕES</span>
-          <span style="font-size: 6.5px; opacity: 0.85;">SIRGAS 2000 UTM ${data.utmZone || 23}S</span>
+          <span style="font-size: 6.5px; opacity: 0.85;">SIRGAS 2000 UTM ${data.utmZone || 23}${data.utmHemisphere || 'S'}</span>
         </div>
         <div class="cm-tb-vert-scroll">
           <table class="cm-vert-native-table">
@@ -351,8 +357,8 @@ export class PrintItemsManager {
                 <th>Vértice</th>
                 <th>Norte (Y)</th>
                 <th>Leste (X)</th>
-                <th>Azimute</th>
-                <th>Distância (m)</th>
+                <th>Azimute geod.</th>
+                <th>Dist. geod. (m)</th>
               </tr>
             </thead>
             <tbody>
@@ -403,8 +409,9 @@ export class PrintItemsManager {
     if (mode === 'utm') {
       const avgLng = (mapBounds.west + mapBounds.east) / 2;
       const zone = this.detectUtmZone(avgLng);
-      const nw = this.toUtmCoords(mapBounds.north, mapBounds.west, zone);
-      const se = this.toUtmCoords(mapBounds.south, mapBounds.east, zone);
+      const south = (mapBounds.north + mapBounds.south) / 2 < 0;
+      const nw = this.toUtmCoords(mapBounds.north, mapBounds.west, zone, south);
+      const se = this.toUtmCoords(mapBounds.south, mapBounds.east, zone, south);
 
       return `
         <div class="cm-item-grid-border">

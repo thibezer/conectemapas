@@ -510,8 +510,9 @@ export class PrintExporter {
     if (item.gridType === 'utm') {
       const avgLng = (bounds.getWest() + bounds.getEast()) / 2;
       const zone = PrintItemsManager.detectUtmZone(avgLng);
-      const nw = PrintItemsManager.toUtmCoords(bounds.getNorth(), bounds.getWest(), zone);
-      const se = PrintItemsManager.toUtmCoords(bounds.getSouth(), bounds.getEast(), zone);
+      const south = (bounds.getNorth() + bounds.getSouth()) / 2 < 0;
+      const nw = PrintItemsManager.toUtmCoords(bounds.getNorth(), bounds.getWest(), zone, south);
+      const se = PrintItemsManager.toUtmCoords(bounds.getSouth(), bounds.getEast(), zone, south);
 
       ctx.textAlign = 'center';
       ctx.fillText(`${nw.northing.toLocaleString('pt-BR')} m N`, x + w / 2, y - 4);
@@ -719,8 +720,8 @@ export class PrintExporter {
       { name: 'Vértice', w: w * 0.15 },
       { name: 'Norte (Y)', w: w * 0.23 },
       { name: 'Leste (X)', w: w * 0.23 },
-      { name: 'Azimute', w: w * 0.21 },
-      { name: 'Distância (m)', w: w * 0.18 }
+      { name: 'Az. geod.', w: w * 0.21 },
+      { name: 'Dist. geod. (m)', w: w * 0.18 }
     ];
 
     const subHeadH = h * 0.10;

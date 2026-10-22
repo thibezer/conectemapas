@@ -3,6 +3,8 @@
    Responsabilidade Única: Serialização e Desserialização de RFC 7946 GeoJSON
    ========================================================================== */
 
+import { FeatureGeometryUtils } from '../MapEngine/FeatureGeometryUtils.js';
+
 export class GeoJsonConverter {
   /**
    * Converte a lista de feições para GeoJSON FeatureCollection padrão RFC 7946
@@ -40,31 +42,20 @@ export class GeoJsonConverter {
             };
           }
         } else if (f.type === 'Polygon') {
-          const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
-          if (isMulti) {
-            geometry = {
-              type: 'MultiPolygon',
-              coordinates: f.coordinates.map(ring => {
-                const r = ring.map(c => [c[1], c[0]]);
-                if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
-                  r.push([r[0][0], r[0][1]]);
-                }
-                return [r];
-              })
-            };
-          } else {
-            // Garante anel fechado
-            const ring = f.coordinates.map(c => [c[1], c[0]]);
-            if (
-              ring.length > 0 &&
-              (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])
-            ) {
-              ring.push([ring[0][0], ring[0][1]]);
+          // Anéis fechados em [lng, lat]. Profundidade 3 = externo + furos (um Polygon);
+          // profundidade 4 = vários polígonos (MultiPolygon).
+          const closeRing = (ring) => {
+            const r = ring.map(c => [c[1], c[0]]);
+            if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
+              r.push([r[0][0], r[0][1]]);
             }
-            geometry = {
-              type: 'Polygon',
-              coordinates: [ring]
-            };
+            return r;
+          };
+          const polygons = FeatureGeometryUtils.toPolygonList(f.coordinates);
+          if (polygons.length === 1) {
+            geometry = { type: 'Polygon', coordinates: polygons[0].map(closeRing) };
+          } else if (polygons.length > 1) {
+            geometry = { type: 'MultiPolygon', coordinates: polygons.map(poly => poly.map(closeRing)) };
           }
         } else if (f.type === 'Circle') {
           geometry = {
@@ -176,19 +167,27 @@ export class GeoJsonConverter {
           createdAt: props.createdAt || new Date().toISOString()
         });
       } else if (geomType === 'MultiPolygon') {
-        const coords = feat.geometry.coordinates.map(poly => GeoJsonConverter.openRing(poly[0]));
-        features.push({
-          id,
-          name,
-          layerId,
-          type: 'Polygon',
-          coordinates: coords,
-          category,
-          color,
-          description: props.description || '',
-          properties: { ...props },
-          createdBy: props.createdBy || 'Importado',
-          createdAt: props.createdAt || new Date().toISOString()
+        // Cada polígono do MultiPolygon (externo + furos) vira uma feição: o modelo do app trata
+        // várias partes de uma mesma feição como externo + furos, o que zeraria a área.
+        const polygons = feat.geometry.coordinates.filter(poly => Array.isArray(poly) && Array.isArray(poly[0]));
+        polygons.forEach((poly, k) => {
+          const multi = polygons.length > 1;
+          const coords = poly.length > 1
+            ? poly.map(ring => GeoJsonConverter.openRing(ring))
+            : GeoJsonConverter.openRing(poly[0]);
+          features.push({
+            id: multi ? `${id}-p${k + 1}` : id,
+            name: multi ? `${name} (parte ${k + 1}/${polygons.length})` : name,
+            layerId,
+            type: 'Polygon',
+            coordinates: coords,
+            category,
+            color,
+            description: props.description || '',
+            properties: { ...props },
+            createdBy: props.createdBy || 'Importado',
+            createdAt: props.createdAt || new Date().toISOString()
+          });
         });
       }
     });

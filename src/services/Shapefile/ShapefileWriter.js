@@ -7,6 +7,37 @@ import { FeatureGeometryUtils } from '../MapEngine/FeatureGeometryUtils.js';
 
 export class ShapefileWriter {
   /**
+   * Partes (anéis ou linhas) de uma feição no formato do Shapefile.
+   * Polígono: profundidade 2 = anel único; 3 = externo + furos; 4 = multipolígono (cada um com seus furos).
+   * Anéis saem fechados, externos no sentido horário e furos no anti-horário (exigência do formato).
+   * Linha: profundidade 3 = várias partes. Ponto: não passa por aqui.
+   */
+  static getParts(f) {
+    const coords = f.coordinates;
+    if (f.type === 'Point') return [[coords]];
+
+    if (f.type === 'Polygon') {
+      const orient = (ring, clockwise) => {
+        const pts = FeatureGeometryUtils.openRing(ring);
+        const cw = FeatureGeometryUtils.signedRingArea(pts) < 0;
+        const ordered = cw === clockwise ? [...pts] : [...pts].reverse();
+        ordered.push(ordered[0]);
+        return ordered;
+      };
+      const parts = [];
+      FeatureGeometryUtils.toPolygonList(coords).forEach(poly => {
+        poly.forEach((ring, ri) => {
+          if (Array.isArray(ring) && ring.length >= 3) parts.push(orient(ring, ri === 0));
+        });
+      });
+      return parts;
+    }
+
+    const isMulti = Array.isArray(coords[0]) && Array.isArray(coords[0][0]);
+    return isMulti ? coords.map(part => [...part]) : [[...coords]];
+  }
+
+  /**
    * Constrói buffers binários para .SHP e .SHX
    * @param {Array} features
    * @returns {{shpBuffer: ArrayBuffer, shxBuffer: ArrayBuffer}}
@@ -15,24 +46,20 @@ export class ShapefileWriter {
     const validFeatures = features.filter(f => Array.isArray(f.coordinates) && f.coordinates.length > 0);
     const numRecords = validFeatures.length;
 
+    // Partes de cada feição: anéis/linhas já fechados e orientados (externo horário, furo anti-horário)
+    const partsOf = validFeatures.map(f => this.getParts(f));
+
     // Calcula Bounding Box geral
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    const getFlattenedPoints = (f) => {
-      if (f.type === 'Point') return [f.coordinates];
-      if (Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0])) {
-        return f.coordinates.flat();
-      }
-      return f.coordinates || [];
-    };
-
-    validFeatures.forEach(f => {
-      const pts = getFlattenedPoints(f);
-      pts.forEach(p => {
-        const lat = p[0], lng = p[1];
-        if (lng < minX) minX = lng;
-        if (lng > maxX) maxX = lng;
-        if (lat < minY) minY = lat;
-        if (lat > maxY) maxY = lat;
+    partsOf.forEach(parts => {
+      parts.forEach(part => {
+        part.forEach(p => {
+          const lat = p[0], lng = p[1];
+          if (lng < minX) minX = lng;
+          if (lng > maxX) maxX = lng;
+          if (lat < minY) minY = lat;
+          if (lat > maxY) maxY = lat;
+        });
       });
     });
 
@@ -43,7 +70,7 @@ export class ShapefileWriter {
     let totalRecordBytes = 0;
     const recordBuffers = [];
 
-    validFeatures.forEach((f) => {
+    validFeatures.forEach((f, featIdx) => {
       let shapeType = 5;
       let recordByteLen = 0;
       let recordView;
@@ -61,23 +88,14 @@ export class ShapefileWriter {
         const isPoly = f.type === 'Polygon';
         shapeType = isPoly ? 5 : 3;
 
-        const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
-        const partsList = isMulti ? f.coordinates : [f.coordinates];
+        const partsList = partsOf[featIdx];
         const numParts = partsList.length;
         const allPoints = [];
         const partOffsets = [];
 
         partsList.forEach(part => {
           partOffsets.push(allPoints.length);
-          const ring = [...part];
-          if (isPoly && ring.length > 0) {
-            const first = ring[0];
-            const last = ring[ring.length - 1];
-            if (first && last && (Math.abs(first[0] - last[0]) > 1e-7 || Math.abs(first[1] - last[1]) > 1e-7)) {
-              ring.push(first);
-            }
-          }
-          ring.forEach(pt => allPoints.push(pt));
+          part.forEach(pt => allPoints.push(pt));
         });
 
         const numPoints = allPoints.length;

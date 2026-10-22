@@ -107,56 +107,78 @@ export class ShapefileParser {
     let transformer = null;
     if (prjInfo && !prjInfo.isWGS84 && prjInfo.epsg !== 'EPSG:4326') {
       try {
-        const sourceEpsg = prjInfo.epsg || 'CUSTOM_PRJ';
-        transformer = proj4(sourceEpsg, 'EPSG:4326');
+        transformer = proj4(prjInfo.proj4Key || prjInfo.epsg || 'CUSTOM_PRJ', 'EPSG:4326');
       } catch (err) {
         console.warn('[ShapefileParser] Erro ao instanciar transformer proj4:', err);
       }
     }
 
     const features = [];
+    let skipped = 0;
     for (let i = 0; i < rawGeometries.length; i++) {
       const geom = rawGeometries[i];
       if (!geom || geom.type === 'Null') continue;
 
       const attrs = dbfRecords[i] || {};
-      const reprojectedCoords = this.reprojectGeometry(geom.coordinates, geom.type, prjInfo, transformer);
 
       let featType = 'Polygon';
       if (geom.type === 'Point' || geom.type === 'MultiPoint') featType = 'Point';
       else if (geom.type === 'PolyLine') featType = 'LineString';
       else if (geom.type === 'Polygon') featType = 'Polygon';
 
-      const featName = attrs.NOME || attrs.Nome || attrs.name || attrs.NAME || attrs.ID || attrs.id || `${baseName} #${i + 1}`;
+      // Polígono de várias partes: cada parte (externo + furos) vira uma feição, com os mesmos atributos
+      const parts = geom.type === 'Polygon' && Array.isArray(geom.polygons)
+        ? geom.polygons.map(p => (p.length > 1 ? p : p[0]))
+        : [geom.coordinates];
+      if (parts.length === 0) continue;
+
+      const baseFeatName = attrs.NOME || attrs.Nome || attrs.name || attrs.NAME || attrs.ID || attrs.id || `${baseName} #${i + 1}`;
       const featCategory = attrs.CATEGORIA || attrs.Categoria || attrs.TIPO || attrs.Tipo || 'Shapefile';
 
-      features.push({
-        id: `feat-shp-${Date.now()}-${i + 1}`,
-        name: String(featName),
-        type: featType,
-        layerId: 'layer-topografia',
-        category: String(featCategory),
-        coordinates: reprojectedCoords,
-        properties: attrs,
-        customAttributes: Object.entries(attrs).map(([key, val]) => ({
-          key,
-          value: val == null ? '' : String(val)
-        })),
-        style: {
-          fillColor: '#00E08A',
-          fillOpacity: featType === 'LineString' ? 1 : 0.35,
-          strokeColor: '#00E08A',
-          strokeWidth: 2.5,
-          strokeDashArray: '',
-          markerIcon: 'pin',
-          markerSize: 24,
-          markerRotation: 0,
-          showLabel: false,
-          labelField: 'name'
-        },
-        createdBy: 'Importador SHP',
-        createdAt: new Date().toISOString()
+      parts.forEach((partCoords, partIdx) => {
+        const reprojectedCoords = this.reprojectGeometry(partCoords, geom.type, prjInfo, transformer);
+        if (!this.coordinatesInRange(reprojectedCoords)) {
+          skipped++;
+          return;
+        }
+
+        const multi = parts.length > 1;
+        const featName = multi ? `${baseFeatName} (parte ${partIdx + 1}/${parts.length})` : baseFeatName;
+
+        features.push({
+          id: `feat-shp-${Date.now()}-${i + 1}${multi ? `-p${partIdx + 1}` : ''}`,
+          name: String(featName),
+          type: featType,
+          layerId: 'layer-topografia',
+          category: String(featCategory),
+          coordinates: reprojectedCoords,
+          properties: attrs,
+          customAttributes: Object.entries(attrs).map(([key, val]) => ({
+            key,
+            value: val == null ? '' : String(val)
+          })),
+          style: {
+            fillColor: '#00E08A',
+            fillOpacity: featType === 'LineString' ? 1 : 0.35,
+            strokeColor: '#00E08A',
+            strokeWidth: 2.5,
+            strokeDashArray: '',
+            markerIcon: 'pin',
+            markerSize: 24,
+            markerRotation: 0,
+            showLabel: false,
+            labelField: 'name'
+          },
+          createdBy: 'Importador SHP',
+          createdAt: new Date().toISOString()
+        });
       });
+    }
+
+    if (features.length === 0 && skipped > 0) {
+      throw new Error(prjBuffer
+        ? `Não foi possível converter as coordenadas do Shapefile (projeção do .prj: ${prjInfo.name}). Verifique o sistema de referência do arquivo.`
+        : 'As coordenadas do Shapefile não são graus decimais e o pacote não tem arquivo .prj. Inclua o .prj para informar a projeção.');
     }
 
     return {
@@ -164,6 +186,7 @@ export class ShapefileParser {
       metadata: {
         baseName,
         totalRecords: features.length,
+        skipped,
         encoding,
         projection: prjInfo.name || 'WGS 84',
         epsg: prjInfo.epsg || 'EPSG:4326',
@@ -194,25 +217,24 @@ export class ShapefileParser {
 
     // Se não recebeu o transformer compilado do batch, compila agora (apenas uma vez por geometria)
     if (!transformer) {
-      const sourceEpsg = prjInfo.epsg || 'CUSTOM_PRJ';
       try {
-        transformer = proj4(sourceEpsg, 'EPSG:4326');
+        transformer = proj4(prjInfo.proj4Key || prjInfo.epsg || 'CUSTOM_PRJ', 'EPSG:4326');
       } catch (err) {
         console.warn('[ShapefileParser] Erro ao instanciar transformer proj4:', err);
-        return coords;
+        return null;
       }
     }
 
+    // Ponto que não converte vira NaN: nunca devolver a coordenada original (metros lidos como graus)
     const reprojectPoint = (pt) => {
       try {
         // No Shapefile do ShpParser, pt é [lat, lng]. proj4.forward recebe [lng, lat]
         const [wgsLng, wgsLat] = transformer.forward([pt[1], pt[0]]);
         return [wgsLat, wgsLng];
       } catch (err) {
-        return pt;
+        return [NaN, NaN];
       }
     };
-
 
     if (geomType === 'Point') {
       return reprojectPoint(coords);
@@ -223,6 +245,16 @@ export class ShapefileParser {
       return coords.map(pt => reprojectPoint(pt));
     }
     return coords;
+  }
+
+  /** Todas as posições são [lat, lng] finitas dentro de ±90° / ±180° (aceita ponto, anel ou anéis). */
+  static coordinatesInRange(coords) {
+    if (!Array.isArray(coords) || coords.length === 0) return false;
+    if (typeof coords[0] === 'number') {
+      const [lat, lng] = coords;
+      return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+    }
+    return coords.every(c => this.coordinatesInRange(c));
   }
 
 

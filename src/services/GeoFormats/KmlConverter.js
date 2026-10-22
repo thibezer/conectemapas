@@ -3,6 +3,8 @@
    Responsabilidade Única: Serialização e Parsing de arquivos KML (Google Earth / QGIS)
    ========================================================================== */
 
+import { FeatureGeometryUtils } from '../MapEngine/FeatureGeometryUtils.js';
+
 export class KmlConverter {
   /**
    * Sanitiza strings para XML seguro
@@ -41,24 +43,24 @@ export class KmlConverter {
           geomKML = `<LineString><tessellate>1</tessellate><coordinates>${coordsStr}</coordinates></LineString>`;
         }
       } else if (f.type === 'Polygon') {
-        const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
-        if (isMulti) {
-          const polys = f.coordinates.map(ring => {
-            const r = [...ring];
-            if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
-              r.push([r[0][0], r[0][1]]);
-            }
-            const coordsStr = r.map(c => `${c[1]},${c[0]},0`).join(' ');
-            return `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coordsStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
-          }).join('');
-          geomKML = `<MultiGeometry>${polys}</MultiGeometry>`;
-        } else {
-          const r = [...f.coordinates];
+        // Profundidade 3 = externo + furos (innerBoundaryIs); profundidade 4 = vários polígonos
+        const ringCoords = (ring) => {
+          const r = [...ring];
           if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
             r.push([r[0][0], r[0][1]]);
           }
-          const coordsStr = r.map(c => `${c[1]},${c[0]},0`).join(' ');
-          geomKML = `<Polygon><outerBoundaryIs><LinearRing><coordinates>${coordsStr}</coordinates></LinearRing></outerBoundaryIs></Polygon>`;
+          return r.map(c => `${c[1]},${c[0]},0`).join(' ');
+        };
+        const polygonKML = (poly) => {
+          const [outer, ...holes] = poly;
+          const inner = holes.map(h => `<innerBoundaryIs><LinearRing><coordinates>${ringCoords(h)}</coordinates></LinearRing></innerBoundaryIs>`).join('');
+          return `<Polygon><outerBoundaryIs><LinearRing><coordinates>${ringCoords(outer)}</coordinates></LinearRing></outerBoundaryIs>${inner}</Polygon>`;
+        };
+        const polygons = FeatureGeometryUtils.toPolygonList(f.coordinates);
+        if (polygons.length === 1) {
+          geomKML = polygonKML(polygons[0]);
+        } else if (polygons.length > 1) {
+          geomKML = `<MultiGeometry>${polygons.map(polygonKML).join('')}</MultiGeometry>`;
         }
       }
 
