@@ -143,6 +143,9 @@ export class ShpParser {
           points,
           coordinates: points[0] || []
         });
+      } else {
+        // Tipo não suportado (ex.: MultiPatch): mantém o registro como nulo para não deslocar os atributos do .dbf
+        geometries.push({ type: 'Null', coordinates: [] });
       }
 
       offset = recordDataPos + contentLengthBytes;

@@ -468,4 +468,30 @@ for (const [lat, lon, zone] of [[-15.7939, -47.8828, 23], [-30.03, -51.23, 22], 
   near(mpd.lat, 110574.276, 0.01, 'metros por grau de latitude no equador');
 }
 
+// ---------------------------------------------------------------------------
+// 9. Simplificação / junção em metros reais; registro SHP não suportado não desalinha atributos
+// ---------------------------------------------------------------------------
+{
+  assert.strictEqual(SpatialAlgorithms.pointDistance([-15.79, -47.88], [-15.78, -47.88]).toFixed(3), '1106.565', 'pointDistance é geodésico');
+
+  // Douglas-Peucker: um desvio lateral de 8 m no meio de uma linha leste–oeste cai com tolerância de 10 m
+  // e permanece com tolerância de 5 m (a escala de longitude em -15,79° é 0,2% menor que a da esfera)
+  const lat0 = -15.79, lon0 = -47.88;
+  const perDeg = Geodesy.metersPerDegree(lat0);
+  const line = [[lat0, lon0], [lat0 + 8 / perDeg.lat, lon0 + 0.0005], [lat0, lon0 + 0.001]];
+  assert.strictEqual(SpatialAlgorithms.perpendicularDistance(line[1], line[0], line[2]).toFixed(2), '8.00', 'distância perpendicular em metros reais');
+
+  // Registro de tipo desconhecido (31 = MultiPatch) vira nulo e mantém o índice do .dbf
+  const buf = new ArrayBuffer(100 + 12 + 28);
+  const v = new DataView(buf);
+  v.setInt32(0, 9994, false); v.setInt32(24, buf.byteLength / 2, false); v.setInt32(28, 1000, true);
+  v.setInt32(100, 1, false); v.setInt32(104, 2, false); v.setInt32(108, 31, true);
+  v.setInt32(112, 2, false); v.setInt32(116, 10, false); v.setInt32(120, 1, true);
+  v.setFloat64(124, -47, true); v.setFloat64(132, -15, true);
+  const recs = ShpParser.parse(buf, null);
+  assert.strictEqual(recs.length, 2);
+  assert.strictEqual(recs[0].type, 'Null');
+  assert.deepStrictEqual(recs[1].coordinates, [-15, -47], 'o ponto continua no índice 1 (atributo correto)');
+}
+
 console.log('✔ Motor geodésico: UTM, distância/azimute/área elipsoidais, .prj, partes/furos, UTM norte e DXF validados.');

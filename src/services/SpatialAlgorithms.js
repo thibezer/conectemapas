@@ -15,7 +15,7 @@ export class SpatialAlgorithms {
    * Converte metros em aproximação de graus de latitude
    */
   static metersToDegreesLat(meters, lat = null) {
-    return meters / (lat === null ? 111139 : Geodesy.metersPerDegree(lat).lat);
+    return meters / Geodesy.metersPerDegree(lat === null ? 0 : lat).lat;
   }
 
   /**
@@ -26,31 +26,22 @@ export class SpatialAlgorithms {
   }
 
   /**
-   * Distância euclidiana em metros entre dois pontos geodésicos
+   * Distância geodésica em metros (elipsoide GRS80) entre dois pontos [lat, lng]
    */
   static pointDistance(p1, p2) {
-    const R = 6371000;
-    const dLat = ((p2[0] - p1[0]) * Math.PI) / 180;
-    const dLon = ((p2[1] - p1[1]) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((p1[0] * Math.PI) / 180) *
-        Math.cos((p2[0] * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Geodesy.distance(p1, p2);
   }
 
   /**
    * Distância de um ponto P a um segmento de reta AB (em metros)
    */
   static perpendicularDistance(p, a, b) {
-    const distAB = this.pointDistance(a, b);
-    if (distAB === 0) return this.pointDistance(p, a);
+    if (a[0] === b[0] && a[1] === b[1]) return this.pointDistance(p, a);
 
-    // Projeção em coordenadas métricas locais
-    const latM = 111139;
-    const lngM = 111139 * Math.cos((a[0] * Math.PI) / 180);
+    // Projeção em coordenadas métricas locais (metros por grau reais do elipsoide na latitude de A)
+    const perDeg = Geodesy.metersPerDegree(a[0]);
+    const latM = perDeg.lat;
+    const lngM = perDeg.lng;
 
     const px = (p[1] - a[1]) * lngM;
     const py = (p[0] - a[0]) * latM;
@@ -923,8 +914,9 @@ export class SpatialAlgorithms {
     const allPts = [...rA_latlng, ...rB_latlng];
     const centerLat = allPts.reduce((acc, p) => acc + p[0], 0) / allPts.length;
     const centerLng = allPts.reduce((acc, p) => acc + p[1], 0) / allPts.length;
-    const latM = 111139;
-    const lngM = 111139 * Math.cos((centerLat * Math.PI) / 180);
+    const perDeg = Geodesy.metersPerDegree(centerLat);
+    const latM = perDeg.lat;
+    const lngM = perDeg.lng;
 
     const toM = (p) => [(p[0] - centerLat) * latM, (p[1] - centerLng) * lngM];
     const toLatLng = (p) => [centerLat + p[0] / latM, centerLng + p[1] / lngM];
