@@ -134,6 +134,7 @@ export class CanvasMapEngine {
     this.host = host;
     this.map = map;
 
+    this.map.getContainer().classList.add('cm-tool-select');
     this.map.setMaxZoom(22);
     this.map.setView(this.options.center, this.options.zoom, { animate: false });
     L.control.zoom({ position: 'bottomright' }).addTo(this.map);
@@ -299,7 +300,10 @@ export class CanvasMapEngine {
     if (tool === this._tool) return;
     this._tool = tool;
     const container = this.map ? this.map.getContainer() : null;
-    if (container && tool !== 'select') container.classList.remove('cm-feature-hover');
+    if (container) {
+      container.classList.toggle('cm-tool-select', tool === 'select');
+      if (tool !== 'select') container.classList.remove('cm-feature-hover');
+    }
     this.onToolChange(tool);
   }
 

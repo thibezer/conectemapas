@@ -422,6 +422,10 @@
 .leaflet-pane > canvas {
   pointer-events: none !important;
 }
+/* Ferramenta de seleção: ponteiro no lugar da mão (grab) do Leaflet e do kit, inclusive ao arrastar o mapa */
+.leaflet-container.cm-tool-select {
+  cursor: default !important;
+}
 .leaflet-container.cm-feature-hover,
 .leaflet-container.cm-feature-hover .leaflet-interactive {
   cursor: pointer !important;
