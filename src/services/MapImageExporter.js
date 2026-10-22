@@ -6,6 +6,7 @@
 
 import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyProgress } from '../utils/toastHelpers.js';
+import { FeatureGeometryUtils } from './MapEngine/FeatureGeometryUtils.js';
 
 export class MapImageExporter {
   /**
@@ -229,7 +230,7 @@ export class MapImageExporter {
     reversedLayers.forEach((layer) => {
       if (layer.visible === false) return;
 
-      const layerFeatures = features.filter((f) => f.layerId === layer.id && f.visible !== false);
+      const layerFeatures = features.filter((f) => f.layerId === layer.id && f.visible !== false && !(f.is_deleted || f._deleted || f.deleted_at));
       const layerOpacity = layer.opacity !== undefined ? Number(layer.opacity) : 1;
 
       layerFeatures.forEach((feat) => {
@@ -239,150 +240,174 @@ export class MapImageExporter {
   }
 
   /**
+   * Tipo de desenho da feição. O app grava 'Polygon' | 'LineString' | 'Point' | 'Circle' | 'Text';
+   * os nomes em minúsculas (polygon, line, point) são aceitos por compatibilidade.
+   */
+  static featureKind(feat) {
+    switch (feat && feat.type) {
+      case 'Polygon': case 'polygon': return 'polygon';
+      case 'LineString': case 'line': return 'line';
+      case 'Point': case 'point': return 'point';
+      case 'Circle': case 'circle': return 'circle';
+      case 'Text': case 'text': return 'text';
+      default: return null;
+    }
+  }
+
+  /** Projeta uma lista de [lat, lng] para pixels do canvas. */
+  static projectPath(map, path, scale) {
+    return path.map((latlng) => {
+      const p = map.latLngToContainerPoint(latlng);
+      return { x: p.x * scale, y: p.y * scale };
+    });
+  }
+
+  /**
    * Renderiza uma feição individual no Canvas
    */
   static drawSingleFeature(ctx, map, feat, layer, layerOpacity, scale) {
+    const kind = this.featureKind(feat);
+    if (!kind) return;
+
     const color = feat.color || layer.color || '#00E08A';
     const rawFillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : 0.35;
     const fillOpacity = Math.max(0, Math.min(1, rawFillOpacity * layerOpacity));
     const strokeColor = feat.style?.strokeColor || color;
     const strokeWidth = (feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : 2.5) * scale;
+    const isFillNone = feat.style?.fillColor === 'none' || feat.style?.fillColor === 'transparent';
+    const isStrokeNone = strokeColor === 'none' || strokeColor === 'transparent';
+    const dash = feat.style?.strokeDashArray
+      ? String(feat.style.strokeDashArray).split(',').map((n) => Number(n) * scale).filter((n) => Number.isFinite(n))
+      : null;
 
     const coords = this.normalizeFeatureCoordinates(feat);
     if (!coords || coords.length === 0) return;
 
     ctx.save();
 
-    if (feat.type === 'polygon') {
-      const pts = coords.map((latlng) => {
-        const p = map.latLngToContainerPoint(latlng);
-        return { x: p.x * scale, y: p.y * scale };
-      });
-
-      if (pts.length >= 3) {
+    if (kind === 'polygon') {
+      // `coords` já vem como lista de anéis (o 1º é o externo, os demais são furos)
+      const rings = coords.map((ring) => this.projectPath(map, ring, scale)).filter((pts) => pts.length >= 3);
+      if (rings.length > 0) {
         ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) {
-          ctx.lineTo(pts[i].x, pts[i].y);
+        for (const pts of rings) {
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.closePath();
         }
-        ctx.closePath();
 
-        // Preenchimento
-        const isFillNone = feat.style?.fillColor === 'none' || feat.style?.fillColor === 'transparent';
+        // Preenchimento ('evenodd' deixa os furos vazados)
         if (!isFillNone && fillOpacity > 0) {
           ctx.fillStyle = this.hexToRgba(feat.style?.fillColor || color, fillOpacity);
-          ctx.fill();
+          ctx.fill('evenodd');
         }
 
         // Contorno
-        const isStrokeNone = strokeColor === 'none' || strokeColor === 'transparent';
         if (!isStrokeNone && strokeWidth > 0) {
           ctx.strokeStyle = strokeColor;
           ctx.lineWidth = strokeWidth;
           ctx.lineJoin = 'round';
           ctx.lineCap = 'round';
-          if (feat.style?.strokeDashArray) {
-            ctx.setLineDash(feat.style.strokeDashArray.split(',').map((n) => Number(n) * scale));
-          }
+          if (dash && dash.length) ctx.setLineDash(dash);
           ctx.stroke();
         }
 
-        // Rótulo no centroide do polígono
+        // Rótulo no centroide do anel externo
         if (feat.name) {
-          const center = this.calculatePolygonCentroid(pts);
+          const center = this.calculatePolygonCentroid(rings[0]);
           this.drawFeatureLabel(ctx, feat.name, center.x, center.y, strokeColor, scale);
         }
       }
-    } else if (feat.type === 'line') {
-      const pts = coords.map((latlng) => {
-        const p = map.latLngToContainerPoint(latlng);
-        return { x: p.x * scale, y: p.y * scale };
-      });
-
-      if (pts.length >= 2) {
+    } else if (kind === 'line') {
+      const paths = coords.map((path) => this.projectPath(map, path, scale)).filter((pts) => pts.length >= 2);
+      if (paths.length > 0 && !isStrokeNone && strokeWidth > 0) {
         ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) {
-          ctx.lineTo(pts[i].x, pts[i].y);
+        for (const pts of paths) {
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
         }
-
         ctx.strokeStyle = strokeColor;
         ctx.lineWidth = strokeWidth;
         ctx.lineJoin = 'round';
         ctx.lineCap = 'round';
-        if (feat.style?.strokeDashArray) {
-          ctx.setLineDash(feat.style.strokeDashArray.split(',').map((n) => Number(n) * scale));
-        }
+        if (dash && dash.length) ctx.setLineDash(dash);
         ctx.stroke();
 
         // Rótulo no meio da linha
-        if (feat.name && pts.length >= 2) {
-          const midIdx = Math.floor(pts.length / 2);
-          const midPt = pts[midIdx];
+        if (feat.name) {
+          const first = paths[0];
+          const midPt = first[Math.floor(first.length / 2)];
           this.drawFeatureLabel(ctx, feat.name, midPt.x, midPt.y - 8 * scale, strokeColor, scale);
         }
       }
-    } else if (feat.type === 'point') {
-      const latlng = coords[0] || coords;
-      if (latlng && !isNaN(latlng[0]) && !isNaN(latlng[1])) {
-        const p = map.latLngToContainerPoint(latlng);
-        const x = p.x * scale;
-        const y = p.y * scale;
-        const radius = (feat.style?.markerSize ? Number(feat.style.markerSize) / 2 : 7) * scale;
+    } else if (kind === 'point') {
+      const p = map.latLngToContainerPoint(coords);
+      const x = p.x * scale;
+      const y = p.y * scale;
+      const radius = (feat.style?.markerSize ? Number(feat.style.markerSize) / 2 : 7) * scale;
 
-        // Halo translúcido externo
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 4 * scale, 0, Math.PI * 2);
-        ctx.fillStyle = this.hexToRgba(color, 0.25);
-        ctx.fill();
+      // Halo translúcido externo
+      ctx.beginPath();
+      ctx.arc(x, y, radius + 4 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = this.hexToRgba(color, 0.25);
+      ctx.fill();
 
-        // Borda preta de contraste
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 1.5 * scale, 0, Math.PI * 2);
-        ctx.fillStyle = '#000000';
-        ctx.fill();
+      // Borda preta de contraste
+      ctx.beginPath();
+      ctx.arc(x, y, radius + 1.5 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#000000';
+      ctx.fill();
 
-        // Círculo principal
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.fill();
+      // Círculo principal
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
 
-        // Ponto central
-        ctx.beginPath();
-        ctx.arc(x, y, Math.max(1.5, radius * 0.35), 0, Math.PI * 2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
+      // Ponto central
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1.5, radius * 0.35), 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
 
-        // Rótulo acima do ponto
-        if (feat.name) {
-          this.drawFeatureLabel(ctx, feat.name, x, y - radius - 6 * scale, color, scale);
-        }
+      // Rótulo acima do ponto
+      if (feat.name) {
+        this.drawFeatureLabel(ctx, feat.name, x, y - radius - 6 * scale, color, scale);
       }
-    } else if (feat.type === 'circle') {
-      const centerLatLng = coords[0] || coords;
-      if (centerLatLng && feat.radius) {
-        const p = map.latLngToContainerPoint(centerLatLng);
+    } else if (kind === 'circle') {
+      const radiusM = Number(feat.radius);
+      if (Number.isFinite(radiusM) && radiusM > 0) {
+        const p = map.latLngToContainerPoint(coords);
         const x = p.x * scale;
         const y = p.y * scale;
 
         // Calcula raio aproximado em pixels
-        const northLat = centerLatLng[0] + (feat.radius / 111320);
-        const pNorth = map.latLngToContainerPoint([northLat, centerLatLng[1]]);
+        const northLat = coords[0] + (radiusM / 111320);
+        const pNorth = map.latLngToContainerPoint([northLat, coords[1]]);
         const radiusPx = Math.abs(p.y - pNorth.y) * scale;
 
         ctx.beginPath();
         ctx.arc(x, y, radiusPx, 0, Math.PI * 2);
-        ctx.fillStyle = this.hexToRgba(color, fillOpacity);
-        ctx.fill();
-
-        ctx.strokeStyle = strokeColor;
-        ctx.lineWidth = strokeWidth;
-        ctx.stroke();
+        if (!isFillNone && fillOpacity > 0) {
+          ctx.fillStyle = this.hexToRgba(feat.style?.fillColor || color, fillOpacity);
+          ctx.fill();
+        }
+        if (!isStrokeNone && strokeWidth > 0) {
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = strokeWidth;
+          if (dash && dash.length) ctx.setLineDash(dash);
+          ctx.stroke();
+        }
 
         if (feat.name) {
           this.drawFeatureLabel(ctx, feat.name, x, y, color, scale);
         }
+      }
+    } else if (kind === 'text') {
+      const text = String(feat.properties?.text ?? feat.name ?? '').trim();
+      if (text) {
+        const p = map.latLngToContainerPoint(coords);
+        this.drawFeatureLabel(ctx, text, p.x * scale, p.y * scale, feat.style?.textColor || '#ffffff', scale);
       }
     }
 
@@ -661,28 +686,29 @@ export class MapImageExporter {
   }
 
   /**
-   * Auxiliar: Normaliza coordenadas de uma feição
+   * Auxiliar: coordenadas da feição prontas para projetar, pela mesma normalização do mapa
+   * (FeatureGeometryUtils.normalizeCoordinates: descarta NaN e geometria degenerada, aceita {lat, lng}).
+   * - polygon: lista de anéis ([externo, ...furos]) de [lat, lng]
+   * - line: lista de partes, cada uma uma lista de [lat, lng]
+   * - point | circle | text: um [lat, lng]
+   * Devolve [] quando não há geometria desenhável.
    */
   static normalizeFeatureCoordinates(feat) {
-    if (!feat || !feat.coordinates) return [];
-    const c = feat.coordinates;
+    const kind = this.featureKind(feat);
+    if (!kind || !feat.coordinates) return [];
+    // o normalizador do mapa conhece os tipos do app; o tipo em minúsculas é só alias
+    const canonical = { polygon: 'Polygon', line: 'LineString', point: 'Point', circle: 'Circle', text: 'Text' }[kind];
+    const n = FeatureGeometryUtils.normalizeCoordinates({ ...feat, type: canonical });
+    if (!n) return [];
 
-    if (feat.type === 'polygon' || feat.type === 'line') {
-      if (Array.isArray(c)) {
-        return c.map((pt) => {
-          if (Array.isArray(pt)) return [Number(pt[0]), Number(pt[1])];
-          if (pt && typeof pt === 'object') return [Number(pt.lat), Number(pt.lng)];
-          return [0, 0];
-        });
-      }
-    } else if (feat.type === 'point' || feat.type === 'circle') {
-      if (Array.isArray(c)) {
-        if (typeof c[0] === 'number') return [Number(c[0]), Number(c[1])];
-        if (Array.isArray(c[0])) return [Number(c[0][0]), Number(c[0][1])];
-      }
-      if (c && typeof c === 'object') return [Number(c.lat), Number(c.lng)];
+    // entrada hostil (ex.: coordinates como texto) volta do normalizador sem passar pelo formato esperado
+    if (!Array.isArray(n)) return [];
+    if (kind === 'polygon' || kind === 'line') {
+      if (!Array.isArray(n[0])) return [];
+      const multi = Array.isArray(n[0][0]);
+      return multi ? n : [n];
     }
-    return [];
+    return n.length >= 2 && Number.isFinite(n[0]) && Number.isFinite(n[1]) ? n : [];
   }
 
   /**
