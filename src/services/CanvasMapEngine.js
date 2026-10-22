@@ -61,7 +61,6 @@ const HIDDEN_PROPERTIES = new Set([
 ]);
 const Z_INDEX_BASE = 410;
 const Z_INDEX_STEP = 10;
-const MAX_INCREMENTAL_CHANGES = 20;
 
 export class CanvasMapEngine {
   constructor(containerId, options = {}) {
@@ -429,8 +428,11 @@ export class CanvasMapEngine {
       estilo: this._styleOf(feat, layer),
       propriedades,
       bloqueada: feat.locked === true || layer?.locked === true,
-      excluida: feat.visible === false || this._isDeleted(feat)
+      excluida: this._isDeleted(feat)
     };
+    // Oculta (visible:false) ≠ excluída: a feição continua existindo (edição, pares oficial × prévia),
+    // só não é desenhada nem selecionada
+    if (feat.visible === false) out.oculta = true;
     if (status) out.status = status;
     if (entidadeId) out.entidadeId = entidadeId;
     return out;
@@ -489,7 +491,8 @@ export class CanvasMapEngine {
 
   /**
    * Sincroniza o componente com a lista do app. Só envia o que mudou (referência da feição,
-   * cor/bloqueio da camada ou vínculo oficial × prévia); camadas muito alteradas são redefinidas por inteiro.
+   * cor/bloqueio da camada ou vínculo oficial × prévia). A camada ainda desconhecida é definida por inteiro;
+   * nas demais, todas as mudanças vão em UM `aplicarLote` (uma regravação da camada, só as mudadas convertidas).
    */
   renderFeatures(features, layers) {
     this._features = features ? features.slice() : [];
@@ -498,14 +501,21 @@ export class CanvasMapEngine {
     this._layerMap = new Map(this._layers.map(l => [l.id, l]));
     const entities = this._computeEntities(this._features);
 
+    // ids já aplicados por camada, numa única varredura (antes cada camada varria tudo de novo)
+    const appliedByLayer = new Map();
+    for (const [id, a] of this._applied) {
+      const ids = appliedByLayer.get(a.layerId);
+      if (ids) ids.push(id); else appliedByLayer.set(a.layerId, [id]);
+    }
+
     // camadas que deixaram de existir
     const currentLayerIds = new Set(this._layers.map(l => l.id));
-    const knownLayerIds = new Set([...this._applied.values()].map(a => a.layerId));
-    for (const layerId of knownLayerIds) {
+    for (const [layerId, ids] of appliedByLayer) {
       if (currentLayerIds.has(layerId)) continue;
       this.host.definirFeicoes(layerId, []);
       this.host.setLayerVisibility(layerId, false);
-      for (const [id, a] of this._applied) if (a.layerId === layerId) this._applied.delete(id);
+      for (const id of ids) this._applied.delete(id);
+      appliedByLayer.delete(layerId);
     }
 
     const byLayer = new Map(this._layers.map(l => [l.id, []]));
@@ -517,28 +527,25 @@ export class CanvasMapEngine {
 
     const total = this._layers.length;
     this._layers.forEach((layer, index) => {
-      this._syncLayer(layer, byLayer.get(layer.id) || [], entities, this._zIndexFor(index, total));
+      this._syncLayer(layer, byLayer.get(layer.id) || [], entities, this._zIndexFor(index, total), appliedByLayer.get(layer.id) || []);
     });
   }
 
-  _syncLayer(layer, list, entities, zIndex) {
+  _syncLayer(layer, list, entities, zIndex, appliedIds = []) {
     const sig = this._layerSignature(layer);
     const options = { nome: layer.name, zIndex, opacidade: layer.opacity !== undefined ? Number(layer.opacity) : 1, interativo: layer.locked !== true };
 
     const present = new Set(list.map(f => f.id));
-    const previous = [...this._applied].filter(([, a]) => a.layerId === layer.id);
-    const removed = previous.filter(([id]) => !present.has(id)).map(([id]) => id);
+    // `appliedIds` foi lido antes do laço de camadas: uma feição que outra camada já assumiu não é "removida" daqui
+    const removed = appliedIds.filter(id => !present.has(id) && this._applied.get(id)?.layerId === layer.id);
     const changed = list.filter(f => {
       const a = this._applied.get(f.id);
       return !a || a.layerId !== layer.id || a.ref !== f || a.layerSig !== sig || a.entidadeId !== entities.get(f.id);
     });
 
-    // Cada operação incremental do componente regrava a lista da camada (O(N)): acima de poucas
-    // mudanças, redefinir a camada de uma vez é mais barato.
-    const layerKnown = previous.length > 0;
-    const heavy = !layerKnown || (removed.length + changed.length) > MAX_INCREMENTAL_CHANGES;
+    const layerKnown = appliedIds.length > 0;
 
-    if (heavy) {
+    if (!layerKnown) {
       const converted = [];
       for (const f of list) {
         const feicao = this._toFeicao(f, layer, entities.get(f.id));
@@ -549,11 +556,33 @@ export class CanvasMapEngine {
       for (const f of list) this._applied.set(f.id, { ref: f, layerId: layer.id, layerSig: sig, entidadeId: entities.get(f.id) });
     } else {
       this._applyLayerOptions(layer.id, options);
-      for (const id of removed) {
-        this.host.removerFeicao(layer.id, id);
-        this._applied.delete(id);
+
+      // Feições que vieram de outra camada saem dela (uma regravação por camada de origem)
+      const leaving = new Map();
+      const adicionar = [];
+      for (const f of changed) {
+        const previous = this._applied.get(f.id);
+        if (previous && previous.layerId !== layer.id) {
+          const ids = leaving.get(previous.layerId);
+          if (ids) ids.push(f.id); else leaving.set(previous.layerId, [f.id]);
+        }
+        const feicao = this._toFeicao(f, layer, entities.get(f.id));
+        if (!feicao) {
+          // geometria que deixou de ser válida: sai do mapa
+          if (previous && previous.layerId === layer.id) removed.push(f.id);
+          this._applied.delete(f.id);
+          continue;
+        }
+        adicionar.push({ ...feicao, camadaId: layer.id });
+        this._applied.set(f.id, { ref: f, layerId: layer.id, layerSig: sig, entidadeId: entities.get(f.id) });
       }
-      for (const f of changed) this._pushFeature(f, layer, entities.get(f.id), sig);
+      for (const [fromLayerId, ids] of leaving) this.host.aplicarLote(fromLayerId, { remover: ids });
+      for (const id of removed) this._applied.delete(id);
+
+      // adicionar um id existente substitui a feição mantendo a posição (a ordem de empilhamento não muda)
+      if (removed.length > 0 || adicionar.length > 0) {
+        this.host.aplicarLote(layer.id, { remover: removed, adicionar }, { nome: layer.name });
+      }
     }
 
     this.host.setLayerVisibility(layer.id, layer.visible !== false);

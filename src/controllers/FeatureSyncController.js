@@ -329,6 +329,19 @@ export class FeatureSyncController {
     notifyUndoable(app, { titulo: 'Feição excluída', mensagem: `"${name}" removida.` });
   }
 
+  /**
+   * O painel de camadas reconstrói a árvore a cada `updateLayers` (~100–250 ms). Uma rajada de eventos
+   * remotos (colega importando ou excluindo centenas de feições) pedia isso a cada evento: agora o primeiro
+   * agenda uma única atualização e os seguintes na janela entram nela.
+   */
+  static scheduleLayerPanelRefresh(app, delayMs = 120) {
+    if (!app.layerPanel || app._layerPanelRefreshTimer) return;
+    app._layerPanelRefreshTimer = setTimeout(() => {
+      app._layerPanelRefreshTimer = null;
+      if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+    }, delayMs);
+  }
+
   static handleCollabEvent(app, type, data) {
     if (type === 'cursor:move') {
       if (app.mapEngine && data.user) {
@@ -339,7 +352,7 @@ export class FeatureSyncController {
       app.features.push(data.feature);
       app.mapEngine.updateFeature(data.feature, app.layers);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-      if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+      FeatureSyncController.scheduleLayerPanelRefresh(app);
       app.updateHUD();
 
       // Persistência local imediata para que a feição criada pelo colega não desapareça ao recarregar a aba
@@ -366,7 +379,7 @@ export class FeatureSyncController {
       app.mapEngine.removeFeature(data.featureId);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       if (app.layerPanel) {
-        app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        FeatureSyncController.scheduleLayerPanelRefresh(app);
         app.layerPanel.handleSelectedFeatureRemoved?.(data.featureId);
       }
       app.updateHUD();

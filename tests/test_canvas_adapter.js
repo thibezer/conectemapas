@@ -82,7 +82,11 @@ assert.strictEqual(defaultColor.estilo.corTraco, '#112233', 'linha sem cor próp
 
 assert.strictEqual(engine._toFeicao({ id: 'lk', type: 'Point', layerId: 'l1', coordinates: [-23.5, -46.6], locked: true }, layer).bloqueada, true);
 assert.strictEqual(engine._toFeicao({ id: 'lk2', type: 'Point', layerId: 'l1', coordinates: [-23.5, -46.6] }, { ...layer, locked: true }).bloqueada, true, 'camada bloqueada bloqueia a feição');
-assert.strictEqual(engine._toFeicao({ id: 'iv', type: 'Point', layerId: 'l1', coordinates: [-23.5, -46.6], visible: false }, layer).excluida, true, 'visible:false some do mapa');
+const hidden = engine._toFeicao({ id: 'iv', type: 'Point', layerId: 'l1', coordinates: [-23.5, -46.6], visible: false }, layer);
+assert.strictEqual(hidden.oculta, true, 'visible:false vira oculta (não desenha nem seleciona)');
+assert.strictEqual(hidden.excluida, false, 'oculta não é excluída: a feição continua existindo e editável');
+assert.strictEqual(point.oculta, undefined, 'feição visível não carrega o campo oculta');
+assert.strictEqual(engine._toFeicao({ id: 'dl', type: 'Point', layerId: 'l1', coordinates: [-23.5, -46.6], is_deleted: true }, layer).excluida, true, 'exclusão continua excluída');
 
 // --- 3. Propriedades ---
 console.log('  3. Propriedades...');
