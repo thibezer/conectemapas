@@ -3,7 +3,9 @@
    Responsabilidade Única: Serialização e Desserialização de RFC 7946 GeoJSON
    ========================================================================== */
 
+import proj4 from 'proj4';
 import { FeatureGeometryUtils } from '../MapEngine/FeatureGeometryUtils.js';
+import '../Shapefile/Projections.js';
 
 export class GeoJsonConverter {
   /**
@@ -93,8 +95,16 @@ export class GeoJsonConverter {
    */
   static parseGeoJSON(geojson) {
     const features = [];
-    geojson.features.forEach((feat, i) => {
-      if (!feat.geometry) return;
+    const toWgs84 = GeoJsonConverter.crsTransformer(geojson);
+    let skipped = 0;
+    geojson.features.forEach((rawFeat, i) => {
+      if (!rawFeat.geometry || !Array.isArray(rawFeat.geometry.coordinates)) return;
+      // GeoJSON antigo pode declarar outro CRS (UTM, SAD69...): leva as posições para WGS84/SIRGAS
+      const feat = toWgs84 ? { ...rawFeat, geometry: toWgs84(rawFeat.geometry) } : rawFeat;
+      if (!GeoJsonConverter.geometryInRange(feat.geometry)) {
+        skipped++;
+        return;
+      }
       const geomType = feat.geometry.type;
       const props = feat.properties || {};
       const id = feat.id || `import-feat-${Date.now()}-${i}`;
@@ -118,6 +128,24 @@ export class GeoJsonConverter {
           properties: { ...props },
           createdBy: props.createdBy || 'Importado',
           createdAt: props.createdAt || new Date().toISOString()
+        });
+      } else if (geomType === 'MultiPoint') {
+        const points = feat.geometry.coordinates;
+        points.forEach((pt, k) => {
+          const multi = points.length > 1;
+          features.push({
+            id: multi ? `${id}-pt${k + 1}` : id,
+            name: multi ? `${name} (ponto ${k + 1}/${points.length})` : name,
+            layerId,
+            type: 'Point',
+            coordinates: [pt[1], pt[0]],
+            category,
+            color,
+            description: props.description || '',
+            properties: { ...props },
+            createdBy: props.createdBy || 'Importado',
+            createdAt: props.createdAt || new Date().toISOString()
+          });
         });
       } else if (geomType === 'LineString') {
         const coords = feat.geometry.coordinates.map(c => [c[1], c[0]]);
@@ -192,7 +220,54 @@ export class GeoJsonConverter {
       }
     });
 
-    return { features };
+    if (features.length === 0 && skipped > 0) {
+      throw new Error(
+        'As coordenadas do GeoJSON estão fora de ±90°/±180°. Se estiverem em metros (UTM), declare o "crs" ' +
+        '(ex.: "urn:ogc:def:crs:EPSG::31983") ou reprojete o arquivo para WGS84/SIRGAS 2000.'
+      );
+    }
+
+    return { features, skipped };
+  }
+
+  /**
+   * Função que leva a geometria do CRS declarado em `crs` para lon/lat WGS84, ou null quando o
+   * arquivo já está em WGS84/SIRGAS 2000/CRS84 (ou não declara CRS, o padrão da RFC 7946).
+   * CRS que o app não conhece geram erro, em vez de importar números no lugar errado.
+   */
+  static crsTransformer(geojson) {
+    const name = geojson?.crs?.properties?.name;
+    if (!name) return null;
+    if (/CRS84/i.test(name)) return null;
+    const code = (String(name).match(/EPSG:+(\d+)/i) || [])[1];
+    if (!code || code === '4326' || code === '4674') return null;
+
+    let transformer;
+    try {
+      transformer = proj4(`EPSG:${code}`, 'EPSG:4326');
+    } catch {
+      throw new Error(`Sistema de referência do GeoJSON não suportado: ${name}. Reprojete o arquivo para WGS84/SIRGAS 2000.`);
+    }
+    const project = (pos) => {
+      const [x, y] = transformer.forward([pos[0], pos[1]]);
+      return [x, y];
+    };
+    const walk = (coords) => (typeof coords[0] === 'number' ? project(coords) : coords.map(walk));
+    return (geometry) => (geometry && Array.isArray(geometry.coordinates)
+      ? { ...geometry, coordinates: walk(geometry.coordinates) }
+      : geometry);
+  }
+
+  /** Todas as posições [lng, lat] da geometria são finitas e estão em ±180°/±90°. */
+  static geometryInRange(geometry) {
+    const check = (c) => {
+      if (!Array.isArray(c) || c.length === 0) return false;
+      if (typeof c[0] === 'number') {
+        return Number.isFinite(c[0]) && Number.isFinite(c[1]) && Math.abs(c[0]) <= 180 && Math.abs(c[1]) <= 90;
+      }
+      return c.every(check);
+    };
+    return check(geometry.coordinates);
   }
 
   /**

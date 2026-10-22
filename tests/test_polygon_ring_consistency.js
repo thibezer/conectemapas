@@ -8,6 +8,7 @@
    5. normalizeCoordinates em MockData abre Polygon mas preserva LineString em circuito.
    ========================================================================== */
 
+import { installMiniDom } from './_mini_dom.js';
 import assert from 'assert';
 import { GeoJsonConverter } from '../src/services/GeoFormats/GeoJsonConverter.js';
 import { KmlConverter } from '../src/services/GeoFormats/KmlConverter.js';
@@ -77,33 +78,11 @@ const sampleKML = `<?xml version="1.0" encoding="UTF-8"?>
   </Document>
 </kml>`;
 
-// Como parseKML usa DOMParser no browser, testamos a lógica com um mock simples de DOMParser se rodando no Node
-if (typeof DOMParser === 'undefined') {
-  // Polyfill básico para teste em ambiente Node puro
-  global.DOMParser = class {
-    parseFromString(text) {
-      return {
-        querySelector: () => null,
-        querySelectorAll: (selector) => {
-          if (selector === 'Placemark') {
-            return [{
-              querySelector: (sub) => {
-                if (sub === 'name') return { textContent: 'Polígono KML Teste' };
-                if (sub === 'Polygon coordinates') return {
-                  textContent: '-47.86,-15.79,0 -47.85,-15.78,0 -47.84,-15.80,0 -47.86,-15.79,0'
-                };
-                return null;
-              }
-            }];
-          }
-          return [];
-        }
-      };
-    }
-  };
-}
+// parseKML usa DOMParser (browser): em Node puro usa o mini parser de tests/_mini_dom.js
+const restoreDom = installMiniDom();
 
 const parsedKML = KmlConverter.parseKML(sampleKML);
+restoreDom();
 assert.strictEqual(parsedKML.features.length, 1, 'Deve importar 1 feição KML');
 const featKML = parsedKML.features[0];
 assert.strictEqual(featKML.coordinates.length, 3, 'Polígono KML importado DEVE ter anel aberto (3 vértices, sem duplicata)');

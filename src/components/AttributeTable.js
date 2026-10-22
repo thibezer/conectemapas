@@ -23,6 +23,7 @@ export class AttributeTable {
       rawSelect(feat.id, feat);
     };
     this.onDelete = options.onDelete || (() => {});
+    this.onCollapseChange = options.onCollapseChange || (() => {});
   }
 
   render(container) {
@@ -379,6 +380,7 @@ export class AttributeTable {
         if (table) this.applyMinimalRowHeight(table);
       }, 50);
     }
+    this.onCollapseChange(this.isCollapsed);
   }
 
   bindEvents(container) {

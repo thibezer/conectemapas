@@ -8,21 +8,21 @@
    - Duplicação Geodésica com Offset
    ========================================================================== */
 
+import { Geodesy } from './Geodesy.js';
+
 export class SpatialAlgorithms {
   /**
    * Converte metros em aproximação de graus de latitude
    */
-  static metersToDegreesLat(meters) {
-    return meters / 111139;
+  static metersToDegreesLat(meters, lat = null) {
+    return meters / (lat === null ? 111139 : Geodesy.metersPerDegree(lat).lat);
   }
 
   /**
    * Converte metros em aproximação de graus de longitude na latitude dada
    */
   static metersToDegreesLng(meters, lat) {
-    const rad = (lat * Math.PI) / 180;
-    const cosLat = Math.cos(rad);
-    return meters / (111139 * (cosLat === 0 ? 0.0001 : cosLat));
+    return meters / Math.max(Geodesy.metersPerDegree(lat).lng, 1);
   }
 
   /**
@@ -254,23 +254,19 @@ export class SpatialAlgorithms {
 
     if (pts.length < (type === 'Polygon' ? 3 : 2)) return null;
 
-    // Sistema de Projeção Métrica Tangencial Local (WGS84)
-    const R_EARTH = 6371008.8;
-    const toRad = Math.PI / 180;
-    const toDeg = 180 / Math.PI;
-
+    // Plano métrico tangencial local no elipsoide GRS80: metros por grau reais (M e N) na latitude da origem
     const lat0 = pts[0][0];
     const lon0 = pts[0][1];
-    const cos0 = Math.cos(lat0 * toRad);
+    const perDeg = Geodesy.metersPerDegree(lat0);
 
     const toMeters = ([lat, lng]) => [
-      (lng - lon0) * toRad * cos0 * R_EARTH,
-      (lat - lat0) * toRad * R_EARTH
+      (lng - lon0) * perDeg.lng,
+      (lat - lat0) * perDeg.lat
     ];
 
     const toLatLng = ([x, y]) => [
-      lat0 + (y / R_EARTH) * toDeg,
-      lon0 + (x / (R_EARTH * cos0)) * toDeg
+      lat0 + y / perDeg.lat,
+      lon0 + x / perDeg.lng
     ];
 
     const ptsM = pts.map(toMeters);
@@ -417,7 +413,7 @@ export class SpatialAlgorithms {
       refLat = isMulti ? feature.coordinates[0][0][0] : feature.coordinates[0][0];
     }
 
-    const dLat = this.metersToDegreesLat(offsetMeters);
+    const dLat = this.metersToDegreesLat(offsetMeters, refLat);
     const dLng = this.metersToDegreesLng(offsetMeters, refLat);
 
     let newCoordinates;

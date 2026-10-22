@@ -22,7 +22,7 @@ export class ShortcutsController {
     } catch (e) {
       console.warn('[ShortcutsController] Falha ao capturar snapshot de histórico:', e);
     }
-    app.syncModifyRibbon?.();
+    app.syncRibbon?.();
   }
 
   /**

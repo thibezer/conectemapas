@@ -34,6 +34,17 @@ export class CsvConverter {
   }
 
   /**
+   * Número de planilha brasileira ("-15,7939") ou internacional ("-15.7939"). Texto com lixo → NaN
+   * (parseFloat truncaria "-15,7939" para -15 sem avisar).
+   */
+  static parseNumber(raw) {
+    if (typeof raw === 'number') return raw;
+    const text = String(raw ?? '').trim().replace(/\s+/g, '');
+    if (!/^[+-]?\d+([.,]\d+)?$/.test(text)) return NaN;
+    return parseFloat(text.replace(',', '.'));
+  }
+
+  /**
    * Parseia texto CSV delimitado
    * @param {string} csvText
    * @returns {{features: Array}}
@@ -55,10 +66,10 @@ export class CsvConverter {
     const features = [];
     for (let i = 1; i < lines.length; i++) {
       const parts = lines[i].split(separator).map(p => p.replace(/^["']|["']$/g, '').trim());
-      const lat = parseFloat(parts[latIdx]);
-      const lng = parseFloat(parts[lngIdx]);
+      const lat = CsvConverter.parseNumber(parts[latIdx]);
+      const lng = CsvConverter.parseNumber(parts[lngIdx]);
 
-      if (!isNaN(lat) && !isNaN(lng)) {
+      if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
         features.push({
           id: `csv-feat-${Date.now()}-${i}`,
           name: nameIdx >= 0 ? parts[nameIdx] : `Ponto CSV #${i}`,

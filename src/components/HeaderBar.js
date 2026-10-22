@@ -7,20 +7,7 @@
 import '@thibezer/ui-components-kit/tools';
 import './HeaderBar.css';
 import { MODIFY_ITEM_PREFIX, MODIFY_TAB_ID, buildModifyTab } from './ModifyRibbon.js';
-
-const svg = (paths) =>
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-
-const ICONES = {
-  projeto: svg('<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><line x1="12" y1="10" x2="12" y2="16"/><line x1="9" y1="13" x2="15" y2="13"/>'),
-  salvar: svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>'),
-  popup: svg('<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>'),
-  buscar: svg('<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/>'),
-  layout: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>'),
-  importExport: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'),
-  conta: svg('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
-  compartilhar: svg('<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>')
-};
+import { VIEW_ITEM_IDS, buildDataTab, buildProjectTab } from './ViewRibbon.js';
 
 export class HeaderBar {
   /**
@@ -35,6 +22,7 @@ export class HeaderBar {
    * @param {Function} options.onOpenAccount - Callback para abrir modal de conta
    * @param {Function} options.onOpenProject - Callback para abrir o modal de projeto (novo / excluir)
    * @param {Function} options.onModifyAction - Callback (id, {anchor}) dos comandos da aba Modificar
+   * @param {Function} options.onViewAction - Callback (id) dos botões de histórico, vista do mapa e painéis
    * @param {string} options.accountName - Nome do operador logado
    */
   constructor(options = {}) {
@@ -48,9 +36,10 @@ export class HeaderBar {
     this.onOpenAccount = options.onOpenAccount || (() => {});
     this.onOpenProject = options.onOpenProject || (() => {});
     this.onModifyAction = options.onModifyAction || (() => {});
+    this.onViewAction = options.onViewAction || (() => {});
     this.accountName = options.accountName || '';
     this.container = null;
-    this._modifyState = new Map(); // id → último estado aplicado (JSON), para só tocar no que mudou
+    this._itemState = new Map(); // id → último estado aplicado (JSON), para só tocar no que mudou
     this._hadSelection = false;
     this._tabBeforeSelection = '';
     this._autoSwitched = false;
@@ -241,73 +230,33 @@ export class HeaderBar {
   setupRibbon() {
     this.ribbon = this.container.querySelector('#cm-ribbon');
     if (!this.ribbon) return;
-    this._modifyState.clear();
+    this._itemState.clear();
     const abas = [
-      {
-        id: 'projeto',
-        rotulo: 'Projeto',
-        grupos: [
-          {
-            id: 'grp-projeto',
-            rotulo: 'Projeto',
-            itens: [
-              { id: 'btn-open-project', rotulo: 'Projeto', icone: ICONES.projeto, tamanho: 'grande', rotuloAcessivel: 'Novo projeto ou excluir o projeto aberto' },
-              { id: 'btn-manual-save', rotulo: 'Salvar', icone: ICONES.salvar, tamanho: 'grande', atalho: 'Ctrl+S' }
-            ]
-          },
-          {
-            id: 'grp-mapa',
-            rotulo: 'Mapa',
-            itens: [
-              { id: 'btn-open-adv-search', rotulo: 'Buscar', icone: ICONES.buscar, tamanho: 'grande', atalho: 'Ctrl+Shift+F' },
-              { id: 'btn-toggle-popup', rotulo: 'Popup: Off', icone: ICONES.popup, tamanho: 'grande', tipo: 'toggle', ativo: false }
-            ]
-          },
-          {
-            id: 'grp-conta',
-            rotulo: 'Conta',
-            itens: [
-              { id: 'btn-open-account', rotulo: this.accountName || 'Entrar', icone: ICONES.conta, tamanho: 'grande' }
-            ]
-          }
-        ]
-      },
+      buildProjectTab({ accountName: this.accountName }),
       buildModifyTab(),
-      {
-        id: 'dados',
-        rotulo: 'Dados',
-        grupos: [
-          {
-            id: 'grp-dados',
-            rotulo: 'Dados',
-            itens: [
-              { id: 'btn-open-import-export', rotulo: 'Import / Export', icone: ICONES.importExport, tamanho: 'grande' }
-            ]
-          },
-          {
-            id: 'grp-saida',
-            rotulo: 'Saída',
-            itens: [
-              { id: 'btn-open-print-composer', rotulo: 'Layout QGIS', icone: ICONES.layout, tamanho: 'grande' }
-            ]
-          },
-          {
-            id: 'grp-colab',
-            rotulo: 'Colaboração',
-            itens: [
-              { id: 'btn-open-share', rotulo: 'Compartilhar', icone: ICONES.compartilhar, tamanho: 'grande' }
-            ]
-          }
-        ]
-      }
+      buildDataTab()
     ];
     this.ribbon.abas = abas;
     this.ribbon.abaAtiva = 'projeto';
   }
 
   /**
-   * Aplica o estado da aba Modificar (habilitação, rótulos, ferramenta ativa).
-   * Só os itens que mudaram desde a última chamada são atualizados no ribbon.
+   * Aplica estado (habilitação, rótulo, ativo...) a itens da ribbon.
+   * Só os itens que mudaram desde a última chamada são atualizados.
+   * @param {Record<string, Object>} state id do item → propriedades parciais
+   */
+  syncItems(state) {
+    if (!this.ribbon) return;
+    for (const [id, parcial] of Object.entries(state)) {
+      const assinatura = JSON.stringify(parcial);
+      if (this._itemState.get(id) === assinatura) continue;
+      this._itemState.set(id, assinatura);
+      this.ribbon.atualizarItem?.(id, parcial);
+    }
+  }
+
+  /**
+   * Aplica o estado da aba Modificar.
    * Com seleção, a aba Modificar assume o foco; ao limpar a seleção, volta a aba anterior
    * (a menos que o usuário tenha trocado de aba por conta própria nesse meio-tempo).
    * @param {Record<string, Object>} state id do item → propriedades parciais
@@ -315,12 +264,7 @@ export class HeaderBar {
    */
   syncModify(state, hasSelection) {
     if (!this.ribbon) return;
-    for (const [id, parcial] of Object.entries(state)) {
-      const assinatura = JSON.stringify(parcial);
-      if (this._modifyState.get(id) === assinatura) continue;
-      this._modifyState.set(id, assinatura);
-      this.ribbon.atualizarItem?.(id, parcial);
-    }
+    this.syncItems(state);
 
     if (hasSelection && !this._hadSelection) {
       if (this.ribbon.abaAtiva !== MODIFY_TAB_ID) {
@@ -384,10 +328,14 @@ export class HeaderBar {
         this.onModifyAction(id, { anchor: e.composedPath?.()[0] || this.ribbon });
         return;
       }
+      // Toggles (popup, snap, zoom, painéis): o estado pertence ao app e volta por syncItems
+      if (e.detail?.item?.tipo === 'toggle') e.preventDefault();
+      if (VIEW_ITEM_IDS.includes(id)) {
+        this.onViewAction(id);
+        return;
+      }
       const acao = acoes[id];
       if (!acao) return;
-      // O estado do toggle de popup pertence ao app (updateFeaturePopupMode)
-      if (id === 'btn-toggle-popup') e.preventDefault();
       acao();
     });
   }

@@ -139,8 +139,9 @@ export class ShpParser {
           points.push([y, x]);
         }
         geometries.push({
-          type: 'Point',
-          coordinates: points[0] || [0, 0]
+          type: 'MultiPoint',
+          points,
+          coordinates: points[0] || []
         });
       }
 

@@ -127,23 +127,27 @@ export class ShapefileParser {
       else if (geom.type === 'Polygon') featType = 'Polygon';
 
       // Polígono de várias partes: cada parte (externo + furos) vira uma feição, com os mesmos atributos
-      const parts = geom.type === 'Polygon' && Array.isArray(geom.polygons)
-        ? geom.polygons.map(p => (p.length > 1 ? p : p[0]))
-        : [geom.coordinates];
+      let parts = [geom.coordinates];
+      if (geom.type === 'Polygon' && Array.isArray(geom.polygons)) {
+        parts = geom.polygons.map(p => (p.length > 1 ? p : p[0]));
+      } else if (geom.type === 'MultiPoint') {
+        parts = geom.points; // um ponto por feição
+      }
+      const reprojType = geom.type === 'MultiPoint' ? 'Point' : geom.type;
       if (parts.length === 0) continue;
 
       const baseFeatName = attrs.NOME || attrs.Nome || attrs.name || attrs.NAME || attrs.ID || attrs.id || `${baseName} #${i + 1}`;
       const featCategory = attrs.CATEGORIA || attrs.Categoria || attrs.TIPO || attrs.Tipo || 'Shapefile';
 
       parts.forEach((partCoords, partIdx) => {
-        const reprojectedCoords = this.reprojectGeometry(partCoords, geom.type, prjInfo, transformer);
+        const reprojectedCoords = this.reprojectGeometry(partCoords, reprojType, prjInfo, transformer);
         if (!this.coordinatesInRange(reprojectedCoords)) {
           skipped++;
           return;
         }
 
         const multi = parts.length > 1;
-        const featName = multi ? `${baseFeatName} (parte ${partIdx + 1}/${parts.length})` : baseFeatName;
+        const featName = multi ? `${baseFeatName} (${geom.type === 'MultiPoint' ? 'ponto' : 'parte'} ${partIdx + 1}/${parts.length})` : baseFeatName;
 
         features.push({
           id: `feat-shp-${Date.now()}-${i + 1}${multi ? `-p${partIdx + 1}` : ''}`,

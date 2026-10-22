@@ -25,6 +25,7 @@ import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { AppModalsBuilder } from './AppModalsBuilder.js';
 import { SelectionStyleController } from '../controllers/SelectionStyleController.js';
 import { ModifyActionsController } from '../controllers/ModifyActionsController.js';
+import { RibbonViewController } from '../controllers/RibbonViewController.js';
 
 export class AppComponentsBuilder {
   /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
@@ -127,7 +128,7 @@ export class AppComponentsBuilder {
         if (app.drawingToolbar) {
           app.drawingToolbar.setActiveTool(tool);
         }
-        app.syncModifyRibbon?.();
+        app.syncRibbon?.();
       },
       onFeatureCreated: (rawFeature) => {
         FeatureSyncController.handleDrawingCompleted(app, rawFeature);
@@ -260,10 +261,11 @@ export class AppComponentsBuilder {
         });
       },
       onOpenAdvancedSearch: () => app.advancedSearch?.toggle(),
-      onModifyAction: (id, ctx) => ModifyActionsController.run(app, id, ctx)
+      onModifyAction: (id, ctx) => ModifyActionsController.run(app, id, ctx),
+      onViewAction: (id) => RibbonViewController.run(app, id)
     });
     app.headerBar.render(document.getElementById('header-mount'));
-    app.syncModifyRibbon?.();
+    app.syncRibbon?.();
     if (app.mapEngine) {
       app.headerBar.updateFeaturePopupMode(app.mapEngine.isFeaturePopupEnabled());
     }
@@ -316,6 +318,7 @@ export class AppComponentsBuilder {
             mensagem: isEnabled ? 'O mapa pode enquadrar sozinho ao importar, abrir o projeto ou selecionar fora da vista.' : 'O mapa só dá zoom pelos botões de enquadrar.',
             duracao: 2000
           });
+          app.syncRibbon?.();
         } else if (action === 'undo') {
           if (app.mapEngine && (app.mapEngine.isDrawing || (app.mapEngine.drawingEngine && app.mapEngine.drawingEngine.drawingPoints?.length > 0))) {
             app.mapEngine.undoLastVertex();
@@ -373,6 +376,7 @@ export class AppComponentsBuilder {
     if (app.mapEngine) {
       app.mapEngine.onSnappingChange = (enabled) => {
         if (app.drawingToolbar) app.drawingToolbar.setSnappingEnabled(enabled);
+        app.syncRibbon?.();
       };
 
       app.mapEngine.onEyedropperSampled = (feat) => {
@@ -442,6 +446,7 @@ export class AppComponentsBuilder {
 
     app.layerPanel = new LayerPanel({
       app,
+      onSidebarToggle: () => app.syncRibbon?.(),
       layers: app.getLayersWithCounts(),
       features: app.features,
       activeLayerId: app.activeLayerId,
@@ -597,6 +602,7 @@ export class AppComponentsBuilder {
     app.attributeTable = new AttributeTable({
       layers: app.layers,
       features: app.features,
+      onCollapseChange: () => app.syncRibbon?.(),
       onSelect: (featureId) => {
         const feat = app.features.find(f => f.id === featureId);
         if (feat) {
@@ -619,12 +625,7 @@ export class AppComponentsBuilder {
       onInspect: (feature) => {
         if (app.layerPanel) {
           app.layerPanel.setSelectedFeature(feature, true);
-          const sidebar = document.getElementById('cm-sidebar-panel');
-          if (sidebar && sidebar.classList.contains('collapsed')) {
-            sidebar.classList.remove('collapsed');
-          }
-          const btnExpand = document.getElementById('btn-expand-sidebar');
-          if (btnExpand) btnExpand.style.display = 'none';
+          app.layerPanel.setSidebarCollapsed(false);
         }
       },
       onOpenPopup: (feature) => {
@@ -683,6 +684,7 @@ export class AppComponentsBuilder {
     });
 
     ShortcutsController.bindGlobalShortcuts(app);
+    app.syncRibbon?.();
   }
 
   /** Ações da Busca Avançada: ligam o painel à seleção, ao mapa e às ações em lote. */

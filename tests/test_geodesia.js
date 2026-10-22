@@ -10,6 +10,8 @@
    5. GeoJSON/KML: MultiPolygon importado por parte; polígono com furo exportado como Polygon.
    6. Impressão: UTM do hemisfério norte, tabela de vértices geodésica, segundos sem "60".
    7. DXF: parseDxf não lança e projeta as entidades para lat/lng.
+   8. CSV pt-BR, DXF (polilinha fechada, arco, bulge, codificação, DWG), GeoJSON crs/MultiPoint,
+      Shapefile MultiPoint, KML com furos/MultiGeometry, buffer e deslocamento em metros reais.
    ========================================================================== */
 
 import assert from 'assert';
@@ -25,6 +27,9 @@ import { GeoJsonConverter } from '../src/services/GeoFormats/GeoJsonConverter.js
 import { KmlConverter } from '../src/services/GeoFormats/KmlConverter.js';
 import { PrintItemsManager as P } from '../src/components/PrintComposer/PrintItemsManager.js';
 import { DwgDxfParser } from '../src/services/CadFormats/DwgDxfParser.js';
+import { CsvConverter } from '../src/services/GeoFormats/CsvConverter.js';
+import { installMiniDom } from './_mini_dom.js';
+import { SpatialAlgorithms } from '../src/services/SpatialAlgorithms.js';
 
 console.log('--- Iniciando Teste do Motor Geodésico ---');
 
@@ -345,6 +350,122 @@ for (const [lat, lon, zone] of [[-15.7939, -47.8828, 23], [-30.03, -51.23, 22], 
   // A projeção escolhida (SAD69) precisa ser a usada: o datum desloca dezenas de metros
   const sad = DwgDxfParser.parseDxf(dxf(`0\nPOINT\n8\n0\n10\n${e0}\n20\n${n0}\n`), { sourceProjection: 'EPSG:29193' });
   assert.ok(Geodesy.distance(sad.features[0].coordinates, point.coordinates) > 50, 'sourceProjection é respeitada');
+}
+
+// ---------------------------------------------------------------------------
+// 8. Importação: CSV pt-BR, DXF (fechada, arco, bulge, codificação, DWG), GeoJSON crs, KML, MultiPoint
+// ---------------------------------------------------------------------------
+{
+  // CSV com vírgula decimal (antes: "-15,7939" virava -15)
+  const csv = CsvConverter.parseCSV('Nome;Latitude;Longitude\nMarco 1;-15,7939;-47,8828\nRuim;abc;-47\nFora;-95,0;10\nPonto;-15.5;-47.5\n');
+  assert.strictEqual(csv.features.length, 2, 'linhas inválidas são ignoradas');
+  assert.deepStrictEqual(csv.features[0].coordinates, [-15.7939, -47.8828]);
+  assert.deepStrictEqual(csv.features[1].coordinates, [-15.5, -47.5]);
+  assert.ok(Number.isNaN(CsvConverter.parseNumber('-15,79x')), 'lixo no número não é truncado');
+
+  const dxf = (body) => `0\nSECTION\n2\nENTITIES\n${body}0\nENDSEC\n0\nEOF\n`;
+  const [e0, n0] = proj4('EPSG:4326', BRAZILIAN_PROJECTIONS['EPSG:31983'], [-47.8828, -15.7939]);
+  const opts = { sourceProjection: 'EPSG:31983' };
+  const utmOf = (c) => proj4('EPSG:4326', BRAZILIAN_PROJECTIONS['EPSG:31983'], [c[1], c[0]]);
+
+  // POLYLINE clássica fechada (flag 70 = 1 no cabeçalho): antes virava linha aberta
+  const classic = DwgDxfParser.parseDxf(dxf(
+    `0\nPOLYLINE\n8\nLOTES\n66\n1\n10\n0.0\n20\n0.0\n30\n0.0\n70\n1\n` +
+    `0\nVERTEX\n8\nLOTES\n10\n${e0}\n20\n${n0}\n` +
+    `0\nVERTEX\n8\nLOTES\n10\n${e0 + 100}\n20\n${n0}\n` +
+    `0\nVERTEX\n8\nLOTES\n10\n${e0 + 100}\n20\n${n0 + 100}\n0\nSEQEND\n8\nLOTES\n`
+  ), opts);
+  assert.strictEqual(classic.features[0].type, 'Polygon', 'POLYLINE fechada vira polígono');
+
+  // ARC de 0° a 90°, raio 100: trecho de circunferência (linha), não círculo
+  const arc = DwgDxfParser.parseDxf(dxf(`0\nARC\n8\nCERCA\n10\n${e0}\n20\n${n0}\n40\n100\n50\n0\n51\n90\n`), opts).features[0];
+  assert.strictEqual(arc.type, 'LineString');
+  const [ax0, ay0] = utmOf(arc.coordinates[0]);
+  const [ax1, ay1] = utmOf(arc.coordinates[arc.coordinates.length - 1]);
+  near(ax0 - e0, 100, 0.01, 'início do arco em 0°'); near(ay0 - n0, 0, 0.01, 'início y');
+  near(ax1 - e0, 0, 0.01, 'fim do arco em 90°'); near(ay1 - n0, 100, 0.01, 'fim y');
+  near(utmOf(arc.coordinates[Math.floor(arc.coordinates.length / 2)])[0] - e0, 100 * Math.SQRT1_2, 1, 'meio do arco a ~45°');
+  // ARC que cruza 0° (270° → 90°) varre 180°
+  const arc2 = DwgDxfParser.parseDxf(dxf(`0\nARC\n8\nA\n10\n${e0}\n20\n${n0}\n40\n50\n50\n270\n51\n90\n`), opts).features[0];
+  assert.ok(arc2.coordinates.length > 30, 'arco de 180° amostrado');
+
+  // Bulge = 1: semicírculo de diâmetro 100 m entre dois vértices
+  const bulge = DwgDxfParser.parseDxf(dxf(
+    `0\nLWPOLYLINE\n8\nC\n90\n2\n70\n0\n10\n${e0}\n20\n${n0}\n42\n1.0\n10\n${e0 + 100}\n20\n${n0}\n`
+  ), opts).features[0];
+  assert.ok(bulge.coordinates.length > 10, 'bulge vira arco amostrado');
+  const mid = utmOf(bulge.coordinates[Math.floor(bulge.coordinates.length / 2)]);
+  near(Math.abs(mid[1] - n0), 50, 0.5, 'topo do semicírculo a 50 m da corda');
+  near(mid[0] - e0, 50, 0.5, 'topo no meio da corda');
+
+  // Codificação: DXF antigo em Windows-1252 mantém os acentos; UTF-8 também
+  const ansiText = '0\nSECTION\n2\nTABLES\n0\nLAYER\n2\nCURVAS_N';
+  const ansi = Uint8Array.from([...ansiText].map(c => c.charCodeAt(0)).concat([0xCD], [...'VEL\n62\n1\n'].map(c => c.charCodeAt(0))));
+  assert.ok(DwgDxfParser.decodeText(ansi.buffer).includes('CURVAS_NÍVEL'), 'Windows-1252');
+  assert.ok(DwgDxfParser.decodeText(new TextEncoder().encode('CURVAS_NÍVEL').buffer).includes('CURVAS_NÍVEL'), 'UTF-8');
+
+  // DWG binário: erro explicativo, nunca geometria inventada
+  const fakeDwg = new Uint8Array(200); fakeDwg.set([...'AC1032'].map(c => c.charCodeAt(0)));
+  assert.throws(() => DwgDxfParser.parseDwg(fakeDwg.buffer), /DXF/);
+
+  // Coordenadas locais (sem georreferência): erro claro em vez de "latitude 987°"
+  assert.throws(() => DwgDxfParser.parseDxf(dxf(`0\nPOINT\n8\n0\n10\n1234.5\n20\n987.6\n`), opts), /não correspondem à projeção/);
+  // Parte válida + parte inválida: importa a válida e conta a outra
+  const mixed = DwgDxfParser.parseDxf(dxf(`0\nPOINT\n8\n0\n10\n${e0}\n20\n${n0}\n0\nPOINT\n8\n0\n10\n12.5\n20\n987.6\n`), opts);
+  assert.strictEqual(mixed.features.length, 1); assert.strictEqual(mixed.skipped, 1);
+
+  // GeoJSON com crs declarado (UTM 23S) é reprojetado; CRS84/4326 não mexem; desconhecido falha
+  const utmGj = { type: 'FeatureCollection', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:EPSG::31983' } },
+    features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [e0, n0] } }] };
+  const gjPt = GeoJsonConverter.parseGeoJSON(utmGj).features[0];
+  near(gjPt.coordinates[0], -15.7939, 1e-7, 'GeoJSON UTM lat'); near(gjPt.coordinates[1], -47.8828, 1e-7, 'GeoJSON UTM lng');
+  const plain = { type: 'FeatureCollection', crs: { type: 'name', properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' } },
+    features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [-47.8828, -15.7939] } }] };
+  assert.deepStrictEqual(GeoJsonConverter.parseGeoJSON(plain).features[0].coordinates, [-15.7939, -47.8828]);
+  const noCrsMetric = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [e0, n0] } }] };
+  assert.throws(() => GeoJsonConverter.parseGeoJSON(noCrsMetric), /fora de/);
+  assert.throws(() => GeoJsonConverter.parseGeoJSON({ ...utmGj, crs: { type: 'name', properties: { name: 'EPSG:99999' } } }), /não suportado/);
+  const mp = GeoJsonConverter.parseGeoJSON({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'M' }, geometry: { type: 'MultiPoint', coordinates: [[-47, -15], [-46, -14]] } }] });
+  assert.strictEqual(mp.features.length, 2, 'MultiPoint vira um ponto por posição');
+
+  // Shapefile MultiPoint: um ponto por feição (antes: só o primeiro)
+  const mpBytes = new ArrayBuffer(100 + 8 + 40 + 32);
+  const mv = new DataView(mpBytes);
+  mv.setInt32(0, 9994, false); mv.setInt32(24, mpBytes.byteLength / 2, false); mv.setInt32(28, 1000, true); mv.setInt32(32, 8, true);
+  mv.setInt32(100, 1, false); mv.setInt32(104, 72 / 2, false);
+  mv.setInt32(108, 8, true); mv.setInt32(144, 2, true);
+  [[-47, -15], [-46, -14]].forEach(([x, y], k) => { mv.setFloat64(148 + k * 16, x, true); mv.setFloat64(156 + k * 16, y, true); });
+  const wgsPrj = enc('GEOGCS["GCS_WGS_1984",DATUM["D_WGS_1984",SPHEROID["WGS_1984",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]]');
+  const mpParsed = await ShapefileParser.parseFileMap(new Map([['mp.shp', mpBytes], ['mp.prj', wgsPrj]]));
+  assert.strictEqual(mpParsed.features.length, 2);
+  assert.deepStrictEqual(mpParsed.features[1].coordinates, [-14, -46]);
+
+  // KML: espaços após vírgulas, furos (innerBoundaryIs) e MultiGeometry
+  assert.deepStrictEqual(KmlConverter.parseCoordinates('-47.1, -15.2, 0   -47.2 ,-15.3,0\n -47.3,-15.4'), [[-15.2, -47.1], [-15.3, -47.2], [-15.4, -47.3]]);
+  const restoreDom = installMiniDom();
+  const holedKml = KmlConverter.toKML([
+    { id: 'h', name: 'Com furo', type: 'Polygon', coordinates: [sq(-15.80, -47.90, 0.002), sq(-15.7995, -47.8995, 0.001)] },
+    { id: 'm', name: 'Duas', type: 'Polygon', coordinates: [[sq(-15.80, -47.90, 0.001)], [sq(-15.80, -47.80, 0.001)]] }
+  ]);
+  const kmlBack = KmlConverter.parseKML(holedKml).features;
+  assert.strictEqual(kmlBack.length, 3, 'furo preservado (1 feição) + MultiGeometry em 2 feições');
+  assert.strictEqual(G.coordinateDepth(kmlBack[0].coordinates), 3, 'polígono com furo volta como externo + furo');
+  near(G.calculatePolygonArea(kmlBack[0].coordinates), G.calculatePolygonArea([sq(-15.80, -47.90, 0.002), sq(-15.7995, -47.8995, 0.001)]), 0.01, 'área KML ida e volta');
+  assert.match(kmlBack[1].name, /Duas \(1\/2\)/);
+  restoreDom();
+
+  // Buffer e deslocamento em metros reais do elipsoide (antes: esfera, ~0,5% de erro)
+  const lat0 = -15.79, lon0 = -47.88;
+  const ew = SpatialAlgorithms.generateBuffer({ type: 'LineString', name: 'l', coordinates: [[lat0, lon0], [lat0, lon0 + 0.0019]] }, 100);
+  const lateral = Math.max(...ew.coordinates.map(p => Geodesy.distance([lat0, lon0], p)).filter(d => d < 150));
+  near(lateral, 100, 0.01, 'buffer de 100 m mede 100 m no terreno (linha L–O)');
+  const ns = SpatialAlgorithms.generateBuffer({ type: 'LineString', name: 'l', coordinates: [[lat0, lon0], [lat0 + 0.0018, lon0]] }, 100);
+  near(Math.max(...ns.coordinates.map(p => Geodesy.distance([lat0, lon0], p)).filter(d => d < 150)), 100, 0.01, 'buffer de 100 m (linha N–S)');
+  const dup = SpatialAlgorithms.duplicateWithOffset({ type: 'Point', name: 'p', coordinates: [lat0, lon0] }, 100);
+  near(Geodesy.distance([lat0, lon0], dup.coordinates), 100 * Math.SQRT2, 0.01, 'cópia deslocada 100 m para norte e para leste');
+  const mpd = Geodesy.metersPerDegree(0);
+  near(mpd.lng, 111319.49, 0.01, 'metros por grau de longitude no equador');
+  near(mpd.lat, 110574.276, 0.01, 'metros por grau de latitude no equador');
 }
 
 console.log('✔ Motor geodésico: UTM, distância/azimute/área elipsoidais, .prj, partes/furos, UTM norte e DXF validados.');

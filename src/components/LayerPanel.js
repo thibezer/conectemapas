@@ -65,6 +65,22 @@ export class LayerPanel {
     this.onSendMessage = options.onSendMessage || (() => {});
     this.onStartVertexEdit = options.onStartVertexEdit || (() => {});
     this.onStopVertexEdit = options.onStopVertexEdit || (() => {});
+    this.onSidebarToggle = options.onSidebarToggle || (() => {});
+  }
+
+  /** O painel lateral está recolhido (só o botão flutuante visível)? */
+  isSidebarCollapsed() {
+    return !!this.container?.querySelector('#cm-sidebar-panel')?.classList.contains('collapsed');
+  }
+
+  /** Recolhe ou expande o painel lateral (botão ❯, botão flutuante e ribbon). */
+  setSidebarCollapsed(collapsed) {
+    const sidebar = this.container?.querySelector('#cm-sidebar-panel');
+    const btnExpand = this.container?.querySelector('#btn-expand-sidebar');
+    if (!sidebar) return;
+    sidebar.classList.toggle('collapsed', !!collapsed);
+    if (btnExpand) btnExpand.style.display = collapsed ? 'flex' : 'none';
+    this.onSidebarToggle(!!collapsed);
   }
 
   getVisibleTreeItemIds() {
@@ -208,19 +224,8 @@ export class LayerPanel {
     const btnExpand = this.container.querySelector('#btn-expand-sidebar');
     const sidebar = this.container.querySelector('#cm-sidebar-panel');
 
-    if (btnCollapse) {
-      btnCollapse.addEventListener('click', () => {
-        if (sidebar) sidebar.classList.add('collapsed');
-        if (btnExpand) btnExpand.style.display = 'flex';
-      });
-    }
-
-    if (btnExpand) {
-      btnExpand.addEventListener('click', () => {
-        if (sidebar) sidebar.classList.remove('collapsed');
-        if (btnExpand) btnExpand.style.display = 'none';
-      });
-    }
+    btnCollapse?.addEventListener('click', () => this.setSidebarCollapsed(true));
+    btnExpand?.addEventListener('click', () => this.setSidebarCollapsed(false));
 
     this.bindResizer(sidebar);
     this.bindTabEvents();

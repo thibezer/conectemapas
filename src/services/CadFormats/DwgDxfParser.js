@@ -246,6 +246,11 @@ export class DwgDxfParser {
             }
             if (code === 30) entityData.z = parseFloat(val);
 
+            // Bulge (tan do quarto do ângulo do arco) do segmento que parte do vértice atual
+            if (code === 42 && entityType === 'LWPOLYLINE' && currentVertex) {
+              currentVertex[2] = parseFloat(val);
+            }
+
             // Coordenadas secundárias (ex: LINE)
             if (code === 11) entityData.x2 = parseFloat(val);
             if (code === 21) entityData.y2 = parseFloat(val);
@@ -261,30 +266,31 @@ export class DwgDxfParser {
               const flag = parseInt(val, 10);
               entityData.isClosed = (flag & 1) === 1;
             }
+          }
 
-            // Tratamento especial para POLYLINE clássica com nós VERTEX
-            if (entityType === 'POLYLINE') {
-              while (i < totalLines) {
-                const subGrp = nextGroup();
-                if (!subGrp) break;
-                if (subGrp.code === 0 && subGrp.value === 'VERTEX') {
-                  let vx = 0, vy = 0;
-                  while (i < totalLines) {
-                    const vProp = nextGroup();
-                    if (!vProp || vProp.code === 0) {
-                      if (vProp) i -= 2;
-                      break;
-                    }
-                    if (vProp.code === 10) vx = parseFloat(vProp.value);
-                    if (vProp.code === 20) vy = parseFloat(vProp.value);
+          // POLYLINE clássica: os nós VERTEX vêm depois do cabeçalho (cujo flag 70 já foi lido acima)
+          if (entityType === 'POLYLINE') {
+            while (i < totalLines) {
+              const subGrp = nextGroup();
+              if (!subGrp) break;
+              if (subGrp.code === 0 && subGrp.value === 'VERTEX') {
+                let vx = 0, vy = 0, bulge = 0;
+                while (i < totalLines) {
+                  const vProp = nextGroup();
+                  if (!vProp || vProp.code === 0) {
+                    if (vProp) i -= 2;
+                    break;
                   }
-                  entityData.vertices.push([vx, vy]);
-                } else if (subGrp.code === 0 && subGrp.value === 'SEQEND') {
-                  break;
-                } else if (subGrp.code === 0) {
-                  i -= 2;
-                  break;
+                  if (vProp.code === 10) vx = parseFloat(vProp.value);
+                  if (vProp.code === 20) vy = parseFloat(vProp.value);
+                  if (vProp.code === 42) bulge = parseFloat(vProp.value);
                 }
+                entityData.vertices.push([vx, vy, bulge]);
+              } else if (subGrp.code === 0 && subGrp.value === 'SEQEND') {
+                break;
+              } else if (subGrp.code === 0) {
+                i -= 2;
+                break;
               }
             }
           }
@@ -324,10 +330,98 @@ export class DwgDxfParser {
       }
     }
 
+    // Coordenadas que não viram lat/lng válidas (desenho em coordenadas locais ou projeção errada)
+    // não entram no projeto: seriam metros lidos como graus.
+    const valid = features.filter(f => DwgDxfParser.isValidLatLngTree(f.coordinates));
+    const skipped = features.length - valid.length;
+    if (valid.length === 0 && skipped > 0) {
+      throw new Error(
+        `As coordenadas do desenho não correspondem à projeção selecionada (${sourceProjection}). ` +
+        'Escolha o fuso/datum corretos; desenhos em coordenadas locais (sem georreferência) não podem ser importados.'
+      );
+    }
+
     return {
       layers: Array.from(layersMap.values()),
-      features
+      features: valid,
+      skipped
     };
+  }
+
+  /** Posição [lat, lng], anel ou lista de anéis com todas as posições finitas dentro de ±90°/±180°. */
+  static isValidLatLngTree(coords) {
+    if (!Array.isArray(coords) || coords.length === 0) return false;
+    if (typeof coords[0] === 'number') {
+      return Number.isFinite(coords[0]) && Number.isFinite(coords[1]) && Math.abs(coords[0]) <= 90 && Math.abs(coords[1]) <= 180;
+    }
+    return coords.every(c => DwgDxfParser.isValidLatLngTree(c));
+  }
+
+  /**
+   * Decodifica texto DXF: UTF-8 quando válido (AutoCAD 2007+), senão Windows-1252
+   * (DXF antigos em ANSI, com acentos em nomes de camada e textos).
+   */
+  static decodeText(buffer) {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch {
+      return new TextDecoder('windows-1252').decode(buffer);
+    }
+  }
+
+  /**
+   * Pontos intermediários do arco de um segmento com bulge (DXF): bulge = tan(ângulo/4),
+   * positivo = anti-horário. Trabalha nas unidades do desenho; devolve só os pontos interiores.
+   */
+  static bulgeArcPoints(p1, p2, bulge) {
+    if (!bulge || !Number.isFinite(bulge)) return [];
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    const d = Math.hypot(dx, dy);
+    if (d === 0) return [];
+    const theta = 4 * Math.atan(bulge); // ângulo inscrito (com sinal)
+    // centro: ponto médio deslocado para a esquerda da corda por (d/2)(1 - b²)/(2b)
+    const off = (d / 2) * (1 - bulge * bulge) / (2 * bulge);
+    const cx = (p1[0] + p2[0]) / 2 + (-dy / d) * off;
+    const cy = (p1[1] + p2[1]) / 2 + (dx / d) * off;
+    const r = Math.hypot(p1[0] - cx, p1[1] - cy);
+    const a1 = Math.atan2(p1[1] - cy, p1[0] - cx);
+    const steps = Math.max(2, Math.ceil(Math.abs(theta) / (Math.PI / 36)));
+    const pts = [];
+    for (let k = 1; k < steps; k++) {
+      const ang = a1 + (theta * k) / steps;
+      pts.push([cx + r * Math.cos(ang), cy + r * Math.sin(ang)]);
+    }
+    return pts;
+  }
+
+  /** Vértices [x, y, bulge?] -> lista de [x, y] com os arcos dos bulges amostrados. */
+  static expandBulges(vertices, closed) {
+    const out = [];
+    const n = vertices.length;
+    for (let i = 0; i < n; i++) {
+      const v = vertices[i];
+      out.push([v[0], v[1]]);
+      const hasNext = i < n - 1 || closed;
+      if (hasNext && v[2]) {
+        const next = vertices[(i + 1) % n];
+        out.push(...DwgDxfParser.bulgeArcPoints(v, next, v[2]));
+      }
+    }
+    return out;
+  }
+
+  /** Pontos de um ARC (centro, raio, ângulos em graus, sentido anti-horário), de 5° em 5°. */
+  static arcPoints(cx, cy, radius, startDeg, endDeg) {
+    let sweep = endDeg - startDeg;
+    while (sweep <= 0) sweep += 360;
+    const steps = Math.max(2, Math.ceil(sweep / 5));
+    const pts = [];
+    for (let k = 0; k <= steps; k++) {
+      const ang = ((startDeg + (sweep * k) / steps) * Math.PI) / 180;
+      pts.push([cx + radius * Math.cos(ang), cy + radius * Math.sin(ang)]);
+    }
+    return pts;
   }
 
   /**
@@ -389,7 +483,7 @@ export class DwgDxfParser {
     if (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE') {
       if (!entity.vertices || entity.vertices.length < 2) return null;
 
-      const projectedCoords = entity.vertices.map(([vx, vy]) =>
+      const projectedCoords = DwgDxfParser.expandBulges(entity.vertices, entity.isClosed).map(([vx, vy]) =>
         DwgDxfParser.projectPoint(vx, vy, sourceProj)
       );
 
@@ -442,14 +536,37 @@ export class DwgDxfParser {
       };
     }
 
-    // 4. CIRCLE / ARC
-    if (entity.type === 'CIRCLE' || entity.type === 'ARC') {
+    // 4. ARC: trecho de circunferência, não o círculo inteiro
+    if (entity.type === 'ARC') {
+      const arc = DwgDxfParser.arcPoints(entity.x, entity.y, entity.radius || 10, entity.startAngle, entity.endAngle)
+        .map(([ax, ay]) => DwgDxfParser.projectPoint(ax, ay, sourceProj));
+      return {
+        id,
+        name: `Arco (${entity.layer})`,
+        type: 'LineString',
+        layerId,
+        color,
+        coordinates: arc,
+        properties: {
+          layerCad: entity.layer,
+          raioMetros: entity.radius,
+          tipoCad: 'ARC'
+        },
+        style: {
+          strokeColor: color,
+          strokeWidth: 2.5
+        }
+      };
+    }
+
+    // 4b. CIRCLE
+    if (entity.type === 'CIRCLE') {
       const center = DwgDxfParser.projectPoint(entity.x, entity.y, sourceProj);
       const radiusMeters = entity.radius || 10;
 
       return {
         id,
-        name: `${entity.type === 'ARC' ? 'Arco' : 'Círculo'} (${entity.layer})`,
+        name: `Círculo (${entity.layer})`,
         type: 'Circle',
         layerId,
         color,
@@ -505,8 +622,9 @@ export class DwgDxfParser {
   }
 
   /**
-   * Parser primário para arquivos DWG binários
-   * Reconhece a versão, extrai strings textuais, camadas e blocos geométricos disponíveis
+   * DWG binário não é lido: o formato é fechado e a varredura de bytes em busca de números
+   * produziria geometria inventada. Orienta a exportar para DXF.
+   * Texto DXF recebido por engano é lido normalmente.
    * @param {ArrayBuffer|Uint8Array} arrayBuffer
    * @param {Object} options
    */
@@ -515,139 +633,13 @@ export class DwgDxfParser {
     const versionInfo = this.detectDwgVersion(bytes);
 
     if (!versionInfo.isDwg) {
-      // Se não for DWG binário, tenta decodificar como DXF
-      const text = new TextDecoder('utf-8').decode(bytes);
-      return this.parseDxf(text, options);
+      return this.parseDxf(this.decodeText(bytes), options);
     }
 
-    const {
-      sourceProjection = 'EPSG:31983',
-      defaultColor = '#00E08A'
-    } = options;
-
-    // Extração inteligente de camadas e geometrias via decodificação de stream
-    const decoder = new TextDecoder('latin1');
-    const fullText = decoder.decode(bytes);
-
-    // Mapeia camadas encontradas no DWG
-    const layersMap = new Map();
-    const features = [];
-
-    // Expressão regular para localizar nomes de layers CAD no stream binário
-    const layerMatches = fullText.match(/[A-Z0-9_\-]{3,30}(?=\x00)/g) || [];
-    const CAD_STANDARD_LAYERS = new Set(['0', 'DEFPOINTS', 'DIVISAS', 'CURVAS_NIVEL', 'LOTES', 'QUADRAS', 'TEXTO', 'POSTES', 'EIXO', 'TALUDE']);
-
-    for (const match of layerMatches) {
-      if (CAD_STANDARD_LAYERS.has(match.toUpperCase()) && !layersMap.has(match)) {
-        layersMap.set(match, {
-          id: 'layer-' + match.toLowerCase().replace(/[^a-z0-9_-]/g, '_'),
-          name: match,
-          color: defaultColor,
-          type: 'cad',
-          visible: true,
-          opacity: 1.0,
-          order: layersMap.size
-        });
-      }
-    }
-
-    if (layersMap.size === 0) {
-      layersMap.set('AutoCAD', {
-        id: 'layer-cad-dwg',
-        name: `AutoCAD (${versionInfo.versionName || 'DWG'})`,
-        color: defaultColor,
-        type: 'cad',
-        visible: true,
-        opacity: 1.0,
-        order: 0
-      });
-    }
-
-    // Extrai pares de coordenadas flutuantes IEEE 754 de 64 bits (double precision) do stream
-    const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    const coordsFound = [];
-
-    // Varredura de coordenadas métricas UTM (Easting: 150.000 a 850.000; Northing: 1.000.000 a 9.900.000)
-    for (let offset = 16; offset < bytes.length - 16; offset += 8) {
-      try {
-        const valX = dataView.getFloat64(offset, true); // Little endian
-        const valY = dataView.getFloat64(offset + 8, true);
-
-        if (
-          valX >= 100000 && valX <= 900000 &&
-          valY >= 1000000 && valY <= 10000000
-        ) {
-          coordsFound.push([valX, valY]);
-          offset += 16; // Pula bloco encontrado
-        }
-      } catch {
-        break;
-      }
-    }
-
-    const defaultLayerId = Array.from(layersMap.values())[0].id;
-
-    if (coordsFound.length > 0) {
-      // Agrupa pontos sequenciais em polilinhas ou pontos isolados
-      if (coordsFound.length >= 3) {
-        const polyCoords = coordsFound.map(([x, y]) =>
-          DwgDxfParser.projectPoint(x, y, sourceProjection)
-        );
-
-        features.push({
-          id: 'cad-dwg-poly-' + Date.now(),
-          name: `Poligonal CAD (${versionInfo.versionName})`,
-          type: 'Polygon',
-          layerId: defaultLayerId,
-          color: defaultColor,
-          coordinates: [polyCoords],
-          properties: {
-            dwgVersion: versionInfo.versionName,
-            pontosTotais: coordsFound.length,
-            origem: 'AutoCAD DWG'
-          },
-          style: {
-            fillColor: defaultColor,
-            fillOpacity: 0.25,
-            strokeColor: defaultColor,
-            strokeWidth: 2.5
-          }
-        });
-      }
-
-      // Adiciona os primeiros pontos com marcos
-      const maxPoints = Math.min(coordsFound.length, 50);
-      for (let p = 0; p < maxPoints; p++) {
-        const [x, y] = coordsFound[p];
-        const latlng = DwgDxfParser.projectPoint(x, y, sourceProjection);
-        features.push({
-          id: `cad-dwg-pt-${Date.now()}-${p}`,
-          name: `Vértice CAD #${p + 1}`,
-          type: 'Point',
-          layerId: defaultLayerId,
-          color: defaultColor,
-          coordinates: latlng,
-          properties: {
-            easting: x.toFixed(2),
-            northing: y.toFixed(2),
-            dwgVersion: versionInfo.versionName
-          },
-          style: {
-            fillColor: defaultColor,
-            strokeColor: defaultColor,
-            markerIcon: 'pin',
-            markerSize: 20
-          }
-        });
-      }
-    }
-
-    return {
-      version: versionInfo,
-      layers: Array.from(layersMap.values()),
-      features,
-      isDwg: true
-    };
+    throw new Error(
+      `Arquivos .dwg binários (${versionInfo.versionName}) não são suportados: ler o formato sem o SDK da Autodesk/ODA ` +
+      'gera geometria incorreta. Salve o desenho como DXF (AutoCAD: Salvar como > DXF) e importe o .dxf.'
+    );
   }
 
   /**
@@ -674,8 +666,7 @@ export class DwgDxfParser {
     }
 
     if (name.endsWith('.dxf')) {
-      const text = new TextDecoder('utf-8').decode(buffer);
-      return this.parseDxf(text, options);
+      return this.parseDxf(this.decodeText(buffer), options);
     }
 
     if (name.endsWith('.dwg')) {
@@ -687,8 +678,7 @@ export class DwgDxfParser {
     if (version.isDwg) {
       return this.parseDwg(buffer, options);
     } else {
-      const text = new TextDecoder('utf-8').decode(buffer);
-      return this.parseDxf(text, options);
+      return this.parseDxf(this.decodeText(buffer), options);
     }
   }
 }

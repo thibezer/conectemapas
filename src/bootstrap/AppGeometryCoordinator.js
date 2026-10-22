@@ -163,7 +163,7 @@ export class AppGeometryCoordinator {
 
   static updateHUD(app, selectedCount = null) {
     // Seleção, recarga do mapa e desfazer/refazer passam por aqui: a aba Modificar acompanha
-    app.syncModifyRibbon?.();
+    app.syncRibbon?.();
     const countSpan = document.getElementById('hud-features-count');
     if (countSpan) {
       const total = app.features ? app.features.length : 0;

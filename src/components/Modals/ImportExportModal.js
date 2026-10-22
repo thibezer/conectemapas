@@ -161,7 +161,7 @@ export class ImportExportModal {
           <div style="border-top: 1px solid var(--cm-border); padding-top: 14px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
               <ui-texto variante="h6" style="font-weight: 600;">Importar Camadas & Desenhos Técnicos</ui-texto>
-              <span style="font-size: 10px; color: var(--cm-primary); font-family: var(--cm-fonte-mono);">DWG, DXF, SHP, GeoJSON, KML, CSV</span>
+              <span style="font-size: 10px; color: var(--cm-primary); font-family: var(--cm-fonte-mono);">DXF, SHP, GeoJSON, KML, CSV</span>
             </div>
 
             <!-- Guia Visual: AutoCAD e Shapefile -->
@@ -175,7 +175,7 @@ export class ImportExportModal {
                 font-size: 11px;
               ">
                 <div style="font-weight: 600; margin-bottom: 4px; color: #f87171; display: flex; align-items: center; gap: 6px;">
-                  <span>📐 AutoCAD (.DWG / .DXF)</span>
+                  <span>📐 AutoCAD (.DXF) — salve o DWG como DXF</span>
                 </div>
                 <div style="color: var(--cm-text-muted); font-size: 10px; line-height: 1.4;">
                   Reconhece <strong>camadas originais</strong>, linhas, polígonos, cotas e <strong>coordenadas métricas UTM</strong>.
@@ -210,7 +210,7 @@ export class ImportExportModal {
               transition: all 0.2s;
             ">
               <div style="font-size: 28px; margin-bottom: 6px;">📂</div>
-              <ui-texto variante="corpo" style="font-weight: 500;">Arraste e solte o arquivo <strong>AutoCAD (.DWG / .DXF)</strong> ou <strong>Shapefile (.ZIP)</strong></ui-texto>
+              <ui-texto variante="corpo" style="font-weight: 500;">Arraste e solte o arquivo <strong>AutoCAD (.DXF)</strong> ou <strong>Shapefile (.ZIP)</strong></ui-texto>
               <ui-texto variante="caption" style="display: block; color: var(--cm-text-muted); margin-top: 4px;">
                 Também suporta GeoJSON, KML e planilhas CSV com coordenadas
               </ui-texto>
@@ -376,14 +376,14 @@ export class ImportExportModal {
             const singleFile = this.pendingFiles[0];
             const name = singleFile.name.toLowerCase();
 
-            if (name.endsWith('.dwg')) {
-              // DWG binário: lê como ArrayBuffer para decodificação
+            if (name.endsWith('.dwg') || name.endsWith('.dxf')) {
+              // CAD: lê como ArrayBuffer (DXF antigo é ANSI e precisa decodificação própria)
               const reader = new FileReader();
               reader.onload = (e) => {
                 this.onImport(e.target.result, singleFile.name, importOptions);
               };
               reader.readAsArrayBuffer(singleFile);
-            } else if (name.endsWith('.dxf') || name.endsWith('.geojson') || name.endsWith('.json') || name.endsWith('.kml') || name.endsWith('.csv')) {
+            } else if (name.endsWith('.geojson') || name.endsWith('.json') || name.endsWith('.kml') || name.endsWith('.csv')) {
               const reader = new FileReader();
               reader.onload = (e) => {
                 this.onImport(e.target.result, singleFile.name, importOptions);

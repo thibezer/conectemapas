@@ -16,6 +16,7 @@ import { GuestIdentity } from './services/Storage/GuestIdentity.js';
 import { FeatureSyncController } from './controllers/FeatureSyncController.js';
 import { ShortcutsController } from './controllers/ShortcutsController.js';
 import { ModifyActionsController } from './controllers/ModifyActionsController.js';
+import { RibbonViewController } from './controllers/RibbonViewController.js';
 
 import { AppBootstrapSync } from './bootstrap/AppBootstrapSync.js';
 import { AppComponentsBuilder } from './bootstrap/AppComponentsBuilder.js';
@@ -399,13 +400,14 @@ class ConecteMapasApp {
     AppGeometryCoordinator.updateHUD(this, selectedCount);
   }
 
-  /** Atualiza a aba Modificar da ribbon (agrupa várias chamadas do mesmo ciclo em uma). */
-  syncModifyRibbon() {
-    if (this._modifySyncQueued) return;
-    this._modifySyncQueued = true;
+  /** Atualiza o estado dos botões da ribbon (agrupa várias chamadas do mesmo ciclo em uma). */
+  syncRibbon() {
+    if (this._ribbonSyncQueued) return;
+    this._ribbonSyncQueued = true;
     setTimeout(() => {
-      this._modifySyncQueued = false;
+      this._ribbonSyncQueued = false;
       ModifyActionsController.sync(this);
+      RibbonViewController.sync(this);
     }, 0);
   }
 

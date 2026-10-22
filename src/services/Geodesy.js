@@ -73,6 +73,21 @@ export class Geodesy {
     return { distance, azimuth: (azimuth * DEG + 360) % 360 };
   }
 
+  /**
+   * Metros por grau de latitude e de longitude na latitude dada (raios de curvatura M e N do GRS80).
+   * Serve para deslocamentos locais pequenos (buffer, cópia com deslocamento), no lugar de uma esfera.
+   * @param {number} latDeg latitude em graus
+   * @returns {{lat: number, lng: number}}
+   */
+  static metersPerDegree(latDeg) {
+    const e2 = F * (2 - F);
+    const sin = Math.sin(latDeg * RAD);
+    const w = 1 - e2 * sin * sin;
+    const N = A / Math.sqrt(w);
+    const M = A * (1 - e2) / (w * Math.sqrt(w));
+    return { lat: M * RAD, lng: N * Math.cos(latDeg * RAD) * RAD };
+  }
+
   /** Distância geodésica em metros. */
   static distance(p1, p2) {
     return this.inverse(p1, p2).distance;
