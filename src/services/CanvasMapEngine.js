@@ -139,6 +139,7 @@ export class CanvasMapEngine {
 
     // O app já trata a tecla S (atalho + toast + botão da barra); o componente não deve alternar de novo
     host.definirAtalhoSnap(false);
+    this._applyPopupMode();
     this._updatePopupMargins();
 
     this._initBaseLayers();
@@ -211,13 +212,6 @@ export class CanvasMapEngine {
       // O componente abre o popup logo depois deste evento: ajusta o auto-pan antes
       this._updatePopupMargins();
       this.onFeaturesSelected(features);
-
-      // Se popups automáticos estiverem desativados (padrão), fecha o popup na mesma rodada
-      if (!this.popupEnabled) {
-        queueMicrotask(() => {
-          this.closeFeaturePopup();
-        });
-      }
     });
 
     this._on('cad-feicao-selecionada', (e) => {
@@ -726,10 +720,16 @@ export class CanvasMapEngine {
     try {
       localStorage.setItem('cm_feature_popup_enabled', String(this.popupEnabled));
     } catch {}
+    this._applyPopupMode();
     if (!this.popupEnabled) {
       this.closeFeaturePopup();
     }
     return this.popupEnabled;
+  }
+
+  /** "Balão ao clicar" ligado abre ao selecionar; desligado, só por duplo clique ou pedido explícito. */
+  _applyPopupMode() {
+    if (this.host) this.host.popups = this.popupEnabled ? 'automatico' : 'sob-demanda';
   }
 
   toggleFeaturePopupEnabled() {
@@ -746,7 +746,8 @@ export class CanvasMapEngine {
     const ref = this._ref?.(featureId);
     if (!feat || !ref) return;
     this._updatePopupMargins?.();
-    this.host?.selecionarFeicoes?.([ref], true);
+    this.host?.selecionarFeicoes?.([ref], false);
+    this.host?.abrirPopupFeicao?.(ref.camadaId, ref.id);
   }
 
   // ------------------------------------------------------------------------
