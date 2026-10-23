@@ -124,6 +124,7 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - O componente usa Shadow DOM: o CSS do documento é espelhado no shadow root (`CanvasHost._mirrorDocumentStyles`). Seletores e consultas ao DOM do mapa devem partir de `map.getContainer()`, não de `document`.
 - Padrões do componente desligados no `CanvasHost`: camadas padrão (satélite Google, WMS SIGEF/INCRA — que consulta o INCRA a cada clique), painel/barra do kit. Pan com a roda, caixa Window/Crossing, snap e menu de contexto do componente ficam ligados.
 - O kit instalado é uma build local do repositório do usuário (D:/Programação/UI_Componentes) enquanto não for publicado.
+- **Atualização Rápida do Kit**: Ao receber pedidos como "atualize o kit de ui", execute imediatamente o comando em 1 passo `npm run update:kit` documentado em `docs/ATUALIZAR_UI_KIT.md`.
 - Histórico: o que o motor antigo fazia e o mapa de migração estão em `docs/MAPENGINE_INVENTARIO.md`.
 
 ---
