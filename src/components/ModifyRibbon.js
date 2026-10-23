@@ -201,7 +201,7 @@ export function computeModifyState({ features = [], layers = [], history = {}, a
 
     'mod-vertices': { disabled: !canVertices },
     'mod-duplicate': { disabled: !single },
-    'mod-buffer': { disabled: !single },
+    'mod-buffer': { disabled: u === 0 },
     'mod-delete': { disabled: u === 0 },
 
     'mod-layer': {

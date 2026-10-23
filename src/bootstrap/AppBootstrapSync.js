@@ -97,6 +97,7 @@ export class AppBootstrapSync {
           app.refreshMapAndTable(true);
           if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
           if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+          if (app.bufferModal) app.bufferModal.updateLayers(app.layers);
           if (app.textPromptModal) app.textPromptModal.updateLayers(app.layers);
           if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
         }

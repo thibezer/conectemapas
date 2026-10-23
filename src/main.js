@@ -359,6 +359,7 @@ class ConecteMapasApp {
       StorageService.saveLayer(rescue, this.projectId);
       if (this.collabHub) this.collabHub.notifyLayerCreated(rescue);
       if (this.newFeatureModal) this.newFeatureModal.updateLayers(this.layers);
+      if (this.bufferModal) this.bufferModal.updateLayers(this.layers);
       this.saveMetadata(false);
     }
     all.forEach(f => { f.layerId = RESCUE_ID; });

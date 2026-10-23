@@ -83,6 +83,7 @@ const state = (features, extra = {}) => computeModifyState({ features, layers, .
   assert.strictEqual(st['mod-inspect'].disabled, true, 'propriedades é de uma feição só');
   assert.strictEqual(st['mod-vertices'].disabled, true);
   assert.strictEqual(st['mod-duplicate'].disabled, true);
+  assert.strictEqual(st['mod-buffer'].disabled, false, 'buffer disponível com múltiplos objetos');
   assert.strictEqual(st['mod-table'].disabled, false);
   assert.strictEqual(st['mod-copy-geojson'].disabled, false);
   assert.strictEqual(st['mod-copy-wkt'].disabled, true, 'WKT é de uma feição só');
@@ -93,6 +94,7 @@ const state = (features, extra = {}) => computeModifyState({ features, layers, .
 {
   const travada = state([poly('a', { locked: true })]);
   assert.strictEqual(travada['mod-delete'].disabled, true);
+  assert.strictEqual(travada['mod-buffer'].disabled, true, 'buffer desabilitado se bloqueada');
   assert.strictEqual(travada['mod-vertices'].disabled, true);
   assert.strictEqual(travada['mod-layer'].disabled, true);
   assert.strictEqual(travada['mod-simplify'].disabled, true);

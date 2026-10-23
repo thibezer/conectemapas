@@ -984,25 +984,29 @@ export class FeaturePropertiesAdapter {
 
       case 'acao_buffer': {
         const radius = Number.isFinite(panel._bufferRadius) && panel._bufferRadius > 0 ? panel._bufferRadius : 50;
-        const bufferFeature = SpatialAlgorithms.generateBuffer(feat, radius);
-        if (bufferFeature) {
-          const created = panel.onFeatureCreate(bufferFeature);
-          if (created && panel.app?.mapEngine) {
-            panel.app.mapEngine.selectFeature(created.id);
-          }
-          UIToast.notificar({
-            tipo: 'sucesso',
-            titulo: 'Buffer Criado',
-            mensagem: `Zona de amortecimento de ${radius} m gerada para "${feat.name || 'Feição'}".`,
-            duracao: 3500
-          });
+        if (panel.app?.bufferModal) {
+          panel.app.bufferModal.open([feat], radius);
         } else {
-          UIToast.notificar({
-            tipo: 'alerta',
-            titulo: 'Falha no Buffer',
-            mensagem: 'Não foi possível gerar a zona de amortecimento para esta feição.',
-            duracao: 4000
-          });
+          const bufferFeature = SpatialAlgorithms.generateBuffer(feat, radius);
+          if (bufferFeature) {
+            const created = panel.onFeatureCreate(bufferFeature);
+            if (created && panel.app?.mapEngine) {
+              panel.app.mapEngine.selectFeature(created.id);
+            }
+            UIToast.notificar({
+              tipo: 'sucesso',
+              titulo: 'Buffer Criado',
+              mensagem: `Zona de amortecimento de ${radius} m gerada para "${feat.name || 'Feição'}".`,
+              duracao: 3500
+            });
+          } else {
+            UIToast.notificar({
+              tipo: 'alerta',
+              titulo: 'Falha no Buffer',
+              mensagem: 'Não foi possível gerar a zona de amortecimento para esta feição.',
+              duracao: 4000
+            });
+          }
         }
         break;
       }

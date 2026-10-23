@@ -129,12 +129,29 @@ export class SpatialAlgorithms {
    * @param {number} radiusMeters Raio do buffer em metros (pode ser positivo para expansão ou negativo para retração)
    * @returns {Object|null} Nova feição de buffer (Polygon ou Circle)
    */
-  static generateBuffer(feature, radiusMeters = 50) {
+  static generateBuffer(feature, radiusMeters = 50, optionsOrLayerId = null) {
     if (!feature || !Number.isFinite(radiusMeters) || radiusMeters === 0) return null;
     const type = feature.type;
-    const targetLayerId = feature.layerId || 'layer-topografia';
+    let targetLayerId = feature.layerId || 'layer-topografia';
+    let targetColor = null;
+    let customId = null;
+
+    if (typeof optionsOrLayerId === 'string' && optionsOrLayerId.trim()) {
+      targetLayerId = optionsOrLayerId.trim();
+    } else if (optionsOrLayerId && typeof optionsOrLayerId === 'object') {
+      if (optionsOrLayerId.targetLayerId || optionsOrLayerId.layerId) {
+        targetLayerId = optionsOrLayerId.targetLayerId || optionsOrLayerId.layerId;
+      }
+      if (optionsOrLayerId.color) targetColor = optionsOrLayerId.color;
+      if (optionsOrLayerId.id) customId = optionsOrLayerId.id;
+    }
+
+    const uniqueSuffix = Math.random().toString(36).slice(2, 8);
+    const featureId = customId || `feat-buffer-${Date.now()}-${uniqueSuffix}`;
     const absRadius = Math.abs(radiusMeters);
     const radiusStr = `${radiusMeters > 0 ? '+' : ''}${radiusMeters} m`;
+    const bufferFill = targetColor || '#38bdf8';
+    const bufferStroke = targetColor || '#0284c7';
 
     // 1. Ponto ou Texto -> Círculo geodésico
     if (type === 'Point' || type === 'Text') {
@@ -144,18 +161,18 @@ export class SpatialAlgorithms {
       if (!coord) return null;
 
       return {
-        id: `feat-buffer-${Date.now()}`,
+        id: featureId,
         name: `Buffer ${feature.name || 'Ponto'} (${absRadius}m)`,
         layerId: targetLayerId,
         type: 'Circle',
         coordinates: coord,
         radius: absRadius,
         category: 'Zona de Amortecimento',
-        color: '#38bdf8',
+        color: bufferFill,
         style: {
-          fillColor: '#38bdf8',
+          fillColor: bufferFill,
           fillOpacity: 0.25,
-          strokeColor: '#0284c7',
+          strokeColor: bufferStroke,
           strokeWidth: 2,
           strokeDashArray: '4, 4',
           markerIcon: 'pin',
@@ -183,18 +200,18 @@ export class SpatialAlgorithms {
       if (!coord) return null;
 
       return {
-        id: `feat-buffer-${Date.now()}`,
+        id: featureId,
         name: `Buffer ${feature.name || 'Círculo'} (${radiusStr})`,
         layerId: targetLayerId,
         type: 'Circle',
         coordinates: coord,
         radius: newRadius,
         category: 'Zona de Amortecimento',
-        color: '#38bdf8',
+        color: bufferFill,
         style: {
-          fillColor: '#38bdf8',
+          fillColor: bufferFill,
           fillOpacity: 0.25,
-          strokeColor: '#0284c7',
+          strokeColor: bufferStroke,
           strokeWidth: 2,
           strokeDashArray: '4, 4',
           markerIcon: 'pin',
@@ -360,17 +377,17 @@ export class SpatialAlgorithms {
     }
 
     return {
-      id: `feat-buffer-${Date.now()}`,
+      id: featureId,
       name: `Buffer ${feature.name || 'Geometria'} (${absRadius}m)`,
       layerId: targetLayerId,
       type: 'Polygon',
       coordinates: bufferLatLng,
       category: 'Zona de Amortecimento',
-      color: '#38bdf8',
+      color: bufferFill,
       style: {
-        fillColor: '#38bdf8',
+        fillColor: bufferFill,
         fillOpacity: 0.25,
-        strokeColor: '#0284c7',
+        strokeColor: bufferStroke,
         strokeWidth: 2,
         strokeDashArray: '4, 4',
         markerIcon: 'pin',

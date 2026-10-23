@@ -1,0 +1,103 @@
+/* ==========================================================================
+   ConecteMapas - BufferModal Styling
+   Modal para criação de zonas de amortecimento (buffer) em lote ou individual
+   ========================================================================== */
+
+.cm-buffer-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  color: var(--cm-text, #f1f5f9);
+  min-width: 380px;
+}
+
+.cm-buffer-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--cm-bg-card, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  border-radius: 8px;
+}
+
+.cm-buffer-summary-icon {
+  font-size: 22px;
+  line-height: 1;
+  color: #38bdf8;
+  flex-shrink: 0;
+}
+
+.cm-buffer-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+}
+
+.cm-buffer-summary-title {
+  font-weight: 600;
+  color: var(--cm-text, #f8fafc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cm-buffer-summary-desc {
+  font-size: 11px;
+  color: var(--cm-text-muted, #94a3b8);
+}
+
+.cm-buffer-radius-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-buffer-quick-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cm-buffer-quick-chips .cm-chip-btn {
+  background: var(--cm-bg-button, rgba(255, 255, 255, 0.06));
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.12));
+  color: var(--cm-text-muted, #94a3b8);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cm-buffer-quick-chips .cm-chip-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+}
+
+.cm-buffer-quick-chips .cm-chip-btn.active {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  font-weight: 600;
+}
+
+.cm-buffer-layer-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-buffer-new-layer-box {
+  padding: 10px;
+  background: rgba(56, 189, 248, 0.06);
+  border: 1px dashed rgba(56, 189, 248, 0.3);
+  border-radius: 6px;
+  margin-top: 4px;
+}

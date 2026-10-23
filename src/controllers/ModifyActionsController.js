@@ -7,6 +7,7 @@
    ========================================================================== */
 
 import { UIToast } from '@thibezer/ui-components-kit';
+import { StorageService } from '../services/StorageService.js';
 import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
 import { GeoFormats } from '../services/GeoFormats.js';
 import { AppGeometryCoordinator } from '../bootstrap/AppGeometryCoordinator.js';
@@ -113,7 +114,7 @@ export class ModifyActionsController {
         if (one) this.duplicate(app, one);
         break;
       case 'mod-buffer':
-        if (one) this.buffer(app, one);
+        if (sel.length > 0) this.buffer(app, sel);
         break;
       case 'mod-lock':
         app.batchActions?.setLocked(ids, !sel.every(f => f.locked === true));
@@ -141,31 +142,138 @@ export class ModifyActionsController {
     if (clone) app.newFeatureModal?.openWithFeature(clone);
   }
 
-  /** Pergunta o raio e cria a zona de amortecimento como nova feição. */
-  static buffer(app, feat) {
-    const input = window.prompt(`Informe o raio do buffer em metros para "${feat.name || 'Feição'}":`, '50');
-    if (input === null) return;
-    const radius = parseFloat(input.trim().replace(',', '.'));
-    if (!Number.isFinite(radius) || radius === 0) return;
-
-    const buf = SpatialAlgorithms.generateBuffer(feat, radius);
-    if (!buf) {
+  /**
+   * Abre o modal de parametrização de buffer ou processa as feições fornecidas.
+   * @param {Object} app
+   * @param {Object|Object[]} targets Feição ou lista de feições
+   */
+  static buffer(app, targets) {
+    const list = Array.isArray(targets) ? targets : (targets ? [targets] : []);
+    const valid = list.filter(f => f && f.locked !== true);
+    if (valid.length === 0) {
       UIToast.notificar({
         tipo: 'alerta',
-        titulo: 'Falha no Buffer',
-        mensagem: 'Não foi possível gerar a zona de amortecimento para esta feição.',
-        duracao: 4000
+        titulo: 'Buffer',
+        mensagem: 'Nenhuma feição editável selecionada para gerar buffer.',
+        duracao: 3000
       });
       return;
     }
-    const created = FeatureSyncController.createFeature(app, buf);
-    if (created) app.mapEngine?.selectFeature(created.id);
+
+    if (app.bufferModal) {
+      app.bufferModal.open(valid);
+      return;
+    }
+
+    // Fallback caso o modal não esteja montado (ex: testes sem DOM completo)
+    const promptMsg = valid.length === 1
+      ? `Informe o raio do buffer em metros para "${valid[0].name || 'Feição'}":`
+      : `Informe o raio do buffer em metros para as ${valid.length} feições selecionadas:`;
+    const input = typeof window !== 'undefined' && window.prompt ? window.prompt(promptMsg, '50') : '50';
+    if (input === null) return;
+    const radius = parseFloat(String(input).trim().replace(',', '.'));
+    if (!Number.isFinite(radius) || radius === 0) return;
+
+    this.applyBuffer(app, valid, radius, '__same__');
+  }
+
+  /**
+   * Aplica a criação de buffer em lote ou individual com escolha de camada de destino.
+   * @param {Object} app
+   * @param {Object[]} targets
+   * @param {number} radius
+   * @param {string} targetLayerId ID da camada de destino, '__same__' ou '__new__'
+   * @param {Object} [options] { newLayerName }
+   * @returns {Object[]} Feições de buffer criadas
+   */
+  static applyBuffer(app, targets, radius, targetLayerId = '__same__', options = {}) {
+    const list = Array.isArray(targets) ? targets : (targets ? [targets] : []);
+    const valid = list.filter(f => f && f.locked !== true);
+    if (valid.length === 0 || !Number.isFinite(radius) || radius === 0) return [];
+
+    let resolvedLayerId = targetLayerId;
+    let targetLayer = null;
+
+    // Se for solicitada criação de nova camada
+    if (targetLayerId === '__new__') {
+      const layerName = options.newLayerName || `Buffer (${radius}m)`;
+      resolvedLayerId = 'layer-' + Date.now();
+      const newLayer = {
+        id: resolvedLayerId,
+        name: layerName,
+        color: '#38bdf8',
+        visible: true,
+        opacity: 1,
+        locked: false,
+        order: app.layers?.length || 0
+      };
+      if (app.layers) app.layers.push(newLayer);
+      StorageService.saveLayer(newLayer, app.projectId);
+      if (app.collabHub) app.collabHub.notifyLayerCreated(newLayer);
+      if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts?.() || app.layers, app.features);
+      if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+      if (app.bufferModal) app.bufferModal.updateLayers(app.layers);
+      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      app.saveMetadata();
+      targetLayer = newLayer;
+    } else if (targetLayerId && targetLayerId !== '__same__') {
+      targetLayer = app.layers?.find(l => l.id === targetLayerId);
+      resolvedLayerId = targetLayer?.id || targetLayerId;
+    }
+
+    const createdBuffers = [];
+    for (const feat of valid) {
+      const finalLayerId = (targetLayerId === '__same__' || !resolvedLayerId)
+        ? (feat.layerId || app.activeLayerId || 'layer-topografia')
+        : resolvedLayerId;
+
+      const layerObj = app.layers?.find(l => l.id === finalLayerId);
+      const buf = SpatialAlgorithms.generateBuffer(feat, radius, {
+        targetLayerId: finalLayerId,
+        color: layerObj?.color || '#38bdf8'
+      });
+
+      if (buf) {
+        createdBuffers.push(buf);
+      }
+    }
+
+    if (createdBuffers.length === 0) {
+      UIToast.notificar({
+        tipo: 'alerta',
+        titulo: 'Falha no Buffer',
+        mensagem: 'Não foi possível gerar a zona de amortecimento para as feições selecionadas.',
+        duracao: 4000
+      });
+      return [];
+    }
+
+    // Regra 5 do GEMINI.md: ingestão consolidada em lote (um IndexedDB bulk, um pushHistory, um refresh)
+    const ingested = FeatureSyncController.createFeaturesBatch(app, createdBuffers, {
+      sourceDescription: `Buffer (${radius}m)`,
+      broadcastCollab: true
+    });
+
+    const newIds = ingested.map(f => f.id);
+    if (newIds.length === 1) {
+      app.mapEngine?.selectFeature?.(newIds[0]);
+    } else if (newIds.length > 1) {
+      app.mapEngine?.selectFeatures?.(newIds);
+    }
+
+    const destName = targetLayer?.name || (targetLayerId === '__same__' ? 'camada de origem' : 'camada definida');
+    const msg = ingested.length === 1
+      ? `Buffer de ${radius} m gerado com sucesso em "${destName}".`
+      : `${ingested.length} buffers de ${radius} m gerados com sucesso em "${destName}".`;
+
     UIToast.notificar({
       tipo: 'sucesso',
       titulo: 'Buffer Criado',
-      mensagem: `Buffer de ${radius} m gerado com sucesso para "${feat.name || 'Feição'}".`,
+      mensagem: msg,
       duracao: 3500
     });
+
+    return ingested;
   }
 
   static copy(text, titulo, mensagem) {

@@ -161,7 +161,7 @@ export class ContextMenu {
         <div class="cm-ctx-item" data-action="buffer">
           <div class="cm-ctx-item-left">
             <span class="cm-ctx-icon">◎</span>
-            <span class="cm-ctx-text">Criar buffer...</span>
+            <span class="cm-ctx-text">${this._selectionIdsFor(feat).length > 1 ? `Criar buffer (${this._selectionIdsFor(feat).length})...` : "Criar buffer..."}</span>
           </div>
         </div>
 
@@ -369,7 +369,10 @@ export class ContextMenu {
             this.app.newFeatureModal?.openWithFeature(clone);
           }
         } else if (action === 'buffer' && feat) {
-          ModifyActionsController.buffer(this.app, feat);
+          const ids = this._selectionIdsFor(feat);
+          const byId = new Map(this.app.features.map(f => [f.id, f]));
+          const targets = ids.map(id => byId.get(id)).filter(Boolean);
+          ModifyActionsController.buffer(this.app, targets.length > 0 ? targets : [feat]);
         } else if (action === 'toggle-geometry-version' && feat) {
           if (typeof this.app.toggleFeatureGeometryVersion === 'function') {
             this.app.toggleFeatureGeometryVersion(feat.id);

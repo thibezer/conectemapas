@@ -16,10 +16,12 @@ import { NewFeatureModal } from '../components/Modals/NewFeatureModal.js';
 import { NewLayerModal } from '../components/Modals/NewLayerModal.js';
 import { PrintComposerModal } from '../components/PrintComposer/PrintComposerModal.js';
 import { TextPromptModal } from '../components/Modals/TextPromptModal.js';
+import { BufferModal } from '../components/Modals/BufferModal.js';
 import { ShortcutsModal } from '../components/Modals/ShortcutsModal.js';
 
 import { ProjectActionsController } from '../controllers/ProjectActionsController.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
+import { ModifyActionsController } from '../controllers/ModifyActionsController.js';
 
 export class AppModalsBuilder {
   static initModals(app) {
@@ -87,6 +89,15 @@ export class AppModalsBuilder {
       }
     });
     app.textPromptModal.render(document.getElementById('text-prompt-modal-mount'));
+
+    app.bufferModal = new BufferModal({
+      app,
+      getLayers: () => app.layers,
+      onApply: (targets, radius, targetLayerId, opts) => {
+        ModifyActionsController.applyBuffer(app, targets, radius, targetLayerId, opts);
+      }
+    });
+    app.bufferModal.render(document.getElementById('buffer-modal-mount'));
 
     app.newLayerModal = new NewLayerModal({
       onSave: (layerData) => ProjectActionsController.createLayer(app, layerData)
