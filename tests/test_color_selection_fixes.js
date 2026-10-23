@@ -138,4 +138,25 @@ const style = (app, id) => app.features.find(f => f.id === id).style;
   console.log('✔ Edição de feição selecionada sincroniza a barra de cores');
 }
 
+// --------------------------------------------------------------------------
+// 4. strokeWidth em lote e auto-ativação de espessura quando borda estava com 0 px
+// --------------------------------------------------------------------------
+{
+  const { app } = makeApp([
+    { id: 'p0', type: 'Polygon', style: { strokeColor: 'none', strokeWidth: 0 } },
+    { id: 'p1', type: 'Polygon', style: { strokeColor: '#ffffff', strokeWidth: 2 } }
+  ]);
+  SelectionStyleController.applyColorsToSelection(app, { strokeWidth: 4 }, ['strokeWidth']);
+  assert.strictEqual(style(app, 'p0').strokeWidth, 4, 'strokeWidth deve ser aplicado a p0');
+  assert.strictEqual(style(app, 'p1').strokeWidth, 4, 'strokeWidth deve ser aplicado a p1');
+
+  // Ao definir strokeColor numa feição com strokeWidth 0, restaura espessura visível
+  const zeroStroke = { id: 'pZero', type: 'Polygon', style: { strokeColor: 'none', strokeWidth: 0 } };
+  const { app: appZero } = makeApp([zeroStroke]);
+  SelectionStyleController.applyColorsToSelection(appZero, { strokeColor: '#ff0000' }, ['strokeColor']);
+  assert.strictEqual(style(appZero, 'pZero').strokeColor, '#ff0000');
+  assert.ok(style(appZero, 'pZero').strokeWidth > 0, 'strokeWidth deve ser reativado para valor > 0');
+  console.log('✔ strokeWidth aplicado e recuperado de 0 px');
+}
+
 console.log('🎉 Correções de cores em seleção validadas!');

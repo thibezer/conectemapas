@@ -644,8 +644,12 @@ export class DrawingToolbar {
       // cores diferentes, as propriedades não tocadas continuam diferentes
       const changed = (d.alterados || []).map(k => FROM_KIT_PROP[k]).filter(Boolean);
       if (d.origem === 'seletor') {
+        const payload = { ...this.getColors(), fillOpacity: this.fillOpacity };
+        if (typeof this.strokeWidth === 'number' && (typeof d.espessuraTraco === 'number' || changed.includes('strokeWidth'))) {
+          payload.strokeWidth = this.strokeWidth;
+        }
         this.onColorChange(
-          { ...this.getColors(), fillOpacity: this.fillOpacity },
+          payload,
           { commit: d.confirmado === true, changed }
         );
       } else {

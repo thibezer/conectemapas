@@ -258,8 +258,19 @@ export class BatchActions {
       if (colors.strokeColor && colors.strokeColor !== 'none' && colors.strokeColor !== 'transparent') {
         if (isLine) draft.color = colors.strokeColor;
         draft.style._lastStrokeColor = colors.strokeColor;
+        if (!draft.style.strokeWidth || Number(draft.style.strokeWidth) <= 0) {
+          draft.style.strokeWidth = draft.style._lastStrokeWidth || 2.5;
+        }
       }
       touched = true;
+    }
+    if (changed.includes('strokeWidth') && colors.strokeWidth !== undefined) {
+      const w = Number(colors.strokeWidth);
+      if (Number.isFinite(w) && w >= 0) {
+        draft.style.strokeWidth = w;
+        if (w > 0) draft.style._lastStrokeWidth = w;
+        touched = true;
+      }
     }
     if (changed.includes('fillOpacity') && colors.fillOpacity !== undefined && !isLine) {
       draft.style.fillOpacity = Math.max(0, Math.min(1, Number(colors.fillOpacity)));

@@ -114,9 +114,14 @@ export class AppGeometryCoordinator {
       if (style.fillOpacity !== undefined) {
         toolbar.fillOpacity = Number(style.fillOpacity);
       }
+      if (style.strokeWidth !== undefined) {
+        toolbar.strokeWidth = Number(style.strokeWidth);
+      }
       toolbar.setColors({
         fillColor: isLine ? undefined : (style.fillColor || style.textColor || feat.color || layer?.color),
-        strokeColor: style.strokeColor || (isLine ? feat.color : undefined)
+        strokeColor: style.strokeColor || (isLine ? feat.color : undefined),
+        fillOpacity: style.fillOpacity !== undefined ? Number(style.fillOpacity) : undefined,
+        strokeWidth: style.strokeWidth !== undefined ? Number(style.strokeWidth) : undefined
       });
       app.mapEngine?.setActiveDrawingStyles(toolbar.getColors());
       return;
@@ -125,6 +130,7 @@ export class AppGeometryCoordinator {
     // Seleção Múltipla (> 1 elemento)
     const fillColors = new Set();
     const strokeColors = new Set();
+    const strokeWidths = new Set();
     let allLines = true;
 
     for (const feat of list) {
@@ -141,6 +147,7 @@ export class AppGeometryCoordinator {
       const rawStroke = s.strokeColor || (isLine ? feat.color : undefined) || '#ffffff';
       const sCol = String(rawStroke).toLowerCase();
       if (sCol) strokeColors.add(sCol);
+      if (s.strokeWidth !== undefined) strokeWidths.add(Number(s.strokeWidth));
     }
 
     toolbar.setStrokeOnly(allLines);
@@ -152,11 +159,13 @@ export class AppGeometryCoordinator {
 
     const commonFill = (!isMixedFill && fillColors.size === 1) ? Array.from(fillColors)[0] : undefined;
     const commonStroke = (!isMixedStroke && strokeColors.size === 1) ? Array.from(strokeColors)[0] : undefined;
+    const commonStrokeWidth = strokeWidths.size === 1 ? Array.from(strokeWidths)[0] : undefined;
 
-    if (commonFill || commonStroke) {
+    if (commonFill || commonStroke || commonStrokeWidth !== undefined) {
       toolbar.setColors({
         fillColor: commonFill,
-        strokeColor: commonStroke
+        strokeColor: commonStroke,
+        strokeWidth: commonStrokeWidth
       });
     }
   }

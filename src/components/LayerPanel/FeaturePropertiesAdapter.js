@@ -771,6 +771,9 @@ export class FeaturePropertiesAdapter {
           draft.style.strokeColor = 'none';
         } else {
           draft.style.strokeColor = draft.style._lastStrokeColor || '#ffffff';
+          if (!draft.style.strokeWidth || Number(draft.style.strokeWidth) <= 0) {
+            draft.style.strokeWidth = draft.style._lastStrokeWidth || 2.5;
+          }
         }
         return;
       }
@@ -790,6 +793,12 @@ export class FeaturePropertiesAdapter {
         const n = parseNumber(novoValor);
         if (n === null) return false;
         draft.style.strokeWidth = clamp(n, 0, 50);
+        if (draft.style.strokeWidth > 0) {
+          draft.style._lastStrokeWidth = draft.style.strokeWidth;
+          if (draft.style.strokeColor === 'none' || draft.style.strokeColor === 'transparent') {
+            draft.style.strokeColor = draft.style._lastStrokeColor || '#ffffff';
+          }
+        }
         return;
       }
       case 'strokeDashArray': {
