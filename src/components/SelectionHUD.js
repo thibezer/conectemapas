@@ -67,6 +67,32 @@ export class SelectionHUD {
     }
     this.element = el;
     this.bindEvents();
+    this.observeFreeSpace(container);
+  }
+
+  /** Recalcula o modo compacto quando a janela ou o painel lateral mudam de tamanho/estado. */
+  observeFreeSpace(container) {
+    if (typeof ResizeObserver === 'undefined') return;
+    const schedule = () => {
+      clearTimeout(this._fitTimer);
+      this._fitTimer = setTimeout(() => this.fit(), 0);
+    };
+    this._resizeObs = new ResizeObserver(schedule);
+    this._resizeObs.observe(container);
+    // Largura do painel (--cm-sidebar-w no :root) e recolher/expandir (classe .collapsed);
+    // o painel pode ser re-renderizado, então observa o ponto de montagem e não o <aside>.
+    this._mutationObs = new MutationObserver(schedule);
+    this._mutationObs.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    const mount = document.getElementById('layer-panel-mount');
+    if (mount) this._mutationObs.observe(mount, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+  }
+
+  /** Só ícones quando os rótulos não cabem na faixa livre entre a barra de ferramentas e o painel. */
+  fit() {
+    const el = this.element;
+    if (!el || el.style.display === 'none') return;
+    el.classList.remove('compact');
+    if (el.scrollWidth > el.clientWidth + 1) el.classList.add('compact');
   }
 
   hide() {
@@ -196,6 +222,7 @@ export class SelectionHUD {
     }
 
     this.bindEvents();
+    this.fit();
   }
 
   bindEvents() {

@@ -243,6 +243,8 @@ export class LayerPanel {
     const apply = (w) => {
       const width = clamp(w);
       sidebar.style.width = `${width}px`;
+      // Largura publicada para quem desvia do painel (ex.: barra de seleção)
+      document.documentElement.style.setProperty('--cm-sidebar-w', `${width}px`);
       handle.setAttribute('aria-valuenow', String(width));
       return width;
     };

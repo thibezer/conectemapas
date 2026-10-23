@@ -4,9 +4,12 @@
    ========================================================================== */
 
 .cm-selection-hud {
+  /* Faixa livre entre a barra de ferramentas (esquerda) e o painel lateral (direita) */
+  --cm-sel-free-l: 124px;
+  --cm-sel-free-r: 10px;
   position: absolute;
   top: 14px;
-  left: 50%;
+  left: calc((100% + var(--cm-sel-free-l) - var(--cm-sel-free-r)) / 2);
   transform: translateX(-50%);
   z-index: 550;
   display: flex;
@@ -24,8 +27,14 @@
   font-size: 12px;
   pointer-events: auto;
   animation: cmSelectionSlideDown 0.2s ease-out;
-  max-width: 90vw;
+  max-width: calc(100% - var(--cm-sel-free-l) - var(--cm-sel-free-r) - 16px);
+  box-sizing: border-box;
   white-space: nowrap;
+}
+
+/* Painel lateral aberto: a barra se centraliza no espaço à esquerda dele */
+.cm-workspace:has(#cm-sidebar-panel:not(.collapsed)) .cm-selection-hud {
+  --cm-sel-free-r: calc(var(--cm-sidebar-w, 335px) + 20px);
 }
 
 @keyframes cmSelectionSlideDown {
@@ -43,6 +52,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 220px; /* abaixo disso o título vira reticências: melhor compactar os botões */
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -103,6 +113,7 @@
 }
 
 .cm-sel-actions {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -177,13 +188,12 @@
 /* Botões só com ícone (excluir e fechar) */
 .cm-sel-btn.danger:not(:has(.cm-sel-label)) { width: 26px; padding: 0; justify-content: center; }
 
-/* Telas estreitas: só ícones (o title de cada botão continua explicando) */
-@media (max-width: 960px) {
-  .cm-sel-label { display: none; }
-  .cm-sel-btn { width: 28px; padding: 0; justify-content: center; }
-  .cm-sel-btn.danger:has(.cm-sel-label) { width: 28px; }
-  .cm-sel-tag { display: none; }
-}
+/* Pouco espaço livre (tela estreita ou painel largo): só ícones (o title de cada
+   botão continua explicando). A classe é ligada por SelectionHUD.fit(). */
+.cm-selection-hud.compact .cm-sel-label { display: none; }
+.cm-selection-hud.compact .cm-sel-btn { width: 28px; padding: 0; justify-content: center; }
+.cm-selection-hud.compact .cm-sel-btn.danger:has(.cm-sel-label) { width: 28px; }
+.cm-selection-hud.compact .cm-sel-tag { display: none; }
 
 /* Menu "Mover para camada" */
 .cm-sel-layer-menu {
