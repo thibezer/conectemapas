@@ -105,6 +105,14 @@ class ConecteMapasApp {
         if (!AuthService.isLoggedIn() && !GuestIdentity.getName()) this.guestNameModal?.open();
       });
     }
+
+    if (typeof window !== 'undefined') {
+      window.abrirModeloCores = (alvo = 'stroke') => this.drawingToolbar?.openColorPicker(alvo);
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('modelo') === 'cores' || params.get('demo') === 'cores') {
+        setTimeout(() => this.drawingToolbar?.openColorPicker('stroke'), 500);
+      }
+    }
   }
 
   /**

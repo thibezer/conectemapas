@@ -82,7 +82,7 @@ export class BatchActions {
    * @param {{fillColor?: string, strokeColor?: string}} colors
    */
   static applyColors(app, ids, colors = {}) {
-    const changed = ['fillColor', 'strokeColor', 'fillOpacity'].filter(k => colors[k] !== undefined);
+    const changed = ['fillColor', 'strokeColor', 'fillOpacity', 'strokeWidth'].filter(k => colors[k] !== undefined);
     if (changed.length === 0) return { changed: 0, locked: 0, missing: 0, unchanged: 0, skipped: 0, ids: [] };
     return commitBatch(app, ids, 'Aplicar cores', (draft) => BatchActions._paint(draft, colors, changed));
   }
@@ -236,6 +236,7 @@ export class BatchActions {
       if (isLine) draft.color = snap.color;
     }
     if (props.includes('fillOpacity')) copy('fillOpacity');
+    if (props.includes('strokeWidth')) copy('strokeWidth');
     return JSON.stringify([draft.color, draft.style]) !== before;
   }
 

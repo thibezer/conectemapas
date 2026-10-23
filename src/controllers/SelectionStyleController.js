@@ -10,7 +10,7 @@ import { FeatureSyncController } from './FeatureSyncController.js';
 import { AppGeometryCoordinator } from '../bootstrap/AppGeometryCoordinator.js';
 
 // Nomes do <ui-seletor-cor> (kit) → nomes de estilo do app
-const PICKER_PROPS = { preenchimento: 'fillColor', traco: 'strokeColor', opacidade: 'fillOpacity' };
+const PICKER_PROPS = { preenchimento: 'fillColor', traco: 'strokeColor', opacidade: 'fillOpacity', espessuraTraco: 'strokeWidth' };
 
 export class SelectionStyleController {
   /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
@@ -29,7 +29,7 @@ export class SelectionStyleController {
    * @param {{fillColor?: string, strokeColor?: string, fillOpacity?: number}} colors
    * @param {Array<'fillColor'|'strokeColor'|'fillOpacity'>} [changed]
    */
-  static applyColorsToSelection(app, colors, changed = ['fillColor', 'strokeColor']) {
+  static applyColorsToSelection(app, colors, changed = ['fillColor', 'strokeColor', 'strokeWidth']) {
     const targets = this.getSelectedFeatures(app)
       .filter(f => !FeatureSyncController.isFeatureLocked(app, f.id));
     // Só o que mudou: numa seleção com cores diferentes, as demais propriedades ficam como estão
@@ -98,7 +98,8 @@ export class SelectionStyleController {
         this.applyColorsToSelection(app, {
           fillColor: res.preenchimento,
           strokeColor: res.traco,
-          fillOpacity: res.opacidade
+          fillOpacity: res.opacidade,
+          strokeWidth: res.espessuraTraco
         }, paint);
       }
     };
@@ -111,6 +112,7 @@ export class SelectionStyleController {
       preenchimento: fillOf(first),
       traco: first.style?.strokeColor || '#ffffff',
       opacidade: first.style?.fillOpacity !== undefined ? Number(first.style.fillOpacity) : 0.35,
+      espessuraTraco: first.style?.strokeWidth !== undefined ? Number(first.style.strokeWidth) : 2.5,
       misto: new Set(features.map(f => String(fillOf(f)).toLowerCase())).size > 1,
       coresProjeto: (app.layers || []).map(l => l.color),
       aoAlterar: step,

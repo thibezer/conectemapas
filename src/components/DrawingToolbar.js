@@ -20,7 +20,7 @@ const DEFAULT_STROKE = '#ffffff';
 // O app fala fill/stroke; o <ui-controle-cores> do kit fala preenchimento/traco
 const TO_KIT_TARGET = { fill: 'preenchimento', stroke: 'traco' };
 const FROM_KIT_TARGET = { preenchimento: 'fill', traco: 'stroke' };
-const FROM_KIT_PROP = { preenchimento: 'fillColor', traco: 'strokeColor', opacidade: 'fillOpacity' };
+const FROM_KIT_PROP = { preenchimento: 'fillColor', traco: 'strokeColor', opacidade: 'fillOpacity', espessuraTraco: 'strokeWidth' };
 
 export class DrawingToolbar {
   /**
@@ -44,6 +44,7 @@ export class DrawingToolbar {
     this.fillColor = options.initialFillColor || '#00E08A';
     this.strokeColor = options.initialStrokeColor || '#ffffff';
     this.fillOpacity = options.initialFillOpacity !== undefined ? options.initialFillOpacity : 0.35;
+    this.strokeWidth = options.initialStrokeWidth !== undefined ? Number(options.initialStrokeWidth) : 2.5;
     this.activeColorTarget = 'fill'; // 'fill' ou 'stroke'
     this.isMixedFill = false;
     this.isMixedStroke = false;
@@ -302,6 +303,7 @@ export class DrawingToolbar {
             preenchimento="${this._esc(this.fillColor)}"
             traco="${this._esc(this.strokeColor)}"
             opacidade="${this.fillOpacity}"
+            espessura-traco="${this.strokeWidth}"
             alvo="${this.activeColorTarget === 'stroke' ? 'traco' : 'preenchimento'}"
             padrao-preenchimento="${this._esc(this.activeLayer?.color || DEFAULT_FILL)}"
             padrao-traco="${DEFAULT_STROKE}"
@@ -453,7 +455,7 @@ export class DrawingToolbar {
    * @param {string} [colors.fillColor]
    * @param {string} [colors.strokeColor]
    */
-  setColors({ fillColor, strokeColor }) {
+  setColors({ fillColor, strokeColor, fillOpacity, strokeWidth } = {}) {
     const fill = this._normalizeHex(fillColor);
     const stroke = this._normalizeHex(strokeColor);
     if (fill) {
@@ -464,10 +466,18 @@ export class DrawingToolbar {
       this.strokeColor = stroke;
       this.isMixedStroke = false;
     }
-    this.colorControl?.definirCores({
-      preenchimento: fill || undefined,
-      traco: stroke || undefined
-    });
+    if (fillOpacity !== undefined) {
+      this.fillOpacity = Math.max(0, Math.min(1, Number(fillOpacity)));
+    }
+    if (strokeWidth !== undefined) {
+      this.strokeWidth = Math.max(0.5, Math.min(50, Number(strokeWidth)));
+    }
+    const payload = {};
+    if (fill) payload.preenchimento = fill;
+    if (stroke) payload.traco = stroke;
+    if (fillOpacity !== undefined) payload.opacidade = Number(fillOpacity);
+    if (strokeWidth !== undefined) payload.espessuraTraco = Number(strokeWidth);
+    this.colorControl?.definirCores(payload);
   }
 
   getColors() {
@@ -625,6 +635,7 @@ export class DrawingToolbar {
       this.fillColor = d.preenchimento;
       this.strokeColor = d.traco;
       if (typeof d.opacidade === 'number') this.fillOpacity = d.opacidade;
+      if (typeof d.espessuraTraco === 'number') this.strokeWidth = d.espessuraTraco;
       if (d.alvo) this.activeColorTarget = FROM_KIT_TARGET[d.alvo] || this.activeColorTarget;
       if (d.alterados?.includes('preenchimento')) this.isMixedFill = false;
       if (d.alterados?.includes('traco')) this.isMixedStroke = false;
