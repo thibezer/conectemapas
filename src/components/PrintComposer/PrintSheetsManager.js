@@ -51,7 +51,11 @@ export class PrintSheetsManager {
     }
 
     this.updateSheetNumbersInTitleBlocks();
-    return this.getCurrentSheet();
+    const cur = this.getCurrentSheet();
+    if (cur && (!this.composer.items || this.composer.items.length === 0)) {
+      this.composer.items = JSON.parse(JSON.stringify(cur.items || []));
+    }
+    return cur;
   }
 
   /**
@@ -97,7 +101,7 @@ export class PrintSheetsManager {
     this.composer.selectedItemId = (this.composer.items.find(i => i.type === 'map') || this.composer.items[0])?.id || null;
 
     // Atualiza badges e UI
-    const badge = document.getElementById('cm-print-paper-badge');
+    const badge = typeof document !== 'undefined' ? document.getElementById('cm-print-paper-badge') : null;
     if (badge) badge.textContent = this.composer.paperSize.name;
 
     this.composer.updatePaperSheetDOM();
@@ -313,6 +317,7 @@ export class PrintSheetsManager {
    * Renderiza os controles de Pranchas na barra superior do compositor
    */
   renderSheetsSelectorDOM() {
+    if (typeof document === 'undefined') return;
     const container = document.getElementById('cm-print-sheets-controls');
     if (!container) return;
 
