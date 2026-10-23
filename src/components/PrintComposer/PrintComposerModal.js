@@ -11,6 +11,9 @@ import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
 import { PrintPropertiesPanel } from './PrintPropertiesPanel.js';
 import { PrintExporter } from './PrintExporter.js';
+import { PrintSheetsManager } from './PrintSheetsManager.js';
+import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 export class PrintComposerModal {
   constructor(options = {}) {
@@ -35,12 +38,84 @@ export class PrintComposerModal {
     };
     this.paperSize = this.paperSizes.A4_L;
 
+    this.projectId = options.projectId || 'projeto_padrao';
+    this.sheetsManager = new PrintSheetsManager(this);
+    this.history = [];
+    this.historyIndex = -1;
+
     this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
     this.selectedItemId = 'item-map-main';
     this.leafletMaps = new Map(); // Sub-instâncias do Leaflet nos itens
     this.insetExtentLayer = null; // Retângulo no Inset Map
     this.canvasEngine = new PrintCanvasEngine(this);
   }
+
+  pushHistoryState(actionName = 'Alteração') {
+    if (this.historyIndex < this.history.length - 1) {
+      this.history = this.history.slice(0, this.historyIndex + 1);
+    }
+    const state = {
+      paperSizeId: this.paperSize.id,
+      showAbntMargins: this.showAbntMargins,
+      items: JSON.parse(JSON.stringify(this.items || [])),
+      action: actionName
+    };
+    this.history.push(state);
+    if (this.history.length > 30) this.history.shift();
+    this.historyIndex = this.history.length - 1;
+    this.sheetsManager.saveCurrentStateFromComposer();
+  }
+
+  undo() {
+    if (this.historyIndex > 0) {
+      this.historyIndex--;
+      const state = this.history[this.historyIndex];
+      this.applyHistorySnapshot(state);
+      UIToast.notificar({
+        tipo: 'informativo',
+        titulo: 'Desfeito',
+        mensagem: `Desfez: ${state.action || 'Ação'}`,
+        duracao: 1500
+      });
+    }
+  }
+
+  redo() {
+    if (this.historyIndex < this.history.length - 1) {
+      this.historyIndex++;
+      const state = this.history[this.historyIndex];
+      this.applyHistorySnapshot(state);
+      UIToast.notificar({
+        tipo: 'informativo',
+        titulo: 'Refeito',
+        mensagem: `Refez: ${state.action || 'Ação'}`,
+        duracao: 1500
+      });
+    }
+  }
+
+  applyHistorySnapshot(state) {
+    if (!state) return;
+    if (state.paperSizeId && this.paperSizes[state.paperSizeId]) {
+      this.paperSize = this.paperSizes[state.paperSizeId];
+    }
+    this.showAbntMargins = state.showAbntMargins !== false;
+    this.items = JSON.parse(JSON.stringify(state.items || []));
+    this.updatePaperSheetDOM();
+    this.renderAllItems();
+    this.updatePropertiesPanel();
+    this.sheetsManager.saveCurrentStateFromComposer();
+  }
+
+  alignLeft() { PrintAlignmentHelper.alignLeft(this); }
+  alignCenterH() { PrintAlignmentHelper.alignCenterH(this); }
+  alignRight() { PrintAlignmentHelper.alignRight(this); }
+  alignTop() { PrintAlignmentHelper.alignTop(this); }
+  alignCenterV() { PrintAlignmentHelper.alignCenterV(this); }
+  alignBottom() { PrintAlignmentHelper.alignBottom(this); }
+  bringToFront() { PrintAlignmentHelper.bringToFront(this); }
+  sendToBack() { PrintAlignmentHelper.sendToBack(this); }
+  duplicateSelectedItem() { PrintAlignmentHelper.duplicateItem(this); }
 
   render(container) {
     this.container = container;
@@ -53,6 +128,9 @@ export class PrintComposerModal {
             <span class="cm-print-zoom-badge" id="cm-print-paper-badge" title="Tamanho da folha">${this.paperSize.name}</span>
           </div>
 
+          <!-- Controle de Multi-Pranchas -->
+          <div id="cm-print-sheets-controls" class="cm-print-tools-group" role="group" aria-label="Gestão de Pranchas"></div>
+
           <!-- Ferramentas de Inserção de Elementos Cartográficos -->
           <div class="cm-print-tools-group cm-print-insert-group" role="group" aria-label="Inserir elemento">
             <button class="cm-print-tool-btn" id="btn-add-print-map" title="Inserir Novo Mapa">🗺️ <span class="cm-tb-label">Mapa</span></button>
@@ -63,6 +141,29 @@ export class PrintComposerModal {
             <button class="cm-print-tool-btn" id="btn-add-print-vertices" title="Inserir Tabela de Vértices Topográfica">📊 <span class="cm-tb-label">Vértices</span></button>
             <button class="cm-print-tool-btn" id="btn-add-print-text" title="Inserir Bloco de Notas Técnicas">📝 <span class="cm-tb-label">Notas</span></button>
             <button class="cm-print-tool-btn" id="btn-add-print-titleblock" title="Inserir Selo Técnico ABNT NBR 13133">🏛️ <span class="cm-tb-label">Selo</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-shape" title="Inserir Moldura / Forma Geométrica">🔲 <span class="cm-tb-label">Moldura</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-label" title="Inserir Título / Rótulo Livre">🏷️ <span class="cm-tb-label">Título</span></button>
+            <button class="cm-print-tool-btn" id="btn-add-print-image" title="Inserir Imagem / Logotipo">🖼️ <span class="cm-tb-label">Logo</span></button>
+          </div>
+
+          <!-- Barra Rápida de Alinhamento e Camadas (Illustrator/CAD) -->
+          <div class="cm-print-tools-group cm-print-align-group" role="group" aria-label="Alinhamento e Organização">
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-topbar-align-left" title="Alinhar à Esquerda">⇤</button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-topbar-align-center-h" title="Centralizar Horizontalmente">⧿</button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-topbar-align-right" title="Alinhar à Direita">⇥</button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-topbar-align-top" title="Alinhar ao Topo">⤒</button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-topbar-align-center-v" title="Centralizar Verticalmente">⧾</button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-topbar-align-bottom" title="Alinhar à Base">⤓</button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-topbar-duplicate" title="Duplicar Item Selecionado (Ctrl+D)">📋</button>
+          </div>
+
+          <!-- Guias Inteligentes (Smart Guides) e Histórico -->
+          <div class="cm-print-tools-group" role="group" aria-label="Guias e Histórico">
+            <button class="cm-print-tool-btn active" id="btn-toggle-smart-guides" title="Guias Inteligentes (U): Alinhamento magnético automático estilo Adobe Illustrator">
+              🧲 <span class="cm-tb-label">Guias Inteligentes</span>
+            </button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-undo" title="Desfazer no Layout (Ctrl+Z)">↩️</button>
+            <button class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-redo" title="Refazer no Layout (Ctrl+Y)">↪️</button>
           </div>
 
           <!-- Alternância de Modo: Mover Itens vs Navegar no Conteúdo do Mapa -->
@@ -94,7 +195,10 @@ export class PrintComposerModal {
               🖼️ PNG
             </ui-botao-primario>
             <ui-botao-primario inline id="btn-export-print-pdf" variante="primary" style="height: 28px; font-size: 11px; white-space: nowrap;">
-              📄 PDF Técnico
+              📄 PDF Prancha
+            </ui-botao-primario>
+            <ui-botao-primario inline id="btn-export-print-all-pdf" variante="secundario" style="height: 28px; font-size: 11px; white-space: nowrap;" title="Exportar todas as pranchas do projeto em um arquivo PDF multi-páginas">
+              📚 Todas em PDF
             </ui-botao-primario>
             <button id="btn-close-print-composer" class="cm-print-close-btn" title="Fechar layout" aria-label="Fechar layout">×</button>
           </div>
@@ -119,6 +223,8 @@ export class PrintComposerModal {
                 <div class="cm-abnt-margins-frame" id="cm-abnt-margins-frame"></div>
                 <!-- Container de Itens Cartográficos -->
                 <div id="cm-print-items-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></div>
+                <!-- Canvas de Guias Automáticas Inteligentes (Smart Guides estilo Illustrator) -->
+                <canvas id="cm-print-smart-guides-canvas" class="cm-print-smart-guides-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 90;"></canvas>
               </div>
             </div>
           </div>
@@ -134,22 +240,38 @@ export class PrintComposerModal {
     this.bindEvents();
   }
 
-  open(projectName, layers, features, basemap) {
+  open(projectName, layers, features, basemap, projectId) {
     if (projectName) this.projectName = projectName;
     if (layers) this.layers = layers;
     if (features) this.features = features;
     if (basemap) this.currentBasemap = basemap;
+    if (projectId) this.projectId = projectId;
 
     const modal = document.getElementById('cm-print-composer-modal');
     if (modal) modal.classList.remove('hidden');
     this.isOpen = true;
-    this.canvasEngine.bindKeyboardShortcuts(); // close() remove os atalhos; reabre-os a cada abertura
+    this.canvasEngine.bindKeyboardShortcuts();
 
-    // Salvaguarda visual: se os itens estiverem fora da margem ABNT ou desajustados, restabelece o layout ótimo ABNT
-    const mainMap = this.items.find(i => i.type === 'map');
-    if (!this.items || this.items.length === 0 || !mainMap || mainMap.x < this.paperSize.marginL || mainMap.width > (this.paperSize.width - this.paperSize.marginL - 50)) {
-      this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
+    // Inicializa ou carrega as pranchas do projeto
+    const currentSheet = this.sheetsManager.init(this.projectId, this.projectName, this.paperSizes);
+    if (currentSheet) {
+      this.paperSize = currentSheet.paperSize;
+      this.showAbntMargins = currentSheet.showAbntMargins !== false;
+      this.items = JSON.parse(JSON.stringify(currentSheet.items || []));
+      const badge = document.getElementById('cm-print-paper-badge');
+      if (badge) badge.textContent = this.paperSize.name;
     }
+
+    this.sheetsManager.renderSheetsSelectorDOM();
+
+    // Inicializa pilha de histórico da prancha
+    this.history = [{
+      paperSizeId: this.paperSize.id,
+      showAbntMargins: this.showAbntMargins,
+      items: JSON.parse(JSON.stringify(this.items || [])),
+      action: 'Abertura da Prancha'
+    }];
+    this.historyIndex = 0;
 
     this.updatePaperSheetDOM();
     this.renderAllItems();
@@ -170,6 +292,7 @@ export class PrintComposerModal {
   }
 
   close() {
+    if (this.sheetsManager) this.sheetsManager.saveCurrentStateFromComposer();
     this.destroyLeafletMaps();
     if (this.canvasEngine) this.canvasEngine.destroy();
     const modal = document.getElementById('cm-print-composer-modal');
@@ -314,6 +437,12 @@ export class PrintComposerModal {
       return PrintItemsManager.renderVerticesTable(item, this.features);
     } else if (item.type === 'text_block') {
       return PrintItemsManager.renderTextBlock(item);
+    } else if (item.type === 'shape') {
+      return PrintItemsManager.renderShape(item);
+    } else if (item.type === 'image') {
+      return PrintItemsManager.renderImage(item);
+    } else if (item.type === 'label') {
+      return PrintItemsManager.renderLabel(item);
     }
     return '';
   }
@@ -625,6 +754,49 @@ export class PrintComposerModal {
     const btnPdf = document.getElementById('btn-export-print-pdf');
     if (btnPdf) btnPdf.addEventListener('click', () => PrintExporter.exportToPDF(this, getDPI()));
 
+    const btnAllPdf = document.getElementById('btn-export-print-all-pdf');
+    if (btnAllPdf) btnAllPdf.addEventListener('click', () => PrintExporter.exportAllSheetsToPDF(this, getDPI()));
+
+    // Botão de Toggle das Guias Inteligentes
+    const btnSmartGuides = document.getElementById('btn-toggle-smart-guides');
+    if (btnSmartGuides) {
+      btnSmartGuides.addEventListener('click', () => {
+        const nextState = !this.canvasEngine.smartGuides.enabled;
+        this.canvasEngine.smartGuides.setEnabled(nextState);
+        btnSmartGuides.classList.toggle('active', nextState);
+        UIToast.notificar({
+          tipo: nextState ? 'sucesso' : 'informativo',
+          titulo: 'Guias Inteligentes',
+          mensagem: nextState ? 'Guias magnéticas ativadas (estilo Illustrator).' : 'Guias desativadas.',
+          duracao: 2000
+        });
+      });
+    }
+
+    // Histórico Desfazer / Refazer
+    const btnUndo = document.getElementById('btn-print-undo');
+    if (btnUndo) btnUndo.addEventListener('click', () => this.undo());
+
+    const btnRedo = document.getElementById('btn-print-redo');
+    if (btnRedo) btnRedo.addEventListener('click', () => this.redo());
+
+    // Botões da Topbar de Alinhamento Rápido
+    const topAlignL = document.getElementById('btn-topbar-align-left');
+    const topAlignCH = document.getElementById('btn-topbar-align-center-h');
+    const topAlignR = document.getElementById('btn-topbar-align-right');
+    const topAlignT = document.getElementById('btn-topbar-align-top');
+    const topAlignCV = document.getElementById('btn-topbar-align-center-v');
+    const topAlignB = document.getElementById('btn-topbar-align-bottom');
+    const topDup = document.getElementById('btn-topbar-duplicate');
+
+    if (topAlignL) topAlignL.onclick = () => this.alignLeft();
+    if (topAlignCH) topAlignCH.onclick = () => this.alignCenterH();
+    if (topAlignR) topAlignR.onclick = () => this.alignRight();
+    if (topAlignT) topAlignT.onclick = () => this.alignTop();
+    if (topAlignCV) topAlignCV.onclick = () => this.alignCenterV();
+    if (topAlignB) topAlignB.onclick = () => this.alignBottom();
+    if (topDup) topDup.onclick = () => this.duplicateSelectedItem();
+
     // Alternância de modo
     const btnLayout = document.getElementById('btn-mode-layout');
     if (btnLayout) btnLayout.addEventListener('click', () => this.setInteractionMode('layout'));
@@ -672,5 +844,8 @@ export class PrintComposerModal {
     addItemHelper('btn-add-print-vertices', 'table_vertices');
     addItemHelper('btn-add-print-text', 'text_block');
     addItemHelper('btn-add-print-titleblock', 'title_block');
+    addItemHelper('btn-add-print-shape', 'shape');
+    addItemHelper('btn-add-print-label', 'label');
+    addItemHelper('btn-add-print-image', 'image');
   }
 }

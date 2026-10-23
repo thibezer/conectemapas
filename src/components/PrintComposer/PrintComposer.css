@@ -87,6 +87,12 @@
   z-index: 6;
 }
 
+.cm-print-item[data-item-type="shape"] {
+  z-index: 5;
+}
+
+.cm-print-item[data-item-type="image"],
+.cm-print-item[data-item-type="label"],
 .cm-print-item[data-item-type="north_arrow"],
 .cm-print-item[data-item-type="scale_bar"],
 .cm-print-item[data-item-type="legend"],
@@ -479,3 +485,65 @@
   word-break: break-word;
 }
 
+
+/* Smart Guides (Canvas Overlay estilo Adobe Illustrator) */
+.cm-print-smart-guides-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 95;
+}
+
+#btn-toggle-smart-guides.active {
+  background: rgba(255, 0, 127, 0.15) !important;
+  border-color: #ff007f !important;
+  color: #ff007f !important;
+  font-weight: 700;
+}
+
+/* Barra de Alinhamento e Organização */
+.cm-print-align-group .cm-print-icon-btn {
+  font-size: 13px;
+  font-weight: bold;
+}
+
+/* Multi-Pranchas */
+.cm-print-sheets-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cm-print-sheet-dropdown {
+  background: #1c1c22;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cm-item-shape-box {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.cm-item-image-box {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cm-item-label-box {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}

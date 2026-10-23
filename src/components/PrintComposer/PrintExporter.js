@@ -224,6 +224,12 @@ export class PrintExporter {
         this.drawTextBlockItem(ctx, item, x, y, w, h, scaleFactor);
       } else if (item.type === 'legend') {
         this.drawLegendItem(ctx, item, x, y, w, h, composer, scaleFactor);
+      } else if (item.type === 'shape') {
+        this.drawShapeItem(ctx, item, x, y, w, h);
+      } else if (item.type === 'image') {
+        await this.drawImageItem(ctx, item, x, y, w, h);
+      } else if (item.type === 'label') {
+        this.drawLabelItem(ctx, item, x, y, w, h, scaleFactor);
       }
     }
 
@@ -865,6 +871,137 @@ export class PrintExporter {
       ctx.fillText(layer.name, x + 8 + swatchSize + 6, rowY);
 
       rowY += rowStep;
+    }
+  }
+
+  /**
+   * Renderiza Forma Geométrica / Moldura Técnica
+   */
+  static drawShapeItem(ctx, item, x, y, w, h) {
+    ctx.save();
+    ctx.fillStyle = item.fillColor || 'rgba(255, 255, 255, 0.5)';
+    ctx.strokeStyle = item.strokeColor || '#000000';
+    ctx.lineWidth = item.strokeWidth !== undefined ? item.strokeWidth : 1.5;
+    ctx.fillRect(x, y, w, h);
+    if (ctx.lineWidth > 0) ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  }
+
+  /**
+   * Renderiza Imagem / Logotipo em Alta Resolução
+   */
+  static async drawImageItem(ctx, item, x, y, w, h) {
+    if (!item.imageUrl) return;
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          ctx.drawImage(img, x, y, w, h);
+        } catch (e) {}
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = item.imageUrl;
+    });
+  }
+
+  /**
+   * Renderiza Rótulo de Texto Livre / Título Customizado
+   */
+  static drawLabelItem(ctx, item, x, y, w, h, scaleFactor) {
+    ctx.save();
+    const fontSize = Math.max(8, Math.round((item.fontSize || 10) * (scaleFactor / (300 / 25.4))));
+    const weight = item.fontWeight || 'bold';
+    ctx.font = `${weight} ${fontSize}px Arial, sans-serif`;
+    ctx.fillStyle = item.textColor || '#000000';
+    const align = item.textAlign || 'center';
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    const textX = align === 'center' ? x + w / 2 : (align === 'right' ? x + w - 4 : x + 4);
+    ctx.fillText(item.text || 'TÍTULO', textX, y + h / 2);
+    ctx.restore();
+  }
+
+  /**
+   * Exporta Todas as Pranchas do Projeto em um Único Documento PDF Técnico (Caderno de Pranchas)
+   */
+  static async exportAllSheetsToPDF(composer, dpi = 300) {
+    try {
+      if (!composer.sheetsManager || !composer.sheetsManager.sheets || composer.sheetsManager.sheets.length <= 1) {
+        return this.exportToPDF(composer, dpi);
+      }
+
+      composer.sheetsManager.saveCurrentStateFromComposer();
+      const sheets = composer.sheetsManager.sheets;
+      const initialSheetId = composer.sheetsManager.activeSheetId;
+
+      const progress = notifyProgress({
+        titulo: 'Gerando Caderno de Pranchas',
+        mensagem: `Processando ${sheets.length} pranchas em PDF técnico...`
+      });
+
+      let pdf = null;
+
+      try {
+        for (let i = 0; i < sheets.length; i++) {
+          const sh = sheets[i];
+          // Aplica dados da prancha temporariamente no compositor para renderizar
+          composer.paperSize = sh.paperSize;
+          composer.showAbntMargins = sh.showAbntMargins !== false;
+          composer.items = sh.items;
+
+          const rendered = await this.renderSheetWithFallback(composer, dpi);
+          const { canvas } = rendered;
+          if (!canvas) continue;
+
+          const wMm = sh.paperSize.width;
+          const hMm = sh.paperSize.height;
+          const isLandscape = wMm > hMm;
+
+          if (!pdf) {
+            pdf = new jsPDF({
+              orientation: isLandscape ? 'landscape' : 'portrait',
+              unit: 'mm',
+              format: [wMm, hMm],
+              compress: true
+            });
+          } else {
+            pdf.addPage([wMm, hMm], isLandscape ? 'landscape' : 'portrait');
+          }
+
+          const imgData = canvas.toDataURL('image/jpeg', 0.95);
+          pdf.addImage(imgData, 'JPEG', 0, 0, wMm, hMm);
+        }
+      } finally {
+        progress.done();
+        // Restaura a prancha original ativa
+        composer.sheetsManager.switchToSheet(initialSheetId);
+      }
+
+      if (pdf) {
+        const cleanName = (composer.projectName || 'projeto')
+          .toLowerCase()
+          .replace(/[^\w\s-]/g, '')
+          .replace(/\s+/g, '_');
+        const fileName = `${cleanName}_caderno_${sheets.length}_pranchas.pdf`;
+        pdf.save(fileName);
+
+        UIToast.notificar({
+          tipo: 'sucesso',
+          titulo: 'Caderno de Pranchas Gerado',
+          mensagem: `PDF com ${sheets.length} pranchas salvo como ${fileName}.`,
+          duracao: 4500
+        });
+      }
+    } catch (err) {
+      console.error('[PrintExporter] Erro ao exportar todas as pranchas:', err);
+      UIToast.notificar({
+        tipo: 'erro',
+        titulo: 'Falha no Caderno de Pranchas',
+        mensagem: err.message || 'Erro ao processar PDF com múltiplas pranchas.',
+        duracao: 4500
+      });
     }
   }
 

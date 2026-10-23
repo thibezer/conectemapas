@@ -247,7 +247,7 @@ export class AppComponentsBuilder {
       },
       onOpenPrintComposer: () => {
         if (app.printComposerModal) {
-          app.printComposerModal.open(app.projectName, app.layers, app.features, app.currentBasemap);
+          app.printComposerModal.open(app.projectName, app.layers, app.features, app.currentBasemap, app.projectId);
         }
       },
       onToggleFeaturePopup: () => {

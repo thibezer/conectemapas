@@ -387,6 +387,59 @@ export class PrintItemsManager {
   /**
    * Renderiza o Bloco de Notas Técnicas / Texto Livre
    */
+  /**
+   * Renderiza a Moldura / Forma Geométrica Retangular Técnica
+   */
+  static renderShape(item) {
+    const fill = item.fillColor || 'rgba(255, 255, 255, 0.5)';
+    const stroke = item.strokeColor || '#000000';
+    const strokeW = item.strokeWidth !== undefined ? item.strokeWidth : 1.5;
+    const radius = item.borderRadius || 0;
+
+    return `
+      <div class="cm-item-shape-box" style="width: 100%; height: 100%; background: ${fill}; border: ${strokeW}px solid ${stroke}; border-radius: ${radius}px; box-sizing: border-box;"></div>
+    `;
+  }
+
+  /**
+   * Renderiza Logotipo ou Imagem Carregada
+   */
+  static renderImage(item) {
+    const esc = this.escapeHtml.bind(this);
+    if (!item.imageUrl) {
+      return `
+        <div class="cm-item-image-placeholder" style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0,0,0,0.05); border: 1px dashed rgba(0,0,0,0.3); font-size: 8px; color: #555; text-align: center; padding: 4px; box-sizing: border-box;">
+          <span>🖼️ Sem Imagem</span>
+          <span style="font-size: 6.5px; opacity: 0.8;">Carregue o logotipo no painel</span>
+        </div>
+      `;
+    }
+    const fit = item.objectFit || 'contain';
+    return `
+      <div class="cm-item-image-box" style="width: 100%; height: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+        <img src="${esc(item.imageUrl)}" alt="${esc(item.name || 'Imagem')}" style="width: 100%; height: 100%; object-fit: ${fit}; pointer-events: none;" />
+      </div>
+    `;
+  }
+
+  /**
+   * Renderiza Rótulo de Texto Livre / Título Customizado
+   */
+  static renderLabel(item) {
+    const esc = this.escapeHtml.bind(this);
+    const text = item.text || 'TÍTULO DO PROJETO';
+    const fontSize = item.fontSize || 10;
+    const weight = item.fontWeight || 'bold';
+    const color = item.textColor || '#000000';
+    const align = item.textAlign || 'center';
+
+    return `
+      <div class="cm-item-label-box" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: ${align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start')}; font-size: ${fontSize}px; font-weight: ${weight}; color: ${color}; text-align: ${align}; font-family: Arial, sans-serif; white-space: pre-wrap; word-break: break-word; box-sizing: border-box; padding: 2px;">
+        ${esc(text)}
+      </div>
+    `;
+  }
+
   static renderTextBlock(item) {
     const esc = this.escapeHtml.bind(this);
     const text = item.text || 'NOTAS TÉCNICAS:\n1. Coordenadas UTM referenciadas ao Datum SIRGAS 2000.\n2. Levantamento planialtimétrico executado com receptores GNSS RTK L1/L2.\n3. Limites e confrontações demarcados de acordo com memorial descritivo.';
@@ -771,6 +824,53 @@ export class PrintItemsManager {
           locked: false,
           visible: true,
           targetFeatureId: null
+        };
+      case 'shape':
+        return {
+          id: `item-shape-${ts}`,
+          type: 'shape',
+          name: 'Moldura Técnica',
+          x: 25,
+          y: 20,
+          width: 70,
+          height: 45,
+          locked: false,
+          visible: true,
+          fillColor: 'rgba(255, 255, 255, 0.4)',
+          strokeColor: '#000000',
+          strokeWidth: 1.5,
+          borderRadius: 0
+        };
+      case 'image':
+        return {
+          id: `item-img-${ts}`,
+          type: 'image',
+          name: 'Logotipo / Imagem',
+          x: 25,
+          y: 20,
+          width: 45,
+          height: 30,
+          locked: false,
+          visible: true,
+          imageUrl: '',
+          objectFit: 'contain'
+        };
+      case 'label':
+        return {
+          id: `item-label-${ts}`,
+          type: 'label',
+          name: 'Título Customizado',
+          x: 25,
+          y: 15,
+          width: 110,
+          height: 14,
+          locked: false,
+          visible: true,
+          text: 'LEVANTAMENTO TOPOGRÁFICO',
+          fontSize: 10,
+          fontWeight: 'bold',
+          textColor: '#000000',
+          textAlign: 'center'
         };
       case 'text_block':
         return {

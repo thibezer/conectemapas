@@ -4,6 +4,10 @@
    zoom/pan, arrasto de itens, manipulação das 8 alças e atalhos de teclado de precisão.
    ========================================================================== */
 
+import { PrintSmartGuides } from './PrintSmartGuides.js';
+import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
+import { UIToast } from '@thibezer/ui-components-kit';
+
 export class PrintCanvasEngine {
   // Pixels CSS por mm no zoom 100% (96 dpi). Os itens são desenhados nessa medida e escalados por transform.
   static BASE_PX_PER_MM = 3.78;
@@ -31,6 +35,7 @@ export class PrintCanvasEngine {
     this.mouseMoveHandler = null;
     this.mouseUpHandler = null;
     this.keyDownHandler = null;
+    this.smartGuides = new PrintSmartGuides(this);
 
     this.bindKeyboardShortcuts();
   }
@@ -291,12 +296,25 @@ export class PrintCanvasEngine {
       }
 
       if (this.isDraggingItem && this.itemStartProps) {
-        const dx = (e.clientX - this.dragStartX) / this.mmToPx;
-        const dy = (e.clientY - this.dragStartY) / this.mmToPx;
+        const rawDx = (e.clientX - this.dragStartX) / this.mmToPx;
+        const rawDy = (e.clientY - this.dragStartY) / this.mmToPx;
         const it = this.composer.items.find(i => i.id === this.itemStartProps.id);
         if (it) {
-          it.x = Math.max(0, Math.min(this.composer.paperSize.width - it.width, this.itemStartProps.x + dx));
-          it.y = Math.max(0, Math.min(this.composer.paperSize.height - it.height, this.itemStartProps.y + dy));
+          const rawX = Math.max(0, Math.min(this.composer.paperSize.width - it.width, this.itemStartProps.x + rawDx));
+          const rawY = Math.max(0, Math.min(this.composer.paperSize.height - it.height, this.itemStartProps.y + rawDy));
+
+          // Aplica cálculo de atração magnética das Smart Guides (estilo Illustrator)
+          const { snappedX, snappedY } = this.smartGuides.calculateDragSnap(
+            it,
+            rawX,
+            rawY,
+            this.composer.items,
+            this.composer.paperSize,
+            this.composer.showAbntMargins
+          );
+
+          it.x = Math.max(0, Math.min(this.composer.paperSize.width - it.width, snappedX));
+          it.y = Math.max(0, Math.min(this.composer.paperSize.height - it.height, snappedY));
           this.composer.updateItemPositionDOM(it);
         }
       } else if (this.isResizing && this.itemStartProps) {
@@ -310,10 +328,17 @@ export class PrintCanvasEngine {
         vp.style.cursor = '';
       }
       if (this.isDraggingItem || this.isResizing) {
+        const hadMoved = this.itemStartProps && (
+          this.composer.items.some(i => i.id === this.itemStartProps.id && (i.x !== this.itemStartProps.x || i.y !== this.itemStartProps.y || i.width !== this.itemStartProps.width || i.height !== this.itemStartProps.height))
+        );
+        this.smartGuides.clearGuides();
         this.isDraggingItem = false;
         this.isResizing = false;
         this.itemStartProps = null;
         this.composer.updatePropertiesPanel();
+        if (hadMoved) {
+          this.composer.pushHistoryState('Mover/Redimensionar');
+        }
       }
     };
 
@@ -345,6 +370,24 @@ export class PrintCanvasEngine {
       it.y = sp.y + (sp.height - it.height);
     }
 
+    // Aplica snap de guias inteligentes no redimensionamento
+    const snapResult = this.smartGuides.calculateResizeSnap(
+      it,
+      it.x,
+      it.y,
+      it.width,
+      it.height,
+      this.resizeHandle,
+      this.composer.items,
+      this.composer.paperSize,
+      this.composer.showAbntMargins
+    );
+
+    it.x = snapResult.newX;
+    it.y = snapResult.newY;
+    it.width = snapResult.newW;
+    it.height = snapResult.newH;
+
     this.composer.updateItemPositionDOM(it);
   }
 
@@ -359,8 +402,42 @@ export class PrintCanvasEngine {
       const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
       if (isInput) return;
 
-      // Preserva modificadores do sistema
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Atalhos com modificadores (Desfazer, Refazer, Duplicar)
+      if (e.ctrlKey || e.metaKey) {
+        if ((e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+          e.preventDefault();
+          this.composer.undo();
+          return;
+        }
+        if ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey)) {
+          e.preventDefault();
+          this.composer.redo();
+          return;
+        }
+        if (e.key === 'd' || e.key === 'D') {
+          e.preventDefault();
+          PrintAlignmentHelper.duplicateItem(this.composer);
+          return;
+        }
+        return; // Preserva outros atalhos com Ctrl
+      }
+      if (e.altKey) return;
+
+      // Atalho rápido 'U' para ligar/desligar Smart Guides (como Illustrator)
+      if (e.key === 'u' || e.key === 'U') {
+        e.preventDefault();
+        const nextState = !this.smartGuides.enabled;
+        this.smartGuides.setEnabled(nextState);
+        const btn = document.getElementById('btn-toggle-smart-guides');
+        if (btn) btn.classList.toggle('active', nextState);
+        UIToast.notificar({
+          tipo: nextState ? 'sucesso' : 'informativo',
+          titulo: 'Guias Inteligentes',
+          mensagem: nextState ? 'Guias automáticas magnéticas ativadas (estilo Illustrator).' : 'Guias inteligentes desativadas.',
+          duracao: 2000
+        });
+        return;
+      }
 
       // Atalhos da prancheta (independem de haver item selecionado)
       if (e.key === 'Escape') {

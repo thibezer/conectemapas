@@ -78,6 +78,24 @@ export class PrintPropertiesPanel {
                 🎯 ${esc(selectedItem.name)}
               </summary>
               <div style="padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+                <!-- Barra de Ações Rápidas e Alinhamento -->
+                <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);">
+                  <div style="font-size: 9.5px; color: #a0a0b0; font-weight: 600;">📐 ALINHAMENTO NA FOLHA (ABNT):</div>
+                  <div style="display: flex; gap: 2px; justify-content: space-between;">
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda" style="flex: 1;">⇤ Esq</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente" style="flex: 1;">⧿ Centro</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita" style="flex: 1;">⇥ Dir</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo" style="flex: 1;">⤒ Topo</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente" style="flex: 1;">⧾ Meio</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base" style="flex: 1;">⤓ Base</button>
+                  </div>
+                  <div style="display: flex; gap: 4px; margin-top: 2px;">
+                    <button class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)" style="flex: 1;">📋 Duplicar</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente" style="flex: 1;">⬆️ Frente</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás" style="flex: 1;">⬇️ Trás</button>
+                  </div>
+                </div>
+
                 <!-- Posição e Dimensão em mm -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                   <div>
@@ -199,6 +217,75 @@ export class PrintPropertiesPanel {
                   </div>
                 ` : ''}
 
+                <!-- Propriedades da Moldura / Forma Geométrica -->
+                ${selectedItem.type === 'shape' ? `
+                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Cor de Preenchimento:</span>
+                      <input type="text" id="prop-shape-fill" class="cm-vertex-input" style="width: 120px;" value="${esc(selectedItem.fillColor || 'rgba(255,255,255,0.4)')}" />
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Cor da Borda:</span>
+                      <input type="color" id="prop-shape-stroke" value="${selectedItem.strokeColor || '#000000'}" style="width: 40px; height: 24px; padding: 0; border: none; cursor: pointer;" />
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Espessura da Borda (px):</span>
+                      <input type="number" id="prop-shape-strokew" class="cm-vertex-input" style="width: 60px;" min="0" max="10" step="0.5" value="${selectedItem.strokeWidth !== undefined ? selectedItem.strokeWidth : 1.5}" />
+                    </div>
+                  </div>
+                ` : ''}
+
+                <!-- Propriedades da Imagem / Logotipo -->
+                ${selectedItem.type === 'image' ? `
+                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+                    <span class="cm-param-label">Carregar Imagem / Logotipo:</span>
+                    <input type="file" id="prop-image-file" accept="image/*" class="cm-vertex-input" style="width: 100%; font-size: 10px;" />
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Ajuste de Enquadramento:</span>
+                      <select id="prop-image-fit" class="cm-native-select" style="width: 120px;">
+                        <option value="contain" ${selectedItem.objectFit === 'contain' ? 'selected' : ''}>Conter (Manter Proporção)</option>
+                        <option value="cover" ${selectedItem.objectFit === 'cover' ? 'selected' : ''}>Preencher (Cortar Excesso)</option>
+                      </select>
+                    </div>
+                    ${selectedItem.imageUrl ? `
+                      <ui-botao-primario inline id="btn-remove-image-url" variante="secundario" style="height: 24px; font-size: 10px; margin-top: 2px;">
+                        🗑️ Limpar Imagem
+                      </ui-botao-primario>
+                    ` : ''}
+                  </div>
+                ` : ''}
+
+                <!-- Propriedades do Rótulo de Texto Livre / Título -->
+                ${selectedItem.type === 'label' ? `
+                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+                    <span class="cm-param-label">Texto do Título:</span>
+                    <input type="text" id="prop-label-text" class="cm-vertex-input" value="${esc(selectedItem.text || '')}" />
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Tamanho da Fonte (pt):</span>
+                      <input type="number" id="prop-label-size" class="cm-vertex-input" style="width: 60px;" min="6" max="36" value="${selectedItem.fontSize || 10}" />
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Peso da Fonte:</span>
+                      <select id="prop-label-weight" class="cm-native-select" style="width: 100px;">
+                        <option value="bold" ${selectedItem.fontWeight === 'bold' ? 'selected' : ''}>Negrito</option>
+                        <option value="normal" ${selectedItem.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
+                      </select>
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Alinhamento:</span>
+                      <select id="prop-label-align" class="cm-native-select" style="width: 100px;">
+                        <option value="center" ${selectedItem.textAlign === 'center' ? 'selected' : ''}>Centralizado</option>
+                        <option value="left" ${selectedItem.textAlign === 'left' ? 'selected' : ''}>À Esquerda</option>
+                        <option value="right" ${selectedItem.textAlign === 'right' ? 'selected' : ''}>À Direita</option>
+                      </select>
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Cor do Texto:</span>
+                      <input type="color" id="prop-label-color" value="${selectedItem.textColor || '#000000'}" style="width: 40px; height: 24px; padding: 0; border: none; cursor: pointer;" />
+                    </div>
+                  </div>
+                ` : ''}
+
                 <!-- Propriedades do Carimbo Técnico ABNT -->
                 ${selectedItem.type === 'title_block' ? `
                   <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
@@ -244,6 +331,9 @@ export class PrintPropertiesPanel {
     if (type === 'title_block') return '🏛️';
     if (type === 'table_vertices') return '📊';
     if (type === 'text_block') return '📝';
+    if (type === 'shape') return '🔲';
+    if (type === 'image') return '🖼️';
+    if (type === 'label') return '🏷️';
     return '📦';
   }
 
@@ -334,6 +424,65 @@ export class PrintPropertiesPanel {
         }
       }
     };
+
+    // Botões de alinhamento e organização do painel
+    const btnPropAlignL = document.getElementById('btn-prop-align-left');
+    const btnPropAlignCH = document.getElementById('btn-prop-align-center-h');
+    const btnPropAlignR = document.getElementById('btn-prop-align-right');
+    const btnPropAlignT = document.getElementById('btn-prop-align-top');
+    const btnPropAlignCV = document.getElementById('btn-prop-align-center-v');
+    const btnPropAlignB = document.getElementById('btn-prop-align-bottom');
+    const btnPropDup = document.getElementById('btn-prop-duplicate');
+    const btnPropFront = document.getElementById('btn-prop-bring-front');
+    const btnPropBack = document.getElementById('btn-prop-send-back');
+
+    if (btnPropAlignL) btnPropAlignL.onclick = () => composer.alignLeft();
+    if (btnPropAlignCH) btnPropAlignCH.onclick = () => composer.alignCenterH();
+    if (btnPropAlignR) btnPropAlignR.onclick = () => composer.alignRight();
+    if (btnPropAlignT) btnPropAlignT.onclick = () => composer.alignTop();
+    if (btnPropAlignCV) btnPropAlignCV.onclick = () => composer.alignCenterV();
+    if (btnPropAlignB) btnPropAlignB.onclick = () => composer.alignBottom();
+    if (btnPropDup) btnPropDup.onclick = () => composer.duplicateSelectedItem();
+    if (btnPropFront) btnPropFront.onclick = () => composer.bringToFront();
+    if (btnPropBack) btnPropBack.onclick = () => composer.sendToBack();
+
+    // Eventos de Shape, Image, Label
+    const propShapeFill = document.getElementById('prop-shape-fill');
+    const propShapeStroke = document.getElementById('prop-shape-stroke');
+    const propShapeStrokeW = document.getElementById('prop-shape-strokew');
+    if (propShapeFill) propShapeFill.onchange = (e) => updateCurrent(it => it.fillColor = e.target.value);
+    if (propShapeStroke) propShapeStroke.onchange = (e) => updateCurrent(it => it.strokeColor = e.target.value);
+    if (propShapeStrokeW) propShapeStrokeW.onchange = (e) => updateCurrent(it => it.strokeWidth = parseFloat(e.target.value) || 0);
+
+    const propImgFile = document.getElementById('prop-image-file');
+    const propImgFit = document.getElementById('prop-image-fit');
+    const btnRemImg = document.getElementById('btn-remove-image-url');
+    if (propImgFile) {
+      propImgFile.onchange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (re) => {
+            updateCurrent(it => it.imageUrl = re.target.result);
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+    }
+    if (propImgFit) propImgFit.onchange = (e) => updateCurrent(it => it.objectFit = e.target.value);
+    if (btnRemImg) btnRemImg.onclick = () => updateCurrent(it => it.imageUrl = '');
+
+    const propLabelText = document.getElementById('prop-label-text');
+    const propLabelSize = document.getElementById('prop-label-size');
+    const propLabelWeight = document.getElementById('prop-label-weight');
+    const propLabelAlign = document.getElementById('prop-label-align');
+    const propLabelColor = document.getElementById('prop-label-color');
+
+    if (propLabelText) propLabelText.oninput = (e) => updateCurrent(it => it.text = e.target.value);
+    if (propLabelSize) propLabelSize.onchange = (e) => updateCurrent(it => it.fontSize = parseFloat(e.target.value) || 10);
+    if (propLabelWeight) propLabelWeight.onchange = (e) => updateCurrent(it => it.fontWeight = e.target.value);
+    if (propLabelAlign) propLabelAlign.onchange = (e) => updateCurrent(it => it.textAlign = e.target.value);
+    if (propLabelColor) propLabelColor.onchange = (e) => updateCurrent(it => it.textColor = e.target.value);
 
     // Campos de posição e dimensões
     const propX = document.getElementById('prop-item-x');
