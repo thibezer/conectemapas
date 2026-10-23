@@ -167,6 +167,14 @@ export class BatchActions {
     });
   }
 
+  /**
+   * Edição genérica (inspetor com várias feições selecionadas).
+   * `mutate(draft, original)` devolve false quando nada muda naquela feição.
+   */
+  static edit(app, ids, label, mutate) {
+    return commitBatch(app, ids, label, mutate);
+  }
+
   /** Exclui em lote. A confirmação com o usuário fica a cargo da UI. */
   static remove(app, ids) {
     const { targets, locked, missing } = resolveTargets(app, ids);

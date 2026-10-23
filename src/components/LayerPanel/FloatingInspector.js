@@ -31,7 +31,10 @@ export class FloatingInspector {
     const floatWin = document.getElementById('cm-floating-inspector-window');
     if (!floatWin || !panel.isFloating) return;
 
-    const name = panel.selectedFeature ? panel.escapeHtml(panel.selectedFeature.name || '') : '';
+    const multiCount = panel.getMultiSelectedFeatures().length;
+    const name = panel.selectedFeature
+      ? panel.escapeHtml(panel.selectedFeature.name || '')
+      : (multiCount > 1 ? `${multiCount} feições` : '');
     floatWin.innerHTML = `
       <div class="cm-floating-header" id="cm-floating-header-handle">
         <div class="cm-floating-title">

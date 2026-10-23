@@ -442,14 +442,47 @@ export class LayerPanel {
    * Se o usuário estiver digitando no inspetor, adia o re-render até o foco sair.
    */
   refreshSelectedFeature(feat, { immediate = false } = {}) {
-    if (!feat || !this.selectedFeature || this.selectedFeature.id !== feat.id) return;
+    if (!feat) return;
+    // Seleção múltipla: a tabela é remontada a partir de app.features
+    if (!this.selectedFeature && this.selectedFeatureIds.size > 1 && this.selectedFeatureIds.has(feat.id)) {
+      if (!this._suppressInspectorRender) this._renderInspectorSafely(immediate);
+      return;
+    }
+    if (!this.selectedFeature || this.selectedFeature.id !== feat.id) return;
     this.selectedFeature = feat;
     if (this._suppressInspectorRender) return;
     this._renderInspectorSafely(immediate);
   }
 
+  /** Redesenha o inspetor com o estado atual (uma feição ou seleção múltipla). */
+  refreshInspector() {
+    this._renderInspectorSafely(true);
+  }
+
+  /**
+   * Feições inspecionadas em conjunto (versão mais recente de cada uma); vazio quando
+   * a seleção tem uma feição só ou nenhuma.
+   */
+  getMultiSelectedFeatures() {
+    if (this.selectedFeature || this.selectedFeatureIds.size < 2) return [];
+    return Array.from(this.selectedFeatureIds).map(id => this.getLatestFeature(id)).filter(Boolean);
+  }
+
   /** A feição exibida foi excluída (localmente ou por um colaborador). */
   handleSelectedFeatureRemoved(featId) {
+    if (!this.selectedFeature && this.selectedFeatureIds.has(featId)) {
+      // Exclusão em lote chama uma vez por feição: um único redesenho por ciclo
+      this.selectedFeatureIds.delete(featId);
+      if (this.selectedFeatureIds.size === 1) this.selectedFeature = this.getLatestFeature([...this.selectedFeatureIds][0]);
+      if (!this._multiRemovalRenderPending) {
+        this._multiRemovalRenderPending = true;
+        queueMicrotask(() => {
+          this._multiRemovalRenderPending = false;
+          this._renderInspectorSafely(true);
+        });
+      }
+      return;
+    }
     if (!this.selectedFeature || this.selectedFeature.id !== featId) return;
     this._stopVertexEditingIfActive();
     this.selectedFeature = null;

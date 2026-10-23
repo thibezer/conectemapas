@@ -24,7 +24,13 @@ export class FeatureInspectorEvents {
    * @param {ParentNode} root contêiner do inspetor (barra lateral ou janela flutuante)
    */
   static bind(panel, root = document) {
-    if (!panel.selectedFeature || !root) return;
+    if (!root) return;
+    const multi = panel.getMultiSelectedFeatures();
+    if (multi.length > 1) {
+      if (new Set(multi.map(f => f.type)).size === 1) this.bindMulti(panel, root, multi);
+      return;
+    }
+    if (!panel.selectedFeature) return;
     const q = (sel) => root.querySelector(sel);
     const featId = panel.selectedFeature.id;
 
@@ -34,13 +40,7 @@ export class FeatureInspectorEvents {
       const { tipos, categorias } = FeaturePropertiesAdapter.gerarConfiguracao(panel, panel.selectedFeature);
       tabelaProps.tipos = tipos;
       tabelaProps.categorias = categorias;
-      const shadow = tabelaProps.shadowRoot;
-      if (shadow && !shadow.querySelector('style[data-cm-inspector]')) {
-        const style = document.createElement('style');
-        style.setAttribute('data-cm-inspector', '');
-        style.textContent = TABLE_HIDDEN_CONTROLS_CSS;
-        shadow.appendChild(style);
-      }
+      this.hideTableControls(tabelaProps);
 
       const colorTimers = new Map();
       tabelaProps.addEventListener('ui-propriedade-alterada', (e) => {
@@ -98,5 +98,70 @@ export class FeatureInspectorEvents {
     q('[data-insp="toggle-float"]')?.addEventListener('click', () => panel.toggleFloatingWindow());
     q('[data-insp="fit"]')?.addEventListener('click', () => panel.onFitFeature(featId));
     q('[data-insp="delete"]')?.addEventListener('click', () => FeaturePropertiesAdapter.confirmDelete(panel, featId));
+  }
+
+  /**
+   * Várias feições do mesmo tipo: cada alteração vale para todas (um passo de histórico).
+   * @param {Object} panel LayerPanel
+   * @param {ParentNode} root contêiner do inspetor
+   * @param {Object[]} feats feições selecionadas
+   */
+  static bindMulti(panel, root, feats) {
+    const q = (sel) => root.querySelector(sel);
+    const ids = feats.map(f => f.id);
+
+    const tabelaProps = q('[data-insp="properties"]');
+    if (tabelaProps) {
+      const { tipos, categorias } = FeaturePropertiesAdapter.gerarConfiguracaoMulti(panel, feats);
+      tabelaProps.tipos = tipos;
+      tabelaProps.categorias = categorias;
+      this.hideTableControls(tabelaProps);
+
+      let colorTimer = null;
+      tabelaProps.addEventListener('ui-propriedade-alterada', (e) => {
+        const { id, valor } = e.detail || {};
+        if (!id) return;
+        if (COLOR_PROPS.has(id)) {
+          FeaturePropertiesAdapter.previewAlteracaoMulti(panel, ids, id, valor);
+          clearTimeout(colorTimer);
+          colorTimer = setTimeout(() => FeaturePropertiesAdapter.aplicarAlteracaoMulti(panel, ids, id, valor), COLOR_COMMIT_DELAY_MS);
+          return;
+        }
+        FeaturePropertiesAdapter.aplicarAlteracaoMulti(panel, ids, id, valor);
+      });
+
+      tabelaProps.addEventListener('ui-acao-clique', (e) => {
+        const { id } = e.detail || {};
+        if (id) FeaturePropertiesAdapter.executarAcaoMulti(panel, ids, id);
+      });
+
+      tabelaProps.addEventListener('ui-categoria-toggle', (e) => {
+        const { id, aberto } = e.detail || {};
+        if (!id) return;
+        panel._inspectorCategoryOpen = { ...(panel._inspectorCategoryOpen || {}), [id]: !!aberto };
+      });
+    }
+
+    const actions = panel.app?.batchActions;
+    q('[data-insp="toggle-lock"]')?.addEventListener('click', () => {
+      const allLocked = ids.every(id => panel.getLatestFeature(id)?.locked === true);
+      actions?.setLocked(ids, !allLocked);
+      panel.refreshInspector();
+    });
+    q('[data-insp="toggle-float"]')?.addEventListener('click', () => panel.toggleFloatingWindow());
+    q('[data-insp="fit"]')?.addEventListener('click', () => actions?.zoom(ids));
+    q('[data-insp="delete"]')?.addEventListener('click', () => {
+      if (confirm(`Deseja realmente excluir as ${ids.length} feições selecionadas?`)) panel.onBulkDelete(ids);
+    });
+  }
+
+  static hideTableControls(tabelaProps) {
+    const shadow = tabelaProps.shadowRoot;
+    if (shadow && !shadow.querySelector('style[data-cm-inspector]')) {
+      const style = document.createElement('style');
+      style.setAttribute('data-cm-inspector', '');
+      style.textContent = TABLE_HIDDEN_CONTROLS_CSS;
+      shadow.appendChild(style);
+    }
   }
 }

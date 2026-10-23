@@ -11,6 +11,7 @@ import { SpatialAlgorithms } from '../../services/SpatialAlgorithms.js';
 import { GeoFormats } from '../../services/GeoFormats.js';
 import { GeometryVersionManager } from '../../services/GeometryVersionManager.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
+import { BatchActions } from '../../services/BatchActions.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
 const COORD_DECIMALS = 8;
@@ -43,6 +44,19 @@ const MUTATING_ACTIONS = new Set([
   'acao_promover_oficial', 'acao_editar_vertices', 'acao_simplificar', 'acao_adicionar_atributo', 'acao_inverter_cores'
 ]);
 
+// Seleção múltipla: valor que difere entre as feições (o kit não tem estado "misto")
+const VARIA_LABEL = 'Varia';
+const VARIA_ID = '__varia__';
+const BOOL_TRUE_ID = '__sim__';
+const BOOL_FALSE_ID = '__nao__';
+
+function sameValue(prop, a, b) {
+  if (prop.tipo === 'numero' && prop.casasDecimais !== undefined && Number.isFinite(Number(a)) && Number.isFinite(Number(b))) {
+    return Number(a).toFixed(prop.casasDecimais) === Number(b).toFixed(prop.casasDecimais);
+  }
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
 function parseNumber(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   const n = parseFloat(String(value ?? '').replace(',', '.'));
@@ -65,9 +79,11 @@ export class FeaturePropertiesAdapter {
    * Converte a feição selecionada em tipos e categorias para o <ui-tabela-propriedades>.
    * @param {Object} panel - Instância do LayerPanel
    * @param {Object} feat - Feição selecionada
+   * @param {{multi?: boolean}} [options] multi: parte de uma seleção múltipla (sem vínculo de
+   *   versões, vértices, azimutes e operações, que são de uma feição só)
    * @returns {{ tipos: Array, categorias: Array }}
    */
-  static gerarConfiguracao(panel, feat) {
+  static gerarConfiguracao(panel, feat, { multi = false } = {}) {
     if (!feat) return { tipos: [], categorias: [] };
 
     const isLocked = feat.locked === true;
@@ -140,15 +156,18 @@ export class FeaturePropertiesAdapter {
     const categorias = [];
 
     // --- Categoria 1: Identificação (nome e bloqueio ficam no cartão do topo) ---
-    const linkedFeat = GeometryVersionManager.findLinkedFeature(feat, allFeatures);
+    // Vínculo oficial × prévia é por feição (e varre o projeto): fica fora da seleção múltipla
+    const linkedFeat = multi ? null : GeometryVersionManager.findLinkedFeature(feat, allFeatures);
     const featStatus = GeometryVersionManager.getFeatureStatus(feat);
-    const hasOfficial = GeometryVersionManager.hasOfficialGeometry(feat, allFeatures);
+    const hasOfficial = multi || GeometryVersionManager.hasOfficialGeometry(feat, allFeatures);
 
     categorias.push({
       id: 'identificacao',
       titulo: '📌 Identificação',
       aberto: true,
       propriedades: [
+        // Uma feição: o nome fica no cartão do topo
+        ...(multi ? [{ id: 'name', rotulo: 'Nome', tipo: 'texto', valor: feat.name || '', somenteLeitura: isLocked, placeholder: 'Sem nome' }] : []),
         { id: 'description', rotulo: 'Descrição', tipo: 'texto', valor: feat.description || '', somenteLeitura: isLocked, placeholder: 'Anotações técnicas' },
         {
           id: 'layerId',
@@ -183,7 +202,7 @@ export class FeaturePropertiesAdapter {
           tipo: 'readonly',
           valor: '🟡 Prévia sem oficial cadastrada'
         }] : []),
-        { id: 'id', rotulo: 'ID', tipo: 'readonly', valor: feat.id }
+        ...(multi ? [] : [{ id: 'id', rotulo: 'ID', tipo: 'readonly', valor: feat.id }])
       ]
     });
 
@@ -231,7 +250,7 @@ export class FeaturePropertiesAdapter {
     categorias.push({ id: 'geometria', titulo: '📐 Geometria', aberto: true, propriedades: geomProps });
 
     // --- Categoria 2.1: Vértices (coordenadas editáveis por anel) e Azimutes ---
-    if (rings.length > 0) {
+    if (rings.length > 0 && !multi) {
       categorias.push({
         id: 'vertices',
         titulo: `📍 Vértices (${vertexCount})`,
@@ -339,7 +358,7 @@ export class FeaturePropertiesAdapter {
     if (Array.isArray(feat.customAttributes)) {
       feat.customAttributes.forEach((item, idx) => {
         if (item && item.key) {
-          attrProps.push({ id: `custom_attr_${idx}`, rotulo: item.key, tipo: 'texto', valor: String(item.value ?? ''), somenteLeitura: isLocked });
+          attrProps.push({ id: multi ? `custom_key_${item.key}` : `custom_attr_${idx}`, rotulo: item.key, tipo: 'texto', valor: String(item.value ?? ''), somenteLeitura: isLocked });
         }
       });
     }
@@ -352,7 +371,7 @@ export class FeaturePropertiesAdapter {
         tipo: 'acao',
         valor: 'Adicionar',
         rotuloAcao: '+ Adicionar',
-        dica: 'Cria um atributo personalizado nesta feição'
+        dica: multi ? 'Cria um atributo personalizado em todas as feições selecionadas' : 'Cria um atributo personalizado nesta feição'
       });
     }
 
@@ -364,6 +383,8 @@ export class FeaturePropertiesAdapter {
     });
 
     // --- Categoria 5: Operações (enquadrar e excluir ficam no cartão do topo) ---
+    // Seleção múltipla monta as próprias operações (gerarConfiguracaoMulti)
+    if (multi) return { tipos, categorias: this.applyCategoryOpenState(panel, categorias) };
     const acoesProps = [];
 
     if (linkedFeat) {
@@ -402,13 +423,110 @@ export class FeaturePropertiesAdapter {
 
     categorias.push({ id: 'acoes', titulo: '⚡ Operações', aberto: true, propriedades: acoesProps });
 
-    // Cada edição recria a tabela: mantém as categorias como o usuário as deixou
+    return { tipos, categorias: this.applyCategoryOpenState(panel, categorias) };
+  }
+
+  /**
+   * Tabela de propriedades de várias feições do mesmo tipo: só entram as linhas que todas
+   * têm; valor igual em todas é exibido, valor diferente aparece como "Varia".
+   * @param {Object} panel - Instância do LayerPanel
+   * @param {Object[]} feats - Feições selecionadas (mesmo tipo)
+   * @returns {{ tipos: Array, categorias: Array }}
+   */
+  static gerarConfiguracaoMulti(panel, feats) {
+    const list = (feats || []).filter(Boolean);
+    if (list.length === 0) return { tipos: [], categorias: [] };
+
+    const [first, ...rest] = list.map(f => this.gerarConfiguracao(panel, f, { multi: true }).categorias);
+    const categorias = [];
+    for (const cat of first) {
+      const peerCats = rest.map(cats => cats.find(c => c.id === cat.id));
+      if (peerCats.some(c => !c)) continue;
+      const propriedades = [];
+      for (const prop of cat.propriedades) {
+        const rows = [prop, ...peerCats.map(c => c.propriedades.find(p => p.id === prop.id))];
+        if (rows.some(p => !p || p.tipo !== prop.tipo || p.rotulo !== prop.rotulo)) continue;
+        // Bloqueadas são puladas na gravação: a linha só fica somente leitura se todas forem
+        const merged = { ...prop, somenteLeitura: rows.every(p => p.somenteLeitura === true) };
+        propriedades.push(rows.every(p => sameValue(prop, p.valor, prop.valor)) ? merged : this.asVaria(merged));
+      }
+      if (propriedades.length === 0) continue;
+      // Contadores do título ("Atributos (3)") são por feição
+      categorias.push({ ...cat, titulo: cat.titulo.replace(/\s*\(\d+\)$/, ''), propriedades });
+    }
+
+    // Totais da seleção no topo da Geometria
+    const type = list[0].type;
+    const fmt = (n, min, max) => n.toLocaleString('pt-BR', { minimumFractionDigits: min, maximumFractionDigits: max });
+    const fmtLength = (m) => (m >= 1000 ? `${fmt(m, 2, 2)} m · ${fmt(m / 1000, 3, 3)} km` : `${fmt(m, 2, 2)} m`);
+    const coordsOf = (f) => (Array.isArray(f.coordinates) ? f.coordinates : []);
+    const totals = [{ id: 'multi_qtd', rotulo: 'Selecionadas', tipo: 'readonly', valor: `${list.length} feições` }];
+    if (type === 'Polygon' || type === 'Circle') {
+      const area = list.reduce((acc, f) => acc + (type === 'Circle'
+        ? Math.PI * Math.pow(Number(f.radius) || 0, 2)
+        : panel.calculatePolygonArea(coordsOf(f))), 0);
+      totals.push({ id: 'multi_area', rotulo: 'Área total', tipo: 'readonly', valor: `${fmt(area / 10000, 4, 4)} ha · ${fmt(area, 2, 2)} m²` });
+    }
+    if (type === 'Polygon') {
+      const perimeter = list.reduce((acc, f) => acc + panel.calculatePolygonPerimeter(coordsOf(f)), 0);
+      totals.push({ id: 'multi_perimetro', rotulo: 'Perímetro total', tipo: 'readonly', valor: fmtLength(perimeter) });
+    } else if (type === 'LineString') {
+      const length = list.reduce((acc, f) => acc + panel.calculatePolylineLength(coordsOf(f)), 0);
+      totals.push({ id: 'multi_extensao', rotulo: 'Extensão total', tipo: 'readonly', valor: fmtLength(length) });
+    }
+    const geom = categorias.find(c => c.id === 'geometria');
+    if (geom) geom.propriedades.unshift(...totals);
+    else categorias.unshift({ id: 'geometria', titulo: '📐 Geometria', aberto: true, propriedades: totals });
+
+    const attrs = categorias.find(c => c.id === 'atributos');
+    if (attrs) {
+      const count = attrs.propriedades.filter(p => p.tipo !== 'acao').length;
+      if (count > 0) attrs.titulo = `📋 Atributos (${count})`;
+    }
+
+    // Operações que valem para o conjunto (as de uma feição só ficam de fora)
+    const allLocked = list.every(f => f.locked === true);
+    const acoesProps = [];
+    if (type === 'Polygon' || type === 'LineString') {
+      acoesProps.push({ id: 'acao_simplificar', rotulo: 'Simplificar', tipo: 'acao', valor: 'Simplificar', rotuloAcao: '📉 Tolerância 5 m', somenteLeitura: allLocked, dica: 'Remove vértices redundantes de todas (Douglas-Peucker, 5 m)' });
+    }
+    acoesProps.push({ id: 'acao_copiar_geojson', rotulo: 'GeoJSON', tipo: 'acao', valor: 'GeoJSON', rotuloAcao: '📋 Copiar', dica: 'Copia as feições selecionadas em GeoJSON' });
+    categorias.push({ id: 'acoes', titulo: '⚡ Operações', aberto: true, propriedades: acoesProps });
+
+    return { tipos: [], categorias: this.applyCategoryOpenState(panel, categorias) };
+  }
+
+  /** Linha cujo valor difere entre as feições selecionadas: mostra "Varia" no editor do kit. */
+  static asVaria(prop) {
+    if (prop.tipo === 'acao') return prop;
+    if (prop.somenteLeitura || prop.tipo === 'readonly') return { ...prop, valor: VARIA_LABEL };
+    switch (prop.tipo) {
+      case 'numero':
+        return { ...prop, valor: null, placeholder: VARIA_LABEL };
+      case 'cor':
+        return { ...prop, valor: 'transparent', textoAmostra: VARIA_LABEL };
+      case 'booleano':
+        return {
+          ...prop,
+          tipo: 'selecao',
+          valor: VARIA_ID,
+          opcoes: [{ id: VARIA_ID, rotulo: VARIA_LABEL }, { id: BOOL_TRUE_ID, rotulo: 'Sim' }, { id: BOOL_FALSE_ID, rotulo: 'Não' }]
+        };
+      case 'selecao':
+      case 'linha':
+        return { ...prop, valor: VARIA_ID, opcoes: [{ id: VARIA_ID, rotulo: VARIA_LABEL }, ...(prop.opcoes || [])] };
+      default:
+        return { ...prop, valor: '', placeholder: VARIA_LABEL };
+    }
+  }
+
+  // Cada edição recria a tabela: mantém as categorias como o usuário as deixou
+  static applyCategoryOpenState(panel, categorias) {
     const openState = panel._inspectorCategoryOpen || {};
     categorias.forEach(cat => {
       if (typeof openState[cat.id] === 'boolean') cat.aberto = openState[cat.id];
     });
-
-    return { tipos, categorias };
+    return categorias;
   }
 
   /**
@@ -521,7 +639,7 @@ export class FeaturePropertiesAdapter {
       const val = parseNumber(novoValor);
       if (val !== null && val > 0) {
         panel._bufferRadius = val;
-        panel.updateInspector();
+        panel.refreshInspector();
       }
       return;
     }
@@ -538,198 +656,297 @@ export class FeaturePropertiesAdapter {
       return;
     }
 
-    let statusLabel = null;
-    let rejectedMessage = null;
-
-    const saved = panel.commitFeatureEdit(featId, (draft) => {
-      if (!draft.style) draft.style = {};
-      if (!draft.properties || typeof draft.properties !== 'object' || Array.isArray(draft.properties)) draft.properties = {};
-
-      switch (propId) {
-        case 'name': {
-          const name = String(novoValor ?? '').trim();
-          if (!name) { rejectedMessage = 'O nome não pode ficar vazio.'; return false; }
-          draft.name = name;
-          return;
-        }
-        case 'description':
-          draft.description = String(novoValor ?? '').trim();
-          return;
-        case 'layerId':
-          if (!(panel.layers || []).some(l => l.id === novoValor)) return false;
-          draft.layerId = String(novoValor);
-          return;
-        case 'locked':
-          draft.locked = !!novoValor;
-          return;
-        case 'visible':
-          draft.visible = !!novoValor;
-          return;
-        case 'radius': {
-          const r = parseNumber(novoValor);
-          if (r === null || r <= 0) { rejectedMessage = 'O raio deve ser maior que zero.'; return false; }
-          draft.radius = r;
-          return;
-        }
-        case 'lat_dd':
-        case 'lng_dd': {
-          const v = parseNumber(novoValor);
-          const isLat = propId === 'lat_dd';
-          const limit = isLat ? 90 : 180;
-          if (v === null || Math.abs(v) > limit) { rejectedMessage = `${isLat ? 'Latitude' : 'Longitude'} deve estar entre -${limit} e ${limit}.`; return false; }
-          if (!Array.isArray(draft.coordinates) || Array.isArray(draft.coordinates[0])) return false;
-          draft.coordinates = [...draft.coordinates];
-          draft.coordinates[isLat ? 0 : 1] = v;
-          return;
-        }
-        case 'text_content': {
-          const text = String(novoValor ?? '').trim();
-          if (!text) { rejectedMessage = 'O texto não pode ficar vazio.'; return false; }
-          const oldText = draft.properties.text || '';
-          draft.properties.text = text;
-          if (!draft.name || draft.name === oldText) draft.name = text;
-          return;
-        }
-        case 'fontSize': {
-          const n = parseNumber(novoValor);
-          if (n === null) return false;
-          draft.style.fontSize = clamp(Math.round(n), 8, 96);
-          return;
-        }
-        case 'textColor':
-          draft.style.textColor = novoValor;
-          return;
-
-        // Estilo Visual
-        case 'fillEnabled': {
-          const enabled = Boolean(novoValor);
-          if (!enabled) {
-            if (draft.style.fillColor && draft.style.fillColor !== 'none' && draft.style.fillColor !== 'transparent') {
-              draft.style._lastFillColor = draft.style.fillColor;
-            }
-            draft.style.fillColor = 'none';
-          } else {
-            draft.style.fillColor = draft.style._lastFillColor || draft.color || '#00E08A';
-          }
-          return;
-        }
-        case 'fillColor': {
-          draft.style.fillColor = novoValor;
-          if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
-            draft.style._lastFillColor = novoValor;
-          }
-          return;
-        }
-        case 'fillOpacity': {
-          const n = parseNumber(novoValor);
-          if (n === null) return false;
-          draft.style.fillOpacity = clamp(n, 0, 100) / 100;
-          return;
-        }
-        case 'strokeEnabled': {
-          const enabled = Boolean(novoValor);
-          if (!enabled) {
-            if (draft.style.strokeColor && draft.style.strokeColor !== 'none' && draft.style.strokeColor !== 'transparent') {
-              draft.style._lastStrokeColor = draft.style.strokeColor;
-            }
-            draft.style.strokeColor = 'none';
-          } else {
-            draft.style.strokeColor = draft.style._lastStrokeColor || '#ffffff';
-          }
-          return;
-        }
-        case 'strokeColor': {
-          draft.style.strokeColor = novoValor;
-          if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
-            draft.style._lastStrokeColor = novoValor;
-          }
-          return;
-        }
-        case 'pointColor':
-          draft.style.fillColor = novoValor;
-          draft.style.strokeColor = novoValor;
-          draft.color = novoValor;
-          return;
-        case 'strokeWidth': {
-          const n = parseNumber(novoValor);
-          if (n === null) return false;
-          draft.style.strokeWidth = clamp(n, 0, 50);
-          return;
-        }
-        case 'strokeDashArray': {
-          // id da lista; um padrão fora dela (ex.: '6, 4' da medição) é mantido como está
-          const option = DASH_OPTIONS.find(o => o.id === novoValor);
-          draft.style.strokeDashArray = option ? option.dash : (novoValor === 'continuous' ? '' : String(novoValor ?? ''));
-          return;
-        }
-        case 'markerIcon':
-          draft.style.markerIcon = MARKER_ICON_OPTIONS.some(o => o.id === novoValor) ? novoValor : 'pin';
-          return;
-        case 'markerSize': {
-          const n = parseNumber(novoValor);
-          if (n === null) return false;
-          draft.style.markerSize = clamp(Math.round(n), 8, 96);
-          return;
-        }
-        case 'markerRotation': {
-          const n = parseNumber(novoValor);
-          if (n === null) return false;
-          draft.style.markerRotation = ((Math.round(n) % 360) + 360) % 360;
-          return;
-        }
-        case 'showLabel':
-          draft.style.showLabel = !!novoValor;
-          return;
-        case 'labelField':
-          draft.style.labelField = novoValor;
-          return;
-        case 'status_geodesico': {
-          const s = novoValor === 'comum' ? null : novoValor;
-          draft.status = s;
-          if (s) draft.properties.status = s;
-          else delete draft.properties.status;
-          statusLabel = novoValor === 'oficial' ? 'Oficial' : (novoValor === 'previa' ? 'Prévia' : 'Padrão');
-          return;
-        }
-        default:
-          if (propId.startsWith('vtx_')) {
-            if (!this.applyVertexEdit(draft, propId, novoValor, (msg) => { rejectedMessage = msg; })) return false;
-            return;
-          }
-          if (propId.startsWith('prop_')) {
-            const key = propId.slice('prop_'.length);
-            if (METRIC_KEYS.has(key)) return false;
-            const previous = draft.properties[key];
-            if (typeof previous === 'number') {
-              const n = parseNumber(novoValor);
-              if (n === null) { rejectedMessage = `"${key}" deve ser numérico.`; return false; }
-              draft.properties[key] = n;
-            } else {
-              draft.properties[key] = novoValor;
-            }
-            return;
-          }
-          if (propId.startsWith('custom_attr_')) {
-            const idx = parseInt(propId.slice('custom_attr_'.length), 10);
-            if (!Array.isArray(draft.customAttributes) || !draft.customAttributes[idx]) return false;
-            draft.customAttributes[idx].value = novoValor;
-            return;
-          }
-          return false;
-      }
-    }, { rerender });
+    const ctx = { rejectedMessage: null, statusLabel: null };
+    const saved = panel.commitFeatureEdit(featId, (draft) => this.applyToDraft(panel, draft, propId, novoValor, ctx), { rerender });
 
     if (!saved) {
-      if (rejectedMessage) UIToast.notificar({ tipo: 'alerta', titulo: 'Valor Inválido', mensagem: rejectedMessage, duracao: 3000 });
+      if (ctx.rejectedMessage) UIToast.notificar({ tipo: 'alerta', titulo: 'Valor Inválido', mensagem: ctx.rejectedMessage, duracao: 3000 });
       // Restaura o valor exibido na tabela
       panel.refreshSelectedFeature(panel.getLatestFeature(featId) || latest, { immediate: true });
       return;
     }
 
-    if (statusLabel) {
+    if (ctx.statusLabel) {
       // O mapa decide oficial x prévia pelo status: atualiza depois de gravar
       if (panel.app && typeof panel.app.refreshMapAndTable === 'function') panel.app.refreshMapAndTable();
     }
+  }
+
+  /**
+   * Aplica a alteração de uma propriedade do inspetor ao rascunho de uma feição
+   * (a inspecionada ou cada uma das selecionadas). Retornar false cancela;
+   * a mensagem de rejeição e o novo status vão em `ctx`.
+   */
+  static applyToDraft(panel, draft, propId, novoValor, ctx = {}) {
+    if (!draft.style) draft.style = {};
+    if (!draft.properties || typeof draft.properties !== 'object' || Array.isArray(draft.properties)) draft.properties = {};
+
+    switch (propId) {
+      case 'name': {
+        const name = String(novoValor ?? '').trim();
+        if (!name) { ctx.rejectedMessage = 'O nome não pode ficar vazio.'; return false; }
+        draft.name = name;
+        return;
+      }
+      case 'description':
+        draft.description = String(novoValor ?? '').trim();
+        return;
+      case 'layerId':
+        if (!(panel.layers || []).some(l => l.id === novoValor)) return false;
+        draft.layerId = String(novoValor);
+        return;
+      case 'locked':
+        draft.locked = !!novoValor;
+        return;
+      case 'visible':
+        draft.visible = !!novoValor;
+        return;
+      case 'radius': {
+        const r = parseNumber(novoValor);
+        if (r === null || r <= 0) { ctx.rejectedMessage = 'O raio deve ser maior que zero.'; return false; }
+        draft.radius = r;
+        return;
+      }
+      case 'lat_dd':
+      case 'lng_dd': {
+        const v = parseNumber(novoValor);
+        const isLat = propId === 'lat_dd';
+        const limit = isLat ? 90 : 180;
+        if (v === null || Math.abs(v) > limit) { ctx.rejectedMessage = `${isLat ? 'Latitude' : 'Longitude'} deve estar entre -${limit} e ${limit}.`; return false; }
+        if (!Array.isArray(draft.coordinates) || Array.isArray(draft.coordinates[0])) return false;
+        draft.coordinates = [...draft.coordinates];
+        draft.coordinates[isLat ? 0 : 1] = v;
+        return;
+      }
+      case 'text_content': {
+        const text = String(novoValor ?? '').trim();
+        if (!text) { ctx.rejectedMessage = 'O texto não pode ficar vazio.'; return false; }
+        const oldText = draft.properties.text || '';
+        draft.properties.text = text;
+        if (!draft.name || draft.name === oldText) draft.name = text;
+        return;
+      }
+      case 'fontSize': {
+        const n = parseNumber(novoValor);
+        if (n === null) return false;
+        draft.style.fontSize = clamp(Math.round(n), 8, 96);
+        return;
+      }
+      case 'textColor':
+        draft.style.textColor = novoValor;
+        return;
+
+      // Estilo Visual
+      case 'fillEnabled': {
+        const enabled = Boolean(novoValor);
+        if (!enabled) {
+          if (draft.style.fillColor && draft.style.fillColor !== 'none' && draft.style.fillColor !== 'transparent') {
+            draft.style._lastFillColor = draft.style.fillColor;
+          }
+          draft.style.fillColor = 'none';
+        } else {
+          draft.style.fillColor = draft.style._lastFillColor || draft.color || '#00E08A';
+        }
+        return;
+      }
+      case 'fillColor': {
+        draft.style.fillColor = novoValor;
+        if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
+          draft.style._lastFillColor = novoValor;
+        }
+        return;
+      }
+      case 'fillOpacity': {
+        const n = parseNumber(novoValor);
+        if (n === null) return false;
+        draft.style.fillOpacity = clamp(n, 0, 100) / 100;
+        return;
+      }
+      case 'strokeEnabled': {
+        const enabled = Boolean(novoValor);
+        if (!enabled) {
+          if (draft.style.strokeColor && draft.style.strokeColor !== 'none' && draft.style.strokeColor !== 'transparent') {
+            draft.style._lastStrokeColor = draft.style.strokeColor;
+          }
+          draft.style.strokeColor = 'none';
+        } else {
+          draft.style.strokeColor = draft.style._lastStrokeColor || '#ffffff';
+        }
+        return;
+      }
+      case 'strokeColor': {
+        draft.style.strokeColor = novoValor;
+        if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
+          draft.style._lastStrokeColor = novoValor;
+        }
+        return;
+      }
+      case 'pointColor':
+        draft.style.fillColor = novoValor;
+        draft.style.strokeColor = novoValor;
+        draft.color = novoValor;
+        return;
+      case 'strokeWidth': {
+        const n = parseNumber(novoValor);
+        if (n === null) return false;
+        draft.style.strokeWidth = clamp(n, 0, 50);
+        return;
+      }
+      case 'strokeDashArray': {
+        // id da lista; um padrão fora dela (ex.: '6, 4' da medição) é mantido como está
+        const option = DASH_OPTIONS.find(o => o.id === novoValor);
+        draft.style.strokeDashArray = option ? option.dash : (novoValor === 'continuous' ? '' : String(novoValor ?? ''));
+        return;
+      }
+      case 'markerIcon':
+        draft.style.markerIcon = MARKER_ICON_OPTIONS.some(o => o.id === novoValor) ? novoValor : 'pin';
+        return;
+      case 'markerSize': {
+        const n = parseNumber(novoValor);
+        if (n === null) return false;
+        draft.style.markerSize = clamp(Math.round(n), 8, 96);
+        return;
+      }
+      case 'markerRotation': {
+        const n = parseNumber(novoValor);
+        if (n === null) return false;
+        draft.style.markerRotation = ((Math.round(n) % 360) + 360) % 360;
+        return;
+      }
+      case 'showLabel':
+        draft.style.showLabel = !!novoValor;
+        return;
+      case 'labelField':
+        draft.style.labelField = novoValor;
+        return;
+      case 'status_geodesico': {
+        const s = novoValor === 'comum' ? null : novoValor;
+        draft.status = s;
+        if (s) draft.properties.status = s;
+        else delete draft.properties.status;
+        ctx.statusLabel = novoValor === 'oficial' ? 'Oficial' : (novoValor === 'previa' ? 'Prévia' : 'Padrão');
+        return;
+      }
+      default:
+        if (propId.startsWith('vtx_')) {
+          if (!this.applyVertexEdit(draft, propId, novoValor, (msg) => { ctx.rejectedMessage = msg; })) return false;
+          return;
+        }
+        if (propId.startsWith('prop_')) {
+          const key = propId.slice('prop_'.length);
+          if (METRIC_KEYS.has(key)) return false;
+          const previous = draft.properties[key];
+          if (typeof previous === 'number') {
+            const n = parseNumber(novoValor);
+            if (n === null) { ctx.rejectedMessage = `"${key}" deve ser numérico.`; return false; }
+            draft.properties[key] = n;
+          } else {
+            draft.properties[key] = novoValor;
+          }
+          return;
+        }
+        if (propId.startsWith('custom_attr_')) {
+          const idx = parseInt(propId.slice('custom_attr_'.length), 10);
+          if (!Array.isArray(draft.customAttributes) || !draft.customAttributes[idx]) return false;
+          draft.customAttributes[idx].value = novoValor;
+          return;
+        }
+        // Várias feições: o mesmo campo pode estar em posições diferentes de cada uma
+        if (propId.startsWith('custom_key_')) {
+          const key = propId.slice('custom_key_'.length);
+          const item = Array.isArray(draft.customAttributes) ? draft.customAttributes.find(a => a && a.key === key) : null;
+          if (!item) return false;
+          item.value = novoValor;
+          return;
+        }
+        return false;
+    }
+  }
+
+  /**
+   * Aplica a alteração a todas as feições selecionadas, num único passo de histórico
+   * (BatchActions). Bloqueadas são puladas; feições que já tinham o valor não são regravadas.
+   * @param {Object} panel - Instância do LayerPanel
+   * @param {string[]} ids - IDs das feições selecionadas
+   * @param {string} propId - ID da propriedade alterada
+   * @param {any} novoValor - Novo valor recebido
+   */
+  static aplicarAlteracaoMulti(panel, ids, propId, novoValor) {
+    const app = panel.app;
+    // "Varia" escolhido de novo ou número apagado: nada a gravar
+    if (!app || novoValor === VARIA_ID || novoValor === null || novoValor === undefined) {
+      panel.refreshInspector();
+      return;
+    }
+    const valor = novoValor === BOOL_TRUE_ID ? true : (novoValor === BOOL_FALSE_ID ? false : novoValor);
+    const ctx = { rejectedMessage: null, statusLabel: null };
+    const res = BatchActions.edit(app, ids, 'Editar propriedades', (draft, original) => {
+      if (this.applyToDraft(panel, draft, propId, valor, ctx) === false) return false;
+      return JSON.stringify(draft) !== JSON.stringify(original);
+    });
+
+    if (res.changed === 0 && ctx.rejectedMessage) {
+      UIToast.notificar({ tipo: 'alerta', titulo: 'Valor Inválido', mensagem: ctx.rejectedMessage, duracao: 3000 });
+    } else if (res.locked > 0) {
+      UIToast.notificar({ tipo: 'alerta', titulo: 'Elementos Travados', mensagem: `${res.locked} feição(ões) bloqueada(s) não foram alteradas.`, duracao: 3000 });
+    }
+    panel.refreshInspector();
+  }
+
+  /** Pré-visualização de cor em todas as feições selecionadas, sem gravar. */
+  static previewAlteracaoMulti(panel, ids, propId, valor) {
+    ids.forEach(id => this.previewAlteracao(panel, id, propId, valor));
+  }
+
+  /**
+   * Ações da paleta com várias feições selecionadas (as de lote passam por app.batchActions).
+   * @param {Object} panel - Instância do LayerPanel
+   * @param {string[]} ids - IDs das feições selecionadas
+   * @param {string} acaoId - ID da ação acionada
+   */
+  static executarAcaoMulti(panel, ids, acaoId) {
+    const app = panel.app;
+    if (!app) return;
+    const feats = ids.map(id => panel.getLatestFeature(id)).filter(Boolean);
+    if (feats.length === 0) return;
+
+    switch (acaoId) {
+      case 'acao_inverter_cores':
+        if (app.batchActions) app.batchActions.invertColors(ids);
+        else BatchActions.invertColors(app, ids);
+        break;
+
+      case 'acao_simplificar':
+        if (app.batchActions) app.batchActions.simplify(ids);
+        else BatchActions.simplify(app, ids);
+        break;
+
+      case 'acao_copiar_geojson':
+        this.copyToClipboard(GeoFormats.toGeoJSON(feats), 'GeoJSON Copiado', `${feats.length} feições copiadas em GeoJSON.`);
+        return;
+
+      case 'acao_adicionar_atributo': {
+        const chave = prompt('Informe o nome do novo atributo / campo:');
+        if (!chave || !chave.trim()) return;
+        const chaveLimpa = chave.trim();
+        const res = BatchActions.edit(app, ids, `Atributo "${chaveLimpa}"`, (draft) => {
+          const exists = (Array.isArray(draft.customAttributes) && draft.customAttributes.some(a => a && a.key === chaveLimpa))
+            || (draft.properties && Object.prototype.hasOwnProperty.call(draft.properties, chaveLimpa));
+          if (exists) return false;
+          draft.customAttributes = Array.isArray(draft.customAttributes) ? draft.customAttributes : [];
+          draft.customAttributes.push({ key: chaveLimpa, value: '' });
+          return true;
+        });
+        if (res.changed === 0) {
+          UIToast.notificar({ tipo: 'alerta', titulo: 'Campo Existente', mensagem: `O atributo "${chaveLimpa}" já existe nas feições selecionadas.` });
+        }
+        break;
+      }
+
+      default:
+        return;
+    }
+    panel.refreshInspector();
   }
 
   /**
