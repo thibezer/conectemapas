@@ -422,6 +422,7 @@ export class PrintPropertiesPanel {
         } else {
           composer.renderAllItems();
         }
+        composer.markDirty();
       }
     };
 

@@ -48,6 +48,16 @@ export class PrintComposerModal {
     this.leafletMaps = new Map(); // Sub-instâncias do Leaflet nos itens
     this.insetExtentLayer = null; // Retângulo no Inset Map
     this.canvasEngine = new PrintCanvasEngine(this);
+
+    // Ao recarregar/sair da página com o compositor aberto, grava a edição que ainda aguarda o salvamento automático
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pagehide', () => this.sheetsManager.flushPendingSave());
+    }
+  }
+
+  /** Salvamento automático da prancha ativa após qualquer edição */
+  markDirty() {
+    this.sheetsManager.scheduleSave();
   }
 
   pushHistoryState(actionName = 'Alteração') {
@@ -289,6 +299,7 @@ export class PrintComposerModal {
     this.renderAllItems();
     this.updatePropertiesPanel();
     this.selectItem('item-map-main');
+    this.markDirty();
   }
 
   close() {
@@ -347,12 +358,14 @@ export class PrintComposerModal {
       setTimeout(() => {
         this.canvasEngine.zoomFit();
       }, 50);
+      this.markDirty();
     }
   }
 
   setAbntMargins(visible) {
     this.showAbntMargins = visible;
     this.updatePaperSheetDOM();
+    this.markDirty();
   }
 
   updatePaperSheetDOM() {
@@ -502,6 +515,8 @@ export class PrintComposerModal {
           // Adiciona Basemap configurado
           this.applyBasemapToMap(map, item.basemap || (item.type === 'inset_map' ? 'cartodb_positron' : this.currentBasemap));
 
+          const savedView = item.view && Array.isArray(item.view.center) && Number.isFinite(item.view.zoom) ? item.view : null;
+
           if (item.type === 'inset_map') {
             map.setView([-15.78, -47.92], 4);
           } else {
@@ -539,6 +554,9 @@ export class PrintComposerModal {
             }
           }
 
+          // Restaura o enquadramento salvo da prancha (pan/zoom/escala feitos pelo usuário)
+          if (savedView) map.setView(savedView.center, savedView.zoom, { animate: false });
+
           // Sincronização de zoom <-> escala e grade cartográfica dinâmica
           const updateGridAndScale = () => {
             const center = map.getCenter();
@@ -573,6 +591,12 @@ export class PrintComposerModal {
           };
 
           map.on('moveend zoomend', updateGridAndScale);
+          // Registrado após o enquadramento inicial: só movimentos posteriores viram enquadramento salvo
+          map.on('moveend', () => {
+            const c = map.getCenter();
+            item.view = { center: [c.lat, c.lng], zoom: map.getZoom() };
+            this.markDirty();
+          });
           setTimeout(updateGridAndScale, 150);
 
           if (item.rotation) {
@@ -705,6 +729,7 @@ export class PrintComposerModal {
     if (it) {
       it.locked = !it.locked;
       this.selectItem(this.selectedItemId);
+      this.markDirty();
     }
   }
 
@@ -714,6 +739,7 @@ export class PrintComposerModal {
       it.visible = it.visible === false;
       this.renderAllItems();
       this.updatePropertiesPanel();
+      this.markDirty();
     }
   }
 
@@ -722,6 +748,7 @@ export class PrintComposerModal {
     if (this.selectedItemId === itemId) this.selectedItemId = null;
     this.renderAllItems();
     this.updatePropertiesPanel();
+    this.markDirty();
   }
 
   updatePropertiesPanel() {
@@ -831,6 +858,7 @@ export class PrintComposerModal {
             this.items.push(item);
             this.renderAllItems();
             this.selectItem(item.id);
+            this.markDirty();
           }
         });
       }

@@ -153,6 +153,41 @@ assert.strictEqual(sheetsMgr.sheets.length, 1, 'Deve ter 1 prancha restante');
 sheetsMgr.deleteSheet(sheetsMgr.sheets[0].id);
 assert.strictEqual(sheetsMgr.sheets.length, 1, 'NÃO deve permitir excluir a última prancha restante do projeto');
 
+// Salvamento automático: edições sem histórico sobrevivem a fechar/reabrir (nova instância lendo o storage)
+console.log('2b. Testando salvamento automático e reabertura das pranchas...');
+mockLocalStorage.clear();
+mockComposer.items = [];
+const autoMgr = new PrintSheetsManager(mockComposer);
+mockComposer.sheetsManager = autoMgr;
+autoMgr.init('proj-auto', mockComposer.projectName, paperSizes);
+autoMgr.createSheet('Prancha 02 - Detalhe', 'A3_L', 'abnt');
+const editedSheetId = autoMgr.activeSheetId;
+
+const mapItem = mockComposer.items.find(i => i.type === 'map');
+mapItem.view = { center: [-23.55, -46.63], zoom: 17 };
+mapItem.locked = true;
+mockComposer.showAbntMargins = false;
+autoMgr.scheduleSave();
+await new Promise(r => setTimeout(r, PrintSheetsManager.AUTOSAVE_DELAY_MS + 50));
+
+mockComposer.items = [];
+const reopened = new PrintSheetsManager(mockComposer);
+const reopenedSheet = reopened.init('proj-auto', mockComposer.projectName, paperSizes);
+assert.strictEqual(reopened.sheets.length, 2, 'Deve recarregar as 2 pranchas salvas');
+assert.strictEqual(reopenedSheet.id, editedSheetId, 'Deve reabrir na última prancha usada, não na primeira');
+assert.strictEqual(reopenedSheet.showAbntMargins, false, 'Deve manter a opção de margens editada');
+const reopenedMap = reopenedSheet.items.find(i => i.type === 'map');
+assert.deepStrictEqual(reopenedMap.view, { center: [-23.55, -46.63], zoom: 17 }, 'Deve manter o enquadramento do mapa');
+assert.strictEqual(reopenedMap.locked, true, 'Deve manter o bloqueio do item');
+
+// flushPendingSave grava na hora uma edição ainda no debounce (ex.: recarregar a página)
+mockComposer.items = JSON.parse(JSON.stringify(reopenedSheet.items));
+mockComposer.items.find(i => i.type === 'map').locked = false;
+reopened.scheduleSave();
+reopened.flushPendingSave();
+const raw = JSON.parse(mockLocalStorage.getItem(PrintSheetsManager.STORAGE_PREFIX + 'proj-auto'));
+assert.strictEqual(raw.find(s => s.id === editedSheetId).items.find(i => i.type === 'map').locked, false, 'flush deve gravar a edição pendente');
+
 console.log('✔ PrintSheetsManager validado com sucesso!');
 
 // ============================================================================

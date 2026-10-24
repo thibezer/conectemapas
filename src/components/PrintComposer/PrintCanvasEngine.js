@@ -484,6 +484,7 @@ export class PrintCanvasEngine {
         e.preventDefault();
         this.composer.updateItemPositionDOM(item);
         this.composer.updatePropertiesPanel();
+        this.composer.markDirty();
       }
     };
 

@@ -9,12 +9,15 @@ import { UIToast } from '@thibezer/ui-components-kit';
 
 export class PrintSheetsManager {
   static STORAGE_PREFIX = 'cm_print_sheets_';
+  static ACTIVE_PREFIX = 'cm_print_active_sheet_';
+  static AUTOSAVE_DELAY_MS = 400;
 
   constructor(composer) {
     this.composer = composer;
     this.projectId = 'projeto_padrao';
     this.sheets = [];
     this.activeSheetId = null;
+    this._saveTimer = null;
   }
 
   /**
@@ -32,7 +35,9 @@ export class PrintSheetsManager {
           sh.paperSize = { ...paperSizes[sh.paperSize.id], ...sh.paperSize };
         }
       });
-      this.activeSheetId = this.sheets[0].id;
+      // Reabre na última prancha usada (ou na primeira, se ela não existir mais)
+      const lastActive = this.loadActiveSheetId();
+      this.activeSheetId = this.sheets.some(s => s.id === lastActive) ? lastActive : this.sheets[0].id;
     } else {
       // Primeira prancha padrão com itens ABNT
       const defaultPaper = paperSizes.A4_L || { id: 'A4_L', name: 'A4 Paisagem', width: 297, height: 210, marginL: 25, marginO: 7 };
@@ -69,6 +74,7 @@ export class PrintSheetsManager {
    * Sincroniza o estado atual do compositor para a prancha ativa
    */
   saveCurrentStateFromComposer() {
+    this.cancelScheduledSave();
     const cur = this.getCurrentSheet();
     if (!cur) return;
 
@@ -78,6 +84,29 @@ export class PrintSheetsManager {
     cur.updatedAt = new Date().toISOString();
     this.updateSheetNumbersInTitleBlocks();
     this.saveToStorage();
+  }
+
+  /**
+   * Salvamento automático: agrupa edições em rajada (digitação, setas, pan do mapa) em uma gravação
+   */
+  scheduleSave() {
+    this.cancelScheduledSave();
+    this._saveTimer = setTimeout(() => {
+      this._saveTimer = null;
+      this.saveCurrentStateFromComposer();
+    }, PrintSheetsManager.AUTOSAVE_DELAY_MS);
+  }
+
+  cancelScheduledSave() {
+    if (this._saveTimer) {
+      clearTimeout(this._saveTimer);
+      this._saveTimer = null;
+    }
+  }
+
+  /** Grava imediatamente uma edição ainda pendente (ex.: ao fechar ou sair da página) */
+  flushPendingSave() {
+    if (this._saveTimer) this.saveCurrentStateFromComposer();
   }
 
   /**
@@ -93,6 +122,7 @@ export class PrintSheetsManager {
     if (!target) return;
 
     this.activeSheetId = target.id;
+    this.saveToStorage();
 
     // Carrega na UI do compositor
     this.composer.paperSize = target.paperSize;
@@ -268,6 +298,7 @@ export class PrintSheetsManager {
     if (this.activeSheetId === sheetId) {
       const nextIndex = Math.max(0, index - 1);
       this.activeSheetId = this.sheets[nextIndex].id;
+      this.saveToStorage();
       const target = this.sheets[nextIndex];
       this.composer.paperSize = target.paperSize;
       this.composer.showAbntMargins = target.showAbntMargins !== false;
@@ -407,8 +438,20 @@ export class PrintSheetsManager {
     try {
       const key = PrintSheetsManager.STORAGE_PREFIX + this.projectId;
       localStorage.setItem(key, JSON.stringify(this.sheets));
+      if (this.activeSheetId) {
+        localStorage.setItem(PrintSheetsManager.ACTIVE_PREFIX + this.projectId, this.activeSheetId);
+      }
     } catch (e) {
       console.warn('[PrintSheetsManager] Falha ao persistir pranchas no LocalStorage:', e);
+    }
+  }
+
+  loadActiveSheetId() {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+      return localStorage.getItem(PrintSheetsManager.ACTIVE_PREFIX + this.projectId);
+    } catch (e) {
+      return null;
     }
   }
 
