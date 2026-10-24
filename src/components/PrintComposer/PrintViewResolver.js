@@ -14,6 +14,7 @@
 import { FeatureStyle, PX_TO_MM } from '../../services/FeatureStyle.js';
 import { FeatureQuery } from '../../services/FeatureQuery.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
+import { PrintViewTemplates } from './PrintViewTemplates.js';
 
 /** Série ISO de penas (mm) oferecida na interface */
 export const PEN_WIDTHS_MM = [0.13, 0.18, 0.25, 0.35, 0.5, 0.7, 1.0, 1.4];
@@ -56,7 +57,7 @@ const has = (o, k) => o && Object.prototype.hasOwnProperty.call(o, k) && o[k] !=
 export const PrintViewResolver = {
   /** Vista vazia (tudo segue o projeto) */
   emptyView() {
-    return { templateId: null, followProject: false, layers: {}, labels: {}, filters: [], elements: {} };
+    return { templateId: null, followProject: false, layers: {}, layerDefaults: {}, labels: {}, labelDefaults: {}, filters: [], elements: {} };
   },
 
   /**
@@ -72,6 +73,8 @@ export const PrintViewResolver = {
     const asMap = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
     v.layers = asMap(v.layers);
     v.labels = asMap(v.labels);
+    v.layerDefaults = asMap(v.layerDefaults);
+    v.labelDefaults = asMap(v.labelDefaults);
     v.filters = Array.isArray(v.filters) ? v.filters : [];
     v.elements = asMap(v.elements);
     return v;
@@ -97,7 +100,8 @@ export const PrintViewResolver = {
   /** Vista efetiva: as seções incluídas no modelo vêm dele; as demais, do próprio item */
   effectiveView(item, library) {
     const own = item?.viewConfig && typeof item.viewConfig === 'object' ? item.viewConfig : { ...this.emptyView(), followProject: true };
-    const tpl = own.templateId ? (library?.viewTemplates || []).find(t => t.id === own.templateId) : null;
+    // Modelo vinculado (do projeto ou pronto); excluído = volta a valer o item
+    const tpl = PrintViewTemplates.find(library, own.templateId);
     const pick = (section, fallback) => {
       if (tpl && tpl.include?.[section]) return tpl.view?.[section] ?? fallback;
       return own[section] ?? fallback;
@@ -107,7 +111,10 @@ export const PrintViewResolver = {
       followProject: tpl ? false : own.followProject === true,
       basemap: tpl?.include?.basemap ? BasemapCatalog.normalize(tpl.view?.basemap) : BasemapCatalog.normalize(item?.basemap),
       layers: pick('layers', {}) || {},
+      // "Todas as camadas" e "todos os rótulos" seguem a seção das camadas e dos rótulos
+      layerDefaults: (tpl && tpl.include?.layers ? tpl.view?.layerDefaults : own.layerDefaults) || {},
       labels: pick('labels', {}) || {},
+      labelDefaults: (tpl && tpl.include?.labels ? tpl.view?.labelDefaults : own.labelDefaults) || {},
       filters: pick('filters', []) || [],
       elements: own.elements || {}
     };
@@ -117,8 +124,7 @@ export const PrintViewResolver = {
   isLockedByTemplate(item, library, section) {
     const id = item?.viewConfig?.templateId;
     if (!id) return false;
-    const tpl = (library?.viewTemplates || []).find(t => t.id === id);
-    return Boolean(tpl?.include?.[section]);
+    return Boolean(PrintViewTemplates.find(library, id)?.include?.[section]);
   },
 
   /** A camada aparece nesta escala (faixa 1:min … 1:max; 0/vazio = sem limite) */
@@ -167,6 +173,7 @@ export const PrintViewResolver = {
   overridesFor(feat, ctx) {
     const { view } = ctx;
     const out = [];
+    if (view.layerDefaults) out.push(view.layerDefaults);
     const layerOv = view.layers?.[feat.layerId];
     if (layerOv) out.push(layerOv);
     for (let i = ctx.filters.length - 1; i >= 0; i--) {
@@ -206,7 +213,15 @@ export const PrintViewResolver = {
   resolve(feat, ctx) {
     if (!this.isVisible(feat, ctx)) return null;
     const layer = ctx.layersById.get(feat.layerId);
-    return this.graphicsOf(feat, layer, this.overridesFor(feat, ctx), ctx.view.labels?.[feat.layerId]);
+    return this.graphicsOf(feat, layer, this.overridesFor(feat, ctx), this.labelOverride(ctx.view, feat.layerId));
+  },
+
+  /** Rótulo da camada: padrão de todos os rótulos + o da camada */
+  labelOverride(view, layerId) {
+    const d = view?.labelDefaults;
+    const own = view?.labels?.[layerId];
+    if (!d && !own) return null;
+    return { ...(d || {}), ...(own || {}) };
   },
 
   /** Gráficos do projeto + ajustes (do mais fraco ao mais forte) + rótulo da camada */
@@ -246,8 +261,8 @@ export const PrintViewResolver = {
     const sample = (features || []).find(f => f.layerId === layer.id && !isDeleted(f))
       || { id: '__amostra', layerId: layer.id, type: 'Polygon', coordinates: [] };
     const ov = view?.layers?.[layer.id];
-    const g = this.graphicsOf(sample, layer, ov ? [withHalftone ? ov : { ...ov, halftone: false }] : [], view?.labels?.[layer.id]);
-    return g;
+    const list = [view?.layerDefaults, ov].filter(Boolean).map(o => (withHalftone ? o : { ...o, halftone: false }));
+    return this.graphicsOf(sample, layer, list, this.labelOverride(view, layer.id));
   },
 
   /** Aplica um OverrideGraphics (campos ausentes não mudam nada) */

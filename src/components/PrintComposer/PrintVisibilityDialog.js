@@ -7,7 +7,9 @@
    ========================================================================== */
 
 import { PrintItemsManager } from './PrintItemsManager.js';
-import { PrintViewResolver, PEN_WIDTHS_MM, LINE_PATTERNS, FILL_PATTERNS } from './PrintViewResolver.js';
+import { PrintViewResolver, PEN_WIDTHS_MM, LINE_PATTERNS, FILL_PATTERNS, TEMPLATE_SECTIONS, DEFAULT_LABEL } from './PrintViewResolver.js';
+import { PrintViewTemplates, BUILTIN_TEMPLATES } from './PrintViewTemplates.js';
+import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 import { PrintViewEdits } from './PrintViewEdits.js';
 import { FeatureQuery } from '../../services/FeatureQuery.js';
 import { QueryBuilder } from '../AdvancedSearch/QueryBuilder.js';
@@ -25,7 +27,7 @@ export const VV_TABS = [
 export class PrintVisibilityDialog {
   constructor(composer) {
     this.composer = composer;
-    this.state = { itemId: null, tab: 'layers', query: '', filterDraft: null };
+    this.state = { itemId: null, tab: 'layers', query: '', filterDraft: null, editTemplateId: null };
     this.root = null;
     // Critérios do filtro em edição (mesmo construtor da Busca Avançada)
     this.builder = new QueryBuilder({
@@ -44,6 +46,7 @@ export class PrintVisibilityDialog {
     if (!maps.length) return false;
     const selected = this.composer.items.find(i => i.id === (itemId || this.composer.selectedItemId));
     this.state.itemId = (selected && selected.type === 'map' ? selected : maps[0]).id;
+    this.state.editTemplateId = null;
     if (!this.root) this.mount();
     this.root.hidden = false;
     this.refresh();
@@ -87,18 +90,26 @@ export class PrintVisibilityDialog {
   }
 
   static render(composer, item, state) {
-    const view = PrintViewResolver.effectiveView(item, composer.library);
+    const library = composer.library;
+    let tpl = state.editTemplateId ? PrintViewTemplates.find(library, state.editTemplateId) : null;
+    if (state.editTemplateId && !tpl) state.editTemplateId = null;
+    const tplMode = Boolean(tpl);
+    const view = tplMode ? this.templateView(tpl) : PrintViewResolver.effectiveView(item, library);
     const maps = this.mapItems(composer.items);
     const readOnly = composer.readOnly === true;
-    const locked = item.locked === true || readOnly;
-    const tab = VV_TABS.some(t => t.id === state.tab) ? state.tab : 'layers';
+    const baseLocked = tplMode ? (readOnly || tpl.builtin === true) : (item.locked === true || readOnly);
+    const tabs = tplMode ? VV_TABS.filter(t => t.id !== 'elements') : VV_TABS;
+    const tab = tabs.some(t => t.id === state.tab) ? state.tab : 'layers';
+    const section = { layers: 'layers', labels: 'labels', filters: 'filters' }[tab];
+    const tplLock = !tplMode && section && PrintViewResolver.isLockedByTemplate(item, library, section);
+    const locked = baseLocked || tplLock;
     const body = this.renderTab(tab, composer, item, view, locked, state);
     return `
       <div class="cm-vv-dialog" role="dialog" aria-modal="true" aria-label="Visibilidade e gráficos" tabindex="-1">
         <div class="cm-vv-header">
           <div class="cm-vv-title">
             <strong>Visibilidade/Gráficos</strong>
-            ${maps.length > 1 ? `
+            ${tplMode ? `<span class="cm-vv-map-name">Modelo: ${esc(tpl.name)}</span>` : maps.length > 1 ? `
               <select class="cm-native-select cm-vv-map-select" data-vv-map aria-label="Mapa">
                 ${maps.map(m => `<option value="${esc(m.id)}" ${m.id === item.id ? 'selected' : ''}>${esc(m.name || 'Mapa')}</option>`).join('')}
               </select>
@@ -106,17 +117,100 @@ export class PrintVisibilityDialog {
           </div>
           <button type="button" class="cm-vv-close" data-vv-close aria-label="Fechar" title="Fechar (Esc)">✕</button>
         </div>
+        ${tplMode ? this.templateEditBar(composer, tpl, readOnly) : this.templateBar(composer, item, view, item.locked === true || readOnly)}
         <div class="cm-vv-tabs" role="tablist">
-          ${VV_TABS.map(t => `<button type="button" role="tab" class="cm-vv-tab ${t.id === tab ? 'is-active' : ''}" aria-selected="${t.id === tab}" data-vv-tab="${t.id}">${t.label}</button>`).join('')}
+          ${tabs.map(t => `<button type="button" role="tab" class="cm-vv-tab ${t.id === tab ? 'is-active' : ''}" aria-selected="${t.id === tab}" data-vv-tab="${t.id}">${t.label}</button>`).join('')}
         </div>
         ${readOnly ? '<div class="cm-vv-note">🔒 Prancha só para visualização: outro operador está editando.</div>'
-          : locked ? '<div class="cm-vv-note">🔒 Mapa bloqueado: desbloqueie na lista de elementos para mudar a vista.</div>' : ''}
-        ${view.followProject ? '<div class="cm-vv-note cm-vv-note--info">Este mapa ainda espelha o mapa principal. A primeira alteração aqui o torna independente.</div>' : ''}
+          : (!tplMode && item.locked) ? '<div class="cm-vv-note">🔒 Mapa bloqueado: desbloqueie na lista de elementos para mudar a vista.</div>'
+            : (tplMode && tpl.builtin) ? '<div class="cm-vv-note cm-vv-note--info">Modelo pronto: não pode ser alterado. Use "Duplicar para editar".</div>' : ''}
+        ${tplLock && !baseLocked ? `
+          <div class="cm-vv-note cm-vv-note--info">
+            Esta aba é controlada pelo modelo "${esc(view.template.name)}".
+            <span class="cm-vv-note-actions">
+              ${view.template.builtin
+                ? '<button type="button" class="cm-vv-btn" data-vv-action="tpl-dup-edit">Duplicar e editar</button>'
+                : '<button type="button" class="cm-vv-btn" data-vv-action="tpl-edit">Editar modelo</button>'}
+              <button type="button" class="cm-vv-btn" data-vv-action="tpl-detach">Desvincular</button>
+            </span>
+          </div>` : ''}
+        ${!tplMode && view.followProject ? '<div class="cm-vv-note cm-vv-note--info">Este mapa ainda espelha o mapa principal. A primeira alteração aqui o torna independente.</div>' : ''}
         <div class="cm-vv-body">${body}</div>
         <div class="cm-vv-footer">
-          <span class="cm-vv-hint">As mudanças valem só para este mapa. Ctrl+Z desfaz.</span>
+          <span class="cm-vv-hint">${tplMode ? 'As mudanças valem para todos os mapas vinculados a este modelo.' : 'As mudanças valem só para este mapa. Ctrl+Z desfaz.'}</span>
           <button type="button" class="cm-vv-btn cm-vv-btn--primary" data-vv-close>Concluir</button>
         </div>
+      </div>
+    `;
+  }
+
+  /** Vista "solta" de um modelo, no mesmo formato da vista efetiva de um mapa */
+  static templateView(tpl) {
+    const v = tpl.view || {};
+    return {
+      template: tpl,
+      followProject: false,
+      basemap: v.basemap,
+      layers: v.layers || {},
+      layerDefaults: v.layerDefaults || {},
+      labels: v.labels || {},
+      labelDefaults: v.labelDefaults || {},
+      filters: v.filters || [],
+      elements: {}
+    };
+  }
+
+  /** Barra do modelo de vista do mapa: vincular, aplicar uma vez, editar, salvar como modelo */
+  static templateBar(composer, item, view, locked) {
+    const dis = locked ? 'disabled' : '';
+    const project = composer.library?.viewTemplates || [];
+    const current = view.template;
+    const option = (t) => `<option value="${esc(t.id)}" ${current?.id === t.id ? 'selected' : ''}>${esc(t.name)}</option>`;
+    return `
+      <div class="cm-vv-template-bar">
+        <span class="cm-vv-muted">Modelo de vista:</span>
+        ${current ? `
+          <strong title="Seções controladas: ${esc(Object.keys(current.include || {}).filter(k => current.include[k]).map(k => TEMPLATE_SECTIONS[k] || k).join(', '))}">📐 ${esc(current.name)}</strong>
+          ${current.builtin
+            ? `<button type="button" class="cm-vv-btn" data-vv-action="tpl-dup-edit" ${dis}>Duplicar e editar</button>`
+            : `<button type="button" class="cm-vv-btn" data-vv-action="tpl-edit" ${dis}>Editar modelo</button>`}
+          <button type="button" class="cm-vv-btn" data-vv-action="tpl-detach" ${dis} title="Mantém a aparência atual, sem vínculo">Desvincular</button>
+        ` : '<span>Nenhum</span>'}
+        <span class="cm-vv-grow"></span>
+        <select class="cm-native-select" data-vv-tpl-pick aria-label="Modelo" ${dis}>
+          ${project.length ? `<optgroup label="Do projeto">${project.map(option).join('')}</optgroup>` : ''}
+          <optgroup label="Prontos">${BUILTIN_TEMPLATES.map(option).join('')}</optgroup>
+        </select>
+        <button type="button" class="cm-vv-btn" data-vv-action="tpl-assign" ${dis} title="As seções do modelo passam a controlar este mapa">Vincular</button>
+        <button type="button" class="cm-vv-btn" data-vv-action="tpl-apply-once" ${dis} title="Copia as configurações do modelo, sem vínculo">Aplicar uma vez</button>
+        <button type="button" class="cm-vv-btn" data-vv-action="tpl-save-as" ${composer.readOnly ? 'disabled' : ''}>Salvar como modelo…</button>
+      </div>
+    `;
+  }
+
+  /** Barra do modo de edição de um modelo */
+  static templateEditBar(composer, tpl, readOnly) {
+    const sm = composer.sheetsManager;
+    const uses = PrintViewTemplates.usage(tpl.id, sm?.sheets || [], sm?.activeSheetId, composer.items);
+    const dis = readOnly || tpl.builtin ? 'disabled' : '';
+    const include = tpl.include || {};
+    const current = BasemapCatalog.normalize(tpl.view?.basemap);
+    return `
+      <div class="cm-vv-template-bar is-editing">
+        <span>Editando o modelo <strong>${esc(tpl.name)}</strong> · ${uses} mapa(s) vinculado(s)</span>
+        <span class="cm-vv-muted">Controla:</span>
+        ${Object.entries(TEMPLATE_SECTIONS).map(([k, label]) => `
+          <label class="cm-vv-chip"><input type="checkbox" data-vv-tpl-include="${k}" ${include[k] ? 'checked' : ''} ${dis} /> ${esc(label.split(' (')[0])}</label>
+        `).join('')}
+        <select class="cm-native-select" data-vv-tpl-basemap aria-label="Mapa de fundo do modelo" ${dis || (include.basemap ? '' : 'disabled')}>
+          ${BasemapCatalog.list().map(b => `<option value="${b.id}" ${b.id === current ? 'selected' : ''}>${b.icon} ${esc(b.name)}</option>`).join('')}
+        </select>
+        <span class="cm-vv-grow"></span>
+        ${tpl.builtin
+          ? `<button type="button" class="cm-vv-btn" data-vv-action="tpl-dup" ${readOnly ? 'disabled' : ''}>Duplicar para editar</button>`
+          : `<button type="button" class="cm-vv-btn" data-vv-action="tpl-rename" ${dis}>Renomear</button>
+             <button type="button" class="cm-vv-btn cm-vv-btn--danger" data-vv-action="tpl-delete" ${dis}>Excluir modelo</button>`}
+        <button type="button" class="cm-vv-btn cm-vv-btn--primary" data-vv-action="tpl-exit">Voltar ao mapa</button>
       </div>
     `;
   }
@@ -125,7 +219,62 @@ export class PrintVisibilityDialog {
     if (tab === 'layers') return this.renderLayersTab(composer, item, view, locked);
     if (tab === 'labels') return this.renderLabelsTab(composer, item, view, locked);
     if (tab === 'filters') return this.renderFiltersTab(composer, item, view, locked, state);
+    if (tab === 'elements' && this.renderElementsTab) return this.renderElementsTab(composer, item, view, locked, state);
     return '<div class="cm-vv-empty">Em breve.</div>';
+  }
+
+  /** Linha "Todas as camadas": gráficos gerais desta vista (abaixo do ajuste de cada camada) */
+  static defaultsRow(view, locked) {
+    const ov = view.layerDefaults || {};
+    const g = PrintViewResolver.graphicsOf({ id: '__todas', type: 'Polygon', coordinates: [] }, { color: '#9ca3af' }, [ov]);
+    const has = Object.keys(ov).length > 0;
+    return `
+      <tr class="cm-vv-row cm-vv-row--defaults" data-row-kind="defaults" data-row-id="*">
+        <td class="cm-vv-cell"></td>
+        <td class="cm-vv-cell cm-vv-name">
+          ${this.swatch(g)}
+          <span class="cm-vv-name-text"><strong>Todas as camadas</strong> <span class="cm-vv-muted">(padrão)</span></span>
+        </td>
+        ${this.graphicsCells(g, ov, locked)}
+        <td class="cm-vv-cell"></td>
+        <td class="cm-vv-cell cm-vv-center">
+          <button type="button" class="cm-vv-reset" data-vv-reset ${has && !locked ? '' : 'disabled'} title="Tirar o padrão" aria-label="Tirar o padrão de todas as camadas">↺</button>
+        </td>
+      </tr>
+    `;
+  }
+
+  /** Linha "Todos os rótulos": padrão de rótulo desta vista */
+  static labelDefaultsRow(view, locked) {
+    const ov = view.labelDefaults || {};
+    const lb = { ...DEFAULT_LABEL, ...PrintViewResolver.cleanLabel(ov) };
+    const dis = locked ? 'disabled' : '';
+    const hex = (c) => (PrintItemsManager.parseColor(c) || { hex: '#111111' }).hex;
+    const mark = (k) => (ov[k] !== undefined ? 'is-overridden' : '');
+    return `
+      <tr class="cm-vv-row cm-vv-row--defaults" data-row-kind="labeldefaults" data-row-id="*">
+        <td class="cm-vv-cell cm-vv-center ${mark('show')}">
+          <input type="checkbox" data-gfx="show" ${ov.show ? 'checked' : ''} ${dis} aria-label="Mostrar rótulos de todas as camadas" />
+        </td>
+        <td class="cm-vv-cell cm-vv-name"><span class="cm-vv-name-text"><strong>Todos os rótulos</strong> <span class="cm-vv-muted">(padrão)</span></span></td>
+        <td class="cm-vv-cell ${mark('text')}">
+          <input type="text" class="cm-vertex-input cm-vv-text" data-gfx="text" value="${esc(ov.text ?? '')}" placeholder="${esc(lb.text)}" ${dis} aria-label="Texto padrão dos rótulos" />
+        </td>
+        <td class="cm-vv-cell ${mark('sizePt')}">
+          <input type="number" class="cm-vertex-input cm-vv-num" data-gfx="sizePt" min="3" max="48" step="0.5" value="${ov.sizePt ?? ''}" placeholder="${lb.sizePt}" ${dis} aria-label="Tamanho padrão (pt)" />
+        </td>
+        <td class="cm-vv-cell ${mark('color')}">
+          <input type="color" class="cm-vv-color" data-gfx="color" value="${hex(lb.color)}" ${dis} aria-label="Cor padrão dos rótulos" />
+        </td>
+        <td class="cm-vv-cell cm-vv-center ${mark('halo')}">
+          <input type="checkbox" data-gfx="halo" ${lb.halo ? 'checked' : ''} ${dis} aria-label="Halo branco" />
+        </td>
+        <td class="cm-vv-cell"></td>
+        <td class="cm-vv-cell cm-vv-center">
+          <button type="button" class="cm-vv-reset" data-vv-reset ${Object.keys(ov).length && !locked ? '' : 'disabled'} title="Tirar o padrão" aria-label="Tirar o padrão dos rótulos">↺</button>
+        </td>
+      </tr>
+    `;
   }
 
   /** Amostra do gráfico (SVG pequeno) */
@@ -198,7 +347,7 @@ export class PrintVisibilityDialog {
     if (!layers.length) return '<div class="cm-vv-empty">O projeto ainda não tem camadas.</div>';
     const counts = new Map();
     (composer.features || []).forEach(f => counts.set(f.layerId, (counts.get(f.layerId) || 0) + 1));
-    const rows = layers.map(l => this.layerRow(composer, l, view, locked, counts.get(l.id) || 0)).join('');
+    const rows = this.defaultsRow(view, locked) + layers.map(l => this.layerRow(composer, l, view, locked, counts.get(l.id) || 0)).join('');
     const dis = locked ? 'disabled' : '';
     return `
       <div class="cm-vv-toolbar">
@@ -289,7 +438,7 @@ export class PrintVisibilityDialog {
             <th></th>
           </tr>
         </thead>
-        <tbody>${layers.map(l => this.labelRow(composer, l, view, locked)).join('')}</tbody>
+        <tbody>${this.labelDefaultsRow(view, locked)}${layers.map(l => this.labelRow(composer, l, view, locked)).join('')}</tbody>
       </table>
     `;
   }
@@ -589,6 +738,19 @@ export class PrintVisibilityDialog {
         if (this.builder.handleChange(e)) return;
         return;
       }
+      if (e.target.matches?.('[data-vv-tpl-include]')) {
+        const key = e.target.dataset.vvTplInclude;
+        const on = e.target.checked;
+        this.composer.updateTemplateView(this.state.editTemplateId, (v, t) => { t.include = { ...(t.include || {}), [key]: on }; });
+        this.refresh();
+        return;
+      }
+      if (e.target.matches?.('[data-vv-tpl-basemap]')) {
+        const id = e.target.value;
+        this.composer.updateTemplateView(this.state.editTemplateId, (v) => { v.basemap = id; });
+        this.refresh();
+        return;
+      }
       if (e.target.matches?.('[data-vv-map]')) {
         this.state.itemId = e.target.value;
         this.refresh();
@@ -620,9 +782,13 @@ export class PrintVisibilityDialog {
   edit(row, mutate, actionName, coalesceKey, committed, input = null, full = false) {
     const item = this.currentItem();
     if (!item) return;
-    const ok = this.composer.updateMapView(item.id, mutate, actionName, { coalesceKey });
+    const tplId = this.state.editTemplateId;
+    // No modo de edição do modelo, a mudança vai para o modelo (todos os mapas vinculados)
+    const ok = tplId
+      ? this.composer.updateTemplateView(tplId, mutate)
+      : this.composer.updateMapView(item.id, mutate, actionName, { coalesceKey });
     if (!ok || !committed) return;
-    if (full || !row) { this.refresh(); return; }
+    if (tplId || full || !row) { this.refresh(); return; }
     const html = row.dataset.rowKind === 'filter' ? null : PrintVisibilityDialog.rowHtml(this.composer, item, row.dataset.rowKind, row.dataset.rowId);
     if (!html) { this.refresh(); return; }
     const tpl = document.createElement('tbody');
@@ -638,6 +804,7 @@ export class PrintVisibilityDialog {
     const item = this.currentItem();
     if (!item) return;
     if (action.startsWith('filter-')) { this.runFilterAction(action, el, item); return; }
+    if (action.startsWith('tpl-')) { this.runTemplateAction(action, item); return; }
     const layers = this.composer.layers || [];
     const ops = {
       'show-all': ['Mostrar todas as camadas', (v) => PrintViewEdits.setAllLayersVisible(v, layers, true)],
@@ -648,7 +815,7 @@ export class PrintVisibilityDialog {
     };
     const op = ops[action];
     if (!op) return;
-    this.composer.updateMapView(item.id, op[1], op[0]);
+    this.mutateView(item, op[1], op[0]);
     this.refresh();
   }
 
@@ -659,7 +826,7 @@ export class PrintVisibilityDialog {
     const def = (composer.library?.filters || []).find(f => f.id === filterId);
     if (action === 'filter-add') {
       const id = this.root.querySelector('[data-vv-add-filter]')?.value;
-      if (id) composer.updateMapView(item.id, (v) => PrintViewEdits.addFilter(v, id), 'Adicionar filtro à vista');
+      if (id) this.mutateView(item, (v) => PrintViewEdits.addFilter(v, id), 'Adicionar filtro à vista');
     } else if (action === 'filter-new') {
       this.state.filterDraft = { id: null, name: '', layerIds: [], query: QueryBuilder.emptyQuery() };
     } else if (action === 'filter-edit' && def) {
@@ -692,8 +859,63 @@ export class PrintVisibilityDialog {
       });
       if (!ok) return;
       // Filtro novo já entra na vista deste mapa (no topo)
-      if (isNew) composer.updateMapView(item.id, (v) => PrintViewEdits.addFilter(v, saved.id), 'Adicionar filtro à vista');
+      if (isNew) this.mutateView(item, (v) => PrintViewEdits.addFilter(v, saved.id), 'Adicionar filtro à vista');
       this.state.filterDraft = null;
+    }
+    this.refresh();
+  }
+
+  /** Altera a vista em edição: a do mapa ou, no modo de edição do modelo, a do modelo */
+  mutateView(item, mutate, actionName) {
+    if (this.state.editTemplateId) return this.composer.updateTemplateView(this.state.editTemplateId, mutate);
+    return this.composer.updateMapView(item.id, mutate, actionName);
+  }
+
+  /** Modelos de vista: vincular, aplicar uma vez, desvincular, editar, salvar, duplicar, excluir */
+  runTemplateAction(action, item) {
+    const composer = this.composer;
+    const library = composer.library;
+    const pick = this.root.querySelector('[data-vv-tpl-pick]')?.value;
+    const picked = PrintViewTemplates.find(library, pick);
+    const assigned = PrintViewResolver.effectiveView(item, library).template;
+    const editing = PrintViewTemplates.find(library, this.state.editTemplateId);
+
+    if (action === 'tpl-assign' && picked) {
+      composer.updateMapView(item.id, (v) => PrintViewTemplates.assign(v, picked.id), `Vincular modelo ${picked.name}`);
+    } else if (action === 'tpl-apply-once' && picked) {
+      composer.updateMapView(item.id, (v, it) => PrintViewTemplates.applyOnce(v, it, picked), `Aplicar modelo ${picked.name}`);
+    } else if (action === 'tpl-detach') {
+      composer.updateMapView(item.id, (v, it) => PrintViewTemplates.detach(v, it, library), 'Desvincular modelo');
+    } else if (action === 'tpl-edit' && assigned && !assigned.builtin) {
+      this.state.editTemplateId = assigned.id;
+    } else if (action === 'tpl-dup-edit' && assigned) {
+      // Modelo pronto: cria uma cópia do projeto, vincula o mapa a ela e abre para editar
+      const copy = PrintViewTemplates.duplicate(assigned);
+      if (!composer.updateLibrary(lib => { lib.viewTemplates.push(copy); })) return;
+      composer.updateMapView(item.id, (v) => PrintViewTemplates.assign(v, copy.id), `Vincular modelo ${copy.name}`);
+      this.state.editTemplateId = copy.id;
+    } else if (action === 'tpl-save-as') {
+      const name = typeof prompt === 'function' ? prompt('Nome do modelo de vista:', `${item.name || 'Mapa'} — modelo`) : null;
+      if (!name || !name.trim()) return;
+      const tpl = PrintViewTemplates.fromView(PrintViewResolver.effectiveView(item, library), name);
+      if (!composer.updateLibrary(lib => { lib.viewTemplates.push(tpl); })) return;
+      composer.updateMapView(item.id, (v) => PrintViewTemplates.assign(v, tpl.id), `Vincular modelo ${tpl.name}`);
+    } else if (action === 'tpl-dup' && editing) {
+      const copy = PrintViewTemplates.duplicate(editing);
+      if (!composer.updateLibrary(lib => { lib.viewTemplates.push(copy); })) return;
+      this.state.editTemplateId = copy.id;
+    } else if (action === 'tpl-rename' && editing && !editing.builtin) {
+      const name = typeof prompt === 'function' ? prompt('Novo nome do modelo:', editing.name) : null;
+      if (!name || !name.trim()) return;
+      composer.updateTemplateView(editing.id, (v, t) => { t.name = name.trim(); });
+    } else if (action === 'tpl-delete' && editing && !editing.builtin) {
+      const sm = composer.sheetsManager;
+      const uses = PrintViewTemplates.usage(editing.id, sm?.sheets || [], sm?.activeSheetId, composer.items);
+      if (!confirm(`Excluir o modelo "${editing.name}"?${uses ? ` ${uses} mapa(s) vinculado(s) passam a valer sozinhos, com a configuração do próprio mapa.` : ''}`)) return;
+      composer.updateLibrary(lib => { lib.viewTemplates = lib.viewTemplates.filter(t => t.id !== editing.id); });
+      this.state.editTemplateId = null;
+    } else if (action === 'tpl-exit') {
+      this.state.editTemplateId = null;
     }
     this.refresh();
   }

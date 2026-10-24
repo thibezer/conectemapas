@@ -238,10 +238,10 @@ export class PrintPropertiesPanel {
         <div class="cm-pp-stack cm-pp-section">
           <div class="cm-param-row">
             <span class="cm-param-label">Camada Base:</span>
-            <select id="prop-map-basemap" class="cm-native-select cm-pp-w-xl">
+            <select id="prop-map-basemap" class="cm-native-select cm-pp-w-xl" ${PrintViewResolver.isLockedByTemplate(item, composer.library, 'basemap') ? 'disabled title="Controlado pelo modelo de vista"' : ''}>
               ${(() => {
-                // Sem fundo gravado, o mapa usa o do mapa principal (mesma regra do mountLeafletMaps)
-                const current = BasemapCatalog.normalize(item.basemap || (item.type === 'inset_map' ? 'esri_light' : composer.currentBasemap));
+                // Fundo efetivo (modelo vinculado ou o do item; sem nenhum, o do mapa principal)
+                const current = BasemapCatalog.normalize(composer.basemapFor ? composer.basemapFor(item) : (item.basemap || (item.type === 'inset_map' ? 'esri_light' : composer.currentBasemap)));
                 return BasemapCatalog.list().map(b => `
                   <option value="${b.id}" ${sel(current === b.id)}>${b.icon} ${esc(b.name)}${b.exportable ? '' : ' (pode não sair no PDF)'}</option>
                 `).join('');

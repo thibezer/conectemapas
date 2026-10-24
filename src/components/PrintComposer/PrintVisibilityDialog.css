@@ -444,3 +444,31 @@ label.cm-vv-chip {
   align-items: center;
   gap: 4px;
 }
+
+/* Modelo de vista (barra abaixo do título) */
+.cm-vv-template-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cm-vv-template-bar.is-editing {
+  background: rgba(56, 189, 248, 0.08);
+  border-bottom-color: rgba(56, 189, 248, 0.3);
+  color: #e0f2fe;
+}
+
+.cm-vv-template-bar .cm-native-select {
+  height: 26px;
+  font-size: 11px;
+}
+
+/* Linhas "Todas as camadas" / "Todos os rótulos" */
+.cm-vv-row--defaults .cm-vv-cell {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}

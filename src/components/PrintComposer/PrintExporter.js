@@ -277,7 +277,8 @@ export class PrintExporter {
     ctx.clip();
 
     // Fundo do mapa
-    const basemapId = BasemapCatalog.normalize(item.basemap);
+    // Fundo efetivo: o do modelo de vista vinculado, quando ele controla o fundo
+    const basemapId = BasemapCatalog.normalize(composer.basemapFor ? composer.basemapFor(item) : item.basemap);
     ctx.fillStyle = BasemapCatalog.backgroundOf(basemapId);
     ctx.fillRect(x, y, w, h);
 

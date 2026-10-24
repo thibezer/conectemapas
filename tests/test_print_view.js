@@ -17,6 +17,7 @@ import { PrintMapRenderer } from '../src/components/PrintComposer/PrintMapRender
 import { PrintViewEdits } from '../src/components/PrintComposer/PrintViewEdits.js';
 import { PrintVisibilityDialog } from '../src/components/PrintComposer/PrintVisibilityDialog.js';
 import { QueryBuilder } from '../src/components/AdvancedSearch/QueryBuilder.js';
+import { PrintViewTemplates, BUILTIN_TEMPLATES } from '../src/components/PrintComposer/PrintViewTemplates.js';
 
 console.log('--- Teste das vistas de mapa da prancha ---');
 
@@ -331,5 +332,64 @@ assert.strictEqual(q.items.length, 1, 'Raiz nunca fica vazia');
 console.log('✔ Aba Filtros validada');
 
 
+
+// ============================================================================
+// 7. Modelos de vista (prontos e do projeto)
+// ============================================================================
+console.log('7. Modelos de vista...');
+const tLib = { filters: library.filters, viewTemplates: [] };
+const tItem = { id: 'm', type: 'map', basemap: 'osm', viewConfig: { ...PrintViewResolver.emptyView(), layers: { rios: { visible: false } } } };
+// Pronto: gráficos gerais e fundo, sem depender de ids de camada
+PrintViewTemplates.assign(tItem.viewConfig, 'builtin:urbano-uso-solo');
+let tView = PrintViewResolver.effectiveView(tItem, tLib);
+assert.strictEqual(tView.template.name, 'Urbano — uso do solo');
+assert.strictEqual(tView.basemap, 'none', 'Fundo vem do modelo pronto');
+assert.deepStrictEqual(tView.layers, {}, 'Camadas vêm do modelo (o ajuste do item fica guardado, sem valer)');
+let tg = PrintViewResolver.resolve(features[0], { ...PrintViewResolver.prepare(tView, { features, layers, library: tLib }), view: tView });
+assert.strictEqual(tg.fill.opacity, 0.85, 'Padrão de todas as camadas aplicado');
+assert.strictEqual(tg.stroke.color, '#ffffff');
+assert.ok(PrintViewResolver.isLockedByTemplate(tItem, tLib, 'layers'));
+// Ajuste da camada vence o padrão de todas as camadas
+const own = { ...PrintViewResolver.emptyView(), layerDefaults: { fill: { opacity: 0.5 } }, layers: { casas: { fill: { opacity: 0.9 } } } };
+tg = PrintViewResolver.resolve(features[0], { ...PrintViewResolver.prepare(own, { features, layers, library: tLib }), view: own });
+assert.strictEqual(tg.fill.opacity, 0.9, 'Camada vence o padrão');
+tg = PrintViewResolver.resolve(features[4], { ...PrintViewResolver.prepare(own, { features, layers, library: tLib }), view: own });
+assert.strictEqual(tg.fill.opacity, 0.5, 'Padrão vale para as outras camadas');
+// Rótulos: padrão + camada
+const lbView = { ...PrintViewResolver.emptyView(), labelDefaults: { show: true, sizePt: 6 }, labels: { casas: { sizePt: 9 } } };
+const lbCtx = { ...PrintViewResolver.prepare(lbView, { features, layers, library: tLib }), view: lbView };
+assert.strictEqual(PrintViewResolver.resolve(features[0], lbCtx).label.sizePt, 9);
+assert.strictEqual(PrintViewResolver.resolve(features[4], lbCtx).label.show, true, 'Padrão liga os rótulos de todas as camadas');
+// Desvincular mantém a aparência (copia as seções)
+PrintViewTemplates.detach(tItem.viewConfig, tItem, tLib);
+assert.strictEqual(tItem.viewConfig.templateId, null);
+assert.strictEqual(tItem.basemap, 'none', 'Fundo do modelo fica no item');
+assert.strictEqual(tItem.viewConfig.layerDefaults.fill.opacity, 0.85, 'Gráficos do modelo ficam no item');
+// Salvar a vista como modelo e duplicar
+const saved = PrintViewTemplates.fromView(PrintViewResolver.effectiveView(tItem, tLib), '  Meu modelo ');
+assert.strictEqual(saved.name, 'Meu modelo');
+assert.ok(saved.include.layers && saved.include.basemap);
+tLib.viewTemplates.push(saved);
+const dup = PrintViewTemplates.duplicate(BUILTIN_TEMPLATES[0], 'tpl-x');
+assert.ok(!dup.builtin && dup.id === 'tpl-x' && dup.name.endsWith('(cópia)'), 'Cópia de modelo pronto é editável');
+assert.ok(PrintViewTemplates.isBuiltin('builtin:urbano-situacao') && !PrintViewTemplates.isBuiltin(saved.id));
+// Uso em todas as pranchas (a aberta conta pelo estado da tela)
+const sheets = [{ id: 's1', items: [{ type: 'map', viewConfig: { templateId: saved.id } }] }, { id: 's2', items: [] }];
+assert.strictEqual(PrintViewTemplates.usage(saved.id, sheets, 's2', [{ type: 'map', viewConfig: { templateId: saved.id } }]), 2);
+// Aplicar uma vez: copia e não vincula
+const once = { id: 'n', type: 'map', viewConfig: PrintViewResolver.emptyView() };
+PrintViewTemplates.applyOnce(once.viewConfig, once, BUILTIN_TEMPLATES[1]);
+assert.strictEqual(once.viewConfig.templateId, null);
+assert.strictEqual(once.viewConfig.labelDefaults.show, true);
+assert.strictEqual(once.basemap, 'esri_light');
+// Janela VV: aba travada pelo modelo e modo de edição
+const tvComposer = { items: [{ id: 'm', type: 'map', viewConfig: { ...PrintViewResolver.emptyView(), templateId: saved.id } }], layers, features, library: tLib, sheetsManager: { sheets: [], activeSheetId: null } };
+let tvHtml = PrintVisibilityDialog.render(tvComposer, tvComposer.items[0], { tab: 'layers' });
+assert.ok(tvHtml.includes('controlada pelo modelo') && /data-row-kind="layer"[\s\S]*?data-gfx="fill.color"[^>]*disabled/.test(tvHtml), 'Aba controlada pelo modelo fica travada');
+assert.ok(tvHtml.includes('Todas as camadas'), 'Linha de padrão de todas as camadas');
+tvHtml = PrintVisibilityDialog.render(tvComposer, tvComposer.items[0], { tab: 'elements', editTemplateId: saved.id });
+assert.ok(tvHtml.includes('Editando o modelo') && !tvHtml.includes('data-vv-tab="elements"'), 'Modo de edição do modelo, sem a aba Feições');
+assert.ok(!/data-row-kind="layer"[\s\S]*?data-gfx="fill.color"[^>]*disabled/.test(tvHtml), 'No modo de edição do modelo os campos ficam liberados');
+console.log('✔ Modelos de vista validados');
 
 console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');// ============================================================================

@@ -9,11 +9,20 @@ const GRAPHIC_KEYS = ['visible', 'stroke', 'fill', 'halftone', 'color', 'minScal
 
 const isEmptyObj = (o) => !o || (typeof o === 'object' && Object.keys(o).length === 0);
 
+/** Linhas "todas as camadas" e "todos os rótulos" guardam um objeto só, não um mapa por id */
+const SINGLE = { defaults: 'layerDefaults', labeldefaults: 'labelDefaults' };
+const BUCKET = { layer: 'layers', label: 'labels', element: 'elements' };
+
 export const PrintViewEdits = {
   /** Objeto de ajuste da linha; `create` cria quando falta (filtro só existe se já estiver na vista) */
   target(view, kind, id, create = true) {
     if (kind === 'filter') return (view.filters || []).find(f => f.filterId === id) || null;
-    const bucket = kind === 'layer' ? 'layers' : kind === 'label' ? 'labels' : kind === 'element' ? 'elements' : null;
+    if (SINGLE[kind]) {
+      const key = SINGLE[kind];
+      if (!view[key] && create) view[key] = {};
+      return view[key] || null;
+    }
+    const bucket = BUCKET[kind];
     if (!bucket) return null;
     view[bucket] = view[bucket] || {};
     if (!view[bucket][id] && create) view[bucket][id] = {};
@@ -58,7 +67,12 @@ export const PrintViewEdits = {
       GRAPHIC_KEYS.forEach(k => delete f[k]);
       return true;
     }
-    const bucket = kind === 'layer' ? 'layers' : kind === 'label' ? 'labels' : 'elements';
+    if (SINGLE[kind]) {
+      if (isEmptyObj(view[SINGLE[kind]])) return false;
+      view[SINGLE[kind]] = {};
+      return true;
+    }
+    const bucket = BUCKET[kind];
     if (!view[bucket]?.[id]) return false;
     delete view[bucket][id];
     return true;
@@ -74,8 +88,8 @@ export const PrintViewEdits = {
 
   /** Remove a linha vazia (camada, rótulo ou feição sem nenhum ajuste) */
   prune(view, kind, id) {
-    if (kind === 'filter') return;
-    const bucket = kind === 'layer' ? 'layers' : kind === 'label' ? 'labels' : 'elements';
+    if (kind === 'filter' || SINGLE[kind]) return;
+    const bucket = BUCKET[kind];
     if (view[bucket] && isEmptyObj(view[bucket][id])) delete view[bucket][id];
   },
 

@@ -23,6 +23,7 @@ import { PrintVectorLayer } from './PrintVectorLayer.js';
 import { PrintLegendRenderer } from './PrintLegendRenderer.js';
 import { PrintVisibilityDialog } from './PrintVisibilityDialog.js';
 import { PrintCloudSync } from './PrintCloudSync.js';
+import { PrintViewTemplates } from './PrintViewTemplates.js';
 import './PrintVisibilityDialog.css';
 
 export class PrintComposerModal {
@@ -167,6 +168,7 @@ export class PrintComposerModal {
     this.resolveCache.delete(item.id);
     this.redrawMapVectors(item.id);
     this.refreshLegends();
+    this.refreshBasemaps();
     this.pushHistoryState(actionName, { coalesceKey });
     if (this.selectedItemId === item.id) this.updatePropertiesPanel();
     return true;
@@ -331,7 +333,7 @@ export class PrintComposerModal {
   }
 
   /** Troca a biblioteca (filtros e modelos de vista) e redesenha o que depende dela */
-  setLibrary(library, { fromCloud = false } = {}) {
+  setLibrary(library, { fromCloud = false, refreshDialog = true } = {}) {
     this.library = {
       filters: Array.isArray(library?.filters) ? library.filters : [],
       viewTemplates: Array.isArray(library?.viewTemplates) ? library.viewTemplates : []
@@ -340,18 +342,54 @@ export class PrintComposerModal {
     this.resolveCache.clear();
     this.redrawMapVectors();
     this.refreshLegends();
+    this.refreshBasemaps();
     this.updatePropertiesPanel();
-    this.visibilityDialog?.refresh();
-    if (!fromCloud) this.cloud?.pushLibrary();
+    if (refreshDialog) this.visibilityDialog?.refresh();
+    if (!fromCloud) {
+      // Edições em rajada (cor arrastada no modelo) viram um envio só
+      clearTimeout(this._libraryPushTimer);
+      this._libraryPushTimer = setTimeout(() => this.cloud?.pushLibrary(), 800);
+    }
   }
 
   /** Altera a biblioteca do projeto (não entra no histórico da prancha: vale para todas) */
-  updateLibrary(mutate) {
+  updateLibrary(mutate, { refreshDialog = true } = {}) {
     if (this.readOnly) return false;
     const next = JSON.parse(JSON.stringify(this.library || { filters: [], viewTemplates: [] }));
     if (mutate(next) === false) return false;
-    this.setLibrary(next);
+    this.setLibrary(next, { refreshDialog });
     return true;
+  }
+
+  /** Altera um modelo de vista do projeto (todos os mapas vinculados mudam juntos) */
+  updateTemplateView(templateId, mutate) {
+    if (!templateId || PrintViewTemplates.isBuiltin(templateId)) return false;
+    return this.updateLibrary(lib => {
+      const tpl = lib.viewTemplates.find(t => t.id === templateId);
+      if (!tpl) return false;
+      tpl.view = tpl.view && typeof tpl.view === 'object' ? tpl.view : {};
+      const asMap = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
+      ['layers', 'labels', 'layerDefaults', 'labelDefaults'].forEach(k => { tpl.view[k] = asMap(tpl.view[k]); });
+      tpl.view.filters = Array.isArray(tpl.view.filters) ? tpl.view.filters : [];
+      return mutate(tpl.view, tpl);
+    }, { refreshDialog: false });
+  }
+
+  /** Fundo efetivo do mapa: o do modelo vinculado (se ele controla o fundo) ou o do item */
+  basemapFor(item) {
+    const view = PrintViewResolver.effectiveView(item, this.library);
+    if (view.template?.include?.basemap) return view.basemap;
+    return item.basemap || (item.type === 'inset_map' ? 'esri_light' : this.currentBasemap);
+  }
+
+  /** Reaplica o fundo dos mapas cujo fundo efetivo mudou (modelo vinculado, por exemplo) */
+  refreshBasemaps() {
+    this.items.forEach(item => {
+      const map = this.leafletMaps.get(item.id);
+      if (!map) return;
+      const id = BasemapCatalog.normalize(this.basemapFor(item));
+      if (map._cmBasemap !== id) this.applyBasemapToMap(map, id);
+    });
   }
 
   /** Volta a folha ao padrão: margens ABNT, moldura e itens do layout padrão (mantém o papel; pode ser desfeito) */
@@ -636,7 +674,7 @@ export class PrintComposerModal {
           });
 
           // Adiciona Basemap configurado
-          this.applyBasemapToMap(map, item.basemap || (item.type === 'inset_map' ? 'esri_light' : this.currentBasemap));
+          this.applyBasemapToMap(map, this.basemapFor(item));
 
           const savedView = item.view && Array.isArray(item.view.center) && Number.isFinite(item.view.zoom) ? item.view : null;
 
@@ -749,7 +787,9 @@ export class PrintComposerModal {
 
     // Mesma lista do mapa principal (aceita as chaves antigas das pranchas)
     const basemap = BasemapCatalog.get(basemapKey);
-    map.getContainer().style.background = BasemapCatalog.backgroundOf(basemap.id);
+    map._cmBasemap = basemap.id;
+    // O tema escuro do app pinta todo .leaflet-container com !important; na prancha vale o fundo escolhido
+    map.getContainer().style.setProperty('background-color', BasemapCatalog.backgroundOf(basemap.id), 'important');
     basemap.tiles.forEach(t => {
       // Acima do zoom nativo os tiles são ampliados: escalas grandes (1:200) continuam possíveis
       L.tileLayer(t.url, { maxNativeZoom: t.maxNativeZoom, maxZoom: 23, crossOrigin: true }).addTo(map);
