@@ -390,4 +390,13 @@ for (const it of [...secItems, shapeItem2, PrintItemsManager.createNewItem('imag
 }
 console.log('✔ Seções e estilos validados');
 
+// ============================================================================
+// 14. Mapa de localização: área pequena vira ponto
+// ============================================================================
+console.log('14. insetLocator...');
+assert.deepStrictEqual(PrintItemsManager.insetLocator({ x: 10, y: 20 }, { x: 60, y: 50 }), { type: 'rect', x: 10, y: 20, w: 50, h: 30 }, 'Área visível: retângulo');
+assert.deepStrictEqual(PrintItemsManager.insetLocator({ x: 100.2, y: 80.1 }, { x: 100.6, y: 80.5 }), { type: 'point', x: 100.4, y: 80.3 }, 'Área sub-pixel (planta 1:10.000 no mapa do país): ponto no centro');
+assert.strictEqual(PrintItemsManager.insetLocator({ x: 0, y: 0 }, { x: 40, y: 3 }).type, 'point', 'Faixa fina demais também vira ponto');
+console.log('✔ insetLocator validado');
+
 console.log('\n🎉 TESTES DO PAINEL LATERAL E HISTÓRICO PASSARAM!');

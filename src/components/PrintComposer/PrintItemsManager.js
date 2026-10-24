@@ -119,6 +119,21 @@ export class PrintItemsManager {
     return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
   }
 
+  /** Abaixo disso (px no mapa de localização) a área vira um marcador: o retângulo sumiria */
+  static INSET_MIN_BOX_PX = 8;
+
+  /**
+   * Como mostrar a área do mapa principal no mapa de localização, a partir dos cantos em px:
+   * retângulo quando é visível, ou ponto no centro quando a área é pequena demais (planta a 1:10.000
+   * num mapa de localização do país ocupa menos de 1 px).
+   */
+  static insetLocator(nw, se, minPx = this.INSET_MIN_BOX_PX) {
+    const w = Math.abs(se.x - nw.x);
+    const h = Math.abs(se.y - nw.y);
+    if (w >= minPx && h >= minPx) return { type: 'rect', x: Math.min(nw.x, se.x), y: Math.min(nw.y, se.y), w, h };
+    return { type: 'point', x: (nw.x + se.x) / 2, y: (nw.y + se.y) / 2 };
+  }
+
   /** Camadas exibidas na legenda: visíveis no projeto e não ocultadas no item */
   static legendLayers(item, layers = []) {
     const hidden = new Set((item.hiddenLayerIds || []).map(String));

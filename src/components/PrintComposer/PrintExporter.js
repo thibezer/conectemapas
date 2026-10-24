@@ -470,17 +470,25 @@ export class PrintExporter {
     const nw = insetMap.latLngToContainerPoint([b.getNorth(), b.getWest()]);
     const se = insetMap.latLngToContainerPoint([b.getSouth(), b.getEast()]);
 
-    const boxX = originX + nw.x * scaleX;
-    const boxY = originY + nw.y * scaleY;
-    const boxW = (se.x - nw.x) * scaleX;
-    const boxH = (se.y - nw.y) * scaleY;
+    // Mesmo critério da tela: área pequena demais vira um ponto no centro
+    const locator = PrintItemsManager.insetLocator(nw, se);
 
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 34, 68, 0.25)';
-    ctx.fillRect(boxX, boxY, boxW, boxH);
     ctx.strokeStyle = '#ff2244';
     ctx.lineWidth = 2;
-    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    if (locator.type === 'rect') {
+      const boxX = originX + locator.x * scaleX;
+      const boxY = originY + locator.y * scaleY;
+      ctx.fillStyle = 'rgba(255, 34, 68, 0.25)';
+      ctx.fillRect(boxX, boxY, locator.w * scaleX, locator.h * scaleY);
+      ctx.strokeRect(boxX, boxY, locator.w * scaleX, locator.h * scaleY);
+    } else {
+      ctx.fillStyle = 'rgba(255, 34, 68, 0.85)';
+      ctx.beginPath();
+      ctx.arc(originX + locator.x * scaleX, originY + locator.y * scaleY, 4 * scaleX, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
     ctx.restore();
   }
 

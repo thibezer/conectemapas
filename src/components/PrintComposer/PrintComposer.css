@@ -104,14 +104,18 @@
   border: 1.5px solid #000;
 }
 
+/* Contexto de empilhamento próprio: as camadas internas do Leaflet (z-index 200–700)
+   ficam contidas no mapa e não cobrem a grade desenhada por cima */
 .cm-item-map-canvas {
   width: 100% !important;
   height: 100% !important;
+  z-index: 0;
 }
 
 /* Grade de Coordenadas (Graticule Grid) */
 .cm-item-grid-border {
   position: absolute;
+  z-index: 1;
   top: 0;
   left: 0;
   right: 0;

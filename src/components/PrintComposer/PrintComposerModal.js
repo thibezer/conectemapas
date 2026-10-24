@@ -441,7 +441,11 @@ export class PrintComposerModal {
           const savedView = item.view && Array.isArray(item.view.center) && Number.isFinite(item.view.zoom) ? item.view : null;
 
           if (item.type === 'inset_map') {
-            map.setView([-15.78, -47.92], 4);
+            // Centrado na área do projeto (o marcador de localização fica no meio do mapa)
+            const pts = [];
+            this.features.forEach(f => { if (f.visible !== false) this.pushBounds(pts, f.coordinates); });
+            const valid = pts.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]));
+            map.setView(valid.length ? L.latLngBounds(valid).getCenter() : [-15.78, -47.92], 4);
           } else {
             // Renderiza geometrias vetoriais das camadas
             if (this.features.length > 0) {
@@ -601,17 +605,24 @@ export class PrintComposerModal {
 
     const b = mainMap.getBounds();
     const bounds = [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]];
+    const style = { color: '#ff2244', weight: 1.5, fillColor: '#ff2244', fillOpacity: 0.25 };
 
-    if (this.insetExtentLayer) {
-      this.insetExtentLayer.setBounds(bounds);
-    } else {
-      this.insetExtentLayer = L.rectangle(bounds, {
-        color: '#ff2244',
-        weight: 1.5,
-        fillColor: '#ff2244',
-        fillOpacity: 0.25
-      }).addTo(insetMap);
+    if (!this.insetExtentLayer) {
+      this.insetExtentLayer = L.rectangle(bounds, style);
+      this.insetMarkerLayer = L.circleMarker(b.getCenter(), { ...style, radius: 4, weight: 2, fillOpacity: 0.85 });
     }
+    this.insetExtentLayer.setBounds(bounds);
+    this.insetMarkerLayer.setLatLng(b.getCenter());
+
+    // Área pequena demais para o retângulo aparecer: mostra um ponto no centro
+    const locator = PrintItemsManager.insetLocator(
+      insetMap.latLngToContainerPoint([b.getNorth(), b.getWest()]),
+      insetMap.latLngToContainerPoint([b.getSouth(), b.getEast()])
+    );
+    const show = locator.type === 'rect' ? this.insetExtentLayer : this.insetMarkerLayer;
+    const hide = locator.type === 'rect' ? this.insetMarkerLayer : this.insetExtentLayer;
+    if (insetMap.hasLayer(hide)) insetMap.removeLayer(hide);
+    if (!insetMap.hasLayer(show)) show.addTo(insetMap);
   }
 
   applyMapScaleAndRotation(item) {
@@ -635,6 +646,7 @@ export class PrintComposerModal {
     this.mapTimers.forEach(t => clearTimeout(t));
     this.mapTimers.clear();
     this.insetExtentLayer = null;
+    this.insetMarkerLayer = null;
   }
 
   getScalerStyle(item) {
