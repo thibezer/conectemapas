@@ -492,6 +492,39 @@ export class PrintItemsManager {
   }
 
   /**
+   * Reajusta os itens de uma folha para outra, proporcionalmente à área útil (dentro das margens ABNT).
+   * Seta norte e imagem mantêm a proporção; tudo fica dentro da nova folha. Retorna cópias.
+   */
+  static fitItemsToPaper(items = [], fromPaper, toPaper) {
+    const usable = (p) => ({
+      x: p.marginL || 0,
+      y: p.marginO || 0,
+      w: p.width - (p.marginL || 0) - (p.marginO || 0),
+      h: p.height - 2 * (p.marginO || 0)
+    });
+    const from = usable(fromPaper);
+    const to = usable(toPaper);
+    const sx = to.w / from.w;
+    const sy = to.h / from.h;
+    const round = (v) => Math.round(v * 10) / 10;
+    const keepAspect = new Set(['north_arrow', 'image']);
+
+    return items.map(src => {
+      const it = JSON.parse(JSON.stringify(src));
+      const ux = keepAspect.has(it.type) ? Math.min(sx, sy) : sx;
+      const uy = keepAspect.has(it.type) ? Math.min(sx, sy) : sy;
+      it.width = round(Math.min(toPaper.width, Math.max(10, src.width * ux)));
+      it.height = round(Math.min(toPaper.height, Math.max(10, src.height * uy)));
+      // Posiciona pelo centro do item, para que itens que mantêm a proporção não saiam do lugar
+      const cx = to.x + (src.x + src.width / 2 - from.x) * sx;
+      const cy = to.y + (src.y + src.height / 2 - from.y) * sy;
+      it.x = round(Math.max(0, Math.min(toPaper.width - it.width, cx - it.width / 2)));
+      it.y = round(Math.max(0, Math.min(toPaper.height - it.height, cy - it.height / 2)));
+      return it;
+    });
+  }
+
+  /**
    * Elementos padrão de uma nova Composição de Impressão (Normatizada ABNT NBR 13133/6492)
    */
   static createDefaultItems(projectName = 'Projeto', paperSize = null) {

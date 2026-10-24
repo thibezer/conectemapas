@@ -4,11 +4,10 @@ Problemas conhecidos que ainda não foram corrigidos.
 
 ## Layout de Impressão
 
-### Erro `_leaflet_pos` ao recriar os mapas da prancha
+### Painel lateral: itens restantes da revisão de 23/10/2026
 
-- **Onde:** `PrintComposerModal.mountLeafletMaps`, função `updateGridAndScale` (`src/components/PrintComposer/PrintComposerModal.js`).
-- **Sintoma:** `Uncaught TypeError: Cannot read properties of undefined (reading '_leaflet_pos')` no console, vindo de `map.getCenter()`.
-- **Como reproduzir:** recriar os mapas em sequência rápida, por exemplo inserir dois elementos seguidos em menos de 150 ms ou trocar de prancha logo depois de inserir.
-- **Causa:** `renderAllItems` chama `destroyLeafletMaps` (`map.remove()`), mas o `setTimeout(updateGridAndScale, 150)` agendado para o mapa anterior ainda dispara sobre o mapa removido.
-- **Correção sugerida:** no início de `updateGridAndScale`, sair se `this.leafletMaps.get(item.id) !== map` (o mapa já foi substituído ou removido). Também guardar e limpar o timeout em `destroyLeafletMaps`.
-- **Registrado em:** 23/10/2026, durante o redesenho da barra do layout de impressão.
+- **Frente/Trás quase sem efeito:** o `z-index` fixo por tipo em `PrintComposer.css` (mapa 2, forma 5, demais 10–12) prevalece sobre a ordem de `composer.items`.
+- **Logotipo grande para o salvamento sem aviso:** a imagem vai inteira (data URL) para o localStorage; quando a cota estoura, `PrintSheetsManager.saveToStorage` só registra no console.
+- **Barra de escala e legenda** não têm propriedades no painel.
+- **Tamanho mínimo diferente:** 10 mm digitando no painel, 15 mm arrastando as alças; o campo não impede o item de sair da folha.
+- **Menores:** cor de preenchimento da forma é texto livre (vai ao `style` sem sanitização); o estado aberto/fechado das seções é guardado pelo índice; estilos quase todos inline.

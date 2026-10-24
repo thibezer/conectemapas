@@ -43,8 +43,8 @@ export class PrintPropertiesPanel {
               <div style="font-size: 9.5px; color: #888899; line-height: 1.3;">
                 Margem esquerda de 25 mm para encadernação e borda interna ABNT.
               </div>
-              <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" style="width: 100%; height: 26px; font-size: 11px; margin-top: 4px;">
-                📐 Auto-Alinhar à Norma ABNT
+              <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" title="Substitui os elementos pelo layout padrão ABNT (Ctrl+Z desfaz)" style="width: 100%; height: 26px; font-size: 11px; margin-top: 4px;">
+                📐 Restaurar Layout Padrão ABNT
               </ui-botao-primario>
             </div>
           </details>
@@ -64,7 +64,7 @@ export class PrintPropertiesPanel {
                   <div style="display: flex; align-items: center; gap: 2px;">
                     <button class="cm-ai-micro-btn" data-composer-lock="${it.id}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${it.locked ? '🔒' : '🔓'}</button>
                     <button class="cm-ai-micro-btn" data-composer-vis="${it.id}" title="${it.visible ? 'Ocultar' : 'Exibir'}">${it.visible ? '👁️' : '✕'}</button>
-                    <button class="cm-ai-micro-btn" data-composer-del="${it.id}" title="Excluir">🗑️</button>
+                    <button class="cm-ai-micro-btn" data-composer-del="${it.id}" title="${it.locked ? 'Desbloqueie para excluir' : 'Excluir'}" ${it.locked ? 'disabled' : ''}>🗑️</button>
                   </div>
                 </div>
               `).join('')}
@@ -77,7 +77,10 @@ export class PrintPropertiesPanel {
               <summary style="font-size: 11px; font-weight: 600; padding: 6px 8px; cursor: pointer; color: var(--cm-primary); background: rgba(0,224,138,0.05);">
                 🎯 ${esc(selectedItem.name)}
               </summary>
-              <div style="padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+              ${selectedItem.locked ? `
+                <div class="cm-print-props-locked-note">🔒 Item bloqueado: desbloqueie na lista acima para editar.</div>
+              ` : ''}
+              <fieldset class="cm-print-props-fields" ${selectedItem.locked ? 'disabled' : ''} style="padding: 8px; display: flex; flex-direction: column; gap: 6px;">
                 <!-- Barra de Ações Rápidas e Alinhamento -->
                 <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);">
                   <div style="font-size: 9.5px; color: #a0a0b0; font-weight: 600;">📐 ALINHAMENTO NA FOLHA (ABNT):</div>
@@ -314,7 +317,7 @@ export class PrintPropertiesPanel {
                     <input type="text" id="prop-tb-date" class="cm-vertex-input" value="${esc(selectedItem.properties?.date || '')}" />
                   </div>
                 ` : ''}
-              </div>
+              </fieldset>
             </details>
           ` : '<div style="font-size: 10.5px; color: var(--cm-text-muted); text-align: center; padding: 25px 0;">Clique em um elemento da prancha para editar suas propriedades.</div>'}
         </div>
@@ -380,50 +383,23 @@ export class PrintPropertiesPanel {
 
     const updateCurrent = (mutator, shouldUpdateMap = false, isPositionOrSizeChange = false) => {
       const it = composer.items.find(i => i.id === composer.selectedItemId);
-      if (it) {
-        mutator(it);
-        if (isPositionOrSizeChange) {
-          composer.updateItemPositionDOM(it);
-          if (it.type === 'map' || it.type === 'inset_map') {
-            composer.applyMapScaleAndRotation(it);
-          }
-        } else if (shouldUpdateMap && (it.type === 'map' || it.type === 'inset_map')) {
-          composer.applyMapScaleAndRotation(it);
-        } else if (it.type === 'title_block') {
-          const container = document.querySelector(`[data-item-id="${it.id}"]`);
-          if (container) {
-            const tbEl = container.querySelector('.cm-item-title-block');
-            if (tbEl) tbEl.outerHTML = PrintItemsManager.renderTitleBlock(it, composer.projectName);
-          }
-        } else if (it.type === 'table_vertices') {
-          const container = document.querySelector(`[data-item-id="${it.id}"]`);
-          if (container) {
-            const tvEl = container.querySelector('.cm-item-vertices-table');
-            if (tvEl) tvEl.outerHTML = PrintItemsManager.renderVerticesTable(it, composer.features);
-          }
-        } else if (it.type === 'text_block') {
-          const container = document.querySelector(`[data-item-id="${it.id}"]`);
-          if (container) {
-            const txtEl = container.querySelector('.cm-item-text-block');
-            if (txtEl) txtEl.outerHTML = PrintItemsManager.renderTextBlock(it);
-          }
-        } else if (it.type === 'scale_bar') {
-          const container = document.querySelector(`[data-item-id="${it.id}"]`);
-          if (container) {
-            const sbEl = container.querySelector('.cm-item-scale-bar');
-            if (sbEl) sbEl.outerHTML = PrintItemsManager.renderScaleBar(it, it.scale || 10000);
-          }
-        } else if (it.type === 'north_arrow') {
-          const container = document.querySelector(`[data-item-id="${it.id}"]`);
-          if (container) {
-            const naEl = container.querySelector('svg');
-            if (naEl) naEl.outerHTML = PrintItemsManager.getNorthArrowSVG(it.arrowStyle, it.rotation);
-          }
-        } else {
-          composer.renderAllItems();
-        }
-        composer.markDirty();
+      // Item bloqueado não é editado pelo painel (só o próprio bloqueio muda)
+      if (!it || it.locked) return;
+      const isMap = it.type === 'map' || it.type === 'inset_map';
+      mutator(it);
+      if (isPositionOrSizeChange) {
+        composer.updateItemPositionDOM(it);
+        if (isMap) composer.applyMapScaleAndRotation(it);
+        else composer.refreshItemContent(it);
+      } else if (shouldUpdateMap && isMap) {
+        composer.applyMapScaleAndRotation(it);
+      } else {
+        // Redesenha só este item: os mapas Leaflet nunca são recriados a cada tecla
+        composer.refreshItemContent(it);
       }
+      // Digitação seguida no mesmo campo vira um único passo de desfazer
+      const fieldId = document.activeElement?.id || 'campo';
+      composer.pushHistoryState(`Editar ${it.name || 'Item'}`, { coalesceKey: `prop:${it.id}:${fieldId}` });
     };
 
     // Botões de alinhamento e organização do painel
@@ -524,10 +500,7 @@ export class PrintPropertiesPanel {
       });
     }
     if (propGridType) {
-      propGridType.addEventListener('change', (e) => {
-        updateCurrent(it => it.gridType = e.target.value);
-        composer.renderAllItems();
-      });
+      propGridType.addEventListener('change', (e) => updateCurrent(it => it.gridType = e.target.value));
     }
     if (btnPanMap) {
       btnPanMap.addEventListener('click', () => composer.setInteractionMode('content_pan'));

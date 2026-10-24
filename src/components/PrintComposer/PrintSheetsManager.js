@@ -130,6 +130,8 @@ export class PrintSheetsManager {
     this.composer.showAbntMargins = target.showAbntMargins !== false;
     this.composer.items = JSON.parse(JSON.stringify(target.items || []));
     this.composer.selectedItemId = (this.composer.items.find(i => i.type === 'map') || this.composer.items[0])?.id || null;
+    // O histórico é de cada prancha: desfazer não pode trazer itens da prancha anterior
+    this.composer.resetHistory?.();
 
     this.composer.updatePaperSheetDOM();
     this.composer.renderAllItems();
@@ -301,6 +303,7 @@ export class PrintSheetsManager {
       this.composer.showAbntMargins = target.showAbntMargins !== false;
       this.composer.items = JSON.parse(JSON.stringify(target.items || []));
       this.composer.selectedItemId = this.composer.items[0]?.id || null;
+      this.composer.resetHistory?.();
       this.composer.updatePaperSheetDOM();
       this.composer.renderAllItems();
       this.composer.updatePropertiesPanel();

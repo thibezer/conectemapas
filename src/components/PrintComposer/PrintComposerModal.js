@@ -13,6 +13,7 @@ import { PrintPropertiesPanel } from './PrintPropertiesPanel.js';
 import { PrintSheetsManager } from './PrintSheetsManager.js';
 import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
 import { PrintToolbar } from './PrintToolbar.js';
+import { PrintHistory } from './PrintHistory.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
 export class PrintComposerModal {
@@ -41,12 +42,13 @@ export class PrintComposerModal {
 
     this.projectId = options.projectId || 'projeto_padrao';
     this.sheetsManager = new PrintSheetsManager(this);
-    this.history = [];
-    this.historyIndex = -1;
+    this.history = new PrintHistory();
 
     this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
     this.selectedItemId = 'item-map-main';
     this.leafletMaps = new Map(); // Sub-instâncias do Leaflet nos itens
+    this.mapRefreshers = new Map(); // Atualização de grade/escala de cada mapa, sem recriá-lo
+    this.mapTimers = new Set(); // Timeouts dos mapas montados, cancelados ao destruí-los
     this.insetExtentLayer = null; // Retângulo no Inset Map
     this.canvasEngine = new PrintCanvasEngine(this);
 
@@ -61,48 +63,51 @@ export class PrintComposerModal {
     this.sheetsManager.scheduleSave();
   }
 
-  pushHistoryState(actionName = 'Alteração') {
-    if (this.historyIndex < this.history.length - 1) {
-      this.history = this.history.slice(0, this.historyIndex + 1);
-    }
-    const state = {
+  captureState(actionName) {
+    return {
       paperSizeId: this.paperSize.id,
       showAbntMargins: this.showAbntMargins,
       items: JSON.parse(JSON.stringify(this.items || [])),
       action: actionName
     };
-    this.history.push(state);
-    if (this.history.length > 30) this.history.shift();
-    this.historyIndex = this.history.length - 1;
-    this.sheetsManager.saveCurrentStateFromComposer();
+  }
+
+  /** Recomeça o histórico a partir do estado atual (abertura ou troca de prancha) */
+  resetHistory() {
+    this.history.reset(this.captureState('Abertura da Prancha'));
+  }
+
+  /**
+   * Registra o estado DEPOIS da ação (chamar sempre após a mudança).
+   * `coalesceKey` junta edições em rajada no mesmo campo num único passo.
+   */
+  pushHistoryState(actionName = 'Alteração', { coalesceKey = null } = {}) {
+    this.history.push(this.captureState(actionName), { coalesceKey });
+    this.markDirty();
   }
 
   undo() {
-    if (this.historyIndex > 0) {
-      this.historyIndex--;
-      const state = this.history[this.historyIndex];
-      this.applyHistorySnapshot(state);
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Desfeito',
-        mensagem: `Desfez: ${state.action || 'Ação'}`,
-        duracao: 1500
-      });
-    }
+    const step = this.history.undo();
+    if (!step) return;
+    this.applyHistorySnapshot(step.state);
+    UIToast.notificar({
+      tipo: 'informativo',
+      titulo: 'Desfeito',
+      mensagem: `Desfez: ${step.action || 'Ação'}`,
+      duracao: 1500
+    });
   }
 
   redo() {
-    if (this.historyIndex < this.history.length - 1) {
-      this.historyIndex++;
-      const state = this.history[this.historyIndex];
-      this.applyHistorySnapshot(state);
-      UIToast.notificar({
-        tipo: 'informativo',
-        titulo: 'Refeito',
-        mensagem: `Refez: ${state.action || 'Ação'}`,
-        duracao: 1500
-      });
-    }
+    const step = this.history.redo();
+    if (!step) return;
+    this.applyHistorySnapshot(step.state);
+    UIToast.notificar({
+      tipo: 'informativo',
+      titulo: 'Refeito',
+      mensagem: `Refez: ${step.action || 'Ação'}`,
+      duracao: 1500
+    });
   }
 
   applyHistorySnapshot(state) {
@@ -112,6 +117,7 @@ export class PrintComposerModal {
     }
     this.showAbntMargins = state.showAbntMargins !== false;
     this.items = JSON.parse(JSON.stringify(state.items || []));
+    if (this.selectedItemId && !this.items.some(i => i.id === this.selectedItemId)) this.selectedItemId = null;
     this.updatePaperSheetDOM();
     this.renderAllItems();
     this.updatePropertiesPanel();
@@ -193,13 +199,7 @@ export class PrintComposerModal {
     this.sheetsManager.renderSheetsSelectorDOM();
 
     // Inicializa pilha de histórico da prancha
-    this.history = [{
-      paperSizeId: this.paperSize.id,
-      showAbntMargins: this.showAbntMargins,
-      items: JSON.parse(JSON.stringify(this.items || [])),
-      action: 'Abertura da Prancha'
-    }];
-    this.historyIndex = 0;
+    this.resetHistory();
 
     this.updatePaperSheetDOM();
     this.renderAllItems();
@@ -212,12 +212,19 @@ export class PrintComposerModal {
     }, 100);
   }
 
+  /** Substitui todos os itens pelo layout padrão ABNT da folha atual (pode ser desfeito) */
   resetDefaultLayout() {
     this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
+    this.selectedItemId = 'item-map-main';
     this.renderAllItems();
     this.updatePropertiesPanel();
-    this.selectItem('item-map-main');
-    this.markDirty();
+    this.pushHistoryState('Restaurar Layout Padrão');
+    UIToast.notificar({
+      tipo: 'informativo',
+      titulo: 'Layout padrão restaurado',
+      mensagem: 'Os elementos foram substituídos pelo layout ABNT. Ctrl+Z desfaz.',
+      duracao: 3000
+    });
   }
 
   close() {
@@ -256,25 +263,27 @@ export class PrintComposerModal {
     });
   }
 
+  /** Troca a folha mantendo os itens do usuário, reajustados à nova folha (pode ser desfeito) */
   setPaperSize(sizeKey) {
-    if (this.paperSizes[sizeKey]) {
-      this.paperSize = this.paperSizes[sizeKey];
-      this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
-      this.updatePaperSheetDOM();
-      this.renderAllItems();
-      this.updatePropertiesPanel();
+    const target = this.paperSizes[sizeKey];
+    if (!target || target.id === this.paperSize.id) return;
 
-      setTimeout(() => {
-        this.canvasEngine.zoomFit();
-      }, 50);
-      this.markDirty();
-    }
+    this.items = PrintItemsManager.fitItemsToPaper(this.items, this.paperSize, target);
+    this.paperSize = target;
+    this.updatePaperSheetDOM();
+    this.renderAllItems();
+    this.updatePropertiesPanel();
+
+    setTimeout(() => {
+      this.canvasEngine.zoomFit();
+    }, 50);
+    this.pushHistoryState(`Folha ${target.name}`);
   }
 
   setAbntMargins(visible) {
     this.showAbntMargins = visible;
     this.updatePaperSheetDOM();
-    this.markDirty();
+    this.pushHistoryState(visible ? 'Exibir Margens ABNT' : 'Ocultar Margens ABNT');
   }
 
   updatePaperSheetDOM() {
@@ -417,6 +426,9 @@ export class PrintComposerModal {
             attributionControl: false,
             zoomControl: false,
             preferCanvas: true,
+            // Zoom fracionário: a escala digitada no painel (ex.: 1:5.000) é aplicada exatamente
+            zoomSnap: 0,
+            zoomDelta: 0.5,
             dragging: this.interactionMode === 'content_pan',
             scrollWheelZoom: this.interactionMode === 'content_pan'
           });
@@ -468,15 +480,23 @@ export class PrintComposerModal {
 
           // Sincronização de zoom <-> escala e grade cartográfica dinâmica
           const updateGridAndScale = () => {
+            // O mapa pode ter sido removido/recriado antes deste evento ou timeout (erro _leaflet_pos)
+            if (this.leafletMaps.get(item.id) !== map) return;
             const center = map.getCenter();
             item.scale = PrintItemsManager.calculateScale(map.getZoom(), center.lat);
+
+            // Mantém o campo de escala do painel igual à escala real do mapa
+            const scaleInput = document.getElementById('prop-map-scale');
+            if (scaleInput && this.selectedItemId === item.id && document.activeElement !== scaleInput) {
+              scaleInput.value = item.scale;
+            }
 
             // Sincroniza barra de escala
             if (item.type === 'map') {
               const scaleBar = this.items.find(i => i.type === 'scale_bar');
               if (scaleBar) {
                 scaleBar.scale = item.scale;
-                const sbEl = document.querySelector('[data-item-id="item-scale-bar"] .cm-item-scale-bar');
+                const sbEl = document.querySelector(`[data-item-id="${scaleBar.id}"] .cm-item-scale-bar`);
                 if (sbEl) sbEl.outerHTML = PrintItemsManager.renderScaleBar(scaleBar, item.scale);
               }
 
@@ -484,12 +504,11 @@ export class PrintComposerModal {
               this.updateInsetMapExtent();
             }
 
-            // Atualiza coordenadas reais da grade
+            // Atualiza coordenadas reais da grade (e a remove quando desligada)
             const frame = domEl.parentElement;
+            frame?.querySelector('.cm-item-grid-border')?.remove();
             if (frame && item.showGrid) {
               const b = map.getBounds();
-              const oldGrid = frame.querySelector('.cm-item-grid-border');
-              if (oldGrid) oldGrid.remove();
               frame.insertAdjacentHTML('beforeend', PrintItemsManager.renderMapGridBorder({
                 north: b.getNorth(),
                 south: b.getSouth(),
@@ -502,11 +521,17 @@ export class PrintComposerModal {
           map.on('moveend zoomend', updateGridAndScale);
           // Registrado após o enquadramento inicial: só movimentos posteriores viram enquadramento salvo
           map.on('moveend', () => {
+            if (this.leafletMaps.get(item.id) !== map) return;
             const c = map.getCenter();
             item.view = { center: [c.lat, c.lng], zoom: map.getZoom() };
             this.markDirty();
           });
-          setTimeout(updateGridAndScale, 150);
+          const timer = setTimeout(() => {
+            this.mapTimers.delete(timer);
+            updateGridAndScale();
+          }, 150);
+          this.mapTimers.add(timer);
+          this.mapRefreshers.set(item.id, updateGridAndScale);
 
           if (item.rotation) {
             domEl.style.transform = `rotate(${item.rotation}deg)`;
@@ -594,7 +619,8 @@ export class PrintComposerModal {
     if (map && domEl) {
       const center = map.getCenter();
       const targetZoom = PrintItemsManager.calculateZoom(item.scale, center.lat);
-      map.setZoom(Math.round(targetZoom));
+      // Sem animação: a escala digitada vale na hora (e os eventos de grade/escala disparam já)
+      map.setZoom(targetZoom, { animate: false });
       domEl.style.transform = `rotate(${item.rotation || 0}deg)`;
     }
   }
@@ -604,6 +630,9 @@ export class PrintComposerModal {
       try { map.remove(); } catch (e) { /* ignore */ }
     });
     this.leafletMaps.clear();
+    this.mapRefreshers.clear();
+    this.mapTimers.forEach(t => clearTimeout(t));
+    this.mapTimers.clear();
     this.insetExtentLayer = null;
   }
 
@@ -626,6 +655,16 @@ export class PrintComposerModal {
     if (map && invalidateMap) map.invalidateSize();
   }
 
+  /** Redesenha só o conteúdo de um item; mapas só atualizam grade e escala (o Leaflet não é recriado) */
+  refreshItemContent(item) {
+    if (item.type === 'map' || item.type === 'inset_map') {
+      this.mapRefreshers.get(item.id)?.();
+      return;
+    }
+    const scaler = document.querySelector(`[data-item-id="${item.id}"] > .cm-item-scaler`);
+    if (scaler) scaler.innerHTML = this.getItemInnerContent(item);
+  }
+
   /** Reposiciona todos os itens após mudança de zoom (os mapas não mudam de tamanho: só o transform) */
   layoutItemsDOM() {
     this.items.forEach(item => {
@@ -638,7 +677,7 @@ export class PrintComposerModal {
     if (it) {
       it.locked = !it.locked;
       this.selectItem(this.selectedItemId);
-      this.markDirty();
+      this.pushHistoryState(it.locked ? 'Bloquear Item' : 'Desbloquear Item');
     }
   }
 
@@ -648,16 +687,29 @@ export class PrintComposerModal {
       it.visible = it.visible === false;
       this.renderAllItems();
       this.updatePropertiesPanel();
-      this.markDirty();
+      this.pushHistoryState(it.visible ? 'Exibir Item' : 'Ocultar Item');
     }
   }
 
+  /** Exclui um item; item bloqueado não é excluído (só o próprio bloqueio pode mudar) */
   deleteItem(itemId) {
+    const it = this.items.find(i => i.id === itemId);
+    if (!it) return false;
+    if (it.locked) {
+      UIToast.notificar({
+        tipo: 'alerta',
+        titulo: 'Item bloqueado',
+        mensagem: `Desbloqueie "${it.name || 'o item'}" antes de excluí-lo.`,
+        duracao: 2500
+      });
+      return false;
+    }
     this.items = this.items.filter(i => i.id !== itemId);
     if (this.selectedItemId === itemId) this.selectedItemId = null;
     this.renderAllItems();
     this.updatePropertiesPanel();
-    this.markDirty();
+    this.pushHistoryState('Excluir Item');
+    return true;
   }
 
   updatePropertiesPanel() {
@@ -683,7 +735,7 @@ export class PrintComposerModal {
     this.items.push(item);
     this.renderAllItems();
     this.selectItem(item.id);
-    this.markDirty();
+    this.pushHistoryState('Inserir Item');
     return item;
   }
 

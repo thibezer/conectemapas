@@ -135,3 +135,13 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **Sincronização**: `app.syncRibbon()` (agrupa chamadas no mesmo ciclo) é disparada por `AppGeometryCoordinator.updateHUD` (seleção, recarga, desfazer/refazer), `pushHistory` e troca de ferramenta. `HeaderBar.syncItems` só chama `atualizarItem` no que mudou. Com seleção, a aba assume o foco e a anterior volta ao limpar; trocar de aba à mão cancela o retorno.
 - **Estado é do app**: botões de ferramenta (laço, conta-gotas, dividir, régua) refletem `mapEngine.activeTool`; clicar de novo volta para `select`.
 - **Abas Projeto e Dados**: `ViewRibbon.js` (puro) define as duas abas e `computeViewState` (histórico, snap, zoom automático, painéis abertos); `RibbonViewController` roteia os botões (histórico, enquadrar, snap e zoom reaproveitam `drawingToolbar.onAction`). Painéis passam por `LayerPanel.setSidebarCollapsed` e `AttributeTable.toggleCollapse`, que avisam `onSidebarToggle`/`onCollapseChange`; não mexer na classe `collapsed` direto. Toggles da ribbon têm o estado no app (`preventDefault` no clique + `syncItems`).
+
+---
+
+## 11. Layout de Impressão (`PrintComposer`)
+- **Histórico guarda o estado DEPOIS da ação** (`PrintHistory`; a 1ª entrada é a abertura da prancha). Toda mudança chama `composer.pushHistoryState(ação)` após mutar; edições em rajada no mesmo campo (digitação, setas) passam `coalesceKey` e viram um passo. Trocar, criar ou excluir prancha chama `composer.resetHistory()`.
+- **Painel nunca recria os mapas**: editar um item usa `composer.refreshItemContent(item)` (redesenha só aquele item; mapas só atualizam grade/escala). `renderAllItems` destrói e recria os Leaflet e fica para mudanças estruturais (inserir, excluir, visibilidade, ordem, desfazer).
+- **Callbacks de mapa conferem a instância**: `updateGridAndScale` e o `moveend` saem se `leafletMaps.get(item.id) !== map`; timeouts dos mapas ficam em `mapTimers` e são cancelados em `destroyLeafletMaps`.
+- **Escala exata**: mapas com `zoomSnap: 0` e `setZoom(..., { animate: false })`; o campo do painel é atualizado a partir da escala real do mapa.
+- **Bloqueio**: item `locked` não é excluído (`deleteItem` recusa) nem editado pelo painel (campos num `<fieldset disabled>`); só o próprio bloqueio muda.
+- **Trocar o papel preserva os itens** (`PrintItemsManager.fitItemsToPaper`, proporcional à área útil ABNT). Só "Restaurar Layout Padrão ABNT" substitui os itens, e ambos podem ser desfeitos.

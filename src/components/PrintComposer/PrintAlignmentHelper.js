@@ -12,11 +12,11 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    composer.pushHistoryState('Alinhar à Esquerda');
     const minX = composer.showAbntMargins ? composer.paperSize.marginL : 0;
     item.x = minX;
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
+    composer.pushHistoryState('Alinhar à Esquerda');
   }
 
   /**
@@ -26,10 +26,10 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    composer.pushHistoryState('Centralizar Horizontalmente');
     item.x = Math.max(0, Math.round((composer.paperSize.width - item.width) / 2));
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
+    composer.pushHistoryState('Centralizar Horizontalmente');
   }
 
   /**
@@ -39,13 +39,13 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    composer.pushHistoryState('Alinhar à Direita');
     const maxX = composer.showAbntMargins
       ? composer.paperSize.width - composer.paperSize.marginO - item.width
       : composer.paperSize.width - item.width;
     item.x = Math.max(0, maxX);
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
+    composer.pushHistoryState('Alinhar à Direita');
   }
 
   /**
@@ -55,11 +55,11 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    composer.pushHistoryState('Alinhar ao Topo');
     const minY = composer.showAbntMargins ? composer.paperSize.marginO : 0;
     item.y = minY;
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
+    composer.pushHistoryState('Alinhar ao Topo');
   }
 
   /**
@@ -69,10 +69,10 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    composer.pushHistoryState('Centralizar Verticalmente');
     item.y = Math.max(0, Math.round((composer.paperSize.height - item.height) / 2));
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
+    composer.pushHistoryState('Centralizar Verticalmente');
   }
 
   /**
@@ -82,13 +82,13 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    composer.pushHistoryState('Alinhar à Base');
     const maxY = composer.showAbntMargins
       ? composer.paperSize.height - composer.paperSize.marginO - item.height
       : composer.paperSize.height - item.height;
     item.y = Math.max(0, maxY);
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
+    composer.pushHistoryState('Alinhar à Base');
   }
 
   /**
@@ -98,11 +98,11 @@ export class PrintAlignmentHelper {
     const idx = composer.items.findIndex(i => i.id === composer.selectedItemId);
     if (idx === -1 || idx === composer.items.length - 1) return;
 
-    composer.pushHistoryState('Trazer para Frente');
     const [item] = composer.items.splice(idx, 1);
     composer.items.push(item);
     composer.renderAllItems();
     composer.selectItem(item.id);
+    composer.pushHistoryState('Trazer para Frente');
   }
 
   /**
@@ -112,11 +112,11 @@ export class PrintAlignmentHelper {
     const idx = composer.items.findIndex(i => i.id === composer.selectedItemId);
     if (idx === -1 || idx === 0) return;
 
-    composer.pushHistoryState('Enviar para Trás');
     const [item] = composer.items.splice(idx, 1);
     composer.items.unshift(item);
     composer.renderAllItems();
     composer.selectItem(item.id);
+    composer.pushHistoryState('Enviar para Trás');
   }
 
   /**
@@ -126,12 +126,12 @@ export class PrintAlignmentHelper {
     const idx = composer.items.findIndex(i => i.id === composer.selectedItemId);
     if (idx === -1 || idx === composer.items.length - 1) return;
 
-    composer.pushHistoryState('Avançar Camada');
     const temp = composer.items[idx];
     composer.items[idx] = composer.items[idx + 1];
     composer.items[idx + 1] = temp;
     composer.renderAllItems();
     composer.selectItem(temp.id);
+    composer.pushHistoryState('Avançar Camada');
   }
 
   /**
@@ -141,12 +141,12 @@ export class PrintAlignmentHelper {
     const idx = composer.items.findIndex(i => i.id === composer.selectedItemId);
     if (idx === -1 || idx === 0) return;
 
-    composer.pushHistoryState('Recuar Camada');
     const temp = composer.items[idx];
     composer.items[idx] = composer.items[idx - 1];
     composer.items[idx - 1] = temp;
     composer.renderAllItems();
     composer.selectItem(temp.id);
+    composer.pushHistoryState('Recuar Camada');
   }
 
   /**
@@ -156,7 +156,6 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item) return;
 
-    composer.pushHistoryState('Duplicar Item');
     const ts = Date.now();
     const clone = JSON.parse(JSON.stringify(item));
     clone.id = `item-${item.type}-${ts}`;
@@ -169,5 +168,6 @@ export class PrintAlignmentHelper {
     composer.items.push(clone);
     composer.renderAllItems();
     composer.selectItem(clone.id);
+    composer.pushHistoryState('Duplicar Item');
   }
 }

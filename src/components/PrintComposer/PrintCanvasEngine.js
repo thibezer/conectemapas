@@ -492,7 +492,8 @@ export class PrintCanvasEngine {
         e.preventDefault();
         this.composer.updateItemPositionDOM(item);
         this.composer.updatePropertiesPanel();
-        this.composer.markDirty();
+        // Toques seguidos nas setas viram um único passo de desfazer
+        this.composer.pushHistoryState('Mover com as Setas', { coalesceKey: `nudge:${item.id}` });
       }
     };
 
