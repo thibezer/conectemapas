@@ -496,52 +496,66 @@ export class PrintExporter {
    * Desenha a Grade Cartográfica Real (Cruzetas e Rótulos Perimetrais)
    */
   static drawMapGraticule(ctx, item, map, x, y, w, h, scaleFactor) {
+    const b = map.getBounds();
+    // Mesma grade da prancheta: intervalos redondos em DMS ou UTM
+    const { xs, ys } = PrintItemsManager.graticuleModel(
+      { north: b.getNorth(), south: b.getSouth(), west: b.getWest(), east: b.getEast() },
+      item.gridType || 'dms'
+    );
+    const mm = scaleFactor; // px por mm na resolução de exportação
+    const tick = 1.8 * mm;
+    const cross = 1.5 * mm;
+    const fontSize = Math.max(6, Math.round(1.9 * mm));
+
     ctx.save();
-    const bounds = map.getBounds();
-    const fontSize = Math.max(8, Math.round(8.5 * (scaleFactor / (300 / 25.4))));
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = Math.max(1, 0.25 * mm);
+    ctx.beginPath();
+    xs.forEach(gx => {
+      const px = x + gx.f * w;
+      ctx.moveTo(px, y); ctx.lineTo(px, y + tick);
+      ctx.moveTo(px, y + h); ctx.lineTo(px, y + h - tick);
+    });
+    ys.forEach(gy => {
+      const py = y + gy.f * h;
+      ctx.moveTo(x, py); ctx.lineTo(x + tick, py);
+      ctx.moveTo(x + w, py); ctx.lineTo(x + w - tick, py);
+    });
+    xs.forEach(gx => ys.forEach(gy => {
+      const cx = x + gx.f * w;
+      const cy = y + gy.f * h;
+      ctx.moveTo(cx - cross, cy); ctx.lineTo(cx + cross, cy);
+      ctx.moveTo(cx, cy - cross); ctx.lineTo(cx, cy + cross);
+    }));
+    ctx.stroke();
+
+    // Rótulo com fundo branco, centrado em (cx, cy), opcionalmente girado
     ctx.font = `bold ${fontSize}px monospace`;
-    ctx.fillStyle = '#000000';
-
-    // Cruzetas internas de grade (+)
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.4)';
-    ctx.lineWidth = 1;
-    const crossSize = Math.max(4, Math.round(6 * (scaleFactor / (300 / 25.4))));
-
-    const cols = 4;
-    const rows = 4;
-    for (let c = 1; c < cols; c++) {
-      for (let r = 1; r < rows; r++) {
-        const cx = x + (w / cols) * c;
-        const cy = y + (h / rows) * r;
-        ctx.beginPath();
-        ctx.moveTo(cx - crossSize, cy); ctx.lineTo(cx + crossSize, cy);
-        ctx.moveTo(cx, cy - crossSize); ctx.lineTo(cx, cy + crossSize);
-        ctx.stroke();
-      }
-    }
-
-    // Rótulos nas margens externas
-    if (item.gridType === 'utm') {
-      const avgLng = (bounds.getWest() + bounds.getEast()) / 2;
-      const zone = PrintItemsManager.detectUtmZone(avgLng);
-      const south = (bounds.getNorth() + bounds.getSouth()) / 2 < 0;
-      const nw = PrintItemsManager.toUtmCoords(bounds.getNorth(), bounds.getWest(), zone, south);
-      const se = PrintItemsManager.toUtmCoords(bounds.getSouth(), bounds.getEast(), zone, south);
-
-      ctx.textAlign = 'center';
-      ctx.fillText(`${nw.northing.toLocaleString('pt-BR')} m N`, x + w / 2, y - 4);
-      ctx.fillText(`${se.northing.toLocaleString('pt-BR')} m N`, x + w / 2, y + h + fontSize + 2);
-    } else {
-      const nDMS = PrintItemsManager.formatDMS(bounds.getNorth(), true);
-      const sDMS = PrintItemsManager.formatDMS(bounds.getSouth(), true);
-      const wDMS = PrintItemsManager.formatDMS(bounds.getWest(), false);
-      const eDMS = PrintItemsManager.formatDMS(bounds.getEast(), false);
-
-      ctx.textAlign = 'center';
-      ctx.fillText(nDMS, x + w / 2, y - 4);
-      ctx.fillText(sDMS, x + w / 2, y + h + fontSize + 2);
-    }
-
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const label = (text, cx, cy, angle = 0) => {
+      const tw = ctx.measureText(text).width + fontSize * 0.5;
+      const th = fontSize * 1.25;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.fillRect(-tw / 2, -th / 2, tw, th);
+      ctx.fillStyle = '#111111';
+      ctx.fillText(text, 0, 0);
+      ctx.restore();
+    };
+    const gap = tick + fontSize * 0.75;
+    xs.forEach(gx => {
+      const px = x + gx.f * w;
+      label(gx.label, px, y + gap);
+      label(gx.label, px, y + h - gap);
+    });
+    ys.forEach(gy => {
+      const py = y + gy.f * h;
+      label(gy.label, x + gap, py, -Math.PI / 2);
+      label(gy.label, x + w - gap, py, Math.PI / 2);
+    });
     ctx.restore();
   }
 
@@ -698,10 +712,10 @@ export class PrintExporter {
     drawCell(x + colW, y + headH + rowH, 'Registro / ART', p.art || 'CREA-BR 2026');
 
     drawCell(x, y + headH + rowH * 2, 'Sistema Geodésico', p.datum || 'SIRGAS 2000');
-    drawCell(x + colW, y + headH + rowH * 2, 'Escala', p.scaleText || '1:10.000');
+    drawCell(x + colW, y + headH + rowH * 2, 'Escala', PrintItemsManager.titleBlockScaleText(p, composer.items.find(i => i.type === 'map')?.scale));
 
     drawCell(x, y + headH + rowH * 3, 'Área / Perímetro', p.areaPerimeter || 'Conforme Tabela');
-    drawCell(x + colW, y + headH + rowH * 3, 'Data / Prancha', `${p.date || new Date().toLocaleDateString('pt-BR')} (01/01)`);
+    drawCell(x + colW, y + headH + rowH * 3, 'Data / Prancha', PrintItemsManager.titleBlockDateText(p));
   }
 
   /**

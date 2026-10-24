@@ -399,4 +399,71 @@ assert.deepStrictEqual(PrintItemsManager.insetLocator({ x: 100.2, y: 80.1 }, { x
 assert.strictEqual(PrintItemsManager.insetLocator({ x: 0, y: 0 }, { x: 40, y: 3 }).type, 'point', 'Faixa fina demais também vira ponto');
 console.log('✔ insetLocator validado');
 
+// ============================================================================
+// 15. Grade de coordenadas em intervalos redondos
+// ============================================================================
+console.log('15. graticuleModel...');
+// Umuarama-PR, mapa a ~1:44.000 (cerca de 0,08° × 0,07°)
+const umu = { north: -23.7183, south: -23.7900, west: -53.3700, east: -53.2900 };
+const dms = PrintItemsManager.graticuleModel(umu, 'dms');
+assert.ok(dms.xs.length >= 2 && dms.xs.length <= 5, `2 a 5 meridianos (${dms.xs.length})`);
+assert.ok(dms.ys.length >= 2 && dms.ys.length <= 5, `2 a 5 paralelos (${dms.ys.length})`);
+const inc = (arr) => arr.every((l, i) => i === 0 || l.f > arr[i - 1].f);
+assert.ok(inc(dms.xs) && inc(dms.ys), 'Linhas em ordem (oeste→leste, norte→sul)');
+assert.ok([...dms.xs, ...dms.ys].every(l => l.f > 0 && l.f < 1), 'Todas dentro da moldura');
+assert.ok(dms.xs.every(l => /^53°\d\d'(00|30)"W$/.test(l.label)), `Meridianos em minutos redondos: ${dms.xs.map(l => l.label)}`);
+assert.ok(dms.ys.every(l => /"S$/.test(l.label)), 'Paralelos no hemisfério sul');
+// O espaçamento em x é uniforme em longitude
+const dx = dms.xs.map((l, i, a) => (i ? l.f - a[i - 1].f : null)).filter(v => v !== null);
+assert.ok(dx.every(v => Math.abs(v - dx[0]) < 1e-9), 'Meridianos igualmente espaçados');
+
+const utm = PrintItemsManager.graticuleModel(umu, 'utm');
+assert.ok(utm.xs.length >= 2 && utm.ys.length >= 2, 'Grade UTM com linhas nos dois sentidos');
+const num = (s) => Number(s.replace(/\D/g, ''));
+const stepE = num(utm.xs[1].label) - num(utm.xs[0].label);
+assert.ok([1000, 2000, 2500, 5000].includes(stepE), `Intervalo UTM redondo (${stepE} m)`);
+assert.ok(utm.ys.every(l => / m N$/.test(l.label)) && utm.xs.every(l => / m E$/.test(l.label)));
+
+assert.deepStrictEqual(PrintItemsManager.graticuleModel({ north: 1, south: 1, west: 0, east: 1 }), { xs: [], ys: [] }, 'Extensão inválida não gera grade');
+const gridHtml = PrintItemsManager.renderMapGridBorder(umu, 'dms');
+assert.strictEqual((gridHtml.match(/cm-grid-cross/g) || []).length, dms.xs.length * dms.ys.length, 'Uma cruz por interseção');
+assert.strictEqual((gridHtml.match(/cm-grid-label /g) || []).length, 2 * (dms.xs.length + dms.ys.length), 'Rótulos nos quatro lados');
+console.log('✔ Grade validada');
+
+// ============================================================================
+// 16. Carimbo: escala do mapa e número da prancha
+// ============================================================================
+console.log('16. Carimbo...');
+assert.strictEqual(PrintItemsManager.titleBlockScaleText({ scaleText: '1:10.000' }, 44396), '1:44.396', 'Padrão antigo passa a acompanhar o mapa');
+assert.strictEqual(PrintItemsManager.titleBlockScaleText({}, 2500), '1:2.500');
+assert.strictEqual(PrintItemsManager.titleBlockScaleText({ scaleText: 'Indicada' }, 44396), 'Indicada', 'Texto próprio antigo é mantido');
+assert.strictEqual(PrintItemsManager.titleBlockScaleText({ scaleText: '1:10.000', scaleAuto: false }, 44396), '1:10.000', 'Automático desligado mantém o texto');
+assert.strictEqual(PrintItemsManager.titleBlockScaleText({ scaleText: 'X', scaleAuto: true }, 5000), '1:5.000');
+assert.strictEqual(PrintItemsManager.titleBlockScaleText({}, null), '1:10.000', 'Sem mapa: texto padrão');
+
+assert.strictEqual(PrintItemsManager.titleBlockDateText({ date: '23/10/2026 (01/01)', sheetNumber: '02/03' }), '23/10/2026 (02/03)', 'Número antigo gravado na data é ignorado');
+assert.strictEqual(PrintItemsManager.titleBlockDateText({ date: '23/10/2026' }), '23/10/2026 (01/01)');
+const tbHtml = PrintItemsManager.renderTitleBlock({ properties: { scaleText: '1:10.000', date: '23/10/2026 (01/01)', sheetNumber: '01/01' } }, 'P', 44396);
+assert.ok(tbHtml.includes('1:44.396'), 'Carimbo mostra a escala do mapa');
+assert.ok(tbHtml.includes('23/10/2026 (01/01)') && !tbHtml.includes('(01/01) (01/01)'), 'Número da prancha não se repete');
+
+// A numeração das pranchas não é mais gravada dentro da data
+const numMgr = new PrintSheetsManager(sheetComposer);
+numMgr.init('proj-num', 'Projeto', paperSizes);
+numMgr.createSheet('Prancha 02', 'A4_L', 'abnt');
+numMgr.updateSheetNumbersInTitleBlocks();
+numMgr.updateSheetNumbersInTitleBlocks();
+const tb2 = numMgr.sheets[1].items.find(i => i.type === 'title_block').properties;
+assert.strictEqual(tb2.sheetNumber, '02/02');
+assert.ok(!tb2.date.includes('('), `A data fica limpa (${tb2.date})`);
+numMgr.cancelScheduledSave();
+
+const tbPanel = PrintItemsManager.createDefaultItems('P', paperSizes.A4_L);
+const tbItem2 = tbPanel.find(i => i.type === 'title_block');
+tbPanel.find(i => i.type === 'map').scale = 44396;
+html = PrintPropertiesPanel.render({ items: tbPanel, selectedItemId: tbItem2.id, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
+assert.ok(/id="prop-tb-scale" class="cm-vertex-input" value="1:44\.396"/.test(html), 'Campo mostra a escala do mapa');
+assert.ok(/id="prop-tb-scale-auto" checked/.test(html), 'Acompanhar a escala vem marcado');
+console.log('✔ Carimbo validado');
+
 console.log('\n🎉 TESTES DO PAINEL LATERAL E HISTÓRICO PASSARAM!');

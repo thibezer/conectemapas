@@ -329,15 +329,14 @@ export class PrintSheetsManager {
     this.sheets.forEach((sheet, idx) => {
       const numStr = String(idx + 1).padStart(2, '0');
       const totStr = String(total).padStart(2, '0');
-      const pranchaTag = `(${numStr}/${totStr})`;
 
       if (Array.isArray(sheet.items)) {
         sheet.items.forEach(it => {
           if (it.type === 'title_block' && it.properties) {
+            // O número fica só em sheetNumber; a data guarda só a data (o carimbo junta os dois)
             const curDate = it.properties.date || new Date().toLocaleDateString('pt-BR');
-            const cleanDate = curDate.split('(')[0].trim();
             it.properties.sheetNumber = `${numStr}/${totStr}`;
-            it.properties.date = `${cleanDate} ${pranchaTag}`;
+            it.properties.date = String(curDate).split('(')[0].trim();
           }
         });
       }

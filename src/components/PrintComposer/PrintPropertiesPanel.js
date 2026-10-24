@@ -372,7 +372,12 @@ export class PrintPropertiesPanel {
           ${field('prop-tb-author', 'Responsável Técnico', 'author')}
           ${field('prop-tb-art', 'ART / Registro', 'art')}
           ${field('prop-tb-datum', 'Sistema Geodésico / Projeção', 'datum')}
-          ${field('prop-tb-scale', 'Texto de Escala', 'scaleText')}
+          <span class="cm-param-label">Texto de Escala:</span>
+          <input type="text" id="prop-tb-scale" class="cm-vertex-input" value="${esc(PrintItemsManager.titleBlockScaleText(p, composer.items.find(i => i.type === 'map')?.scale))}" />
+          <div class="cm-param-row">
+            <span class="cm-param-label">Acompanhar a escala do mapa:</span>
+            <input type="checkbox" id="prop-tb-scale-auto" ${PrintItemsManager.isTitleBlockScaleAuto(p) ? 'checked' : ''} />
+          </div>
           <span class="cm-param-label">Área e Perímetro:</span>
           <div class="cm-pp-inline">
             <input type="text" id="prop-tb-area" class="cm-vertex-input cm-pp-grow" value="${esc(p.areaPerimeter || '')}" />
@@ -681,7 +686,28 @@ export class PrintPropertiesPanel {
     if (propTbAuthor) propTbAuthor.addEventListener('input', (e) => updateTbProp('author', e.target.value));
     if (propTbArt) propTbArt.addEventListener('input', (e) => updateTbProp('art', e.target.value));
     if (propTbDatum) propTbDatum.addEventListener('input', (e) => updateTbProp('datum', e.target.value));
-    if (propTbScale) propTbScale.addEventListener('input', (e) => updateTbProp('scaleText', e.target.value));
+    // Digitar uma escala própria desliga o acompanhamento automático do mapa
+    if (propTbScale) {
+      propTbScale.addEventListener('input', (e) => {
+        updateCurrent(it => { it.properties = it.properties || {}; it.properties.scaleText = e.target.value; it.properties.scaleAuto = false; });
+        const auto = document.getElementById('prop-tb-scale-auto');
+        if (auto) auto.checked = false;
+      });
+    }
+    const propTbScaleAuto = document.getElementById('prop-tb-scale-auto');
+    if (propTbScaleAuto) {
+      propTbScaleAuto.addEventListener('change', (e) => {
+        updateCurrent(it => {
+          it.properties = it.properties || {};
+          // Ao desligar, congela o texto que está à mostra (não volta para um valor antigo)
+          if (!e.target.checked && propTbScale) it.properties.scaleText = propTbScale.value;
+          it.properties.scaleAuto = e.target.checked;
+        });
+        const mapScale = composer.items.find(i => i.type === 'map')?.scale;
+        const it = composer.items.find(i => i.id === composer.selectedItemId);
+        if (propTbScale && it) propTbScale.value = PrintItemsManager.titleBlockScaleText(it.properties, mapScale);
+      });
+    }
     if (propTbArea) propTbArea.addEventListener('input', (e) => updateTbProp('areaPerimeter', e.target.value));
     if (propTbLoc) propTbLoc.addEventListener('input', (e) => updateTbProp('location', e.target.value));
     if (propTbDate) propTbDate.addEventListener('input', (e) => updateTbProp('date', e.target.value));

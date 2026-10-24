@@ -355,7 +355,6 @@ export class PrintComposerModal {
       return `
         <div class="cm-item-map-frame ${this.interactionMode === 'content_pan' ? 'pan-enabled' : ''}">
           <div id="leaf-map-${item.id}" class="cm-item-map-canvas" data-composer-map-id="${item.id}"></div>
-          ${item.showGrid ? `<div class="cm-item-grid-border"><span class="cm-grid-label-n">...</span></div>` : ''}
         </div>
       `;
     } else if (item.type === 'north_arrow') {
@@ -365,7 +364,7 @@ export class PrintComposerModal {
     } else if (item.type === 'legend') {
       return PrintItemsManager.renderLegend(item, this.layers);
     } else if (item.type === 'title_block') {
-      return PrintItemsManager.renderTitleBlock(item, this.projectName);
+      return PrintItemsManager.renderTitleBlock(item, this.projectName, this.items.find(i => i.type === 'map')?.scale);
     } else if (item.type === 'table_vertices') {
       return PrintItemsManager.renderVerticesTable(item, this.features);
     } else if (item.type === 'text_block') {
@@ -504,6 +503,9 @@ export class PrintComposerModal {
                 const sbEl = document.querySelector(`[data-item-id="${scaleBar.id}"] .cm-item-scale-bar`);
                 if (sbEl) sbEl.outerHTML = PrintItemsManager.renderScaleBar(scaleBar, item.scale);
               });
+
+              // O carimbo mostra a escala do mapa principal
+              this.items.filter(i => i.type === 'title_block').forEach(tb => this.refreshItemContent(tb));
 
               // Sincroniza retângulo no Inset Map
               this.updateInsetMapExtent();

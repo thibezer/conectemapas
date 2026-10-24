@@ -119,6 +119,96 @@ export class PrintItemsManager {
     return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
   }
 
+  /** Intervalos de grade geográfica, em segundos de arco (1" a 10°) */
+  static GRID_DMS_STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 18000, 36000];
+
+  /** Menor valor "redondo" (1, 2, 2,5 ou 5 × 10ⁿ) maior ou igual a `value` */
+  static niceCeil(value) {
+    if (!(value > 0)) return 0;
+    const pow = Math.pow(10, Math.floor(Math.log10(value)));
+    const f = value / pow;
+    const step = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+    return step * pow;
+  }
+
+  /**
+   * Linhas da grade de coordenadas em intervalos redondos, como frações da moldura do mapa
+   * (x: 0 = oeste → 1 = leste; y: 0 = norte → 1 = sul, em Web Mercator como o Leaflet).
+   * `mode` 'dms' = geográfica (graus/minutos/segundos); 'utm' = metros SIRGAS 2000 / UTM.
+   * Usado pela prancheta e pelo exportador, que desenham a mesma grade.
+   */
+  static graticuleModel(bounds, mode = 'dms', maxLines = 4) {
+    const { north, south, west, east } = bounds || {};
+    const empty = { xs: [], ys: [] };
+    if (![north, south, west, east].every(Number.isFinite) || north <= south || east <= west) return empty;
+
+    const mercY = (lat) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+    const yFrac = (lat) => (mercY(north) - mercY(lat)) / (mercY(north) - mercY(south));
+    const xFrac = (lng) => (lng - west) / (east - west);
+    const inside = (l) => l.f > 0.03 && l.f < 0.97;
+
+    if (mode === 'utm') {
+      const cLat = (north + south) / 2;
+      const cLng = (west + east) / 2;
+      const zone = this.detectUtmZone(cLng);
+      const southHemi = cLat < 0;
+      const { def } = utmProjection('sirgas', zone, southHemi);
+      const fwd = (lat, lng) => proj4('EPSG:4326', def, [lng, lat]);
+      const inv = (e, n) => proj4(def, 'EPSG:4326', [e, n]);
+      const [eMin] = fwd(cLat, west);
+      const [eMax, nCenter] = fwd(cLat, east);
+      const [eCenter, nMax] = fwd(north, cLng);
+      const [, nMin] = fwd(south, cLng);
+      const fmt = (v) => `${Math.round(v).toLocaleString('pt-BR')} m`;
+
+      const stepE = this.niceCeil((eMax - eMin) / maxLines);
+      const stepN = this.niceCeil((nMax - nMin) / maxLines);
+      const xs = [];
+      for (let e = Math.ceil(eMin / stepE) * stepE; e < eMax; e += stepE) {
+        xs.push({ f: xFrac(inv(e, nCenter)[0]), label: `${fmt(e)} E` });
+      }
+      const ys = [];
+      for (let n = Math.ceil(nMin / stepN) * stepN; n < nMax; n += stepN) {
+        ys.push({ f: yFrac(inv(eCenter, n)[1]), label: `${fmt(n)} N` });
+      }
+      const byF = (u, v) => u.f - v.f;
+      return { xs: xs.filter(inside).sort(byF), ys: ys.filter(inside).sort(byF) };
+    }
+
+    const pick = (spanDeg) => this.GRID_DMS_STEPS.find(s => (spanDeg * 3600) / s <= maxLines) || 36000;
+    const lines = (min, max, isLat) => {
+      const step = pick(max - min);
+      const out = [];
+      for (let s = Math.ceil((min * 3600) / step) * step; s < max * 3600; s += step) {
+        const deg = s / 3600;
+        out.push({ f: isLat ? yFrac(deg) : xFrac(deg), label: this.formatDMS(deg, isLat) });
+      }
+      return out.filter(inside).sort((u, v) => u.f - v.f);
+    };
+    return { xs: lines(west, east, false), ys: lines(south, north, true) };
+  }
+
+  /**
+   * Escala mostrada no carimbo: acompanha o mapa principal, a menos que o usuário tenha
+   * digitado um texto próprio (scaleAuto = false). Pranchas antigas com o padrão fixo
+   * "1:10.000" passam a acompanhar o mapa.
+   */
+  static isTitleBlockScaleAuto(props = {}) {
+    if (props.scaleAuto !== undefined) return props.scaleAuto !== false;
+    return !props.scaleText || props.scaleText === '1:10.000';
+  }
+
+  static titleBlockScaleText(props = {}, mapScale = null) {
+    if (this.isTitleBlockScaleAuto(props) && Number(mapScale) > 0) return `1:${Math.round(mapScale).toLocaleString('pt-BR')}`;
+    return props.scaleText || '1:10.000';
+  }
+
+  /** Data e número da prancha do carimbo: "23/10/2026 (02/03)" (ignora números antigos gravados na data) */
+  static titleBlockDateText(props = {}) {
+    const date = String(props.date || new Date().toLocaleDateString('pt-BR')).split('(')[0].trim();
+    return `${date} (${props.sheetNumber || '01/01'})`;
+  }
+
   /** Abaixo disso (px no mapa de localização) a área vira um marcador: o retângulo sumiria */
   static INSET_MIN_BOX_PX = 8;
 
@@ -272,7 +362,7 @@ export class PrintItemsManager {
   /**
    * Renderiza Selo / Carimbo Técnico nos padrões da ABNT NBR 6492 e NBR 13133
    */
-  static renderTitleBlock(item, projectName = 'Levantamento Cartográfico') {
+  static renderTitleBlock(item, projectName = 'Levantamento Cartográfico', mapScale = null) {
     const props = item.properties || {};
     const esc = this.escapeHtml.bind(this);
     return `
@@ -305,7 +395,7 @@ export class PrintItemsManager {
           </div>
           <div class="cm-title-block-cell">
             <span class="cm-cell-label">Escala Numérica</span>
-            <span class="cm-cell-val">${esc(props.scaleText || '1:10.000')}</span>
+            <span class="cm-cell-val">${esc(this.titleBlockScaleText(props, mapScale))}</span>
           </div>
           <div class="cm-title-block-cell">
             <span class="cm-cell-label">Área / Perímetro</span>
@@ -313,7 +403,7 @@ export class PrintItemsManager {
           </div>
           <div class="cm-title-block-cell">
             <span class="cm-cell-label">Data / Prancha</span>
-            <span class="cm-cell-val">${esc(props.date || new Date().toLocaleDateString('pt-BR'))} (01/01)</span>
+            <span class="cm-cell-val">${esc(this.titleBlockDateText(props))}</span>
           </div>
         </div>
       </div>
@@ -571,36 +661,26 @@ export class PrintItemsManager {
    * Renderiza a Moldura e Rótulos da Grade Cartográfica Real no Mapa
    */
   static renderMapGridBorder(mapBounds, mode = 'dms') {
-    if (!mapBounds) return `<div class="cm-item-grid-border"></div>`;
+    const { xs, ys } = this.graticuleModel(mapBounds, mode);
+    const esc = this.escapeHtml.bind(this);
+    const pct = (f) => `${(f * 100).toFixed(3)}%`;
 
-    if (mode === 'utm') {
-      const avgLng = (mapBounds.west + mapBounds.east) / 2;
-      const zone = this.detectUtmZone(avgLng);
-      const south = (mapBounds.north + mapBounds.south) / 2 < 0;
-      const nw = this.toUtmCoords(mapBounds.north, mapBounds.west, zone, south);
-      const se = this.toUtmCoords(mapBounds.south, mapBounds.east, zone, south);
-
-      return `
-        <div class="cm-item-grid-border">
-          <span class="cm-grid-label-n">${nw.northing.toLocaleString('pt-BR')} m N</span>
-          <span class="cm-grid-label-s">${se.northing.toLocaleString('pt-BR')} m N</span>
-          <span class="cm-grid-label-w">${nw.easting.toLocaleString('pt-BR')} m E</span>
-          <span class="cm-grid-label-e">${se.easting.toLocaleString('pt-BR')} m E</span>
-        </div>
-      `;
-    }
-
-    const n = this.formatDMS(mapBounds.north, true);
-    const s = this.formatDMS(mapBounds.south, true);
-    const w = this.formatDMS(mapBounds.west, false);
-    const e = this.formatDMS(mapBounds.east, false);
-
+    // Marcas nas quatro bordas, cruzes nas interseções e rótulos dentro da moldura
     return `
       <div class="cm-item-grid-border">
-        <span class="cm-grid-label-n">${n}</span>
-        <span class="cm-grid-label-s">${s}</span>
-        <span class="cm-grid-label-w">${w}</span>
-        <span class="cm-grid-label-e">${e}</span>
+        ${xs.map(x => `
+          <span class="cm-grid-tick cm-grid-tick-top" style="left: ${pct(x.f)};"></span>
+          <span class="cm-grid-tick cm-grid-tick-bottom" style="left: ${pct(x.f)};"></span>
+          <span class="cm-grid-label cm-grid-label-top" style="left: ${pct(x.f)};">${esc(x.label)}</span>
+          <span class="cm-grid-label cm-grid-label-bottom" style="left: ${pct(x.f)};">${esc(x.label)}</span>
+        `).join('')}
+        ${ys.map(y => `
+          <span class="cm-grid-tick cm-grid-tick-left" style="top: ${pct(y.f)};"></span>
+          <span class="cm-grid-tick cm-grid-tick-right" style="top: ${pct(y.f)};"></span>
+          <span class="cm-grid-label cm-grid-label-left" style="top: ${pct(y.f)};">${esc(y.label)}</span>
+          <span class="cm-grid-label cm-grid-label-right" style="top: ${pct(y.f)};">${esc(y.label)}</span>
+        `).join('')}
+        ${xs.map(x => ys.map(y => `<span class="cm-grid-cross" style="left: ${pct(x.f)}; top: ${pct(y.f)};"></span>`).join('')).join('')}
       </div>
     `;
   }

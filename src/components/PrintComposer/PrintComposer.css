@@ -124,20 +124,59 @@
   border: 1px solid #000;
 }
 
-.cm-grid-label-n, .cm-grid-label-s, .cm-grid-label-e, .cm-grid-label-w {
+/* Marcas da grade nas bordas (posição em % vem de PrintItemsManager.graticuleModel) */
+.cm-grid-tick {
+  position: absolute;
+  background: #000;
+}
+
+.cm-grid-tick-top, .cm-grid-tick-bottom {
+  width: 1px;
+  height: 7px;
+  transform: translateX(-50%);
+}
+
+.cm-grid-tick-top { top: 0; }
+.cm-grid-tick-bottom { bottom: 0; }
+
+.cm-grid-tick-left, .cm-grid-tick-right {
+  height: 1px;
+  width: 7px;
+  transform: translateY(-50%);
+}
+
+.cm-grid-tick-left { left: 0; }
+.cm-grid-tick-right { right: 0; }
+
+/* Cruz nas interseções da grade */
+.cm-grid-cross {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(#000, #000) center / 1px 100% no-repeat,
+    linear-gradient(#000, #000) center / 100% 1px no-repeat;
+  filter: drop-shadow(0 0 1px #fff);
+}
+
+.cm-grid-label {
   position: absolute;
   font-family: monospace;
   font-size: 7px;
   font-weight: 700;
+  line-height: 1.2;
   color: #111;
   background: rgba(255, 255, 255, 0.85);
   padding: 0 2px;
+  white-space: nowrap;
 }
 
-.cm-grid-label-n { top: 2px; }
-.cm-grid-label-s { bottom: 2px; }
-.cm-grid-label-w { left: 2px; transform: rotate(-90deg); transform-origin: left center; }
-.cm-grid-label-e { right: 2px; transform: rotate(90deg); transform-origin: right center; }
+.cm-grid-label-top { top: 8px; transform: translateX(-50%); }
+.cm-grid-label-bottom { bottom: 8px; transform: translateX(-50%); }
+/* Rótulos das laterais na vertical, colados à borda */
+.cm-grid-label-left { left: 8px; transform: translateY(-50%) rotate(180deg); writing-mode: vertical-rl; padding: 2px 0; }
+.cm-grid-label-right { right: 8px; transform: translateY(-50%); writing-mode: vertical-rl; padding: 2px 0; }
 
 /* Selo Técnico / Carimbo Cartográfico (ABNT / NBR 13133 e NBR 6492) */
 .cm-item-title-block {
