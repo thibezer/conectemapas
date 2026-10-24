@@ -237,18 +237,21 @@ export class PrintExporter {
   }
 
   /**
-   * Desenha moldura de desenho com margem de 25mm e margens de 10mm/7mm normatizadas ABNT
+   * Desenha a moldura nas margens da folha (ABNT ou personalizadas)
    */
   static drawAbntMarginsFrame(ctx, composer, scaleFactor) {
-    const mL = Math.round(composer.paperSize.marginL * scaleFactor);
-    const mO = Math.round(composer.paperSize.marginO * scaleFactor);
+    const m = PrintItemsManager.sheetMargins(composer.paperSize);
+    const mL = Math.round(m.left * scaleFactor);
+    const mO = Math.round(m.top * scaleFactor);
     const w = Math.round(composer.paperSize.width * scaleFactor);
     const h = Math.round(composer.paperSize.height * scaleFactor);
+    const innerW = w - mL - Math.round(m.right * scaleFactor);
+    const innerH = h - mO - Math.round(m.bottom * scaleFactor);
 
     ctx.save();
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = Math.max(1.5, Math.round(0.7 * (scaleFactor / (300 / 25.4)))); // Linha técnica ABNT
-    ctx.strokeRect(mL, mO, w - mL - mO, h - mO * 2);
+    ctx.strokeRect(mL, mO, innerW, innerH);
 
     // Marcas de dobra nos cantos da folha
     ctx.strokeStyle = 'rgba(0,0,0,0.4)';

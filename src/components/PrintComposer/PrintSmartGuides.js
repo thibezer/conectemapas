@@ -245,8 +245,9 @@ export class PrintSmartGuides {
     refs.push({ val: paperSize.width, source: 'paper', label: 'Borda Direita da Folha' });
 
     if (showAbntMargins) {
-      refs.push({ val: paperSize.marginL, source: 'abnt', label: 'Margem ABNT Esquerda (25mm)' });
-      refs.push({ val: paperSize.width - paperSize.marginO, source: 'abnt', label: 'Margem ABNT Direita' });
+      const m = PrintItemsManager.sheetMargins(paperSize);
+      refs.push({ val: m.left, source: 'abnt', label: 'Margem Esquerda' });
+      refs.push({ val: paperSize.width - m.right, source: 'abnt', label: 'Margem Direita' });
     }
 
     // 2. Outros Itens da Prancha
@@ -272,8 +273,9 @@ export class PrintSmartGuides {
     refs.push({ val: paperSize.height, source: 'paper', label: 'Base da Folha' });
 
     if (showAbntMargins) {
-      refs.push({ val: paperSize.marginO, source: 'abnt', label: 'Margem ABNT Superior' });
-      refs.push({ val: paperSize.height - paperSize.marginO, source: 'abnt', label: 'Margem ABNT Inferior' });
+      const m = PrintItemsManager.sheetMargins(paperSize);
+      refs.push({ val: m.top, source: 'abnt', label: 'Margem Superior' });
+      refs.push({ val: paperSize.height - m.bottom, source: 'abnt', label: 'Margem Inferior' });
     }
 
     // 2. Outros Itens da Prancha

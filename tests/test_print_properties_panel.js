@@ -207,7 +207,7 @@ assert.ok(!new RegExp(`data-composer-del="${unlocked.id}"[^>]*disabled`).test(ht
 panelComposer.selectedItemId = unlocked.id;
 html = PrintPropertiesPanel.render(panelComposer);
 assert.ok(!/<fieldset class="cm-print-props-fields"\s+disabled/.test(html), 'Item livre continua editável');
-assert.ok(html.includes('Restaurar Layout Padrão ABNT'), 'O botão de reset diz o que faz');
+assert.ok(html.includes('Layout padrão'), 'O botão de reset diz o que faz');
 console.log('✔ Painel validado');
 
 // ============================================================================

@@ -685,17 +685,73 @@ export class PrintItemsManager {
     `;
   }
 
+  /** Margens ABNT da folha, em mm: 25 mm à esquerda (encadernação) e `marginO` nos demais lados */
+  static abntMargins(paper = {}) {
+    const o = Number.isFinite(paper.marginO) ? paper.marginO : 7;
+    const l = Number.isFinite(paper.marginL) ? paper.marginL : 25;
+    return { top: o, right: o, bottom: o, left: l };
+  }
+
   /**
-   * Reajusta os itens de uma folha para outra, proporcionalmente à área útil (dentro das margens ABNT).
+   * Margens em vigor na folha (mm). `paper.margins` guarda só as personalizadas; sem ele vale a ABNT.
+   * Fonte única para moldura, alinhamento, guias, layout padrão e exportação.
+   */
+  static sheetMargins(paper = {}) {
+    return paper.margins ? this.sanitizeMargins(paper.margins, paper) : this.abntMargins(paper);
+  }
+
+  /** Margens válidas: números ≥ 0, arredondados a 0,5 mm, deixando ao menos 2 × MIN_ITEM_MM úteis em cada eixo */
+  static sanitizeMargins(margins = {}, paper = {}) {
+    const base = this.abntMargins(paper);
+    const minUsable = 2 * this.MIN_ITEM_MM;
+    const num = (v, fb) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.max(0, Math.round(n * 2) / 2) : fb;
+    };
+    const m = {
+      top: num(margins.top, base.top),
+      right: num(margins.right, base.right),
+      bottom: num(margins.bottom, base.bottom),
+      left: num(margins.left, base.left)
+    };
+    const fit = (a, b, size) => {
+      const max = Number.isFinite(size) ? Math.max(0, size - minUsable) : Infinity;
+      if (m[a] + m[b] <= max) return;
+      const k = max / (m[a] + m[b]);
+      m[a] = Math.floor(m[a] * k * 2) / 2;
+      m[b] = Math.floor(m[b] * k * 2) / 2;
+    };
+    fit('left', 'right', paper.width);
+    fit('top', 'bottom', paper.height);
+    return m;
+  }
+
+  static isAbntMargins(paper = {}) {
+    const a = this.abntMargins(paper);
+    const m = this.sheetMargins(paper);
+    return ['top', 'right', 'bottom', 'left'].every(k => m[k] === a[k]);
+  }
+
+  /**
+   * Folha com as margens dadas. Iguais às ABNT, a folha volta ao padrão (sem `margins`). Retorna cópia.
+   */
+  static withMargins(paper, margins) {
+    const { margins: _old, ...base } = paper;
+    if (!margins) return base;
+    const m = this.sanitizeMargins(margins, base);
+    const a = this.abntMargins(base);
+    return ['top', 'right', 'bottom', 'left'].every(k => m[k] === a[k]) ? base : { ...base, margins: m };
+  }
+
+  /**
+   * Reajusta os itens de uma folha para outra, proporcionalmente à área útil (dentro das margens).
    * Seta norte e imagem mantêm a proporção; tudo fica dentro da nova folha. Retorna cópias.
    */
   static fitItemsToPaper(items = [], fromPaper, toPaper) {
-    const usable = (p) => ({
-      x: p.marginL || 0,
-      y: p.marginO || 0,
-      w: p.width - (p.marginL || 0) - (p.marginO || 0),
-      h: p.height - 2 * (p.marginO || 0)
-    });
+    const usable = (p) => {
+      const m = this.sheetMargins(p);
+      return { x: m.left, y: m.top, w: p.width - m.left - m.right, h: p.height - m.top - m.bottom };
+    };
     const from = usable(fromPaper);
     const to = usable(toPaper);
     const sx = to.w / from.w;
@@ -737,10 +793,11 @@ export class PrintItemsManager {
     };
 
     const isLandscape = size.width >= size.height;
-    const mL = size.marginL || 25;
-    const mO = size.marginO || 7;
-    const utilW = size.width - mL - mO;
-    const utilH = size.height - 2 * mO;
+    const margins = this.sheetMargins(size);
+    const mL = margins.left;
+    const mO = margins.top;
+    const utilW = size.width - margins.left - margins.right;
+    const utilH = size.height - margins.top - margins.bottom;
 
     if (isLandscape) {
       // Largura da coluna técnica lateral (ajustada para A4 ~72mm, A3/A2 até 82mm)

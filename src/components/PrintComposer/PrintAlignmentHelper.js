@@ -4,6 +4,8 @@
    Distribuição Espacial e Reordenação de Camadas (Z-Index) para Itens da Prancha.
    ========================================================================== */
 
+import { PrintItemsManager } from './PrintItemsManager.js';
+
 export class PrintAlignmentHelper {
   /**
    * Alinha item(ns) à esquerda
@@ -12,7 +14,7 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    const minX = composer.showAbntMargins ? composer.paperSize.marginL : 0;
+    const minX = composer.showAbntMargins ? PrintItemsManager.sheetMargins(composer.paperSize).left : 0;
     item.x = minX;
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
@@ -40,7 +42,7 @@ export class PrintAlignmentHelper {
     if (!item || item.locked) return;
 
     const maxX = composer.showAbntMargins
-      ? composer.paperSize.width - composer.paperSize.marginO - item.width
+      ? composer.paperSize.width - PrintItemsManager.sheetMargins(composer.paperSize).right - item.width
       : composer.paperSize.width - item.width;
     item.x = Math.max(0, maxX);
     composer.updateItemPositionDOM(item);
@@ -55,7 +57,7 @@ export class PrintAlignmentHelper {
     const item = composer.items.find(i => i.id === composer.selectedItemId);
     if (!item || item.locked) return;
 
-    const minY = composer.showAbntMargins ? composer.paperSize.marginO : 0;
+    const minY = composer.showAbntMargins ? PrintItemsManager.sheetMargins(composer.paperSize).top : 0;
     item.y = minY;
     composer.updateItemPositionDOM(item);
     composer.updatePropertiesPanel();
@@ -83,7 +85,7 @@ export class PrintAlignmentHelper {
     if (!item || item.locked) return;
 
     const maxY = composer.showAbntMargins
-      ? composer.paperSize.height - composer.paperSize.marginO - item.height
+      ? composer.paperSize.height - PrintItemsManager.sheetMargins(composer.paperSize).bottom - item.height
       : composer.paperSize.height - item.height;
     item.y = Math.max(0, maxY);
     composer.updateItemPositionDOM(item);

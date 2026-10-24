@@ -6,7 +6,6 @@ export class PrintPropertiesPanel {
   static render(composer) {
     const selectedItem = composer.items.find(it => it.id === composer.selectedItemId);
     const esc = PrintItemsManager.escapeHtml;
-    const sel = (cond) => (cond ? 'selected' : '');
     // Seção aberta ou fechada pelo usuário, lembrada pelo nome (não pela posição)
     const openAttr = (key) => (composer.panelSections?.[key] === false ? '' : 'open');
 
@@ -19,36 +18,13 @@ export class PrintPropertiesPanel {
     return `
       <div class="cm-print-props-panel">
         <div class="cm-pp-header">
-          <span>⚙️ PROPRIEDADES DO ITEM</span>
+          <span>⚙️ PROPRIEDADES</span>
           <span class="cm-pp-header-paper">${esc(composer.paperSize.name)}</span>
         </div>
 
         <div class="cm-print-props-scroll">
-          <!-- 1. Configurações da Folha de Papel -->
-          <details class="cm-inspector-accordion" data-section="paper" ${openAttr('paper')}>
-            <summary class="cm-pp-summary">📄 Folha de Impressão (${esc(composer.paperSize.name)})</summary>
-            <div class="cm-pp-body">
-              <div class="cm-param-row cm-pp-row-stack">
-                <span class="cm-param-label">Tamanho do Papel:</span>
-                <select id="print-paper-size-select" class="cm-native-select cm-pp-full">
-                  <option value="A4_L" ${sel(composer.paperSize.id === 'A4_L')}>A4 Paisagem (297x210 mm)</option>
-                  <option value="A4_P" ${sel(composer.paperSize.id === 'A4_P')}>A4 Retrato (210x297 mm)</option>
-                  <option value="A3_L" ${sel(composer.paperSize.id === 'A3_L')}>A3 Paisagem (420x297 mm)</option>
-                  <option value="A3_P" ${sel(composer.paperSize.id === 'A3_P')}>A3 Retrato (297x420 mm)</option>
-                  <option value="A2_L" ${sel(composer.paperSize.id === 'A2_L')}>A2 Paisagem (594x420 mm)</option>
-                  <option value="A1_L" ${sel(composer.paperSize.id === 'A1_L')}>A1 Paisagem (841x594 mm)</option>
-                </select>
-              </div>
-              <div class="cm-param-row">
-                <span class="cm-param-label">Margens Normatizadas ABNT:</span>
-                <input type="checkbox" id="print-abnt-margins-check" ${composer.showAbntMargins ? 'checked' : ''} />
-              </div>
-              <div class="cm-pp-hint">Margem esquerda de 25 mm para encadernação e borda interna ABNT.</div>
-              <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Substitui os elementos pelo layout padrão ABNT (Ctrl+Z desfaz)">
-                📐 Restaurar Layout Padrão ABNT
-              </ui-botao-primario>
-            </div>
-          </details>
+          <!-- 1. Folha: papel, margens, moldura e pré-definições do projeto -->
+          ${this.renderPaperSection(composer, openAttr)}
 
           <!-- 2. Árvore de Elementos da Composição -->
           <details class="cm-inspector-accordion" data-section="items" ${openAttr('items')}>
@@ -80,7 +56,7 @@ export class PrintPropertiesPanel {
               <fieldset class="cm-print-props-fields" ${selectedItem.locked ? 'disabled' : ''}>
                 <!-- Barra de Ações Rápidas e Alinhamento -->
                 <div class="cm-pp-toolbox">
-                  <div class="cm-pp-toolbox-title">📐 ALINHAMENTO NA FOLHA (ABNT):</div>
+                  <div class="cm-pp-toolbox-title">Alinhar na folha</div>
                   <div class="cm-pp-btn-row">
                     <button class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda">⇤ Esq</button>
                     <button class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente">⧿ Centro</button>
@@ -119,9 +95,78 @@ export class PrintPropertiesPanel {
                 ${this.renderTypeFields(selectedItem, composer, polygonFeatures)}
               </fieldset>
             </details>
-          ` : '<div class="cm-pp-empty">Clique em um elemento da prancha para editar suas propriedades.</div>'}
+          ` : '<div class="cm-pp-empty">Selecione um elemento para editar.</div>'}
         </div>
       </div>
+    `;
+  }
+
+  static PAPER_OPTIONS = [
+    ['A4_L', 'A4 Paisagem'], ['A4_P', 'A4 Retrato'], ['A3_L', 'A3 Paisagem'],
+    ['A3_P', 'A3 Retrato'], ['A2_L', 'A2 Paisagem'], ['A1_L', 'A1 Paisagem']
+  ];
+
+  /** Seção da folha: papel, margens (ABNT por padrão, editáveis), moldura e pré-definições */
+  static renderPaperSection(composer, openAttr) {
+    const esc = PrintItemsManager.escapeHtml;
+    const paper = composer.paperSize;
+    const sizes = composer.paperSizes || {};
+    const m = PrintItemsManager.sheetMargins(paper);
+    const isAbnt = !paper.margins;
+    const presets = composer.sheetsManager?.loadPresets?.() || [];
+    const match = composer.sheetsManager?.findMatchingPreset?.(paper, composer.showAbntMargins) || null;
+    const maxW = Math.floor(paper.width / 2);
+    const maxH = Math.floor(paper.height / 2);
+    const marginInput = (side, label, max) => `
+      <label class="cm-pp-margin">
+        <span class="cm-param-label">${label}</span>
+        <input type="number" class="cm-vertex-input cm-pp-full" data-margin-side="${side}" min="0" max="${max}" step="0.5" value="${m[side]}" />
+      </label>
+    `;
+
+    return `
+      <details class="cm-inspector-accordion" data-section="paper" ${openAttr('paper')}>
+        <summary class="cm-pp-summary">📄 Folha</summary>
+        <div class="cm-pp-body">
+          <select id="print-paper-size-select" class="cm-native-select cm-pp-full" title="Tamanho do papel">
+            ${this.PAPER_OPTIONS.map(([id, label]) => {
+              const sz = sizes[id];
+              const dims = sz ? ` · ${sz.width}×${sz.height}` : '';
+              return `<option value="${id}" ${paper.id === id ? 'selected' : ''}>${label}${dims}</option>`;
+            }).join('')}
+          </select>
+
+          <div class="cm-pp-margins-head">
+            <span class="cm-param-label">Margens (mm)</span>
+            ${isAbnt
+              ? '<span class="cm-pp-badge" title="25 mm à esquerda para encadernação">ABNT</span>'
+              : '<button class="cm-ai-micro-btn" id="btn-margins-abnt" title="Voltar às margens ABNT">↺ ABNT</button>'}
+          </div>
+          <div class="cm-pp-margins-grid">
+            ${marginInput('top', 'Sup.', maxH)}
+            ${marginInput('bottom', 'Inf.', maxH)}
+            ${marginInput('left', 'Esq.', maxW)}
+            ${marginInput('right', 'Dir.', maxW)}
+          </div>
+          <label class="cm-param-row" for="print-abnt-margins-check">
+            <span class="cm-param-label">Moldura nas margens</span>
+            <input type="checkbox" id="print-abnt-margins-check" ${composer.showAbntMargins ? 'checked' : ''} />
+          </label>
+
+          <div class="cm-pp-inline">
+            <select id="print-preset-select" class="cm-native-select cm-pp-grow" title="Pré-definições deste projeto">
+              <option value="" ${match ? '' : 'selected'}>${presets.length ? 'Pré-definições…' : 'Nenhuma pré-definição'}</option>
+              ${presets.map(p => `<option value="${esc(p.id)}" ${match?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
+            </select>
+            <button class="cm-ai-micro-btn cm-pp-icon-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais">💾</button>
+            <button class="cm-ai-micro-btn cm-pp-icon-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'}>🗑️</button>
+          </div>
+
+          <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Reorganiza os elementos no layout padrão, dentro das margens (Ctrl+Z desfaz)">
+            📐 Layout padrão
+          </ui-botao-primario>
+        </div>
+      </details>
     `;
   }
 
@@ -220,7 +265,6 @@ export class PrintPropertiesPanel {
             <span class="cm-param-label">Mostrar escala numérica:</span>
             <input type="checkbox" id="prop-sb-text" ${item.showScaleText !== false ? 'checked' : ''} />
           </div>
-          <div class="cm-pp-hint">O comprimento da régua corresponde exatamente à distância indicada, arredondada a um valor redondo.</div>
         </div>
       `;
     }
@@ -258,7 +302,6 @@ export class PrintPropertiesPanel {
               `).join('')}
             </select>
           </div>
-          <div class="cm-pp-hint">Gera automaticamente vértices numerados (V01, V02...), coordenadas N/E em SIRGAS 2000 UTM, azimutes e distâncias perimétricas.</div>
         </div>
       `;
     }
@@ -423,6 +466,24 @@ export class PrintPropertiesPanel {
     if (abntMarginsCheck) {
       abntMarginsCheck.addEventListener('change', (e) => composer.setAbntMargins(e.target.checked));
     }
+
+    // Margens: aplicadas ao confirmar o campo (Enter, setas ou ao sair), um passo no histórico cada
+    document.querySelectorAll('[data-margin-side]').forEach(input => {
+      input.addEventListener('change', () => {
+        if (input.value === '') { composer.updatePropertiesPanel(); return; }
+        composer.setMargins({ [input.dataset.marginSide]: Number(input.value) });
+      });
+    });
+    document.getElementById('btn-margins-abnt')?.addEventListener('click', () => composer.setMargins(null));
+
+    document.getElementById('print-preset-select')?.addEventListener('change', (e) => {
+      if (e.target.value) composer.applyPagePreset(e.target.value);
+    });
+    document.getElementById('btn-preset-save')?.addEventListener('click', () => composer.savePagePreset());
+    const presetDel = document.getElementById('btn-preset-delete');
+    presetDel?.addEventListener('click', () => {
+      if (presetDel.dataset.presetId) composer.deletePagePreset(presetDel.dataset.presetId);
+    });
 
     const btnAlignAbnt = document.getElementById('btn-prop-align-abnt');
     if (btnAlignAbnt) {

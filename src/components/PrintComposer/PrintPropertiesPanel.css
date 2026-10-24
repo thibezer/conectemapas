@@ -264,6 +264,45 @@
   flex: 1;
 }
 
+/* Folha: margens em 4 campos compactos */
+.cm-pp-margins-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+.cm-pp-margins-head .cm-ai-micro-btn {
+  white-space: nowrap;
+}
+
+.cm-pp-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--cm-primary);
+  background: rgba(0, 224, 138, 0.1);
+}
+
+.cm-pp-margins-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.cm-pp-margin {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cm-pp-margin .cm-param-label {
+  font-size: 9.5px;
+}
+
 .cm-pp-grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

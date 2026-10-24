@@ -11,6 +11,7 @@ import { UIToast } from '@thibezer/ui-components-kit';
 export class PrintSheetsManager {
   static STORAGE_PREFIX = 'cm_print_sheets_';
   static ACTIVE_PREFIX = 'cm_print_active_sheet_';
+  static PRESETS_PREFIX = 'cm_print_presets_';
   static AUTOSAVE_DELAY_MS = 400;
 
   constructor(composer) {
@@ -158,7 +159,12 @@ export class PrintSheetsManager {
   createSheet(name, paperSizeKey = 'A4_L', template = 'abnt') {
     this.saveCurrentStateFromComposer();
 
-    const paperSize = this.composer.paperSizes[paperSizeKey] || this.composer.paperSizes.A4_L;
+    // Mesma folha da prancha atual: herda também as margens personalizadas
+    const curPaper = this.composer.paperSize;
+    const paperSize = curPaper && curPaper.id === paperSizeKey
+      ? { ...curPaper }
+      : (this.composer.paperSizes[paperSizeKey] || this.composer.paperSizes.A4_L);
+    const margins = PrintItemsManager.sheetMargins(paperSize);
     const count = this.sheets.length + 1;
     const sheetNum = String(count).padStart(2, '0');
     const finalName = (name && name.trim()) || `Prancha ${sheetNum} - Detalhe`;
@@ -173,10 +179,10 @@ export class PrintSheetsManager {
           id: `item-map-${Date.now()}`,
           type: 'map',
           name: 'Mapa da Prancha',
-          x: paperSize.marginL || 25,
-          y: paperSize.marginO || 7,
-          width: paperSize.width - (paperSize.marginL || 25) - (paperSize.marginO || 7),
-          height: paperSize.height - (paperSize.marginO || 7) * 2,
+          x: margins.left,
+          y: margins.top,
+          width: paperSize.width - margins.left - margins.right,
+          height: paperSize.height - margins.top - margins.bottom,
           locked: false,
           visible: true,
           scale: 10000,
@@ -416,6 +422,63 @@ export class PrintSheetsManager {
       this.saveFailed = true;
       return false;
     }
+  }
+
+  /**
+   * Pré-definições de folha do projeto: { id, name, paperSizeId, margins (null = ABNT), showFrame }
+   */
+  loadPresets() {
+    if (typeof localStorage === 'undefined') return [];
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PrintSheetsManager.PRESETS_PREFIX + this.projectId) || '[]');
+      return Array.isArray(parsed) ? parsed.filter(p => p && p.id && p.paperSizeId) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  savePresets(presets) {
+    if (typeof localStorage === 'undefined') return false;
+    try {
+      localStorage.setItem(PrintSheetsManager.PRESETS_PREFIX + this.projectId, JSON.stringify(presets));
+      return true;
+    } catch (e) {
+      console.warn('[PrintSheetsManager] Falha ao salvar pré-definições:', e);
+      return false;
+    }
+  }
+
+  /** Grava a folha atual (papel, margens e moldura) como pré-definição; mesmo nome substitui */
+  addPreset(name, paperSize, showFrame) {
+    const cleanName = String(name || '').trim().slice(0, 60);
+    if (!cleanName || !paperSize?.id) return null;
+    const preset = {
+      id: `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: cleanName,
+      paperSizeId: paperSize.id,
+      margins: paperSize.margins ? { ...PrintItemsManager.sheetMargins(paperSize) } : null,
+      showFrame: showFrame !== false
+    };
+    const presets = this.loadPresets().filter(p => p.name.toLowerCase() !== cleanName.toLowerCase());
+    presets.push(preset);
+    return this.savePresets(presets) ? preset : null;
+  }
+
+  deletePreset(presetId) {
+    const presets = this.loadPresets();
+    const next = presets.filter(p => p.id !== presetId);
+    if (next.length === presets.length) return false;
+    return this.savePresets(next);
+  }
+
+  /** Pré-definição idêntica à folha atual (para mostrá-la selecionada), ou null */
+  findMatchingPreset(paperSize, showFrame) {
+    const cur = PrintItemsManager.sheetMargins(paperSize);
+    return this.loadPresets().find(p => {
+      if (p.paperSizeId !== paperSize.id || (p.showFrame !== false) !== (showFrame !== false)) return false;
+      const m = PrintItemsManager.sheetMargins({ ...paperSize, margins: p.margins || undefined });
+      return ['top', 'right', 'bottom', 'left'].every(k => m[k] === cur[k]);
+    }) || null;
   }
 
   loadActiveSheetId() {

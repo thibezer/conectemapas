@@ -68,6 +68,7 @@ export class PrintComposerModal {
   captureState(actionName) {
     return {
       paperSizeId: this.paperSize.id,
+      paperSize: { ...this.paperSize },
       showAbntMargins: this.showAbntMargins,
       items: JSON.parse(JSON.stringify(this.items || [])),
       action: actionName
@@ -114,7 +115,9 @@ export class PrintComposerModal {
 
   applyHistorySnapshot(state) {
     if (!state) return;
-    if (state.paperSizeId && this.paperSizes[state.paperSizeId]) {
+    if (state.paperSize?.width) {
+      this.paperSize = { ...state.paperSize };
+    } else if (state.paperSizeId && this.paperSizes[state.paperSizeId]) {
       this.paperSize = this.paperSizes[state.paperSizeId];
     }
     this.showAbntMargins = state.showAbntMargins !== false;
@@ -214,7 +217,7 @@ export class PrintComposerModal {
     }, 100);
   }
 
-  /** Substitui todos os itens pelo layout padrão ABNT da folha atual (pode ser desfeito) */
+  /** Substitui todos os itens pelo layout padrão, dentro das margens da folha atual (pode ser desfeito) */
   resetDefaultLayout() {
     this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
     this.selectedItemId = 'item-map-main';
@@ -223,8 +226,8 @@ export class PrintComposerModal {
     this.pushHistoryState('Restaurar Layout Padrão');
     UIToast.notificar({
       tipo: 'informativo',
-      titulo: 'Layout padrão restaurado',
-      mensagem: 'Os elementos foram substituídos pelo layout ABNT. Ctrl+Z desfaz.',
+      titulo: 'Layout padrão aplicado',
+      mensagem: 'Ctrl+Z desfaz.',
       duracao: 3000
     });
   }
@@ -265,27 +268,79 @@ export class PrintComposerModal {
     });
   }
 
-  /** Troca a folha mantendo os itens do usuário, reajustados à nova folha (pode ser desfeito) */
-  setPaperSize(sizeKey) {
-    const target = this.paperSizes[sizeKey];
-    if (!target || target.id === this.paperSize.id) return;
-
-    this.items = PrintItemsManager.fitItemsToPaper(this.items, this.paperSize, target);
-    this.paperSize = target;
+  /**
+   * Aplica papel, margens e moldura de uma vez, reajustando os itens à nova área útil
+   * (mesma regra da troca de papel). Um passo no histórico.
+   */
+  applyPageSetup(paper, showFrame, actionName) {
+    const sizeChanged = paper.width !== this.paperSize.width || paper.height !== this.paperSize.height;
+    this.items = PrintItemsManager.fitItemsToPaper(this.items, this.paperSize, paper);
+    this.paperSize = paper;
+    this.showAbntMargins = showFrame !== false;
     this.updatePaperSheetDOM();
     this.renderAllItems();
     this.updatePropertiesPanel();
+    if (sizeChanged) setTimeout(() => this.canvasEngine.zoomFit(), 50);
+    this.pushHistoryState(actionName);
+  }
 
-    setTimeout(() => {
-      this.canvasEngine.zoomFit();
-    }, 50);
-    this.pushHistoryState(`Folha ${target.name}`);
+  /** Troca a folha mantendo os itens do usuário e as margens personalizadas (pode ser desfeito) */
+  setPaperSize(sizeKey) {
+    const target = this.paperSizes[sizeKey];
+    if (!target || target.id === this.paperSize.id) return;
+    const paper = this.paperSize.margins
+      ? PrintItemsManager.withMargins(target, PrintItemsManager.sheetMargins(this.paperSize))
+      : target;
+    this.applyPageSetup(paper, this.showAbntMargins, `Folha ${target.name}`);
+  }
+
+  /** Altera um ou mais lados da margem (mm); `null` volta à ABNT */
+  setMargins(partial) {
+    const paper = partial
+      ? PrintItemsManager.withMargins(this.paperSize, { ...PrintItemsManager.sheetMargins(this.paperSize), ...partial })
+      : PrintItemsManager.withMargins(this.paperSize, null);
+    const before = PrintItemsManager.sheetMargins(this.paperSize);
+    const after = PrintItemsManager.sheetMargins(paper);
+    if (['top', 'right', 'bottom', 'left'].every(k => before[k] === after[k])) {
+      this.updatePropertiesPanel(); // devolve ao campo o valor válido
+      return;
+    }
+    this.applyPageSetup(paper, this.showAbntMargins, partial ? 'Margens' : 'Margens ABNT');
   }
 
   setAbntMargins(visible) {
     this.showAbntMargins = visible;
     this.updatePaperSheetDOM();
-    this.pushHistoryState(visible ? 'Exibir Margens ABNT' : 'Ocultar Margens ABNT');
+    this.updatePropertiesPanel();
+    this.pushHistoryState(visible ? 'Exibir Moldura' : 'Ocultar Moldura');
+  }
+
+  applyPagePreset(presetId) {
+    const preset = this.sheetsManager.loadPresets().find(p => p.id === presetId);
+    const base = preset && this.paperSizes[preset.paperSizeId];
+    if (!base) return;
+    this.applyPageSetup(PrintItemsManager.withMargins(base, preset.margins), preset.showFrame, `Pré-definição ${preset.name}`);
+  }
+
+  savePagePreset() {
+    const m = PrintItemsManager.sheetMargins(this.paperSize);
+    const suggestion = this.paperSize.margins
+      ? `${this.paperSize.name} ${m.top}/${m.right}/${m.bottom}/${m.left}`
+      : `${this.paperSize.name} ABNT`;
+    const name = typeof prompt === 'function' ? prompt('Nome da pré-definição:', suggestion) : null;
+    if (name === null || !name.trim()) return;
+    const preset = this.sheetsManager.addPreset(name, this.paperSize, this.showAbntMargins);
+    this.updatePropertiesPanel();
+    UIToast.notificar(preset
+      ? { tipo: 'sucesso', titulo: 'Pré-definição salva', mensagem: preset.name, duracao: 2000 }
+      : { tipo: 'erro', titulo: 'Pré-definição não salva', mensagem: 'Sem espaço no armazenamento do navegador.', duracao: 4000 });
+  }
+
+  deletePagePreset(presetId) {
+    const preset = this.sheetsManager.loadPresets().find(p => p.id === presetId);
+    if (!preset || !confirm(`Excluir a pré-definição "${preset.name}"?`)) return;
+    this.sheetsManager.deletePreset(presetId);
+    this.updatePropertiesPanel();
   }
 
   updatePaperSheetDOM() {
@@ -301,12 +356,12 @@ export class PrintComposerModal {
     if (marginsFrame) {
       if (this.showAbntMargins) {
         marginsFrame.style.display = 'block';
-        const mL = this.paperSize.marginL * this.canvasEngine.mmToPx;
-        const mO = this.paperSize.marginO * this.canvasEngine.mmToPx;
-        marginsFrame.style.left = `${mL}px`;
-        marginsFrame.style.top = `${mO}px`;
-        marginsFrame.style.right = `${mO}px`;
-        marginsFrame.style.bottom = `${mO}px`;
+        const m = PrintItemsManager.sheetMargins(this.paperSize);
+        const px = this.canvasEngine.mmToPx;
+        marginsFrame.style.left = `${m.left * px}px`;
+        marginsFrame.style.top = `${m.top * px}px`;
+        marginsFrame.style.right = `${m.right * px}px`;
+        marginsFrame.style.bottom = `${m.bottom * px}px`;
       } else {
         marginsFrame.style.display = 'none';
       }
