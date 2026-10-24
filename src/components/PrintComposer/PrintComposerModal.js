@@ -6,6 +6,7 @@
    ========================================================================== */
 
 import './PrintComposer.css';
+import './PrintPropertiesPanel.css';
 import L from 'leaflet';
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
@@ -28,6 +29,7 @@ export class PrintComposerModal {
     // Modos de Interação: 'layout' (mover caixas na folha) | 'content_pan' (navegar dentro do mapa)
     this.interactionMode = 'layout';
     this.showAbntMargins = true;
+    this.panelSections = {}; // Seções do painel lateral abertas/fechadas pelo usuário, por nome
 
     this.paperSizes = {
       A4_L: { id: 'A4_L', name: 'A4 Paisagem', width: 297, height: 210, marginL: 25, marginO: 7 },
@@ -714,13 +716,9 @@ export class PrintComposerModal {
   updatePropertiesPanel() {
     const mount = document.getElementById('cm-print-props-panel-mount');
     if (mount) {
-      // Preserva a rolagem do painel (e a seção aberta) ao reconstruí-lo após cada seleção/arrasto
+      // Preserva a rolagem ao reconstruir após cada seleção/arrasto (as seções abertas ficam em this.panelSections)
       const prevScroll = mount.querySelector('.cm-print-props-scroll')?.scrollTop || 0;
-      const closed = [...mount.querySelectorAll('details.cm-inspector-accordion')].map(d => d.open);
       mount.innerHTML = PrintPropertiesPanel.render(this);
-      mount.querySelectorAll('details.cm-inspector-accordion').forEach((d, i) => {
-        if (closed[i] === false) d.open = false;
-      });
       const scroller = mount.querySelector('.cm-print-props-scroll');
       if (scroller) scroller.scrollTop = prevScroll;
       PrintPropertiesPanel.bindEvents(this);

@@ -858,7 +858,7 @@ export class PrintExporter {
 
     for (const layer of visibleLayers) {
       if (rowY > y + h - 4) break;
-      ctx.fillStyle = layer.color || '#00E08A';
+      ctx.fillStyle = PrintItemsManager.sanitizeColor(layer.color, '#00E08A');
       ctx.fillRect(x + 8, rowY - swatchSize + 2, swatchSize, swatchSize);
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 1;
@@ -878,8 +878,8 @@ export class PrintExporter {
    */
   static drawShapeItem(ctx, item, x, y, w, h) {
     ctx.save();
-    ctx.fillStyle = item.fillColor || 'rgba(255, 255, 255, 0.5)';
-    ctx.strokeStyle = item.strokeColor || '#000000';
+    ctx.fillStyle = PrintItemsManager.sanitizeColor(item.fillColor, 'rgba(255, 255, 255, 0.5)');
+    ctx.strokeStyle = PrintItemsManager.sanitizeColor(item.strokeColor, '#000000');
     ctx.lineWidth = item.strokeWidth !== undefined ? item.strokeWidth : 1.5;
     ctx.fillRect(x, y, w, h);
     if (ctx.lineWidth > 0) ctx.strokeRect(x, y, w, h);
@@ -913,7 +913,7 @@ export class PrintExporter {
     const fontSize = Math.max(8, Math.round((item.fontSize || 10) * (scaleFactor / (300 / 25.4))));
     const weight = item.fontWeight || 'bold';
     ctx.font = `${weight} ${fontSize}px Arial, sans-serif`;
-    ctx.fillStyle = item.textColor || '#000000';
+    ctx.fillStyle = PrintItemsManager.sanitizeColor(item.textColor, '#000000');
     const align = item.textAlign || 'center';
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';

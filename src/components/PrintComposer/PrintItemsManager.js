@@ -84,6 +84,41 @@ export class PrintItemsManager {
     };
   }
 
+  /**
+   * Cor segura para `style`/canvas: só #hex, rgb()/rgba() numéricos ou nome simples de cor.
+   * Qualquer outra coisa (aspas, ponto e vírgula, url(), etc.) vira `fallback`.
+   */
+  static sanitizeColor(value, fallback = '#000000') {
+    if (typeof value !== 'string') return fallback;
+    const v = value.trim();
+    if (/^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v)) return v;
+    if (/^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*(?:,\s*(?:0|1|0?\.\d+)\s*)?\)$/i.test(v)) return v;
+    if (/^[a-z]{3,20}$/i.test(v)) return v;
+    return fallback;
+  }
+
+  /** Separa uma cor em #rrggbb (para o seletor) e opacidade 0–1; null se não for #hex/rgb(a) */
+  static parseColor(value) {
+    const v = typeof value === 'string' ? value.trim() : '';
+    let m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (m) {
+      const h = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1];
+      return { hex: `#${h.toLowerCase()}`, alpha: 1 };
+    }
+    m = v.match(/^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(0|1|0?\.\d+)\s*)?\)$/i);
+    if (!m) return null;
+    const hex = '#' + [m[1], m[2], m[3]].map(n => Math.min(255, Number(n)).toString(16).padStart(2, '0')).join('');
+    return { hex, alpha: m[4] === undefined ? 1 : Number(m[4]) };
+  }
+
+  /** Monta rgba() a partir de #rrggbb e opacidade 0–1 */
+  static toRgba(hex, alpha = 1) {
+    const p = this.parseColor(hex) || { hex: '#ffffff' };
+    const n = parseInt(p.hex.slice(1), 16);
+    const a = Math.round(Math.min(1, Math.max(0, Number(alpha) || 0)) * 100) / 100;
+    return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+  }
+
   /** Camadas exibidas na legenda: visíveis no projeto e não ocultadas no item */
   static legendLayers(item, layers = []) {
     const hidden = new Set((item.hiddenLayerIds || []).map(String));
@@ -305,7 +340,7 @@ export class PrintItemsManager {
         <div class="cm-legend-content">
           ${visibleLayers.length > 0 ? visibleLayers.map(l => `
             <div class="cm-legend-row" title="${esc(l.name)}">
-              <div class="cm-legend-swatch" style="background: ${l.color || '#00E08A'};"></div>
+              <div class="cm-legend-swatch" style="background: ${this.sanitizeColor(l.color, '#00E08A')};"></div>
               <span class="cm-legend-name">${esc(l.name)}</span>
             </div>
           `).join('') : '<div style="font-size: 7px; color: #777; text-align: center; padding: 4px 0;">Nenhuma camada visível</div>'}
@@ -455,10 +490,10 @@ export class PrintItemsManager {
    * Renderiza a Moldura / Forma Geométrica Retangular Técnica
    */
   static renderShape(item) {
-    const fill = item.fillColor || 'rgba(255, 255, 255, 0.5)';
-    const stroke = item.strokeColor || '#000000';
-    const strokeW = item.strokeWidth !== undefined ? item.strokeWidth : 1.5;
-    const radius = item.borderRadius || 0;
+    const fill = this.sanitizeColor(item.fillColor, 'rgba(255, 255, 255, 0.5)');
+    const stroke = this.sanitizeColor(item.strokeColor, '#000000');
+    const strokeW = item.strokeWidth == null || item.strokeWidth === '' ? 1.5 : (Number(item.strokeWidth) || 0);
+    const radius = Number(item.borderRadius) || 0;
 
     return `
       <div class="cm-item-shape-box" style="width: 100%; height: 100%; background: ${fill}; border: ${strokeW}px solid ${stroke}; border-radius: ${radius}px; box-sizing: border-box;"></div>
@@ -478,7 +513,7 @@ export class PrintItemsManager {
         </div>
       `;
     }
-    const fit = item.objectFit || 'contain';
+    const fit = item.objectFit === 'cover' ? 'cover' : 'contain';
     return `
       <div class="cm-item-image-box" style="width: 100%; height: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center;">
         <img src="${esc(item.imageUrl)}" alt="${esc(item.name || 'Imagem')}" style="width: 100%; height: 100%; object-fit: ${fit}; pointer-events: none;" />
@@ -492,10 +527,10 @@ export class PrintItemsManager {
   static renderLabel(item) {
     const esc = this.escapeHtml.bind(this);
     const text = item.text || 'TÍTULO DO PROJETO';
-    const fontSize = item.fontSize || 10;
-    const weight = item.fontWeight || 'bold';
-    const color = item.textColor || '#000000';
-    const align = item.textAlign || 'center';
+    const fontSize = Number(item.fontSize) || 10;
+    const weight = item.fontWeight === 'normal' ? 'normal' : 'bold';
+    const color = this.sanitizeColor(item.textColor, '#000000');
+    const align = ['left', 'right'].includes(item.textAlign) ? item.textAlign : 'center';
 
     return `
       <div class="cm-item-label-box" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: ${align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start')}; font-size: ${fontSize}px; font-weight: ${weight}; color: ${color}; text-align: ${align}; font-family: Arial, sans-serif; white-space: pre-wrap; word-break: break-word; box-sizing: border-box; padding: 2px;">
@@ -510,7 +545,7 @@ export class PrintItemsManager {
     const formatted = esc(text).replace(/\n/g, '<br>');
 
     return `
-      <div class="cm-item-text-block" style="font-size: ${item.fontSize || 7.5}px;">
+      <div class="cm-item-text-block" style="font-size: ${Number(item.fontSize) || 7.5}px;">
         <div class="cm-text-block-title">${esc(item.title || 'NOTAS GERAIS')}</div>
         <div class="cm-text-block-body">${formatted}</div>
       </div>

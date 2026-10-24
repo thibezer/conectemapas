@@ -333,4 +333,61 @@ assert.ok(html.includes('id="prop-legend-title"'), 'Painel da legenda tem o tít
 assert.strictEqual((html.match(/data-legend-layer=/g) || []).length, 2, 'Uma caixa por camada visível');
 console.log('✔ Painel validado');
 
+// ============================================================================
+// 12. Cores validadas e preenchimento da forma
+// ============================================================================
+console.log('12. Cores...');
+const S = (v, f = '#000') => PrintItemsManager.sanitizeColor(v, f);
+assert.strictEqual(S('#1a2B3c'), '#1a2B3c');
+assert.strictEqual(S('rgba(255, 0, 10, 0.4)'), 'rgba(255, 0, 10, 0.4)');
+assert.strictEqual(S('red'), 'red');
+assert.strictEqual(S('red;" onmouseover="alert(1)'), '#000', 'Injeção no style vira a cor padrão');
+assert.strictEqual(S('url(javascript:alert(1))'), '#000');
+assert.strictEqual(S('rgba(1,2,3,0.5); background:url(x)'), '#000');
+assert.strictEqual(S(undefined, '#fff'), '#fff');
+
+assert.deepStrictEqual(PrintItemsManager.parseColor('rgba(255, 255, 255, 0.4)'), { hex: '#ffffff', alpha: 0.4 });
+assert.deepStrictEqual(PrintItemsManager.parseColor('#AbC'), { hex: '#aabbcc', alpha: 1 });
+assert.strictEqual(PrintItemsManager.parseColor('blue'), null);
+assert.strictEqual(PrintItemsManager.toRgba('#ff8000', 0.25), 'rgba(255, 128, 0, 0.25)');
+assert.strictEqual(PrintItemsManager.toRgba('#ff8000', 7), 'rgba(255, 128, 0, 1)', 'Opacidade limitada a 1');
+
+const evilShape = PrintItemsManager.renderShape({ fillColor: 'red;"><img src=x onerror=alert(1)>', strokeColor: '#00f', strokeWidth: '2' });
+assert.ok(!evilShape.includes('onerror') && !evilShape.includes('<img'), 'Forma não injeta HTML pela cor');
+assert.ok(evilShape.includes('border: 2px solid #00f'));
+const evilLabel = PrintItemsManager.renderLabel({ text: 'X', textColor: 'x;position:fixed', textAlign: 'left;color:red', fontWeight: 'bold;x' });
+assert.ok(!evilLabel.includes('position:fixed') && !evilLabel.includes('color:red'), 'Rótulo não injeta estilo');
+
+const shapeItem2 = { ...PrintItemsManager.createNewItem('shape', 'P', 0), id: 'shape-1' };
+html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
+assert.ok(html.includes('id="prop-shape-fill" class="cm-pp-color" value="#ffffff"'), 'Preenchimento usa o seletor de cor');
+assert.ok(/id="prop-shape-fill-alpha"[^>]*value="40"/.test(html), 'Opacidade separada (0,4 → 40%)');
+console.log('✔ Cores validadas');
+
+// ============================================================================
+// 13. Seções lembradas pelo nome e sem estilos inline
+// ============================================================================
+console.log('13. Seções e estilos do painel...');
+const secItems = PrintItemsManager.createDefaultItems('Projeto', paperSizes.A4_L);
+const secComposer = { items: secItems, selectedItemId: secItems[0].id, features: [], layers, paperSize: paperSizes.A4_L, showAbntMargins: true };
+const isOpen = (h, key) => new RegExp(`data-section="${key}"\\s+open`).test(h);
+
+html = PrintPropertiesPanel.render(secComposer);
+assert.ok(['paper', 'items', 'item'].every(k => isOpen(html, k)), 'Sem preferência, todas as seções abertas');
+
+secComposer.panelSections = { paper: false };
+secComposer.selectedItemId = null; // a seção do item some...
+html = PrintPropertiesPanel.render(secComposer);
+assert.ok(!isOpen(html, 'paper') && isOpen(html, 'items'), '...e a folha continua fechada, a lista aberta');
+secComposer.selectedItemId = secItems[0].id; // ...e volta
+html = PrintPropertiesPanel.render(secComposer);
+assert.ok(!isOpen(html, 'paper') && isOpen(html, 'items') && isOpen(html, 'item'), 'A seção que reaparece não troca o estado das outras');
+
+for (const it of [...secItems, shapeItem2, PrintItemsManager.createNewItem('image', 'P', 0), PrintItemsManager.createNewItem('label', 'P', 0), PrintItemsManager.createNewItem('table_vertices', 'P', 0), PrintItemsManager.createNewItem('text_block', 'P', 0)]) {
+  const h = PrintPropertiesPanel.render({ ...secComposer, items: [it], selectedItemId: it.id });
+  const inline = (h.match(/style="[^"]*"/g) || []).filter(s => !s.startsWith('style="background: '));
+  assert.deepStrictEqual(inline, [], `Painel de "${it.type}" sem estilos inline (só a cor da camada)`);
+}
+console.log('✔ Seções e estilos validados');
+
 console.log('\n🎉 TESTES DO PAINEL LATERAL E HISTÓRICO PASSARAM!');

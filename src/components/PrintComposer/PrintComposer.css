@@ -49,56 +49,7 @@
   transform-origin: 0 0;
 }
 
-/* Painel lateral: largura fluida, nunca espremido pela prancheta */
-#cm-print-props-panel-mount {
-  flex: 0 0 auto;
-  width: clamp(260px, 22vw, 340px);
-  min-height: 0;
-}
-
-#cm-print-props-panel-mount .cm-print-props-panel {
-  width: 100%;
-  height: 100%;
-}
-
-/* As seções mantêm a altura do conteúdo: quem rola é o painel (sem isso o conteúdo era cortado) */
-#cm-print-props-panel-mount .cm-print-props-scroll > * {
-  flex-shrink: 0;
-}
-
-#cm-print-props-panel-mount .cm-print-props-fields {
-  margin: 0;
-  border: 0;
-  min-width: 0;
-}
-
-#cm-print-props-panel-mount .cm-print-props-fields:disabled {
-  opacity: 0.55;
-}
-
-#cm-print-props-panel-mount .cm-print-props-locked-note {
-  margin: 8px 8px 0;
-  padding: 6px 8px;
-  border-radius: 4px;
-  background: rgba(255, 196, 0, 0.08);
-  border: 1px solid rgba(255, 196, 0, 0.25);
-  color: #f5c542;
-  font-size: 10.5px;
-}
-
-#cm-print-props-panel-mount .cm-ai-micro-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
-
-#cm-print-props-panel-mount .cm-param-row {
-  flex-wrap: wrap;
-  row-gap: 4px;
-}
-
-#cm-print-props-panel-mount .cm-native-select {
-  max-width: 100%;
-}
+/* Painel lateral de propriedades: PrintPropertiesPanel.css */
 
 /* Itens Cartográficos Posicionados */
 .cm-print-item {

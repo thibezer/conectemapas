@@ -4,9 +4,8 @@ Problemas conhecidos que ainda não foram corrigidos.
 
 ## Layout de Impressão
 
-### Painel lateral: itens menores da revisão de 23/10/2026
+### Molduras antigas acima dos demais elementos
 
-- **Cor de preenchimento da forma** é texto livre e vai ao `style` (tela e exportação) sem validação; a cor da borda usa o seletor de cor.
-- **Seções abertas/fechadas** são guardadas pelo índice em `updatePropertiesPanel`; quando a seção do item aparece ou some, outra seção pode abrir ou fechar.
-- **Estilos inline** em quase todo o `PrintPropertiesPanel` (contra a regra de `.css` próprio do `GEMINI.md`).
-- **Itens antigos acima de tudo:** pranchas salvas antes da ordem de empilhamento por lista podem ter uma moldura (`shape`) no fim da lista, cobrindo os demais elementos; "Trás" resolve.
+- **Sintoma:** em pranchas salvas antes de o empilhamento seguir a ordem da lista (commit 529b223), uma moldura (`shape`) inserida depois dos outros elementos fica no fim da lista e passa a cobri-los.
+- **Contorno:** selecionar a moldura e usar "Trás".
+- **Registrado em:** 23/10/2026.

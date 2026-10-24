@@ -6,6 +6,9 @@ export class PrintPropertiesPanel {
   static render(composer) {
     const selectedItem = composer.items.find(it => it.id === composer.selectedItemId);
     const esc = PrintItemsManager.escapeHtml;
+    const sel = (cond) => (cond ? 'selected' : '');
+    // Seção aberta ou fechada pelo usuário, lembrada pelo nome (não pela posição)
+    const openAttr = (key) => (composer.panelSections?.[key] === false ? '' : 'open');
 
     // Filtra feições poligonais ou de linha para a tabela de vértices
     const polygonFeatures = composer.features.filter(f => {
@@ -14,59 +17,53 @@ export class PrintPropertiesPanel {
     });
 
     return `
-      <div class="cm-print-props-panel" style="background: #18181c; border-left: 1px solid rgba(255,255,255,0.1); display: flex; flex-direction: column; box-sizing: border-box;">
-        <div style="height: 40px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; padding: 0 12px; font-weight: 700; font-size: 11.5px; color: #fff; justify-content: space-between;">
+      <div class="cm-print-props-panel">
+        <div class="cm-pp-header">
           <span>⚙️ PROPRIEDADES DO ITEM</span>
-          <span style="font-size: 10px; color: var(--cm-primary); font-family: monospace;">${composer.paperSize.name}</span>
+          <span class="cm-pp-header-paper">${esc(composer.paperSize.name)}</span>
         </div>
 
-        <div class="cm-print-props-scroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px;">
+        <div class="cm-print-props-scroll">
           <!-- 1. Configurações da Folha de Papel -->
-          <details class="cm-inspector-accordion" open>
-            <summary style="font-size: 11px; font-weight: 600; padding: 6px 8px; cursor: pointer; color: #fff; background: rgba(255,255,255,0.02);">
-              📄 Folha de Impressão (${composer.paperSize.name})
-            </summary>
-            <div style="padding: 8px; display: flex; flex-direction: column; gap: 8px;">
-              <div class="cm-param-row" style="flex-direction: column; align-items: stretch;">
+          <details class="cm-inspector-accordion" data-section="paper" ${openAttr('paper')}>
+            <summary class="cm-pp-summary">📄 Folha de Impressão (${esc(composer.paperSize.name)})</summary>
+            <div class="cm-pp-body">
+              <div class="cm-param-row cm-pp-row-stack">
                 <span class="cm-param-label">Tamanho do Papel:</span>
-                <select id="print-paper-size-select" class="cm-native-select" style="width: 100%;">
-                  <option value="A4_L" ${composer.paperSize.id === 'A4_L' ? 'selected' : ''}>A4 Paisagem (297x210 mm)</option>
-                  <option value="A4_P" ${composer.paperSize.id === 'A4_P' ? 'selected' : ''}>A4 Retrato (210x297 mm)</option>
-                  <option value="A3_L" ${composer.paperSize.id === 'A3_L' ? 'selected' : ''}>A3 Paisagem (420x297 mm)</option>
-                  <option value="A3_P" ${composer.paperSize.id === 'A3_P' ? 'selected' : ''}>A3 Retrato (297x420 mm)</option>
-                  <option value="A2_L" ${composer.paperSize.id === 'A2_L' ? 'selected' : ''}>A2 Paisagem (594x420 mm)</option>
-                  <option value="A1_L" ${composer.paperSize.id === 'A1_L' ? 'selected' : ''}>A1 Paisagem (841x594 mm)</option>
+                <select id="print-paper-size-select" class="cm-native-select cm-pp-full">
+                  <option value="A4_L" ${sel(composer.paperSize.id === 'A4_L')}>A4 Paisagem (297x210 mm)</option>
+                  <option value="A4_P" ${sel(composer.paperSize.id === 'A4_P')}>A4 Retrato (210x297 mm)</option>
+                  <option value="A3_L" ${sel(composer.paperSize.id === 'A3_L')}>A3 Paisagem (420x297 mm)</option>
+                  <option value="A3_P" ${sel(composer.paperSize.id === 'A3_P')}>A3 Retrato (297x420 mm)</option>
+                  <option value="A2_L" ${sel(composer.paperSize.id === 'A2_L')}>A2 Paisagem (594x420 mm)</option>
+                  <option value="A1_L" ${sel(composer.paperSize.id === 'A1_L')}>A1 Paisagem (841x594 mm)</option>
                 </select>
               </div>
               <div class="cm-param-row">
                 <span class="cm-param-label">Margens Normatizadas ABNT:</span>
                 <input type="checkbox" id="print-abnt-margins-check" ${composer.showAbntMargins ? 'checked' : ''} />
               </div>
-              <div style="font-size: 9.5px; color: #888899; line-height: 1.3;">
-                Margem esquerda de 25 mm para encadernação e borda interna ABNT.
-              </div>
-              <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" title="Substitui os elementos pelo layout padrão ABNT (Ctrl+Z desfaz)" style="width: 100%; height: 26px; font-size: 11px; margin-top: 4px;">
+              <div class="cm-pp-hint">Margem esquerda de 25 mm para encadernação e borda interna ABNT.</div>
+              <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Substitui os elementos pelo layout padrão ABNT (Ctrl+Z desfaz)">
                 📐 Restaurar Layout Padrão ABNT
               </ui-botao-primario>
             </div>
           </details>
 
           <!-- 2. Árvore de Elementos da Composição -->
-          <details class="cm-inspector-accordion" open>
-            <summary style="font-size: 11px; font-weight: 600; padding: 6px 8px; cursor: pointer; color: #fff; background: rgba(255,255,255,0.02);">
-              📑 Elementos da Prancha (${composer.items.length})
-            </summary>
-            <div style="padding: 6px; display: flex; flex-direction: column; gap: 3px;">
+          <details class="cm-inspector-accordion" data-section="items" ${openAttr('items')}>
+            <summary class="cm-pp-summary">📑 Elementos da Prancha (${composer.items.length})</summary>
+            <div class="cm-pp-body cm-pp-body--list">
               ${composer.items.map((it) => `
-                <div class="cm-ai-row ${it.id === composer.selectedItemId ? 'ai-selected' : ''}" data-composer-item-id="${it.id}" style="height: 26px; padding: 0 6px; display: flex; align-items: center; justify-content: space-between; border-radius: 4px; cursor: pointer;">
-                  <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
-                    <span style="font-size: 12px;">${this.getItemIcon(it.type)}</span>
-                    <span style="font-size: 10.5px; color: #e1e1e6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 135px;">${esc(it.name)}</span>
+                <div class="cm-ai-row cm-pp-item-row ${it.id === composer.selectedItemId ? 'ai-selected' : ''}" data-composer-item-id="${esc(it.id)}">
+                  <div class="cm-pp-item-main">
+                    <span class="cm-pp-item-icon">${this.getItemIcon(it.type)}</span>
+                    <span class="cm-pp-item-name">${esc(it.name)}</span>
                   </div>
-                  <div style="display: flex; align-items: center; gap: 2px;">
-                    <button class="cm-ai-micro-btn" data-composer-lock="${it.id}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${it.locked ? '🔒' : '🔓'}</button>
-                    <button class="cm-ai-micro-btn" data-composer-vis="${it.id}" title="${it.visible ? 'Ocultar' : 'Exibir'}">${it.visible ? '👁️' : '✕'}</button>
-                    <button class="cm-ai-micro-btn" data-composer-del="${it.id}" title="${it.locked ? 'Desbloqueie para excluir' : 'Excluir'}" ${it.locked ? 'disabled' : ''}>🗑️</button>
+                  <div class="cm-pp-item-actions">
+                    <button class="cm-ai-micro-btn" data-composer-lock="${esc(it.id)}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${it.locked ? '🔒' : '🔓'}</button>
+                    <button class="cm-ai-micro-btn" data-composer-vis="${esc(it.id)}" title="${it.visible ? 'Ocultar' : 'Exibir'}">${it.visible ? '👁️' : '✕'}</button>
+                    <button class="cm-ai-micro-btn" data-composer-del="${esc(it.id)}" title="${it.locked ? 'Desbloqueie para excluir' : 'Excluir'}" ${it.locked ? 'disabled' : ''}>🗑️</button>
                   </div>
                 </div>
               `).join('')}
@@ -75,303 +72,319 @@ export class PrintPropertiesPanel {
 
           <!-- 3. Propriedades do Elemento Selecionado -->
           ${selectedItem ? `
-            <details class="cm-inspector-accordion" open>
-              <summary style="font-size: 11px; font-weight: 600; padding: 6px 8px; cursor: pointer; color: var(--cm-primary); background: rgba(0,224,138,0.05);">
-                🎯 ${esc(selectedItem.name)}
-              </summary>
+            <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
+              <summary class="cm-pp-summary cm-pp-summary--active">🎯 ${esc(selectedItem.name)}</summary>
               ${selectedItem.locked ? `
                 <div class="cm-print-props-locked-note">🔒 Item bloqueado: desbloqueie na lista acima para editar.</div>
               ` : ''}
-              <fieldset class="cm-print-props-fields" ${selectedItem.locked ? 'disabled' : ''} style="padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+              <fieldset class="cm-print-props-fields" ${selectedItem.locked ? 'disabled' : ''}>
                 <!-- Barra de Ações Rápidas e Alinhamento -->
-                <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.06);">
-                  <div style="font-size: 9.5px; color: #a0a0b0; font-weight: 600;">📐 ALINHAMENTO NA FOLHA (ABNT):</div>
-                  <div style="display: flex; gap: 2px; justify-content: space-between;">
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda" style="flex: 1;">⇤ Esq</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente" style="flex: 1;">⧿ Centro</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita" style="flex: 1;">⇥ Dir</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo" style="flex: 1;">⤒ Topo</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente" style="flex: 1;">⧾ Meio</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base" style="flex: 1;">⤓ Base</button>
+                <div class="cm-pp-toolbox">
+                  <div class="cm-pp-toolbox-title">📐 ALINHAMENTO NA FOLHA (ABNT):</div>
+                  <div class="cm-pp-btn-row">
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda">⇤ Esq</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente">⧿ Centro</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita">⇥ Dir</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo">⤒ Topo</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente">⧾ Meio</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base">⤓ Base</button>
                   </div>
-                  <div style="display: flex; gap: 4px; margin-top: 2px;">
-                    <button class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)" style="flex: 1;">📋 Duplicar</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente" style="flex: 1;">⬆️ Frente</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás" style="flex: 1;">⬇️ Trás</button>
+                  <div class="cm-pp-btn-row">
+                    <button class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)">📋 Duplicar</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente">⬆️ Frente</button>
+                    <button class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás">⬇️ Trás</button>
                   </div>
                 </div>
 
                 <!-- Posição e Dimensão em mm -->
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                <div class="cm-pp-grid2">
                   <div>
                     <span class="cm-param-label">Posição X (mm):</span>
-                    <input type="number" id="prop-item-x" class="cm-vertex-input" min="0" max="${composer.paperSize.width}" style="width: 100%;" value="${Math.round(selectedItem.x)}" />
+                    <input type="number" id="prop-item-x" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.width}" value="${Math.round(selectedItem.x)}" />
                   </div>
                   <div>
                     <span class="cm-param-label">Posição Y (mm):</span>
-                    <input type="number" id="prop-item-y" class="cm-vertex-input" min="0" max="${composer.paperSize.height}" style="width: 100%;" value="${Math.round(selectedItem.y)}" />
+                    <input type="number" id="prop-item-y" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.height}" value="${Math.round(selectedItem.y)}" />
                   </div>
                   <div>
                     <span class="cm-param-label">Largura (mm):</span>
-                    <input type="number" id="prop-item-w" class="cm-vertex-input" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.width}" style="width: 100%;" value="${Math.round(selectedItem.width)}" />
+                    <input type="number" id="prop-item-w" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.width}" value="${Math.round(selectedItem.width)}" />
                   </div>
                   <div>
                     <span class="cm-param-label">Altura (mm):</span>
-                    <input type="number" id="prop-item-h" class="cm-vertex-input" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.height}" style="width: 100%;" value="${Math.round(selectedItem.height)}" />
+                    <input type="number" id="prop-item-h" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.height}" value="${Math.round(selectedItem.height)}" />
                   </div>
                 </div>
 
-                <!-- Propriedades do Mapa -->
-                ${(selectedItem.type === 'map' || selectedItem.type === 'inset_map') ? `
-                  <div style="border-top: 1px solid rgba(255,255,255,0.06); margin-top: 4px; padding-top: 6px; display: flex; flex-direction: column; gap: 6px;">
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Camada Base:</span>
-                      <select id="prop-map-basemap" class="cm-native-select" style="width: 140px;">
-                        <option value="satelite" ${selectedItem.basemap === 'satelite' ? 'selected' : ''}>🛰️ Esri Satélite</option>
-                        <option value="google_satelite_puro" ${selectedItem.basemap === 'google_satelite_puro' ? 'selected' : ''}>🛰️ Google Satélite Puro</option>
-                        <option value="google_satelite" ${selectedItem.basemap === 'google_satelite' ? 'selected' : ''}>🛰️ Google Híbrido</option>
-                        <option value="osm" ${selectedItem.basemap === 'osm' ? 'selected' : ''}>🗺️ OpenStreetMap</option>
-                        <option value="esri_light" ${selectedItem.basemap === 'esri_light' || selectedItem.basemap === 'cartodb_positron' ? 'selected' : ''}>☀️ Esri Claro Neutro</option>
-                        <option value="esri_dark" ${selectedItem.basemap === 'esri_dark' || selectedItem.basemap === 'cartodb_dark' ? 'selected' : ''}>🌙 Esri Escuro</option>
-                        <option value="relevo" ${selectedItem.basemap === 'relevo' ? 'selected' : ''}>⛰️ Relevo Topo</option>
-                        <option value="branco" ${selectedItem.basemap === 'branco' ? 'selected' : ''}>⚪ Fundo Branco CAD</option>
-                      </select>
-                    </div>
-
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Escala Numérica (1:):</span>
-                      <input type="number" id="prop-map-scale" class="cm-vertex-input" style="width: 100px;" step="500" value="${selectedItem.scale || 10000}" />
-                    </div>
-
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Rotação do Mapa:</span>
-                      <input type="number" id="prop-map-rot" class="cm-vertex-input" style="width: 60px;" min="0" max="360" value="${selectedItem.rotation || 0}" />
-                    </div>
-
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Grade de Coordenadas:</span>
-                      <input type="checkbox" id="prop-map-grid" ${selectedItem.showGrid ? 'checked' : ''} />
-                    </div>
-
-                    ${selectedItem.showGrid ? `
-                      <div class="cm-param-row">
-                        <span class="cm-param-label">Tipo de Grade:</span>
-                        <select id="prop-map-grid-type" class="cm-native-select" style="width: 130px;">
-                          <option value="dms" ${selectedItem.gridType === 'dms' ? 'selected' : ''}>Geográfica (DMS)</option>
-                          <option value="utm" ${selectedItem.gridType === 'utm' ? 'selected' : ''}>Métrica UTM (Metros)</option>
-                        </select>
-                      </div>
-                    ` : ''}
-
-                    <div style="margin-top: 6px;">
-                      <ui-botao-primario inline id="btn-prop-pan-map" variante="secundario" style="width: 100%; height: 26px; font-size: 11px;">
-                        🖐️ Enquadrar Terreno neste Mapa
-                      </ui-botao-primario>
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades da Rosa dos Ventos -->
-                ${selectedItem.type === 'north_arrow' ? `
-                  <div class="cm-param-row">
-                    <span class="cm-param-label">Estilo da Seta:</span>
-                    <select id="prop-arrow-style" class="cm-native-select" style="width: 120px;">
-                      <option value="classic" ${selectedItem.arrowStyle === 'classic' ? 'selected' : ''}>Cartográfica Clássica</option>
-                      <option value="compass" ${selectedItem.arrowStyle === 'compass' ? 'selected' : ''}>Bússola / Rosa</option>
-                      <option value="modern" ${selectedItem.arrowStyle === 'modern' ? 'selected' : ''}>Moderna Técnica</option>
-                    </select>
-                  </div>
-                  <div class="cm-param-row">
-                    <span class="cm-param-label">Rotação (Norte):</span>
-                    <div style="display: flex; align-items: center; gap: 4px;">
-                      <input type="range" id="prop-arrow-rot-range" min="0" max="360" value="${selectedItem.rotation || 0}" style="width: 80px;" />
-                      <input type="number" id="prop-arrow-rot" class="cm-vertex-input" style="width: 50px;" min="0" max="360" value="${selectedItem.rotation || 0}" />
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades da Barra de Escala -->
-                ${selectedItem.type === 'scale_bar' ? `
-                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Escala (vinculada ao mapa):</span>
-                      <span style="font-size: 10.5px; color: #e1e1e6; font-family: monospace;">1:${Math.round(selectedItem.scale || 10000).toLocaleString('pt-BR')}</span>
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Divisões:</span>
-                      <input type="number" id="prop-sb-segments" class="cm-vertex-input" style="width: 60px;" min="1" max="8" step="1" value="${selectedItem.segments || 4}" />
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Unidade:</span>
-                      <select id="prop-sb-units" class="cm-native-select" style="width: 120px;">
-                        <option value="auto" ${!selectedItem.units || selectedItem.units === 'auto' ? 'selected' : ''}>Automática</option>
-                        <option value="m" ${selectedItem.units === 'm' ? 'selected' : ''}>Metros (m)</option>
-                        <option value="km" ${selectedItem.units === 'km' ? 'selected' : ''}>Quilômetros (km)</option>
-                      </select>
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Mostrar escala numérica:</span>
-                      <input type="checkbox" id="prop-sb-text" ${selectedItem.showScaleText !== false ? 'checked' : ''} />
-                    </div>
-                    <div style="font-size: 9.5px; color: #888899; line-height: 1.3;">
-                      O comprimento da régua corresponde exatamente à distância indicada, arredondada a um valor redondo.
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades da Legenda -->
-                ${selectedItem.type === 'legend' ? `
-                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-                    <span class="cm-param-label">Título da Legenda (vazio = sem título):</span>
-                    <input type="text" id="prop-legend-title" class="cm-vertex-input" value="${esc(selectedItem.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE)}" />
-                    <span class="cm-param-label">Camadas exibidas:</span>
-                    <div style="display: flex; flex-direction: column; gap: 3px;">
-                      ${(composer.layers || []).filter(l => l.visible !== false).map(l => `
-                        <label class="cm-param-row" style="justify-content: flex-start; gap: 6px; cursor: pointer;" for="prop-legend-layer-${esc(l.id)}">
-                          <input type="checkbox" id="prop-legend-layer-${esc(l.id)}" data-legend-layer="${esc(l.id)}" ${(selectedItem.hiddenLayerIds || []).map(String).includes(String(l.id)) ? '' : 'checked'} />
-                          <span style="width: 10px; height: 8px; border: 1px solid #000; background: ${esc(l.color || '#00E08A')};"></span>
-                          <span style="font-size: 10.5px; color: #e1e1e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(l.name)}</span>
-                        </label>
-                      `).join('') || '<span style="font-size: 10px; color: #888899;">Nenhuma camada visível no projeto.</span>'}
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades da Tabela de Vértices -->
-                ${selectedItem.type === 'table_vertices' ? `
-                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Feição Referência:</span>
-                      <select id="prop-vert-feature" class="cm-native-select" style="width: 140px;">
-                        <option value="">-- Automático (1º Polígono) --</option>
-                        ${polygonFeatures.map(f => `
-                          <option value="${f.id}" ${selectedItem.targetFeatureId === f.id ? 'selected' : ''}>${esc(f.name || f.id)}</option>
-                        `).join('')}
-                      </select>
-                    </div>
-                    <div style="font-size: 9.5px; color: #888899; line-height: 1.3;">
-                      Gera automaticamente vértices numerados (V01, V02...), coordenadas N/E em SIRGAS 2000 UTM, azimutes e distâncias perimétricas.
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades do Bloco de Notas Técnicas -->
-                ${selectedItem.type === 'text_block' ? `
-                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-                    <span class="cm-param-label">Título do Bloco:</span>
-                    <input type="text" id="prop-text-title" class="cm-vertex-input" value="${esc(selectedItem.title || '')}" />
-                    <span class="cm-param-label">Texto das Notas:</span>
-                    <textarea id="prop-text-body" class="cm-vertex-input" rows="5" style="width: 100%; height: 75px; resize: vertical; font-size: 10px;">${esc(selectedItem.text || '')}</textarea>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Tamanho da Fonte (pt):</span>
-                      <input type="number" id="prop-text-size" class="cm-vertex-input" style="width: 60px;" min="5" max="18" step="0.5" value="${selectedItem.fontSize || 7.5}" />
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades da Moldura / Forma Geométrica -->
-                ${selectedItem.type === 'shape' ? `
-                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Cor de Preenchimento:</span>
-                      <input type="text" id="prop-shape-fill" class="cm-vertex-input" style="width: 120px;" value="${esc(selectedItem.fillColor || 'rgba(255,255,255,0.4)')}" />
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Cor da Borda:</span>
-                      <input type="color" id="prop-shape-stroke" value="${selectedItem.strokeColor || '#000000'}" style="width: 40px; height: 24px; padding: 0; border: none; cursor: pointer;" />
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Espessura da Borda (px):</span>
-                      <input type="number" id="prop-shape-strokew" class="cm-vertex-input" style="width: 60px;" min="0" max="10" step="0.5" value="${selectedItem.strokeWidth !== undefined ? selectedItem.strokeWidth : 1.5}" />
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades da Imagem / Logotipo -->
-                ${selectedItem.type === 'image' ? `
-                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-                    <span class="cm-param-label">Carregar Imagem / Logotipo:</span>
-                    <input type="file" id="prop-image-file" accept="image/*" class="cm-vertex-input" style="width: 100%; font-size: 10px;" />
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Ajuste de Enquadramento:</span>
-                      <select id="prop-image-fit" class="cm-native-select" style="width: 120px;">
-                        <option value="contain" ${selectedItem.objectFit === 'contain' ? 'selected' : ''}>Conter (Manter Proporção)</option>
-                        <option value="cover" ${selectedItem.objectFit === 'cover' ? 'selected' : ''}>Preencher (Cortar Excesso)</option>
-                      </select>
-                    </div>
-                    ${selectedItem.imageUrl ? `
-                      <ui-botao-primario inline id="btn-remove-image-url" variante="secundario" style="height: 24px; font-size: 10px; margin-top: 2px;">
-                        🗑️ Limpar Imagem
-                      </ui-botao-primario>
-                    ` : ''}
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades do Rótulo de Texto Livre / Título -->
-                ${selectedItem.type === 'label' ? `
-                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
-                    <span class="cm-param-label">Texto do Título:</span>
-                    <input type="text" id="prop-label-text" class="cm-vertex-input" value="${esc(selectedItem.text || '')}" />
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Tamanho da Fonte (pt):</span>
-                      <input type="number" id="prop-label-size" class="cm-vertex-input" style="width: 60px;" min="6" max="36" value="${selectedItem.fontSize || 10}" />
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Peso da Fonte:</span>
-                      <select id="prop-label-weight" class="cm-native-select" style="width: 100px;">
-                        <option value="bold" ${selectedItem.fontWeight === 'bold' ? 'selected' : ''}>Negrito</option>
-                        <option value="normal" ${selectedItem.fontWeight === 'normal' ? 'selected' : ''}>Normal</option>
-                      </select>
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Alinhamento:</span>
-                      <select id="prop-label-align" class="cm-native-select" style="width: 100px;">
-                        <option value="center" ${selectedItem.textAlign === 'center' ? 'selected' : ''}>Centralizado</option>
-                        <option value="left" ${selectedItem.textAlign === 'left' ? 'selected' : ''}>À Esquerda</option>
-                        <option value="right" ${selectedItem.textAlign === 'right' ? 'selected' : ''}>À Direita</option>
-                      </select>
-                    </div>
-                    <div class="cm-param-row">
-                      <span class="cm-param-label">Cor do Texto:</span>
-                      <input type="color" id="prop-label-color" value="${selectedItem.textColor || '#000000'}" style="width: 40px; height: 24px; padding: 0; border: none; cursor: pointer;" />
-                    </div>
-                  </div>
-                ` : ''}
-
-                <!-- Propriedades do Carimbo Técnico ABNT -->
-                ${selectedItem.type === 'title_block' ? `
-                  <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px;">
-                    <span class="cm-param-label">Título da Prancha:</span>
-                    <input type="text" id="prop-tb-header" class="cm-vertex-input" value="${esc(selectedItem.properties?.headerTitle || '')}" />
-                    <span class="cm-param-label">Projeto / Obra:</span>
-                    <input type="text" id="prop-tb-proj" class="cm-vertex-input" value="${esc(selectedItem.properties?.projectName || '')}" />
-                    <span class="cm-param-label">Proprietário / Cliente:</span>
-                    <input type="text" id="prop-tb-client" class="cm-vertex-input" value="${esc(selectedItem.properties?.client || '')}" />
-                    <span class="cm-param-label">Responsável Técnico:</span>
-                    <input type="text" id="prop-tb-author" class="cm-vertex-input" value="${esc(selectedItem.properties?.author || '')}" />
-                    <span class="cm-param-label">ART / Registro:</span>
-                    <input type="text" id="prop-tb-art" class="cm-vertex-input" value="${esc(selectedItem.properties?.art || '')}" />
-                    <span class="cm-param-label">Sistema Geodésico / Projeção:</span>
-                    <input type="text" id="prop-tb-datum" class="cm-vertex-input" value="${esc(selectedItem.properties?.datum || '')}" />
-                    <span class="cm-param-label">Texto de Escala:</span>
-                    <input type="text" id="prop-tb-scale" class="cm-vertex-input" value="${esc(selectedItem.properties?.scaleText || '')}" />
-                    <span class="cm-param-label">Área e Perímetro:</span>
-                    <div style="display: flex; gap: 4px;">
-                      <input type="text" id="prop-tb-area" class="cm-vertex-input" style="flex: 1;" value="${esc(selectedItem.properties?.areaPerimeter || '')}" />
-                      <button id="btn-calc-area-carimbo" class="cm-ai-micro-btn" style="padding: 0 6px;" title="Calcular das Feições">⚡</button>
-                    </div>
-                    <span class="cm-param-label">Localização / Imóvel:</span>
-                    <input type="text" id="prop-tb-loc" class="cm-vertex-input" value="${esc(selectedItem.properties?.location || '')}" />
-                    <span class="cm-param-label">Data da Planta:</span>
-                    <input type="text" id="prop-tb-date" class="cm-vertex-input" value="${esc(selectedItem.properties?.date || '')}" />
-                  </div>
-                ` : ''}
+                ${this.renderTypeFields(selectedItem, composer, polygonFeatures)}
               </fieldset>
             </details>
-          ` : '<div style="font-size: 10.5px; color: var(--cm-text-muted); text-align: center; padding: 25px 0;">Clique em um elemento da prancha para editar suas propriedades.</div>'}
+          ` : '<div class="cm-pp-empty">Clique em um elemento da prancha para editar suas propriedades.</div>'}
         </div>
       </div>
     `;
+  }
+
+  /** Campos específicos do tipo do elemento selecionado */
+  static renderTypeFields(item, composer, polygonFeatures) {
+    const esc = PrintItemsManager.escapeHtml;
+    const sel = (cond) => (cond ? 'selected' : '');
+    const colorValue = (value, fallback) => (PrintItemsManager.parseColor(value) || { hex: fallback }).hex;
+
+    if (item.type === 'map' || item.type === 'inset_map') {
+      return `
+        <div class="cm-pp-stack cm-pp-section">
+          <div class="cm-param-row">
+            <span class="cm-param-label">Camada Base:</span>
+            <select id="prop-map-basemap" class="cm-native-select cm-pp-w-xl">
+              <option value="satelite" ${sel(item.basemap === 'satelite')}>🛰️ Esri Satélite</option>
+              <option value="google_satelite_puro" ${sel(item.basemap === 'google_satelite_puro')}>🛰️ Google Satélite Puro</option>
+              <option value="google_satelite" ${sel(item.basemap === 'google_satelite')}>🛰️ Google Híbrido</option>
+              <option value="osm" ${sel(item.basemap === 'osm')}>🗺️ OpenStreetMap</option>
+              <option value="esri_light" ${sel(item.basemap === 'esri_light' || item.basemap === 'cartodb_positron')}>☀️ Esri Claro Neutro</option>
+              <option value="esri_dark" ${sel(item.basemap === 'esri_dark' || item.basemap === 'cartodb_dark')}>🌙 Esri Escuro</option>
+              <option value="relevo" ${sel(item.basemap === 'relevo')}>⛰️ Relevo Topo</option>
+              <option value="branco" ${sel(item.basemap === 'branco')}>⚪ Fundo Branco CAD</option>
+            </select>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Escala Numérica (1:):</span>
+            <input type="number" id="prop-map-scale" class="cm-vertex-input cm-pp-w-m" step="500" value="${Number(item.scale) || 10000}" />
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Rotação do Mapa:</span>
+            <input type="number" id="prop-map-rot" class="cm-vertex-input cm-pp-w-s" min="0" max="360" value="${Number(item.rotation) || 0}" />
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Grade de Coordenadas:</span>
+            <input type="checkbox" id="prop-map-grid" ${item.showGrid ? 'checked' : ''} />
+          </div>
+          ${item.showGrid ? `
+            <div class="cm-param-row">
+              <span class="cm-param-label">Tipo de Grade:</span>
+              <select id="prop-map-grid-type" class="cm-native-select cm-pp-w-l">
+                <option value="dms" ${sel(item.gridType === 'dms')}>Geográfica (DMS)</option>
+                <option value="utm" ${sel(item.gridType === 'utm')}>Métrica UTM (Metros)</option>
+              </select>
+            </div>
+          ` : ''}
+          <ui-botao-primario inline id="btn-prop-pan-map" variante="secundario" class="cm-pp-wide-btn">
+            🖐️ Enquadrar Terreno neste Mapa
+          </ui-botao-primario>
+        </div>
+      `;
+    }
+
+    if (item.type === 'north_arrow') {
+      return `
+        <div class="cm-pp-stack">
+          <div class="cm-param-row">
+            <span class="cm-param-label">Estilo da Seta:</span>
+            <select id="prop-arrow-style" class="cm-native-select cm-pp-w-l">
+              <option value="classic" ${sel(item.arrowStyle === 'classic')}>Cartográfica Clássica</option>
+              <option value="compass" ${sel(item.arrowStyle === 'compass')}>Bússola / Rosa</option>
+              <option value="modern" ${sel(item.arrowStyle === 'modern')}>Moderna Técnica</option>
+            </select>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Rotação (Norte):</span>
+            <div class="cm-pp-inline">
+              <input type="range" id="prop-arrow-rot-range" class="cm-pp-w-range" min="0" max="360" value="${Number(item.rotation) || 0}" />
+              <input type="number" id="prop-arrow-rot" class="cm-vertex-input cm-pp-w-xs" min="0" max="360" value="${Number(item.rotation) || 0}" />
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (item.type === 'scale_bar') {
+      return `
+        <div class="cm-pp-stack">
+          <div class="cm-param-row">
+            <span class="cm-param-label">Escala (vinculada ao mapa):</span>
+            <span class="cm-pp-value">1:${Math.round(Number(item.scale) || 10000).toLocaleString('pt-BR')}</span>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Divisões:</span>
+            <input type="number" id="prop-sb-segments" class="cm-vertex-input cm-pp-w-s" min="1" max="8" step="1" value="${Number(item.segments) || 4}" />
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Unidade:</span>
+            <select id="prop-sb-units" class="cm-native-select cm-pp-w-l">
+              <option value="auto" ${sel(!item.units || item.units === 'auto')}>Automática</option>
+              <option value="m" ${sel(item.units === 'm')}>Metros (m)</option>
+              <option value="km" ${sel(item.units === 'km')}>Quilômetros (km)</option>
+            </select>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Mostrar escala numérica:</span>
+            <input type="checkbox" id="prop-sb-text" ${item.showScaleText !== false ? 'checked' : ''} />
+          </div>
+          <div class="cm-pp-hint">O comprimento da régua corresponde exatamente à distância indicada, arredondada a um valor redondo.</div>
+        </div>
+      `;
+    }
+
+    if (item.type === 'legend') {
+      const hidden = (item.hiddenLayerIds || []).map(String);
+      const layers = (composer.layers || []).filter(l => l.visible !== false);
+      return `
+        <div class="cm-pp-stack">
+          <span class="cm-param-label">Título da Legenda (vazio = sem título):</span>
+          <input type="text" id="prop-legend-title" class="cm-vertex-input" value="${esc(item.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE)}" />
+          <span class="cm-param-label">Camadas exibidas:</span>
+          <div class="cm-pp-layer-list">
+            ${layers.map(l => `
+              <label class="cm-param-row cm-pp-layer-row" for="prop-legend-layer-${esc(l.id)}">
+                <input type="checkbox" id="prop-legend-layer-${esc(l.id)}" data-legend-layer="${esc(l.id)}" ${hidden.includes(String(l.id)) ? '' : 'checked'} />
+                <span class="cm-pp-swatch" style="background: ${PrintItemsManager.sanitizeColor(l.color, '#00E08A')};"></span>
+                <span class="cm-pp-layer-name">${esc(l.name)}</span>
+              </label>
+            `).join('') || '<span class="cm-pp-hint">Nenhuma camada visível no projeto.</span>'}
+          </div>
+        </div>
+      `;
+    }
+
+    if (item.type === 'table_vertices') {
+      return `
+        <div class="cm-pp-stack">
+          <div class="cm-param-row">
+            <span class="cm-param-label">Feição Referência:</span>
+            <select id="prop-vert-feature" class="cm-native-select cm-pp-w-xl">
+              <option value="">-- Automático (1º Polígono) --</option>
+              ${polygonFeatures.map(f => `
+                <option value="${esc(f.id)}" ${sel(item.targetFeatureId === f.id)}>${esc(f.name || f.id)}</option>
+              `).join('')}
+            </select>
+          </div>
+          <div class="cm-pp-hint">Gera automaticamente vértices numerados (V01, V02...), coordenadas N/E em SIRGAS 2000 UTM, azimutes e distâncias perimétricas.</div>
+        </div>
+      `;
+    }
+
+    if (item.type === 'text_block') {
+      return `
+        <div class="cm-pp-stack">
+          <span class="cm-param-label">Título do Bloco:</span>
+          <input type="text" id="prop-text-title" class="cm-vertex-input" value="${esc(item.title || '')}" />
+          <span class="cm-param-label">Texto das Notas:</span>
+          <textarea id="prop-text-body" class="cm-vertex-input cm-pp-textarea" rows="5">${esc(item.text || '')}</textarea>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Tamanho da Fonte (pt):</span>
+            <input type="number" id="prop-text-size" class="cm-vertex-input cm-pp-w-s" min="5" max="18" step="0.5" value="${Number(item.fontSize) || 7.5}" />
+          </div>
+        </div>
+      `;
+    }
+
+    if (item.type === 'shape') {
+      const fill = PrintItemsManager.parseColor(item.fillColor) || { hex: '#ffffff', alpha: 0.4 };
+      return `
+        <div class="cm-pp-stack">
+          <div class="cm-param-row">
+            <span class="cm-param-label">Cor de Preenchimento:</span>
+            <input type="color" id="prop-shape-fill" class="cm-pp-color" value="${fill.hex}" />
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Opacidade do Preenchimento:</span>
+            <div class="cm-pp-inline">
+              <input type="range" id="prop-shape-fill-alpha" class="cm-pp-w-range" min="0" max="100" step="5" value="${Math.round(fill.alpha * 100)}" />
+              <span id="prop-shape-fill-alpha-value" class="cm-pp-value">${Math.round(fill.alpha * 100)}%</span>
+            </div>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Cor da Borda:</span>
+            <input type="color" id="prop-shape-stroke" class="cm-pp-color" value="${colorValue(item.strokeColor, '#000000')}" />
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Espessura da Borda (px):</span>
+            <input type="number" id="prop-shape-strokew" class="cm-vertex-input cm-pp-w-s" min="0" max="10" step="0.5" value="${item.strokeWidth == null ? 1.5 : (Number(item.strokeWidth) || 0)}" />
+          </div>
+        </div>
+      `;
+    }
+
+    if (item.type === 'image') {
+      return `
+        <div class="cm-pp-stack">
+          <span class="cm-param-label">Carregar Imagem / Logotipo:</span>
+          <input type="file" id="prop-image-file" accept="image/*" class="cm-vertex-input cm-pp-file" />
+          <div class="cm-param-row">
+            <span class="cm-param-label">Ajuste de Enquadramento:</span>
+            <select id="prop-image-fit" class="cm-native-select cm-pp-w-l">
+              <option value="contain" ${sel(item.objectFit === 'contain')}>Conter (Manter Proporção)</option>
+              <option value="cover" ${sel(item.objectFit === 'cover')}>Preencher (Cortar Excesso)</option>
+            </select>
+          </div>
+          ${item.imageUrl ? `
+            <ui-botao-primario inline id="btn-remove-image-url" variante="secundario" class="cm-pp-small-btn">
+              🗑️ Limpar Imagem
+            </ui-botao-primario>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    if (item.type === 'label') {
+      return `
+        <div class="cm-pp-stack">
+          <span class="cm-param-label">Texto do Título:</span>
+          <input type="text" id="prop-label-text" class="cm-vertex-input" value="${esc(item.text || '')}" />
+          <div class="cm-param-row">
+            <span class="cm-param-label">Tamanho da Fonte (pt):</span>
+            <input type="number" id="prop-label-size" class="cm-vertex-input cm-pp-w-s" min="6" max="36" value="${Number(item.fontSize) || 10}" />
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Peso da Fonte:</span>
+            <select id="prop-label-weight" class="cm-native-select cm-pp-w-m">
+              <option value="bold" ${sel(item.fontWeight === 'bold')}>Negrito</option>
+              <option value="normal" ${sel(item.fontWeight === 'normal')}>Normal</option>
+            </select>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Alinhamento:</span>
+            <select id="prop-label-align" class="cm-native-select cm-pp-w-m">
+              <option value="center" ${sel(item.textAlign === 'center')}>Centralizado</option>
+              <option value="left" ${sel(item.textAlign === 'left')}>À Esquerda</option>
+              <option value="right" ${sel(item.textAlign === 'right')}>À Direita</option>
+            </select>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Cor do Texto:</span>
+            <input type="color" id="prop-label-color" class="cm-pp-color" value="${colorValue(item.textColor, '#000000')}" />
+          </div>
+        </div>
+      `;
+    }
+
+    if (item.type === 'title_block') {
+      const p = item.properties || {};
+      const field = (id, label, key) => `
+        <span class="cm-param-label">${label}:</span>
+        <input type="text" id="${id}" class="cm-vertex-input" value="${esc(p[key] || '')}" />
+      `;
+      return `
+        <div class="cm-pp-stack cm-pp-stack--tight">
+          ${field('prop-tb-header', 'Título da Prancha', 'headerTitle')}
+          ${field('prop-tb-proj', 'Projeto / Obra', 'projectName')}
+          ${field('prop-tb-client', 'Proprietário / Cliente', 'client')}
+          ${field('prop-tb-author', 'Responsável Técnico', 'author')}
+          ${field('prop-tb-art', 'ART / Registro', 'art')}
+          ${field('prop-tb-datum', 'Sistema Geodésico / Projeção', 'datum')}
+          ${field('prop-tb-scale', 'Texto de Escala', 'scaleText')}
+          <span class="cm-param-label">Área e Perímetro:</span>
+          <div class="cm-pp-inline">
+            <input type="text" id="prop-tb-area" class="cm-vertex-input cm-pp-grow" value="${esc(p.areaPerimeter || '')}" />
+            <button id="btn-calc-area-carimbo" class="cm-ai-micro-btn cm-pp-icon-btn" title="Calcular das Feições">⚡</button>
+          </div>
+          ${field('prop-tb-loc', 'Localização / Imóvel', 'location')}
+          ${field('prop-tb-date', 'Data da Planta', 'date')}
+        </div>
+      `;
+    }
+
+    return '';
   }
 
   static getItemIcon(type) {
@@ -390,6 +403,12 @@ export class PrintPropertiesPanel {
   }
 
   static bindEvents(composer) {
+    // Lembra quais seções o usuário abriu ou fechou, pelo nome (sobrevive à reconstrução do painel)
+    composer.panelSections = composer.panelSections || {};
+    document.querySelectorAll('#cm-print-props-panel-mount details[data-section]').forEach(d => {
+      d.addEventListener('toggle', () => { composer.panelSections[d.dataset.section] = d.open; });
+    });
+
     const paperSelect = document.getElementById('print-paper-size-select');
     if (paperSelect) {
       paperSelect.addEventListener('change', (e) => composer.setPaperSize(e.target.value));
@@ -474,9 +493,18 @@ export class PrintPropertiesPanel {
 
     // Eventos de Shape, Image, Label
     const propShapeFill = document.getElementById('prop-shape-fill');
+    const propShapeFillAlpha = document.getElementById('prop-shape-fill-alpha');
+    const propShapeFillAlphaValue = document.getElementById('prop-shape-fill-alpha-value');
     const propShapeStroke = document.getElementById('prop-shape-stroke');
     const propShapeStrokeW = document.getElementById('prop-shape-strokew');
-    if (propShapeFill) propShapeFill.onchange = (e) => updateCurrent(it => it.fillColor = e.target.value);
+    // Preenchimento = cor do seletor + opacidade, gravados juntos como rgba()
+    const applyShapeFill = () => {
+      const alpha = (parseFloat(propShapeFillAlpha?.value) || 0) / 100;
+      if (propShapeFillAlphaValue) propShapeFillAlphaValue.textContent = `${Math.round(alpha * 100)}%`;
+      updateCurrent(it => it.fillColor = PrintItemsManager.toRgba(propShapeFill.value, alpha));
+    };
+    if (propShapeFill) propShapeFill.addEventListener('input', applyShapeFill);
+    if (propShapeFillAlpha) propShapeFillAlpha.addEventListener('input', applyShapeFill);
     if (propShapeStroke) propShapeStroke.onchange = (e) => updateCurrent(it => it.strokeColor = e.target.value);
     if (propShapeStrokeW) propShapeStrokeW.onchange = (e) => updateCurrent(it => it.strokeWidth = parseFloat(e.target.value) || 0);
 
