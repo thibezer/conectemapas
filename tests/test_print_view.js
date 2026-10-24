@@ -16,6 +16,7 @@ import { PrintViewResolver } from '../src/components/PrintComposer/PrintViewReso
 import { PrintMapRenderer } from '../src/components/PrintComposer/PrintMapRenderer.js';
 import { PrintViewEdits } from '../src/components/PrintComposer/PrintViewEdits.js';
 import { PrintVisibilityDialog } from '../src/components/PrintComposer/PrintVisibilityDialog.js';
+import { QueryBuilder } from '../src/components/AdvancedSearch/QueryBuilder.js';
 
 console.log('--- Teste das vistas de mapa da prancha ---');
 
@@ -302,6 +303,33 @@ assert.ok(lbHtml.includes('Lote Casa grande'), 'Exemplo do rótulo com o primeir
 assert.ok(lbHtml.includes('data-vv-field="uso"'), 'Campos de properties oferecidos como chips');
 assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('halo', { type: 'checkbox', checked: false })), false, 'Halo desmarcado grava false (o padrão é com halo)');
 console.log('✔ Aba Rótulos validada');
+
+// Aba Filtros e construtor de critérios
+const flComposer = { items: [{ id: 'm', type: 'map', viewConfig: { ...PrintViewResolver.emptyView(), filters: [{ filterId: 'f-com', enabled: true, fill: { color: '#ff8800' } }, { filterId: 'sumiu', enabled: true }] } }], layers, features, library };
+let flHtml = PrintVisibilityDialog.render(flComposer, flComposer.items[0], { tab: 'filters' });
+assert.strictEqual((flHtml.match(/data-row-kind="filter"/g) || []).length, 2, 'Uma linha por filtro da vista');
+assert.ok(flHtml.includes('Filtro excluído da biblioteca'), 'Filtro apagado da biblioteca aparece como tal');
+const addSelect = flHtml.slice(flHtml.indexOf('data-vv-add-filter'), flHtml.indexOf('</select>', flHtml.indexOf('data-vv-add-filter')));
+assert.ok(addSelect.includes('value="f-casas"') && !addSelect.includes('value="f-com"'), 'Só oferece filtros que ainda não estão na vista');
+assert.deepStrictEqual(PrintVisibilityDialog.filterMatches(library.filters[0], flComposer), ['c1'], 'Contagem do filtro respeita camadas e critérios');
+flHtml = PrintVisibilityDialog.render(flComposer, flComposer.items[0], { tab: 'filters', filterDraft: { id: null, name: '', layerIds: [], query: QueryBuilder.emptyQuery() } });
+assert.ok(flHtml.includes('Novo filtro') && flHtml.includes('data-role="field"'), 'Editor de filtro com o construtor de critérios');
+assert.ok(!QueryBuilder.hasActiveCriteria(QueryBuilder.emptyQuery()), 'Consulta vazia não tem critério ativo');
+assert.ok(QueryBuilder.hasActiveCriteria({ op: 'AND', items: [{ field: 'name', operator: 'notEmpty' }] }));
+let q = QueryBuilder.emptyQuery();
+const qb = new QueryBuilder({ getQuery: () => q, onChange: () => {} });
+const qev = (attrs) => ({ target: { dataset: attrs.dataset, value: attrs.value, checked: attrs.checked, closest: (sel) => (sel === '[data-act]' && attrs.dataset.act ? { dataset: attrs.dataset } : null) } });
+qb.handleClick(qev({ dataset: { act: 'add-group', path: '' } }));
+assert.strictEqual(q.items.length, 2, 'Adiciona grupo');
+qb.handleChange(qev({ dataset: { role: 'field', path: '0' }, value: 'area' }));
+assert.strictEqual(q.items[0].operator, 'eq', 'Trocar o campo ajusta o operador');
+qb.handleInput(qev({ dataset: { role: 'value', path: '0', slot: 'value' }, value: '500' }));
+assert.strictEqual(q.items[0].value, '500');
+qb.handleClick(qev({ dataset: { act: 'rm', path: '1' } }));
+qb.handleClick(qev({ dataset: { act: 'rm', path: '0' } }));
+assert.strictEqual(q.items.length, 1, 'Raiz nunca fica vazia');
+console.log('✔ Aba Filtros validada');
+
 
 
 console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');// ============================================================================

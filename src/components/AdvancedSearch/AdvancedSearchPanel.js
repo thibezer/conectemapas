@@ -7,23 +7,9 @@
    ========================================================================== */
 
 import './AdvancedSearchPanel.css';
-import { FeatureQuery, FIELD_DEFS, OPERATORS_BY_TYPE } from '../../services/FeatureQuery.js';
+import { FeatureQuery } from '../../services/FeatureQuery.js';
+import { QueryBuilder } from './QueryBuilder.js';
 
-const OPERATOR_LABELS = {
-  contains: 'contém', notContains: 'não contém', equals: 'é igual a', notEquals: 'é diferente de',
-  startsWith: 'começa com', endsWith: 'termina com', regex: 'regex', empty: 'está vazio', notEmpty: 'não está vazio',
-  eq: '=', neq: '≠', lt: '<', lte: '≤', gt: '>', gte: '≥', between: 'entre',
-  before: 'antes de', after: 'depois de', in: 'é um de', notIn: 'não é nenhum de',
-  isTrue: 'sim', isFalse: 'não'
-};
-
-const GEOMETRY_TYPES = [
-  ['Point', 'Ponto'], ['LineString', 'Linha'], ['Polygon', 'Polígono'], ['Circle', 'Círculo'], ['Text', 'Texto']
-];
-
-const NO_VALUE = new Set(['empty', 'notEmpty', 'isTrue', 'isFalse']);
-// Atributos livres aceitam operadores de texto e de número
-const PROP_OPERATORS = [...OPERATORS_BY_TYPE.text, 'eq', 'neq', 'lt', 'lte', 'gt', 'gte', 'between'];
 const MAX_LIVE_HIGHLIGHT = 2000;
 const STORAGE_PREFIX = 'cm-adv-search:';
 
@@ -45,14 +31,19 @@ export class AdvancedSearchPanel {
     this.liveHighlight = true;
     this.results = { ids: [], total: 0 };
     this._timer = null;
+    // Construtor de critérios (compartilhado com os filtros das vistas de prancha)
+    this.builder = new QueryBuilder({
+      getQuery: () => this.query,
+      onChange: (structural) => (structural ? this._rerender() : this._scheduleRun())
+    });
   }
 
   static emptyQuery() {
-    return { op: 'AND', not: false, items: [AdvancedSearchPanel.emptyCriterion()] };
+    return QueryBuilder.emptyQuery();
   }
 
   static emptyCriterion() {
-    return { field: 'name', operator: 'contains', value: '', value2: '' };
+    return QueryBuilder.emptyCriterion();
   }
 
   get isOpen() {
@@ -88,42 +79,7 @@ export class AdvancedSearchPanel {
 
   /** True se há ao menos um critério completo (senão a busca vazia selecionaria tudo). */
   _hasActiveCriteria(node = this.query) {
-    if (Array.isArray(node.items)) return node.items.some(n => this._hasActiveCriteria(n));
-    if (!node.field || !node.operator) return false;
-    if (NO_VALUE.has(node.operator)) return true;
-    const empty = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
-    return !empty(node.value) && (node.operator !== 'between' || !empty(node.value2));
-  }
-
-  // ---------- Estado ----------
-
-  _node(path) {
-    let node = this.query;
-    for (const i of path ? path.split('.').map(Number) : []) node = node.items[i];
-    return node;
-  }
-
-  _parent(path) {
-    const parts = path.split('.').map(Number);
-    const idx = parts.pop();
-    return { group: this._node(parts.join('.')), idx };
-  }
-
-  _fieldType(field) {
-    if (field.startsWith('prop:')) return 'prop';
-    return FIELD_DEFS.find(d => d.id === field)?.type || 'text';
-  }
-
-  _operators(field) {
-    const t = this._fieldType(field);
-    return t === 'prop' ? PROP_OPERATORS : OPERATORS_BY_TYPE[t];
-  }
-
-  _defaultValue(c) {
-    const t = this._fieldType(c.field);
-    if (t === 'set') return [];
-    if (t === 'color') return '#00e08a';
-    return '';
+    return QueryBuilder.hasActiveCriteria(node);
   }
 
   // ---------- Renderização ----------
@@ -156,7 +112,7 @@ export class AdvancedSearchPanel {
           <button class="cm-adv-btn" data-act="del-filter" title="Excluir o filtro salvo escolhido">🗑</button>
         </div>
 
-        <div class="cm-adv-query">${this._renderGroup(this.query, '', app)}</div>
+        <div class="cm-adv-query">${this.builder.render(app)}</div>
 
         <div class="cm-adv-resultbar">
           <span class="cm-adv-count" id="cm-adv-count" aria-live="polite"></span>
@@ -207,77 +163,6 @@ export class AdvancedSearchPanel {
         </div>
       </div>`;
     this._updateResultUi();
-  }
-
-  _renderGroup(group, path, app) {
-    const isRoot = path === '';
-    const items = group.items.map((node, i) => {
-      const p = isRoot ? String(i) : `${path}.${i}`;
-      return Array.isArray(node.items) ? this._renderGroup(node, p, app) : this._renderCriterion(node, p, app);
-    }).join('');
-    return `
-      <div class="cm-adv-group ${isRoot ? 'root' : ''}" data-path="${path}">
-        <div class="cm-adv-grouphead">
-          <span>Casar</span>
-          <select class="cm-native-select" data-role="group-op" data-path="${path}" aria-label="Combinação do grupo">
-            <option value="AND" ${group.op === 'AND' ? 'selected' : ''}>todos (E)</option>
-            <option value="OR" ${group.op === 'OR' ? 'selected' : ''}>qualquer (OU)</option>
-          </select>
-          <label class="cm-adv-check"><input type="checkbox" data-role="group-not" data-path="${path}" ${group.not ? 'checked' : ''}> negar</label>
-          ${isRoot ? '' : `<button class="cm-adv-icon-btn" data-act="rm" data-path="${path}" title="Remover grupo">×</button>`}
-        </div>
-        ${items}
-        <div class="cm-adv-row">
-          <button class="cm-adv-btn" data-act="add-crit" data-path="${path}">+ Critério</button>
-          <button class="cm-adv-btn" data-act="add-group" data-path="${path}">+ Grupo</button>
-        </div>
-      </div>`;
-  }
-
-  _renderCriterion(c, path, app) {
-    const props = FeatureQuery.discoverProperties(app.features);
-    const ops = this._operators(c.field);
-    if (!ops.includes(c.operator)) c.operator = ops[0];
-    return `
-      <div class="cm-adv-crit" data-path="${path}">
-        <select class="cm-native-select" data-role="field" data-path="${path}" aria-label="Campo">
-          <optgroup label="Campos">
-            ${FIELD_DEFS.map(d => `<option value="${d.id}" ${c.field === d.id ? 'selected' : ''}>${esc(d.label)}</option>`).join('')}
-          </optgroup>
-          ${props.length ? `<optgroup label="Atributos">
-            ${props.map(p => `<option value="${esc(p.id)}" ${c.field === p.id ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}
-          </optgroup>` : ''}
-        </select>
-        <select class="cm-native-select" data-role="operator" data-path="${path}" aria-label="Operador">
-          ${ops.map(o => `<option value="${o}" ${c.operator === o ? 'selected' : ''}>${esc(OPERATOR_LABELS[o] || o)}</option>`).join('')}
-        </select>
-        ${this._renderValue(c, path, app)}
-        <button class="cm-adv-icon-btn" data-act="rm" data-path="${path}" title="Remover critério">×</button>
-      </div>`;
-  }
-
-  _renderValue(c, path, app) {
-    if (NO_VALUE.has(c.operator)) return '<span class="cm-adv-novalue"></span>';
-    const t = this._fieldType(c.field);
-    const attr = `data-role="value" data-path="${path}"`;
-
-    if ((c.operator === 'in' || c.operator === 'notIn') && t === 'set') {
-      const options = c.field === 'layer'
-        ? (app.layers || []).map(l => [l.id, l.name])
-        : GEOMETRY_TYPES;
-      const chosen = new Set(Array.isArray(c.value) ? c.value : []);
-      return `<div class="cm-adv-chips" ${attr}>${options.map(([v, label]) =>
-        `<label class="cm-adv-chip"><input type="checkbox" data-role="chip" data-path="${path}" value="${esc(v)}" ${chosen.has(v) ? 'checked' : ''}> ${esc(label)}</label>`
-      ).join('')}</div>`;
-    }
-    if (c.operator === 'in' || c.operator === 'notIn') {
-      return `<input class="cm-adv-input" ${attr} value="${esc(Array.isArray(c.value) ? c.value.join(', ') : c.value)}" placeholder="a, b, c" aria-label="Valores separados por vírgula">`;
-    }
-    const inputType = t === 'color' ? 'color' : t === 'date' ? 'date' : (t === 'number' ? 'number' : 'text');
-    const val = (v) => esc(Array.isArray(v) ? v.join(', ') : v);
-    const first = `<input class="cm-adv-input" type="${inputType}" step="any" ${attr} data-slot="value" value="${val(c.value)}" aria-label="Valor" placeholder="valor">`;
-    if (c.operator !== 'between') return first;
-    return `${first}<span class="cm-adv-and">e</span><input class="cm-adv-input" type="${inputType}" step="any" ${attr} data-slot="value2" value="${val(c.value2)}" aria-label="Segundo valor">`;
   }
 
   // ---------- Execução ----------
@@ -364,16 +249,8 @@ export class AdvancedSearchPanel {
       const btn = e.target.closest('[data-act]');
       if (!btn || btn.disabled) return;
       const act = btn.dataset.act;
-      const path = btn.dataset.path;
       if (act === 'close') return this.close();
-      if (act === 'add-crit') { this._node(path).items.push(AdvancedSearchPanel.emptyCriterion()); return this._rerender(); }
-      if (act === 'add-group') { this._node(path).items.push({ op: 'OR', not: false, items: [AdvancedSearchPanel.emptyCriterion()] }); return this._rerender(); }
-      if (act === 'rm') {
-        const { group, idx } = this._parent(path);
-        group.items.splice(idx, 1);
-        if (this.query.items.length === 0) this.query.items.push(AdvancedSearchPanel.emptyCriterion());
-        return this._rerender();
-      }
+      if (this.builder.handleClick(e)) return;
       if (act === 'save-filter') return this._saveFilter();
       if (act === 'del-filter') return this._deleteFilter();
       this._doAction(act, btn);
@@ -385,43 +262,10 @@ export class AdvancedSearchPanel {
       if (role === 'scope') { this.scope = t.value; return this.runNow(); }
       if (role === 'live') { this.liveHighlight = t.checked; return this.runNow(); }
       if (role === 'saved') return this._loadFilter(t.value);
-      if (role === 'group-op') { this._node(t.dataset.path).op = t.value; return this._rerender(); }
-      if (role === 'group-not') { this._node(t.dataset.path).not = t.checked; return this._rerender(); }
-      if (role === 'field') {
-        const c = this._node(t.dataset.path);
-        c.field = t.value;
-        c.operator = this._operators(c.field)[0];
-        c.value = this._defaultValue(c);
-        c.value2 = '';
-        return this._rerender();
-      }
-      if (role === 'operator') {
-        const c = this._node(t.dataset.path);
-        c.operator = t.value;
-        const set = c.operator === 'in' || c.operator === 'notIn';
-        if (set && !Array.isArray(c.value)) c.value = this._fieldType(c.field) === 'set' ? [] : String(c.value || '');
-        if (!set && Array.isArray(c.value)) c.value = c.value.join(', ');
-        return this._rerender();
-      }
-      if (role === 'chip') {
-        const c = this._node(t.dataset.path);
-        const set = new Set(Array.isArray(c.value) ? c.value : []);
-        t.checked ? set.add(t.value) : set.delete(t.value);
-        c.value = [...set];
-        return this._scheduleRun();
-      }
+      this.builder.handleChange(e);
     });
 
-    root.addEventListener('input', (e) => {
-      const t = e.target;
-      if (t.dataset.role !== 'value' || !t.dataset.path) return;
-      const c = this._node(t.dataset.path);
-      const slot = t.dataset.slot === 'value2' ? 'value2' : 'value';
-      let v = t.value;
-      if ((c.operator === 'in' || c.operator === 'notIn') && slot === 'value') v = v.split(',').map(s => s.trim()).filter(Boolean);
-      c[slot] = v;
-      this._scheduleRun();
-    });
+    root.addEventListener('input', (e) => this.builder.handleInput(e));
 
     root.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); this.close(); }

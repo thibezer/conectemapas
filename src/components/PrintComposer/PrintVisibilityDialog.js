@@ -10,6 +10,7 @@ import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintViewResolver, PEN_WIDTHS_MM, LINE_PATTERNS, FILL_PATTERNS } from './PrintViewResolver.js';
 import { PrintViewEdits } from './PrintViewEdits.js';
 import { FeatureQuery } from '../../services/FeatureQuery.js';
+import { QueryBuilder } from '../AdvancedSearch/QueryBuilder.js';
 
 const esc = (s) => PrintItemsManager.escapeHtml(s);
 const fmtMm = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
@@ -24,8 +25,13 @@ export const VV_TABS = [
 export class PrintVisibilityDialog {
   constructor(composer) {
     this.composer = composer;
-    this.state = { itemId: null, tab: 'layers', query: '' };
+    this.state = { itemId: null, tab: 'layers', query: '', filterDraft: null };
     this.root = null;
+    // Critérios do filtro em edição (mesmo construtor da Busca Avançada)
+    this.builder = new QueryBuilder({
+      getQuery: () => this.state.filterDraft?.query,
+      onChange: (structural) => (structural ? this.refresh() : this.updateDraftCount())
+    });
   }
 
   isOpen() {
@@ -86,7 +92,7 @@ export class PrintVisibilityDialog {
     const readOnly = composer.readOnly === true;
     const locked = item.locked === true || readOnly;
     const tab = VV_TABS.some(t => t.id === state.tab) ? state.tab : 'layers';
-    const body = this.renderTab(tab, composer, item, view, locked);
+    const body = this.renderTab(tab, composer, item, view, locked, state);
     return `
       <div class="cm-vv-dialog" role="dialog" aria-modal="true" aria-label="Visibilidade e gráficos" tabindex="-1">
         <div class="cm-vv-header">
@@ -115,9 +121,10 @@ export class PrintVisibilityDialog {
     `;
   }
 
-  static renderTab(tab, composer, item, view, locked) {
+  static renderTab(tab, composer, item, view, locked, state = {}) {
     if (tab === 'layers') return this.renderLayersTab(composer, item, view, locked);
     if (tab === 'labels') return this.renderLabelsTab(composer, item, view, locked);
+    if (tab === 'filters') return this.renderFiltersTab(composer, item, view, locked, state);
     return '<div class="cm-vv-empty">Em breve.</div>';
   }
 
@@ -325,6 +332,148 @@ export class PrintVisibilityDialog {
     `;
   }
 
+  /** Feições que o filtro pega (escopo das camadas dele; sem critérios = todas) */
+  static filterMatches(def, composer) {
+    const features = composer.features || [];
+    const scoped = Array.isArray(def?.layerIds) && def.layerIds.length
+      ? features.filter(f => def.layerIds.includes(f.layerId))
+      : features;
+    const query = QueryBuilder.hasActiveCriteria(def?.query) ? def.query : null;
+    try {
+      return FeatureQuery.run(scoped, query, { layers: composer.layers }).ids;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  static renderFiltersTab(composer, item, view, locked, state) {
+    const library = composer.library || { filters: [] };
+    const defs = new Map((library.filters || []).map(f => [f.id, f]));
+    const inView = new Set((view.filters || []).map(f => f.filterId));
+    const libLocked = composer.readOnly === true;
+    const rows = (view.filters || []).map((entry, i) => this.filterRow(composer, view, entry, defs.get(entry.filterId), locked, i, view.filters.length)).join('');
+    const dis = locked ? 'disabled' : '';
+    const available = (library.filters || []).filter(f => !inView.has(f.id));
+    return `
+      <div class="cm-vv-section-title">Filtros desta vista <span class="cm-vv-muted">(o de cima vence)</span></div>
+      ${rows ? `
+        <table class="cm-vv-table">
+          <thead>
+            <tr>
+              <th>Prioridade</th>
+              <th class="cm-vv-center">Ativo</th>
+              <th class="cm-vv-center">Visível</th>
+              <th>Filtro</th>
+              <th>Traço</th>
+              <th>Preenchimento</th>
+              <th class="cm-vv-center">Meio-tom</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      ` : '<div class="cm-vv-empty cm-vv-empty--small">Nenhum filtro nesta vista. Adicione um da biblioteca abaixo.</div>'}
+      <div class="cm-vv-toolbar cm-vv-toolbar--spaced">
+        <select class="cm-native-select" data-vv-add-filter aria-label="Filtro da biblioteca" ${dis || (available.length ? '' : 'disabled')}>
+          ${available.length ? available.map(f => `<option value="${esc(f.id)}">${esc(f.name || 'Filtro')}</option>`).join('') : '<option value="">Todos os filtros já estão na vista</option>'}
+        </select>
+        <button type="button" class="cm-vv-btn" data-vv-action="filter-add" ${dis || (available.length ? '' : 'disabled')}>Adicionar à vista</button>
+      </div>
+
+      <div class="cm-vv-section-title">Biblioteca de filtros do projeto <span class="cm-vv-muted">(vale para todas as pranchas)</span></div>
+      <table class="cm-vv-table cm-vv-table--compact">
+        <thead><tr><th>Nome</th><th>Camadas</th><th>Feições</th><th></th></tr></thead>
+        <tbody>
+          ${(library.filters || []).map(f => `
+            <tr class="cm-vv-row" data-filter-id="${esc(f.id)}">
+              <td class="cm-vv-cell">${esc(f.name || 'Filtro')}</td>
+              <td class="cm-vv-cell cm-vv-muted">${(f.layerIds || []).length ? esc((f.layerIds || []).map(id => (composer.layers || []).find(l => l.id === id)?.name || id).join(', ')) : 'Todas'}</td>
+              <td class="cm-vv-cell">${this.filterMatches(f, composer).length}</td>
+              <td class="cm-vv-cell cm-vv-actions-cell">
+                <button type="button" class="cm-vv-btn" data-vv-action="filter-edit" data-filter-id="${esc(f.id)}" ${libLocked ? 'disabled' : ''}>Editar</button>
+                <button type="button" class="cm-vv-btn" data-vv-action="filter-dup" data-filter-id="${esc(f.id)}" ${libLocked ? 'disabled' : ''}>Duplicar</button>
+                <button type="button" class="cm-vv-btn cm-vv-btn--danger" data-vv-action="filter-delete" data-filter-id="${esc(f.id)}" ${libLocked ? 'disabled' : ''}>Excluir</button>
+              </td>
+            </tr>
+          `).join('') || '<tr><td class="cm-vv-cell cm-vv-muted" colspan="4">A biblioteca ainda não tem filtros.</td></tr>'}
+        </tbody>
+      </table>
+      <div class="cm-vv-toolbar cm-vv-toolbar--spaced">
+        <button type="button" class="cm-vv-btn cm-vv-btn--primary" data-vv-action="filter-new" ${libLocked ? 'disabled' : ''}>+ Novo filtro</button>
+      </div>
+      ${state.filterDraft ? this.renderFilterEditor(composer, state.filterDraft) : ''}
+    `;
+  }
+
+  static filterRow(composer, view, entry, def, locked, index, total) {
+    const id = entry.filterId;
+    const dis = locked ? 'disabled' : '';
+    if (!def) {
+      return `
+        <tr class="cm-vv-row is-hidden" data-row-kind="filter" data-row-id="${esc(id)}">
+          <td class="cm-vv-cell" colspan="7">Filtro excluído da biblioteca</td>
+          <td class="cm-vv-cell cm-vv-center"><button type="button" class="cm-vv-icon-btn" data-vv-remove-filter ${dis} title="Tirar da vista" aria-label="Tirar da vista">✕</button></td>
+        </tr>`;
+    }
+    const ids = this.filterMatches(def, composer);
+    const sample = (composer.features || []).find(f => ids.includes(String(f.id)) || ids.includes(f.id))
+      || { id: '__amostra', type: 'Polygon', coordinates: [] };
+    const layer = (composer.layers || []).find(l => l.id === sample.layerId) || {};
+    const layerOv = view.layers?.[sample.layerId];
+    const g = PrintViewResolver.graphicsOf(sample, layer, [layerOv, entry].filter(Boolean));
+    const has = PrintViewEdits.hasOverride(view, 'filter', id);
+    return `
+      <tr class="cm-vv-row ${entry.enabled === false ? 'is-hidden' : ''}" data-row-kind="filter" data-row-id="${esc(id)}">
+        <td class="cm-vv-cell">
+          <div class="cm-vv-inline">
+            <button type="button" class="cm-vv-icon-btn" data-vv-move="-1" ${dis || (index === 0 ? 'disabled' : '')} title="Subir (mais prioridade)" aria-label="Subir ${esc(def.name)}">↑</button>
+            <button type="button" class="cm-vv-icon-btn" data-vv-move="1" ${dis || (index === total - 1 ? 'disabled' : '')} title="Descer" aria-label="Descer ${esc(def.name)}">↓</button>
+          </div>
+        </td>
+        <td class="cm-vv-cell cm-vv-center"><input type="checkbox" data-gfx="enabled" ${entry.enabled !== false ? 'checked' : ''} ${dis} aria-label="Filtro ativo: ${esc(def.name)}" /></td>
+        <td class="cm-vv-cell cm-vv-center ${entry.visible === false ? 'is-overridden' : ''}"><input type="checkbox" data-gfx="visible" ${entry.visible !== false ? 'checked' : ''} ${dis} aria-label="Mostrar o que o filtro pega" title="Desmarcado: oculta as feições que o filtro pega" /></td>
+        <td class="cm-vv-cell cm-vv-name">
+          ${this.swatch(g)}
+          <span class="cm-vv-name-text" title="${esc(def.name)}">${esc(def.name || 'Filtro')}</span>
+          <span class="cm-vv-count" title="${ids.length} feições">${ids.length}</span>
+        </td>
+        ${this.graphicsCells(g, entry, locked)}
+        <td class="cm-vv-cell cm-vv-center">
+          <div class="cm-vv-inline">
+            <button type="button" class="cm-vv-reset" data-vv-reset ${has && !locked ? '' : 'disabled'} title="Tirar os gráficos do filtro" aria-label="Tirar os gráficos de ${esc(def.name)}">↺</button>
+            <button type="button" class="cm-vv-icon-btn" data-vv-remove-filter ${dis} title="Tirar da vista" aria-label="Tirar ${esc(def.name)} da vista">✕</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  static renderFilterEditor(composer, draft) {
+    const builder = new QueryBuilder({ getQuery: () => draft.query });
+    const chosen = new Set(draft.layerIds || []);
+    const count = this.filterMatches(draft, composer).length;
+    return `
+      <div class="cm-vv-editor" data-vv-editor>
+        <div class="cm-vv-section-title">${draft.id ? 'Editar filtro' : 'Novo filtro'}</div>
+        <div class="cm-vv-toolbar">
+          <input type="text" class="cm-vertex-input cm-vv-text" data-vv-draft="name" value="${esc(draft.name || '')}" placeholder="Nome do filtro (ex.: APP, Lotes acima de 1 ha)" aria-label="Nome do filtro" />
+        </div>
+        <div class="cm-vv-hint">Camadas (nenhuma marcada = todas):</div>
+        <div class="cm-vv-chips">
+          ${(composer.layers || []).map(l => `<label class="cm-vv-chip"><input type="checkbox" data-vv-draft-layer value="${esc(l.id)}" ${chosen.has(l.id) ? 'checked' : ''}/> ${esc(l.name)}</label>`).join('')}
+        </div>
+        <div class="cm-vv-hint">Critérios (vazio = todas as feições das camadas escolhidas):</div>
+        <div class="cm-vv-query">${builder.render({ features: composer.features || [], layers: composer.layers || [] })}</div>
+        <div class="cm-vv-toolbar cm-vv-toolbar--spaced">
+          <span class="cm-vv-count-lg" data-vv-draft-count>${count} feição(ões) casam</span>
+          <span class="cm-vv-grow"></span>
+          <button type="button" class="cm-vv-btn" data-vv-action="filter-cancel">Cancelar</button>
+          <button type="button" class="cm-vv-btn cm-vv-btn--primary" data-vv-action="filter-save">Salvar filtro</button>
+        </div>
+      </div>
+    `;
+  }
+
   /** Marcação de uma linha, para trocar só ela depois de uma edição */
   static rowHtml(composer, item, kind, id) {
     const view = PrintViewResolver.effectiveView(item, composer.library);
@@ -366,10 +515,24 @@ export class PrintVisibilityDialog {
     root.addEventListener('click', (e) => {
       const t = e.target;
       if (t === root || t.closest('[data-vv-close]')) { this.close(); return; }
+      if (this.state.filterDraft && t.closest('[data-vv-editor]') && this.builder.handleClick(e)) return;
+      const move = t.closest('[data-vv-move]');
+      if (move && !move.disabled) {
+        const row = move.closest('[data-row-kind]');
+        this.edit(row, (view) => PrintViewEdits.moveFilter(view, row.dataset.rowId, Number(move.dataset.vvMove)), 'Prioridade do filtro', null, true, null, true);
+        return;
+      }
+      const remove = t.closest('[data-vv-remove-filter]');
+      if (remove && !remove.disabled) {
+        const row = remove.closest('[data-row-kind]');
+        this.edit(row, (view) => PrintViewEdits.removeFilter(view, row.dataset.rowId), 'Tirar filtro da vista', null, true, null, true);
+        return;
+      }
       const tab = t.closest('[data-vv-tab]');
       if (tab) {
         this.state.tab = tab.dataset.vvTab;
         this.state.query = '';
+        this.state.filterDraft = null;
         this.refresh();
         return;
       }
@@ -402,6 +565,10 @@ export class PrintVisibilityDialog {
       }, this.actionName(kind, path), `vv:${kind}:${id}:${path}`, committed, input);
     };
     root.addEventListener('input', (e) => {
+      if (this.state.filterDraft && e.target.closest?.('[data-vv-editor]')) {
+        if (e.target.matches('[data-vv-draft="name"]')) { this.state.filterDraft.name = e.target.value; return; }
+        if (this.builder.handleInput(e)) return;
+      }
       if (e.target.matches?.('[data-vv-search]')) {
         this.state.query = e.target.value;
         this.applySearch();
@@ -410,6 +577,18 @@ export class PrintVisibilityDialog {
       onField(e, false);
     });
     root.addEventListener('change', (e) => {
+      if (this.state.filterDraft && e.target.closest?.('[data-vv-editor]')) {
+        if (e.target.matches('[data-vv-draft-layer]')) {
+          const ids = new Set(this.state.filterDraft.layerIds || []);
+          if (e.target.checked) ids.add(e.target.value);
+          else ids.delete(e.target.value);
+          this.state.filterDraft.layerIds = [...ids];
+          this.updateDraftCount();
+          return;
+        }
+        if (this.builder.handleChange(e)) return;
+        return;
+      }
       if (e.target.matches?.('[data-vv-map]')) {
         this.state.itemId = e.target.value;
         this.refresh();
@@ -444,7 +623,7 @@ export class PrintVisibilityDialog {
     const ok = this.composer.updateMapView(item.id, mutate, actionName, { coalesceKey });
     if (!ok || !committed) return;
     if (full || !row) { this.refresh(); return; }
-    const html = PrintVisibilityDialog.rowHtml(this.composer, item, row.dataset.rowKind, row.dataset.rowId);
+    const html = row.dataset.rowKind === 'filter' ? null : PrintVisibilityDialog.rowHtml(this.composer, item, row.dataset.rowKind, row.dataset.rowId);
     if (!html) { this.refresh(); return; }
     const tpl = document.createElement('tbody');
     tpl.innerHTML = html.trim();
@@ -455,9 +634,10 @@ export class PrintVisibilityDialog {
     this.root.querySelector('.cm-vv-note--info')?.remove();
   }
 
-  runAction(action) {
+  runAction(action, el = null) {
     const item = this.currentItem();
     if (!item) return;
+    if (action.startsWith('filter-')) { this.runFilterAction(action, el, item); return; }
     const layers = this.composer.layers || [];
     const ops = {
       'show-all': ['Mostrar todas as camadas', (v) => PrintViewEdits.setAllLayersVisible(v, layers, true)],
@@ -470,6 +650,60 @@ export class PrintVisibilityDialog {
     if (!op) return;
     this.composer.updateMapView(item.id, op[1], op[0]);
     this.refresh();
+  }
+
+  /** Biblioteca de filtros (vale para todas as pranchas) e filtros da vista */
+  runFilterAction(action, el, item) {
+    const composer = this.composer;
+    const filterId = el?.dataset.filterId;
+    const def = (composer.library?.filters || []).find(f => f.id === filterId);
+    if (action === 'filter-add') {
+      const id = this.root.querySelector('[data-vv-add-filter]')?.value;
+      if (id) composer.updateMapView(item.id, (v) => PrintViewEdits.addFilter(v, id), 'Adicionar filtro à vista');
+    } else if (action === 'filter-new') {
+      this.state.filterDraft = { id: null, name: '', layerIds: [], query: QueryBuilder.emptyQuery() };
+    } else if (action === 'filter-edit' && def) {
+      this.state.filterDraft = JSON.parse(JSON.stringify({ layerIds: [], query: QueryBuilder.emptyQuery(), ...def }));
+    } else if (action === 'filter-dup' && def) {
+      composer.updateLibrary(lib => {
+        lib.filters.push({ ...JSON.parse(JSON.stringify(def)), id: `flt-${Date.now().toString(36)}`, name: `${def.name || 'Filtro'} (cópia)` });
+      });
+    } else if (action === 'filter-delete' && def) {
+      if (!confirm(`Excluir o filtro "${def.name || 'Filtro'}" da biblioteca? Ele sai de todas as pranchas.`)) return;
+      composer.updateLibrary(lib => { lib.filters = lib.filters.filter(f => f.id !== def.id); });
+    } else if (action === 'filter-cancel') {
+      this.state.filterDraft = null;
+    } else if (action === 'filter-save') {
+      const draft = this.state.filterDraft;
+      if (!draft) return;
+      const name = String(draft.name || '').trim();
+      const problems = FeatureQuery.validate(draft.query || {});
+      if (!name || problems.length) {
+        const count = this.root.querySelector('[data-vv-draft-count]');
+        if (count) count.textContent = !name ? 'Dê um nome ao filtro.' : problems[0].message;
+        return;
+      }
+      const isNew = !draft.id;
+      const saved = { id: draft.id || `flt-${Date.now().toString(36)}`, name, layerIds: draft.layerIds || [], query: draft.query };
+      const ok = composer.updateLibrary(lib => {
+        const i = lib.filters.findIndex(f => f.id === saved.id);
+        if (i >= 0) lib.filters[i] = saved;
+        else lib.filters.push(saved);
+      });
+      if (!ok) return;
+      // Filtro novo já entra na vista deste mapa (no topo)
+      if (isNew) composer.updateMapView(item.id, (v) => PrintViewEdits.addFilter(v, saved.id), 'Adicionar filtro à vista');
+      this.state.filterDraft = null;
+    }
+    this.refresh();
+  }
+
+  /** Contagem ao vivo do filtro em edição */
+  updateDraftCount() {
+    const el = this.root?.querySelector('[data-vv-draft-count]');
+    if (el && this.state.filterDraft) {
+      el.textContent = `${PrintVisibilityDialog.filterMatches(this.state.filterDraft, this.composer).length} feição(ões) casam`;
+    }
   }
 
   /** Insere {campo} no texto de rótulo em foco (ou no último usado) */

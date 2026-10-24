@@ -393,3 +393,54 @@
 .cm-vv-muted {
   color: #6b6b76;
 }
+
+/* Filtros: biblioteca e editor de critérios */
+.cm-vv-toolbar--spaced {
+  margin: 8px 0 4px;
+}
+
+.cm-vv-empty--small {
+  padding: 12px 0;
+  text-align: left;
+}
+
+.cm-vv-table--compact .cm-vv-cell {
+  padding: 3px 6px;
+}
+
+.cm-vv-actions-cell {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.cm-vv-editor {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 224, 138, 0.3);
+  border-radius: 6px;
+  background: rgba(0, 224, 138, 0.04);
+}
+
+.cm-vv-editor .cm-vv-text {
+  max-width: 420px;
+}
+
+.cm-vv-query {
+  margin: 4px 0;
+}
+
+.cm-vv-count-lg {
+  color: var(--cm-primary, #00E08A);
+  font-weight: 600;
+}
+
+.cm-vv-grow {
+  flex: 1;
+}
+
+label.cm-vv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
