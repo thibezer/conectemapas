@@ -21,6 +21,7 @@ import { PrintViewResolver } from './PrintViewResolver.js';
 import { PrintMapRenderer } from './PrintMapRenderer.js';
 import { PrintVectorLayer } from './PrintVectorLayer.js';
 import { PrintLegendRenderer } from './PrintLegendRenderer.js';
+import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
 import { PrintVisibilityDialog } from './PrintVisibilityDialog.js';
 import { PrintCloudSync } from './PrintCloudSync.js';
 import { PrintViewTemplates } from './PrintViewTemplates.js';
@@ -88,6 +89,8 @@ export class PrintComposerModal {
 
   /** Salvamento automático da prancha ativa após qualquer edição */
   markDirty() {
+    // Montando outra prancha só para exportar: nada pode ser gravado na prancha ativa
+    if (this.exporting) return;
     this.sheetsManager.scheduleSave();
   }
 
@@ -289,6 +292,37 @@ export class PrintComposerModal {
     this.cloud = new PrintCloudSync(this, store, { canWrite: () => this.canWriteProject(this.projectId), clientId: this.clientId });
     this.setReadOnly(false);
     this.cloud.start();
+  }
+
+  /**
+   * Monta uma prancha na tela só para exportar: mapas com o enquadramento, a escala e a
+   * vista dela (o PDF é tirado dos mapas montados). Use com `exporting = true`.
+   */
+  async mountSheetForExport(sheet) {
+    this.paperSize = sheet.paperSize;
+    this.showAbntMargins = sheet.showAbntMargins !== false;
+    this.items = JSON.parse(JSON.stringify(sheet.items || []));
+    this.updatePaperSheetDOM();
+    this.renderAllItems();
+    await this.waitForMapsReady();
+  }
+
+  /** Espera os tiles dos mapas da prancha carregarem (com limite) e o primeiro desenho */
+  async waitForMapsReady(timeoutMs = 8000) {
+    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    await wait(250); // grade, escala e retângulo do mapa de localização (timer de 150 ms)
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      let loading = false;
+      this.leafletMaps.forEach(map => map.eachLayer(l => { if (typeof l.isLoading === 'function' && l.isLoading()) loading = true; }));
+      if (!loading) break;
+      await wait(150);
+    }
+    // Um quadro para os desenhos pendentes; com a aba em segundo plano o rAF não roda, então há um limite
+    await new Promise(r => {
+      const t = setTimeout(r, 100);
+      requestAnimationFrame(() => { clearTimeout(t); r(); });
+    });
   }
 
   /** Recarrega no compositor a prancha ativa (chegou da nuvem, trocou ou foi excluída) */
@@ -617,9 +651,9 @@ export class PrintComposerModal {
     } else if (item.type === 'scale_bar') {
       return PrintItemsManager.renderScaleBar(item, item.scale || 10000);
     } else if (item.type === 'legend') {
-      return PrintItemsManager.renderLegendCanvas(item);
+      return PrintItemsManager.renderItemCanvas(item);
     } else if (item.type === 'title_block') {
-      return PrintItemsManager.renderTitleBlock(item, this.projectName, this.items.find(i => i.type === 'map')?.scale);
+      return PrintItemsManager.renderItemCanvas(item);
     } else if (item.type === 'table_vertices') {
       return PrintItemsManager.renderVerticesTable(item, this.features);
     } else if (item.type === 'text_block') {
@@ -745,7 +779,7 @@ export class PrintComposerModal {
               this.items.filter(i => i.type === 'title_block').forEach(tb => this.refreshItemContent(tb));
               // Faixas de escala da vista mudam o que a legenda lista
               this.items.filter(i => i.type === 'legend' && PrintItemsManager.legendMapItem(i, this.items)?.id === item.id)
-                .forEach(lg => this.drawLegendCanvas(lg));
+                .forEach(lg => this.drawItemCanvas(lg));
 
               // Sincroniza retângulo no Inset Map
               this.updateInsetMapExtent();
@@ -1050,7 +1084,7 @@ export class PrintComposerModal {
     }
     const map = this.leafletMaps.get(item.id);
     if (map && invalidateMap) map.invalidateSize();
-    if (item.type === 'legend') this.drawLegendCanvas(item);
+    if (PrintItemsManager.CANVAS_ITEM_TYPES.has(item.type)) this.drawItemCanvas(item);
   }
 
   /** Redesenha só o conteúdo de um item; mapas só atualizam grade e escala (o Leaflet não é recriado) */
@@ -1062,7 +1096,7 @@ export class PrintComposerModal {
     }
     const scaler = document.querySelector(`[data-item-id="${item.id}"] > .cm-item-scaler`);
     if (scaler) scaler.innerHTML = this.getItemInnerContent(item);
-    if (item.type === 'legend') this.drawLegendCanvas(item);
+    if (PrintItemsManager.CANVAS_ITEM_TYPES.has(item.type)) this.drawItemCanvas(item);
   }
 
   /** Entradas da legenda: camadas e filtros que aparecem na vista do mapa vinculado */
@@ -1079,9 +1113,12 @@ export class PrintComposerModal {
     });
   }
 
-  /** Desenha a legenda no canvas do item, na nitidez do zoom atual da prancheta */
-  drawLegendCanvas(item) {
-    const canvas = document.querySelector(`[data-legend-canvas="${item.id}"]`);
+  /**
+   * Desenha um item em canvas (legenda, carimbo) com o mesmo código da exportação,
+   * na nitidez do zoom atual da prancheta
+   */
+  drawItemCanvas(item) {
+    const canvas = document.querySelector(`[data-item-canvas="${item.id}"]`);
     if (!canvas) return;
     const base = PrintCanvasEngine.BASE_PX_PER_MM;
     const res = this.vectorResolution();
@@ -1090,18 +1127,36 @@ export class PrintComposerModal {
     const ctx = canvas.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    PrintLegendRenderer.draw(ctx, {
-      entries: this.legendEntriesFor(item),
-      wMm: item.width,
-      hMm: item.height,
-      pxPerMm: base * res,
-      title: PrintItemsManager.legendTitle(item)
-    });
+    this.drawCanvasItem(ctx, item, base * res);
   }
 
-  /** Redesenha as legendas (vista do mapa mudou, ou o zoom da prancheta pede outra nitidez) */
+  /** Conteúdo de um item em canvas, com o contexto no canto do item (tela e exportação) */
+  drawCanvasItem(ctx, item, pxPerMm) {
+    if (item.type === 'legend') {
+      PrintLegendRenderer.draw(ctx, {
+        entries: this.legendEntriesFor(item),
+        wMm: item.width,
+        hMm: item.height,
+        pxPerMm,
+        title: PrintItemsManager.legendTitle(item)
+      });
+    } else if (item.type === 'title_block') {
+      PrintTitleBlockRenderer.draw(ctx, {
+        item,
+        projectName: this.projectName,
+        mapScale: this.items.find(i => i.type === 'map')?.scale,
+        wMm: item.width,
+        hMm: item.height,
+        pxPerMm
+      });
+    }
+  }
+
+  /** Redesenha legendas e carimbos (vista do mapa mudou, ou o zoom da prancheta pede outra nitidez) */
   refreshLegends() {
-    this.items.filter(i => i.type === 'legend' && i.visible !== false).forEach(i => this.drawLegendCanvas(i));
+    this.items
+      .filter(i => PrintItemsManager.CANVAS_ITEM_TYPES.has(i.type) && i.visible !== false)
+      .forEach(i => this.drawItemCanvas(i));
   }
 
   /** Reposiciona todos os itens após mudança de zoom (os mapas não mudam de tamanho: só o transform) */

@@ -80,8 +80,9 @@ export class PrintSheetsManager {
     this.cancelScheduledSave();
     const cur = this.getCurrentSheet();
     if (!cur) return;
-    // Só visualizando (outro operador edita): a tela não pode sobrescrever a prancha
-    if (this.composer.readOnly) return;
+    // Só visualizando (outro operador edita) ou montando outra prancha para exportar:
+    // a tela não pode sobrescrever a prancha ativa
+    if (this.composer.readOnly || this.composer.exporting) return;
 
     cur.paperSize = { ...this.composer.paperSize };
     cur.showAbntMargins = this.composer.showAbntMargins;

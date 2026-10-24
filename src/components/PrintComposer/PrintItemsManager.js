@@ -365,57 +365,6 @@ export class PrintItemsManager {
   }
 
   /**
-   * Renderiza Selo / Carimbo Técnico nos padrões da ABNT NBR 6492 e NBR 13133
-   */
-  static renderTitleBlock(item, projectName = 'Levantamento Cartográfico', mapScale = null) {
-    const props = item.properties || {};
-    const esc = this.escapeHtml.bind(this);
-    return `
-      <div class="cm-item-title-block">
-        <div class="cm-title-block-header">${esc(props.headerTitle || 'PLANTA TOPOGRÁFICA / CARTOGRÁFICA')}</div>
-        <div class="cm-title-block-grid">
-          <div class="cm-title-block-cell full-width">
-            <span class="cm-cell-label">Projeto / Obra</span>
-            <span class="cm-cell-val">${esc(props.projectName || projectName)}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Proprietário / Cliente</span>
-            <span class="cm-cell-val">${esc(props.client || 'Particular')}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Imóvel / Endereço</span>
-            <span class="cm-cell-val">${esc(props.location || 'Distrito Federal - Brasil')}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Responsável Técnico</span>
-            <span class="cm-cell-val">${esc(props.author || 'Eng. Cartógrafo / Agrimensor')}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Registro / ART</span>
-            <span class="cm-cell-val">${esc(props.art || 'CREA-BR 2026/0012')}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Sistema Geodésico / Datum</span>
-            <span class="cm-cell-val">${esc(props.datum || 'SIRGAS 2000 / UTM')}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Escala Numérica</span>
-            <span class="cm-cell-val">${esc(this.titleBlockScaleText(props, mapScale))}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Área / Perímetro</span>
-            <span class="cm-cell-val">${esc(props.areaPerimeter || 'Conforme Tabela')}</span>
-          </div>
-          <div class="cm-title-block-cell">
-            <span class="cm-cell-label">Data / Prancha</span>
-            <span class="cm-cell-val">${esc(this.titleBlockDateText(props))}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  /**
    * Renderiza a Barra de Escala Gráfica segmentada com precisão métrica
    */
   static renderScaleBar(item, mapScale = 10000) {
@@ -437,9 +386,12 @@ export class PrintItemsManager {
     `;
   }
 
-  /** Legenda na tela: um canvas desenhado pelo PrintLegendRenderer (o mesmo da exportação) */
-  static renderLegendCanvas(item) {
-    return `<canvas class="cm-item-legend-canvas" data-legend-canvas="${this.escapeHtml(item.id)}"></canvas>`;
+  /** Itens desenhados em canvas pelo mesmo código da exportação (legenda e carimbo) */
+  static CANVAS_ITEM_TYPES = new Set(['legend', 'title_block']);
+
+  /** Legenda e carimbo na tela: um canvas (desenhado pelo compositor, igual à exportação) */
+  static renderItemCanvas(item) {
+    return `<canvas class="cm-item-canvas" data-item-canvas="${this.escapeHtml(item.id)}"></canvas>`;
   }
 
   /**

@@ -187,82 +187,6 @@
 .cm-grid-label-left { left: 8px; transform: translateY(-50%) rotate(180deg); writing-mode: vertical-rl; padding: 2px 0; }
 .cm-grid-label-right { right: 8px; transform: translateY(-50%); writing-mode: vertical-rl; padding: 2px 0; }
 
-/* Selo Técnico / Carimbo Cartográfico (ABNT / NBR 13133 e NBR 6492) */
-.cm-item-title-block {
-  width: 100%;
-  height: 100%;
-  background: #ffffff;
-  border: 1.5px solid #000;
-  display: flex;
-  flex-direction: column;
-  color: #000;
-  font-family: Arial, sans-serif;
-  overflow: hidden;
-  box-sizing: border-box;
-}
-
-.cm-title-block-header {
-  background: #000;
-  color: #fff;
-  font-size: 7.5px;
-  font-weight: bold;
-  padding: 2.5px 4px;
-  text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  flex-shrink: 0;
-}
-
-.cm-title-block-grid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-top: 1px solid #000;
-  font-size: 7px;
-  overflow: hidden;
-}
-
-.cm-title-block-cell {
-  padding: 1.5px 3.5px;
-  border-right: 1px solid #000;
-  border-bottom: 1px solid #000;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.cm-title-block-cell:nth-child(2n) {
-  border-right: none;
-}
-
-.cm-title-block-cell.full-width {
-  grid-column: span 2;
-  border-right: none;
-}
-
-.cm-cell-label {
-  font-size: 5.5px;
-  color: #555;
-  text-transform: uppercase;
-  font-weight: bold;
-  line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cm-cell-val {
-  font-weight: bold;
-  color: #000;
-  margin-top: 1px;
-  font-size: 6.5px;
-  line-height: 1.15;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* Barra de Escala Gráfica */
 .cm-item-scale-bar {
   width: 100%;
@@ -314,8 +238,8 @@
   white-space: nowrap;
 }
 
-/* Legenda Temática: canvas do PrintLegendRenderer (mesmo desenho da exportação) */
-.cm-item-legend-canvas {
+/* Legenda e carimbo: canvas desenhado pelo mesmo código da exportação */
+.cm-item-canvas {
   display: block;
   width: 100%;
   height: 100%;

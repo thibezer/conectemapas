@@ -15,6 +15,7 @@ import { PrintAlignmentHelper } from '../src/components/PrintComposer/PrintAlign
 import { PrintItemsManager } from '../src/components/PrintComposer/PrintItemsManager.js';
 import { PrintSheetsManager } from '../src/components/PrintComposer/PrintSheetsManager.js';
 import { PrintPropertiesPanel } from '../src/components/PrintComposer/PrintPropertiesPanel.js';
+import { PrintTitleBlockRenderer } from '../src/components/PrintComposer/PrintTitleBlockRenderer.js';
 
 console.log('--- Teste do painel lateral e histórico do Layout de Impressão ---');
 
@@ -476,9 +477,17 @@ assert.strictEqual(PrintItemsManager.titleBlockScaleText({}, null), '1:10.000', 
 
 assert.strictEqual(PrintItemsManager.titleBlockDateText({ date: '23/10/2026 (01/01)', sheetNumber: '02/03' }), '23/10/2026 (02/03)', 'Número antigo gravado na data é ignorado');
 assert.strictEqual(PrintItemsManager.titleBlockDateText({ date: '23/10/2026' }), '23/10/2026 (01/01)');
-const tbHtml = PrintItemsManager.renderTitleBlock({ properties: { scaleText: '1:10.000', date: '23/10/2026 (01/01)', sheetNumber: '01/01' } }, 'P', 44396);
-assert.ok(tbHtml.includes('1:44.396'), 'Carimbo mostra a escala do mapa');
-assert.ok(tbHtml.includes('23/10/2026 (01/01)') && !tbHtml.includes('(01/01) (01/01)'), 'Número da prancha não se repete');
+const tbCells = PrintTitleBlockRenderer.cells({ properties: { scaleText: '1:10.000', date: '23/10/2026 (01/01)', sheetNumber: '01/01' } }, 'P', 44396);
+const tbValue = (label) => tbCells.find(c => c.label === label).value;
+assert.strictEqual(tbValue('Escala Numérica'), '1:44.396', 'Carimbo mostra a escala do mapa');
+assert.strictEqual(tbValue('Data / Prancha'), '23/10/2026 (01/01)', 'Número da prancha não se repete');
+assert.strictEqual(tbValue('Projeto / Obra'), 'P', 'Sem nome próprio, usa o do projeto');
+assert.strictEqual(tbCells.length, 9, 'Mesmas 9 células da tela e do PDF');
+// Texto que não cabe na célula é encurtado (antes transbordava no PDF)
+const fakeMeasure = { measureText: (t) => ({ width: t.length * 10 }) };
+assert.strictEqual(PrintTitleBlockRenderer.fit(fakeMeasure, 'Curto', 100), 'Curto');
+const cut = PrintTitleBlockRenderer.fit(fakeMeasure, 'Um nome de projeto bem comprido', 100);
+assert.ok(cut.endsWith('…') && cut.length * 10 <= 100, `Encurta com reticências (${cut})`);
 
 // A numeração das pranchas não é mais gravada dentro da data
 const numMgr = new PrintSheetsManager(sheetComposer);

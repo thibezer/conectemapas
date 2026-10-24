@@ -10,7 +10,6 @@ import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintMapRenderer } from './PrintMapRenderer.js';
-import { PrintLegendRenderer } from './PrintLegendRenderer.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 
@@ -548,67 +547,13 @@ export class PrintExporter {
    * Renderiza o Selo / Carimbo Técnico nos padrões ABNT NBR 6492 / NBR 13133
    */
   static drawTitleBlockItem(ctx, item, x, y, w, h, composer, scaleFactor) {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = Math.max(1.5, Math.round(1.5 * (scaleFactor / (300 / 25.4))));
-    ctx.strokeRect(x, y, w, h);
-
-    const p = item.properties || {};
-    const headH = h * 0.18;
-
-    // Cabeçalho preto
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x, y, w, headH);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(headH * 0.52)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(p.headerTitle || 'PLANTA TOPOGRÁFICA / CARTOGRÁFICA', x + w / 2, y + headH * 0.7);
-
-    // Divisões e textos das células
-    const rowH = (h - headH) / 4;
-    const colW = w / 2;
-    const fontLabel = Math.max(6, Math.round(rowH * 0.28));
-    const fontVal = Math.max(7, Math.round(rowH * 0.38));
-
-    // Linhas horizontais
-    for (let i = 1; i <= 3; i++) {
-      ctx.beginPath();
-      ctx.moveTo(x, y + headH + rowH * i);
-      ctx.lineTo(x + w, y + headH + rowH * i);
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    // Linha vertical intermediária
-    ctx.beginPath();
-    ctx.moveTo(x + colW, y + headH);
-    ctx.lineTo(x + colW, y + h);
-    ctx.stroke();
-
-    const drawCell = (cx, cy, label, val) => {
-      ctx.fillStyle = '#666666';
-      ctx.font = `bold ${fontLabel}px Arial, sans-serif`;
-      ctx.textAlign = 'left';
-      ctx.fillText(label.toUpperCase(), cx + 4, cy + rowH * 0.38);
-      ctx.fillStyle = '#000000';
-      ctx.font = `bold ${fontVal}px Arial, sans-serif`;
-      ctx.fillText(val || '-', cx + 4, cy + rowH * 0.82);
-    };
-
-    drawCell(x, y + headH, 'Projeto', p.projectName || composer.projectName);
-    drawCell(x + colW, y + headH, 'Proprietário', p.client || 'Particular');
-
-    drawCell(x, y + headH + rowH, 'Resp. Técnico', p.author || 'Eng. Cartógrafo');
-    drawCell(x + colW, y + headH + rowH, 'Registro / ART', p.art || 'CREA-BR 2026');
-
-    drawCell(x, y + headH + rowH * 2, 'Sistema Geodésico', p.datum || 'SIRGAS 2000');
-    drawCell(x + colW, y + headH + rowH * 2, 'Escala', PrintItemsManager.titleBlockScaleText(p, composer.items.find(i => i.type === 'map')?.scale));
-
-    drawCell(x, y + headH + rowH * 3, 'Área / Perímetro', p.areaPerimeter || 'Conforme Tabela');
-    drawCell(x + colW, y + headH + rowH * 3, 'Data / Prancha', PrintItemsManager.titleBlockDateText(p));
+    // Mesmo desenho da tela (PrintTitleBlockRenderer), na resolução da exportação
+    ctx.save();
+    ctx.translate(x, y);
+    composer.drawCanvasItem(ctx, item, scaleFactor);
+    ctx.restore();
   }
+
 
   /**
    * Renderiza a Tabela de Vértices Topográfica com precisão milimétrica
@@ -750,15 +695,10 @@ export class PrintExporter {
     // Mesmo desenho da tela (PrintLegendRenderer), na resolução da exportação
     ctx.save();
     ctx.translate(x, y);
-    PrintLegendRenderer.draw(ctx, {
-      entries: composer.legendEntriesFor(item),
-      wMm: item.width,
-      hMm: item.height,
-      pxPerMm: scaleFactor,
-      title: PrintItemsManager.legendTitle(item)
-    });
+    composer.drawCanvasItem(ctx, item, scaleFactor);
     ctx.restore();
   }
+
 
   /**
    * Renderiza Forma Geométrica / Moldura Técnica
@@ -819,8 +759,14 @@ export class PrintExporter {
       }
 
       composer.sheetsManager.saveCurrentStateFromComposer();
-      const sheets = composer.sheetsManager.sheets;
-      const initialSheetId = composer.sheetsManager.activeSheetId;
+      const sheets = composer.sheetsManager.sheets.slice();
+      // Estado da tela para voltar depois (sem perder o histórico de desfazer)
+      const restore = {
+        paperSize: composer.paperSize,
+        showAbntMargins: composer.showAbntMargins,
+        items: JSON.parse(JSON.stringify(composer.items || [])),
+        selectedItemId: composer.selectedItemId
+      };
 
       const progress = notifyProgress({
         titulo: 'Gerando Caderno de Pranchas',
@@ -828,14 +774,14 @@ export class PrintExporter {
       });
 
       let pdf = null;
+      composer.exporting = true;
+      composer.selectItem?.(null);
 
       try {
         for (let i = 0; i < sheets.length; i++) {
           const sh = sheets[i];
-          // Aplica dados da prancha temporariamente no compositor para renderizar
-          composer.paperSize = sh.paperSize;
-          composer.showAbntMargins = sh.showAbntMargins !== false;
-          composer.items = sh.items;
+          // Cada prancha é montada de verdade: mapas com o enquadramento, a escala e a vista dela
+          await composer.mountSheetForExport(sh);
 
           const rendered = await this.renderSheetWithFallback(composer, dpi);
           const { canvas } = rendered;
@@ -861,8 +807,15 @@ export class PrintExporter {
         }
       } finally {
         progress.done();
-        // Restaura a prancha original ativa
-        composer.sheetsManager.switchToSheet(initialSheetId);
+        // Volta a prancha que estava aberta
+        composer.paperSize = restore.paperSize;
+        composer.showAbntMargins = restore.showAbntMargins;
+        composer.items = restore.items;
+        composer.updatePaperSheetDOM();
+        composer.renderAllItems();
+        composer.exporting = false;
+        if (restore.selectedItemId) composer.selectItem(restore.selectedItemId);
+        else composer.updatePropertiesPanel();
       }
 
       if (pdf) {
