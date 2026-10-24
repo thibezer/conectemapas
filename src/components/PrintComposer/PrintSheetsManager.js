@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintToolbar } from './PrintToolbar.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
 export class PrintSheetsManager {
@@ -129,10 +130,6 @@ export class PrintSheetsManager {
     this.composer.showAbntMargins = target.showAbntMargins !== false;
     this.composer.items = JSON.parse(JSON.stringify(target.items || []));
     this.composer.selectedItemId = (this.composer.items.find(i => i.type === 'map') || this.composer.items[0])?.id || null;
-
-    // Atualiza badges e UI
-    const badge = typeof document !== 'undefined' ? document.getElementById('cm-print-paper-badge') : null;
-    if (badge) badge.textContent = this.composer.paperSize.name;
 
     this.composer.updatePaperSheetDOM();
     this.composer.renderAllItems();
@@ -345,7 +342,8 @@ export class PrintSheetsManager {
   }
 
   /**
-   * Renderiza os controles de Pranchas na barra superior do compositor
+   * Renderiza o menu de Pranchas na barra superior do compositor (os cliques são tratados
+   * pela PrintToolbar, que chama runMenuAction)
    */
   renderSheetsSelectorDOM() {
     if (typeof document === 'undefined') return;
@@ -355,78 +353,37 @@ export class PrintSheetsManager {
     const cur = this.getCurrentSheet();
     const curIndex = this.sheets.findIndex(s => s.id === this.activeSheetId) + 1;
     const total = this.sheets.length;
+    const esc = PrintItemsManager.escapeHtml;
 
-    container.innerHTML = `
-      <div class="cm-print-sheets-bar" style="display: flex; align-items: center; gap: 4px;">
-        <span class="cm-tb-label" style="font-size: 11px; color: #a0a0b0; font-weight: 600;">📑 Prancha:</span>
-        <select id="cm-print-sheet-select" class="cm-native-select cm-print-sheet-dropdown" style="max-width: 170px; height: 28px; font-size: 11.5px; font-weight: 600; color: #fff; background: #22222a; border-color: rgba(255,255,255,0.15);">
-          ${this.sheets.map((s, i) => `
-            <option value="${s.id}" ${s.id === this.activeSheetId ? 'selected' : ''}>
-              ${i + 1}/${total} - ${PrintItemsManager.escapeHtml(s.name)}
-            </option>
-          `).join('')}
-        </select>
+    container.innerHTML = PrintToolbar.dropdown(
+      'sheets',
+      `<span class="cm-ptb-sheet-name">${esc(cur?.name || 'Prancha')}</span><span class="cm-ptb-count">${curIndex}/${total}</span>`,
+      PrintToolbar.renderSheetsMenu(this.sheets, this.activeSheetId),
+      { triggerClass: 'cm-ptb-outline', title: 'Trocar, criar, renomear ou excluir pranchas' }
+    );
+  }
 
-        <button class="cm-print-tool-btn" id="btn-add-new-sheet" title="Adicionar Nova Prancha ao Projeto" style="height: 28px; padding: 0 6px;">
-          ➕ <span class="cm-tb-label">Nova</span>
-        </button>
-        <button class="cm-print-tool-btn" id="btn-duplicate-sheet" title="Duplicar Prancha Atual" style="height: 28px; padding: 0 6px;">
-          📋 <span class="cm-tb-label">Duplicar</span>
-        </button>
-        <button class="cm-print-tool-btn" id="btn-rename-sheet" title="Renomear Prancha Atual" style="height: 28px; padding: 0 6px;">
-          ✏️
-        </button>
-        ${total > 1 ? `
-          <button class="cm-print-tool-btn" id="btn-delete-sheet" title="Excluir Prancha Atual" style="height: 28px; padding: 0 6px; color: #ff6b6b;">
-            🗑️
-          </button>
-        ` : ''}
-      </div>
-    `;
-
-    // Eventos
-    const select = document.getElementById('cm-print-sheet-select');
-    if (select) {
-      select.onchange = (e) => this.switchToSheet(e.target.value);
+  /** Ações do menu de Pranchas: `switch=<id>`, `new`, `duplicate`, `rename`, `delete` */
+  runMenuAction(action) {
+    if (action.startsWith('switch=')) {
+      this.switchToSheet(action.slice('switch='.length));
+      return;
     }
-
-    const btnAdd = document.getElementById('btn-add-new-sheet');
-    if (btnAdd) {
-      btnAdd.onclick = () => {
-        const nextNum = String(this.sheets.length + 1).padStart(2, '0');
-        const name = prompt('Nome da nova prancha:', `Prancha ${nextNum} - Planta`);
-        if (name !== null) {
-          this.createSheet(name, this.composer.paperSize.id, 'abnt');
-        }
-      };
-    }
-
-    const btnDup = document.getElementById('btn-duplicate-sheet');
-    if (btnDup) {
-      btnDup.onclick = () => this.duplicateCurrentSheet();
-    }
-
-    const btnRen = document.getElementById('btn-rename-sheet');
-    if (btnRen) {
-      btnRen.onclick = () => {
-        const curSheet = this.getCurrentSheet();
-        if (!curSheet) return;
-        const name = prompt('Novo nome da prancha:', curSheet.name);
-        if (name && name.trim()) {
-          this.renameSheet(curSheet.id, name);
-        }
-      };
-    }
-
-    const btnDel = document.getElementById('btn-delete-sheet');
-    if (btnDel) {
-      btnDel.onclick = () => {
-        const curSheet = this.getCurrentSheet();
-        if (!curSheet) return;
-        if (confirm(`Tem certeza que deseja excluir a "${curSheet.name}"?`)) {
-          this.deleteSheet(curSheet.id);
-        }
-      };
+    const curSheet = this.getCurrentSheet();
+    if (action === 'new') {
+      const nextNum = String(this.sheets.length + 1).padStart(2, '0');
+      const name = prompt('Nome da nova prancha:', `Prancha ${nextNum} - Planta`);
+      if (name !== null) this.createSheet(name, this.composer.paperSize.id, 'abnt');
+    } else if (action === 'duplicate') {
+      this.duplicateCurrentSheet();
+    } else if (action === 'rename' && curSheet) {
+      const name = prompt('Novo nome da prancha:', curSheet.name);
+      if (name && name.trim()) this.renameSheet(curSheet.id, name);
+    } else if (action === 'delete' && curSheet) {
+      // Com uma prancha só, deleteSheet avisa que não é possível (sem pedir confirmação à toa)
+      if (this.sheets.length <= 1 || confirm(`Tem certeza que deseja excluir a "${curSheet.name}"?`)) {
+        this.deleteSheet(curSheet.id);
+      }
     }
   }
 

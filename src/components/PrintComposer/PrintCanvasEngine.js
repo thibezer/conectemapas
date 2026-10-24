@@ -104,6 +104,23 @@ export class PrintCanvasEngine {
     this.renderRulers();
   }
 
+  /** Liga/desliga as guias inteligentes (botão da barra e tecla U) */
+  toggleSmartGuides() {
+    const nextState = !this.smartGuides.enabled;
+    this.smartGuides.setEnabled(nextState);
+    const btn = document.getElementById('btn-toggle-smart-guides');
+    if (btn) {
+      btn.classList.toggle('active', nextState);
+      btn.setAttribute('aria-pressed', String(nextState));
+    }
+    UIToast.notificar({
+      tipo: nextState ? 'sucesso' : 'informativo',
+      titulo: 'Guias inteligentes',
+      mensagem: nextState ? 'Guias magnéticas ativadas.' : 'Guias desativadas.',
+      duracao: 2000
+    });
+  }
+
   updateZoomBadge() {
     const badge = document.getElementById('cm-print-zoom-val');
     if (badge) {
@@ -426,16 +443,7 @@ export class PrintCanvasEngine {
       // Atalho rápido 'U' para ligar/desligar Smart Guides (como Illustrator)
       if (e.key === 'u' || e.key === 'U') {
         e.preventDefault();
-        const nextState = !this.smartGuides.enabled;
-        this.smartGuides.setEnabled(nextState);
-        const btn = document.getElementById('btn-toggle-smart-guides');
-        if (btn) btn.classList.toggle('active', nextState);
-        UIToast.notificar({
-          tipo: nextState ? 'sucesso' : 'informativo',
-          titulo: 'Guias Inteligentes',
-          mensagem: nextState ? 'Guias automáticas magnéticas ativadas (estilo Illustrator).' : 'Guias inteligentes desativadas.',
-          duracao: 2000
-        });
+        this.toggleSmartGuides();
         return;
       }
 
