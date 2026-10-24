@@ -22,6 +22,7 @@ import { PrintMapRenderer } from './PrintMapRenderer.js';
 import { PrintVectorLayer } from './PrintVectorLayer.js';
 import { PrintLegendRenderer } from './PrintLegendRenderer.js';
 import { PrintVisibilityDialog } from './PrintVisibilityDialog.js';
+import { PrintCloudSync } from './PrintCloudSync.js';
 import './PrintVisibilityDialog.css';
 
 export class PrintComposerModal {
@@ -30,6 +31,12 @@ export class PrintComposerModal {
     this.layers = options.layers || [];
     this.features = options.features || [];
     this.currentBasemap = options.currentBasemap || 'satelite';
+    // Nuvem das pranchas (injetada pelo app; ausente nos testes e sem conexão configurada)
+    this.createCloudStore = options.createCloudStore || null;
+    this.canWriteProject = options.canWrite || (() => true);
+    this.clientId = options.clientId || '';
+    this.cloud = null;
+    this.readOnly = false;
     this.container = null;
     this.isOpen = false;
 
@@ -67,7 +74,10 @@ export class PrintComposerModal {
 
     // Ao recarregar/sair da página com o compositor aberto, grava a edição que ainda aguarda o salvamento automático
     if (typeof window !== 'undefined') {
-      window.addEventListener('pagehide', () => this.sheetsManager.flushPendingSave());
+      window.addEventListener('pagehide', () => {
+        this.sheetsManager.flushPendingSave();
+        if (this.isOpen) this.cloud?.stop({ keepalive: true });
+      });
     }
   }
 
@@ -101,6 +111,7 @@ export class PrintComposerModal {
   }
 
   undo() {
+    if (this.readOnly) return;
     const step = this.history.undo();
     if (!step) return;
     this.applyHistorySnapshot(step.state);
@@ -113,6 +124,7 @@ export class PrintComposerModal {
   }
 
   redo() {
+    if (this.readOnly) return;
     const step = this.history.redo();
     if (!step) return;
     this.applyHistorySnapshot(step.state);
@@ -148,7 +160,7 @@ export class PrintComposerModal {
    */
   updateMapView(itemId, mutate, actionName = 'Vista do mapa', { coalesceKey = null } = {}) {
     const item = this.items.find(i => i.id === itemId && i.type === 'map');
-    if (!item || item.locked) return false;
+    if (!item || item.locked || this.readOnly) return false;
     PrintViewResolver.detachFromProject(item, this.layers, this.features);
     const view = PrintViewResolver.ensureView(item);
     if (mutate(view, item) === false) return false;
@@ -180,6 +192,12 @@ export class PrintComposerModal {
     this.container.innerHTML = `
       <div id="cm-print-composer-modal" class="cm-print-modal-overlay hidden">
         ${PrintToolbar.render(this)}
+
+        <!-- Prancha em edição por outro operador (ou acesso só de leitura) -->
+        <div id="cm-print-lock-banner" class="cm-print-pan-banner cm-print-lock-banner hidden" role="status">
+          <span>🔒 <span data-lock-text></span></span>
+          <button type="button" class="cm-pan-banner-btn" data-lock-edit hidden>Editar</button>
+        </div>
 
         <!-- Faixa de Aviso Quando no Modo Navegação de Conteúdo -->
         <div id="cm-print-pan-alert-banner" class="cm-print-pan-banner hidden">
@@ -252,6 +270,88 @@ export class PrintComposerModal {
       this.canvasEngine.renderRulers();
       this.updateInsetMapExtent();
     }, 100);
+
+    // Pranchas na nuvem: carrega, pega a trava da prancha aberta e acompanha as mudanças
+    this.cloud?.stop();
+    const store = this.createCloudStore ? this.createCloudStore(this.projectId) : null;
+    this.cloud = new PrintCloudSync(this, store, { canWrite: () => this.canWriteProject(this.projectId), clientId: this.clientId });
+    this.setReadOnly(false);
+    this.cloud.start();
+  }
+
+  /** Recarrega no compositor a prancha ativa (chegou da nuvem, trocou ou foi excluída) */
+  loadActiveSheetIntoComposer({ keepSelection = false } = {}) {
+    const sheet = this.sheetsManager.getCurrentSheet();
+    if (!sheet) return;
+    this.paperSize = sheet.paperSize;
+    this.showAbntMargins = sheet.showAbntMargins !== false;
+    this.items = JSON.parse(JSON.stringify(sheet.items || []));
+    if (!keepSelection || !this.items.some(i => i.id === this.selectedItemId)) {
+      this.selectedItemId = (this.items.find(i => i.type === 'map') || this.items[0])?.id || null;
+    }
+    this.resetHistory();
+    this.updatePaperSheetDOM();
+    this.renderAllItems();
+    this.updatePropertiesPanel();
+    this.visibilityDialog.refresh();
+    this.sheetsManager.renderSheetsSelectorDOM();
+  }
+
+  /**
+   * Prancha só para visualização (outro operador está editando, ou o acesso é de leitura).
+   * `holder` = quem edita; `free` = a trava foi liberada (oferece "Editar").
+   */
+  setReadOnly(flag, holder = null, { free = false } = {}) {
+    this.readOnly = Boolean(flag);
+    const banner = document.getElementById('cm-print-lock-banner');
+    if (banner) {
+      banner.classList.toggle('hidden', !this.readOnly);
+      const text = banner.querySelector('[data-lock-text]');
+      const btn = banner.querySelector('[data-lock-edit]');
+      if (text) {
+        text.textContent = !this.canWriteProject(this.projectId)
+          ? 'Seu acesso a este projeto é só de visualização.'
+          : free
+            ? 'A prancha foi liberada. Clique em Editar para assumir a edição.'
+            : `${holder || 'Outro operador'} está editando esta prancha. Você está só visualizando.`;
+      }
+      if (btn) btn.hidden = !free;
+    }
+    const itemsLayer = document.getElementById('cm-print-items-layer');
+    if (itemsLayer) itemsLayer.inert = this.readOnly;
+    const panel = document.getElementById('cm-print-props-panel-mount');
+    if (panel) panel.inert = this.readOnly;
+    document.querySelectorAll('#cm-print-composer-modal [data-ptb-action^="insert"], #btn-ptb-insert, #btn-print-undo, #btn-print-redo')
+      .forEach(el => { el.disabled = this.readOnly; });
+    if (this.readOnly) {
+      this.selectItem(null);
+      this.setInteractionMode('layout');
+    }
+    this.visibilityDialog?.refresh();
+  }
+
+  /** Troca a biblioteca (filtros e modelos de vista) e redesenha o que depende dela */
+  setLibrary(library, { fromCloud = false } = {}) {
+    this.library = {
+      filters: Array.isArray(library?.filters) ? library.filters : [],
+      viewTemplates: Array.isArray(library?.viewTemplates) ? library.viewTemplates : []
+    };
+    this.sheetsManager.saveLibrary(this.library);
+    this.resolveCache.clear();
+    this.redrawMapVectors();
+    this.refreshLegends();
+    this.updatePropertiesPanel();
+    this.visibilityDialog?.refresh();
+    if (!fromCloud) this.cloud?.pushLibrary();
+  }
+
+  /** Altera a biblioteca do projeto (não entra no histórico da prancha: vale para todas) */
+  updateLibrary(mutate) {
+    if (this.readOnly) return false;
+    const next = JSON.parse(JSON.stringify(this.library || { filters: [], viewTemplates: [] }));
+    if (mutate(next) === false) return false;
+    this.setLibrary(next);
+    return true;
   }
 
   /** Volta a folha ao padrão: margens ABNT, moldura e itens do layout padrão (mantém o papel; pode ser desfeito) */
@@ -274,6 +374,7 @@ export class PrintComposerModal {
 
   close() {
     this.visibilityDialog?.close();
+    this.cloud?.stop();
     if (this.sheetsManager) this.sheetsManager.saveCurrentStateFromComposer();
     this.destroyLeafletMaps();
     if (this.canvasEngine) this.canvasEngine.destroy();
@@ -889,6 +990,7 @@ export class PrintComposerModal {
 
   /** Insere um novo elemento cartográfico na prancha e o seleciona */
   insertItem(type) {
+    if (this.readOnly) return null;
     const item = PrintItemsManager.createNewItem(type, this.projectName, this.items.length);
     if (!item) return null;
     this.items.splice(PrintItemsManager.insertionIndex(this.items, item.type), 0, item);
@@ -900,6 +1002,8 @@ export class PrintComposerModal {
 
   bindEvents() {
     PrintToolbar.bind(this);
+
+    document.querySelector('#cm-print-lock-banner [data-lock-edit]')?.addEventListener('click', () => this.cloud?.tryEdit());
 
     const btnDismissBanner = document.getElementById('btn-dismiss-pan-banner');
     if (btnDismissBanner) btnDismissBanner.addEventListener('click', () => this.setInteractionMode('layout'));

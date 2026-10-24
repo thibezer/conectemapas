@@ -444,6 +444,9 @@ export class PrintCanvasEngine {
       // Com a janela Visibilidade/Gráficos aberta, a prancheta não recebe teclas (só desfazer/refazer, acima)
       if (this.composer.visibilityDialog?.isOpen()) return;
 
+      // Só visualizando (outro operador edita a prancha): apenas zoom e Esc
+      if (this.composer.readOnly && !['0', '+', '=', '-', '_', 'Escape'].includes(e.key)) return;
+
       // V V abre Visibilidade/Gráficos do mapa (atalho do Revit)
       if (e.key === 'v' || e.key === 'V') {
         const now = Date.now();

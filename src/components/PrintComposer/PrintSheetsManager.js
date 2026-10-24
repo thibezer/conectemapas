@@ -80,6 +80,8 @@ export class PrintSheetsManager {
     this.cancelScheduledSave();
     const cur = this.getCurrentSheet();
     if (!cur) return;
+    // Só visualizando (outro operador edita): a tela não pode sobrescrever a prancha
+    if (this.composer.readOnly) return;
 
     cur.paperSize = { ...this.composer.paperSize };
     cur.showAbntMargins = this.composer.showAbntMargins;
@@ -124,6 +126,7 @@ export class PrintSheetsManager {
     const target = this.sheets.find(s => s.id === sheetId);
     if (!target) return;
 
+    const previousId = this.activeSheetId;
     this.activeSheetId = target.id;
     this.saveToStorage();
 
@@ -139,6 +142,8 @@ export class PrintSheetsManager {
     this.composer.renderAllItems();
     this.composer.updatePropertiesPanel();
     this.renderSheetsSelectorDOM();
+    // Nuvem: solta a trava da prancha anterior e tenta pegar a desta
+    this.composer.cloud?.onActiveSheetChanged(previousId);
 
     setTimeout(() => {
       this.composer.canvasEngine.zoomFit();
@@ -266,6 +271,7 @@ export class PrintSheetsManager {
   renameSheet(sheetId, newName) {
     const target = this.sheets.find(s => s.id === sheetId);
     if (!target || !newName || !newName.trim()) return;
+    if (this.blockedWhileReadOnly(sheetId)) return;
 
     target.name = newName.trim();
     target.updatedAt = new Date().toISOString();
@@ -296,8 +302,10 @@ export class PrintSheetsManager {
 
     const index = this.sheets.findIndex(s => s.id === sheetId);
     if (index === -1) return;
+    if (this.blockedWhileReadOnly(sheetId)) return;
 
     const [deleted] = this.sheets.splice(index, 1);
+    this.composer.cloud?.onSheetDeleted(sheetId);
     this.saveToStorage();
 
     // Se a excluída for a ativa, vai para a anterior ou primeira
@@ -315,6 +323,7 @@ export class PrintSheetsManager {
       this.composer.renderAllItems();
       this.composer.updatePropertiesPanel();
       setTimeout(() => this.composer.canvasEngine.zoomFit(), 50);
+      this.composer.cloud?.onActiveSheetChanged(null);
     }
 
     this.updateSheetNumbersInTitleBlocks();
@@ -396,10 +405,23 @@ export class PrintSheetsManager {
     }
   }
 
+  /** A prancha aberta está só para visualização: renomear/excluir ficam bloqueados */
+  blockedWhileReadOnly(sheetId) {
+    if (!this.composer.readOnly || sheetId !== this.activeSheetId) return false;
+    UIToast.notificar({
+      tipo: 'alerta',
+      titulo: 'Prancha em edição por outro operador',
+      mensagem: 'Só quem está editando pode renomear ou excluir esta prancha.',
+      duracao: 3500
+    });
+    return true;
+  }
+
   /**
-   * Persiste as pranchas no LocalStorage
+   * Persiste as pranchas no LocalStorage (cópia local) e avisa a nuvem.
+   * `skipCloud`: gravação que veio da própria nuvem.
    */
-  saveToStorage() {
+  saveToStorage({ skipCloud = false } = {}) {
     if (typeof localStorage === 'undefined') return;
     try {
       const key = PrintSheetsManager.STORAGE_PREFIX + this.projectId;
@@ -408,6 +430,7 @@ export class PrintSheetsManager {
         localStorage.setItem(PrintSheetsManager.ACTIVE_PREFIX + this.projectId, this.activeSheetId);
       }
       this.saveFailed = false;
+      if (!skipCloud) this.composer.cloud?.onLocalChange();
       return true;
     } catch (e) {
       console.warn('[PrintSheetsManager] Falha ao persistir pranchas no LocalStorage:', e);
@@ -421,6 +444,8 @@ export class PrintSheetsManager {
         });
       }
       this.saveFailed = true;
+      // A nuvem continua recebendo a prancha mesmo sem espaço no navegador
+      if (!skipCloud) this.composer.cloud?.onLocalChange();
       return false;
     }
   }

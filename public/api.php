@@ -114,7 +114,7 @@ function getDatabaseConnection() {
 // 3. Auto-Migração do Esquema Relacional (DDL Idempotente)
 // A versão do esquema fica gravada em disco para que as requisições de alta frequência
 // (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
-define('CM_SCHEMA_VERSION', 7);
+define('CM_SCHEMA_VERSION', 8);
 define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
 
 function columnExists(PDO $pdo, $table, $column) {
@@ -316,6 +316,36 @@ function ensureDatabaseSchema(PDO $pdo) {
             id VARCHAR(64) NOT NULL PRIMARY KEY,
             deleted_by INT NULL,
             deleted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        // v8: Pranchas de impressão na nuvem (uma linha por prancha, com rev), trava de edição
+        // exclusiva por prancha e biblioteca de filtros/modelos de vista do projeto
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_print_sheets (
+            project_id VARCHAR(64) NOT NULL,
+            id VARCHAR(80) NOT NULL,
+            sort_order INT NOT NULL DEFAULT 0,
+            data MEDIUMTEXT NOT NULL,
+            rev BIGINT NOT NULL DEFAULT 0,
+            client_id VARCHAR(64) NULL,
+            updated_by VARCHAR(128) NULL,
+            deleted TINYINT(1) NOT NULL DEFAULT 0,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (project_id, id),
+            INDEX idx_print_sheets_rev (project_id, rev)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_print_locks (
+            project_id VARCHAR(64) NOT NULL,
+            sheet_id VARCHAR(80) NOT NULL,
+            client_id VARCHAR(64) NOT NULL,
+            user_name VARCHAR(128) NOT NULL DEFAULT 'Colaborador',
+            expires_at DATETIME NOT NULL,
+            PRIMARY KEY (project_id, sheet_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_print_library (
+            project_id VARCHAR(64) NOT NULL PRIMARY KEY,
+            data MEDIUMTEXT NOT NULL,
+            rev BIGINT NOT NULL DEFAULT 0,
+            client_id VARCHAR(64) NULL,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     } catch (Exception $e) {
         // Mantém a API operante; a migração será tentada novamente na próxima requisição
@@ -680,6 +710,61 @@ function foreignFeatureIds(PDO $pdo, $projectId, array $ids) {
     return $foreign;
 }
 
+// Pranchas de impressão: trava de edição exclusiva por prancha (renovada pelo cliente enquanto edita)
+define('CM_PRINT_LOCK_TTL', 90);
+define('CM_PRINT_MAX_BYTES', 8 * 1024 * 1024);
+
+function cleanSheetId($raw) {
+    return substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$raw), 0, 80);
+}
+
+/**
+ * Pega ou renova a trava da prancha para este cliente. Chamar DENTRO de uma transação.
+ * Devolve null se a trava ficou com este cliente, ou o nome de quem a detém.
+ */
+function acquirePrintLock(PDO $pdo, $projectId, $sheetId, $clientId, $userName) {
+    $stmt = $pdo->prepare("SELECT client_id, user_name, (expires_at > NOW()) AS active FROM cm_print_locks WHERE project_id = ? AND sheet_id = ? FOR UPDATE");
+    $stmt->execute([$projectId, $sheetId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($row && (int)$row['active'] === 1 && $row['client_id'] !== $clientId) {
+        return $row['user_name'] ?: 'Outro operador';
+    }
+    $pdo->prepare("
+        INSERT INTO cm_print_locks (project_id, sheet_id, client_id, user_name, expires_at)
+        VALUES (?, ?, ?, ?, NOW() + INTERVAL " . CM_PRINT_LOCK_TTL . " SECOND)
+        ON DUPLICATE KEY UPDATE client_id = ?, user_name = ?, expires_at = NOW() + INTERVAL " . CM_PRINT_LOCK_TTL . " SECOND
+    ")->execute([$projectId, $sheetId, $clientId, $userName, $clientId, $userName]);
+    return null;
+}
+
+/**
+ * A prancha volta como o JSON gravado (texto): decodificar e recodificar no PHP
+ * transformaria objetos vazios ({}) em listas ([]) e o app perderia ajustes da vista.
+ */
+function decodePrintSheetRow(array $r) {
+    return [
+        'id' => $r['id'],
+        'order' => (int)$r['sort_order'],
+        'rev' => (int)$r['rev'],
+        'clientId' => $r['client_id'],
+        'updatedBy' => $r['updated_by'],
+        'deleted' => (int)$r['deleted'] === 1,
+        'sheetJson' => (int)$r['deleted'] === 1 ? null : $r['data']
+    ];
+}
+
+/** JSON enviado como texto pelo app: válido e objeto; devolve [texto, decodificado] ou null */
+function printJsonField($raw) {
+    if (!is_string($raw) || $raw === '') return null;
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? [$raw, $decoded] : null;
+}
+
+function printClientName($raw) {
+    $name = trim((string)$raw);
+    return $name !== '' ? mb_substr($name, 0, 128) : 'Colaborador';
+}
+
 // 4. Roteamento de Ações REST
 $pdo = getDatabaseConnection();
 ensureDatabaseSchema($pdo);
@@ -1008,7 +1093,7 @@ switch ($action) {
             // Trava a linha do projeto: escritas concorrentes (nextRevision) esperam e depois veem a exclusão
             $pdo->prepare("SELECT id FROM cm_projects WHERE id = ? FOR UPDATE")->execute([$projectId]);
             $removed = [];
-            foreach (['cm_features', 'cm_layers', 'cm_audit', 'cm_presence', 'cm_invites', 'cm_access', 'cm_members'] as $table) {
+            foreach (['cm_features', 'cm_layers', 'cm_audit', 'cm_presence', 'cm_invites', 'cm_access', 'cm_members', 'cm_print_sheets', 'cm_print_locks', 'cm_print_library'] as $table) {
                 $stmt = $pdo->prepare("DELETE FROM `$table` WHERE project_id = ?");
                 $stmt->execute([$projectId]);
                 $removed[$table] = $stmt->rowCount();
@@ -1935,11 +2020,179 @@ switch ($action) {
             exit;
         }
 
+    // --------------------------------------------------------------------------
+    // PRANCHAS DE IMPRESSÃO (nuvem): mudanças desde uma rev, trava, gravação e biblioteca
+    // --------------------------------------------------------------------------
+    case 'print_changes':
+        $projectId = cleanProjectId($_GET['projectId'] ?? '');
+        $since = max(0, (int)($_GET['sinceRev'] ?? 0));
+        requireRole($pdo, $projectId, 'viewer');
+        try {
+            // A primeira carga (since = 0) não traz as pranchas excluídas
+            $sql = "SELECT id, sort_order, data, rev, client_id, updated_by, deleted FROM cm_print_sheets WHERE project_id = ? AND rev > ?"
+                . ($since === 0 ? " AND deleted = 0" : "") . " ORDER BY rev ASC";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$projectId, $since]);
+            $sheets = [];
+            $maxRev = $since;
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $sheets[] = decodePrintSheetRow($r);
+                $maxRev = max($maxRev, (int)$r['rev']);
+            }
+            $stmt = $pdo->prepare("SELECT sheet_id, client_id, user_name, TIMESTAMPDIFF(SECOND, NOW(), expires_at) AS ttl FROM cm_print_locks WHERE project_id = ? AND expires_at > NOW()");
+            $stmt->execute([$projectId]);
+            $locks = array_map(function ($l) {
+                return ['sheetId' => $l['sheet_id'], 'clientId' => $l['client_id'], 'userName' => $l['user_name'], 'ttl' => (int)$l['ttl']];
+            }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+            $stmt = $pdo->prepare("SELECT data, rev, client_id FROM cm_print_library WHERE project_id = ? AND rev > ?");
+            $stmt->execute([$projectId, $since]);
+            $lib = $stmt->fetch(PDO::FETCH_ASSOC);
+            $library = null;
+            if ($lib) {
+                $library = ['json' => $lib['data'], 'rev' => (int)$lib['rev'], 'clientId' => $lib['client_id']];
+                $maxRev = max($maxRev, (int)$lib['rev']);
+            }
+            echo json_encode(['success' => true, 'rev' => $maxRev, 'sheets' => $sheets, 'locks' => $locks, 'library' => $library, 'lockTtl' => CM_PRINT_LOCK_TTL]);
+            exit;
+        } catch (Exception $e) {
+            denyAccess(500, 'print_changes_failed', 'Falha ao ler as pranchas', ['detail' => $e->getMessage()]);
+        }
+
+    case 'print_lock':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        $sheetId = cleanSheetId($body['sheetId'] ?? '');
+        $clientId = sanitizeClientId($body['clientId'] ?? '');
+        if ($sheetId === '' || !$clientId) denyAccess(400, 'bad_request', 'Prancha ou cliente ausente.');
+        requireRole($pdo, $projectId, 'editor');
+        if (($body['op'] ?? '') === 'release') {
+            $pdo->prepare("DELETE FROM cm_print_locks WHERE project_id = ? AND sheet_id = ? AND client_id = ?")
+                ->execute([$projectId, $sheetId, $clientId]);
+            echo json_encode(['success' => true, 'released' => true]);
+            exit;
+        }
+        $holder = null;
+        $pdo->beginTransaction();
+        try {
+            $holder = acquirePrintLock($pdo, $projectId, $sheetId, $clientId, printClientName($body['userName'] ?? ''));
+            $pdo->commit();
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'print_lock_failed', 'Falha ao travar a prancha', ['detail' => $e->getMessage()]);
+        }
+        if ($holder !== null) denyAccess(423, 'sheet_locked', 'Prancha em edição por ' . $holder . '.', ['holder' => $holder]);
+        echo json_encode(['success' => true, 'ttl' => CM_PRINT_LOCK_TTL]);
+        exit;
+
+    case 'print_save_sheet':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        $clientId = sanitizeClientId($body['clientId'] ?? '');
+        $parsed = printJsonField($body['sheetJson'] ?? null);
+        $sheetId = $parsed ? cleanSheetId($parsed[1]['id'] ?? '') : '';
+        if ($sheetId === '' || !$clientId) denyAccess(400, 'bad_request', 'Prancha ou cliente ausente.');
+        requireRole($pdo, $projectId, 'editor');
+        $json = $parsed[0];
+        if (strlen($json) > CM_PRINT_MAX_BYTES) denyAccess(413, 'sheet_too_large', 'Prancha grande demais (reduza as imagens).');
+        $userName = printClientName($body['userName'] ?? '');
+        $order = (int)($body['order'] ?? 0);
+        $baseRev = isset($body['baseRev']) ? (int)$body['baseRev'] : null;
+        $pdo->beginTransaction();
+        try {
+            $holder = acquirePrintLock($pdo, $projectId, $sheetId, $clientId, $userName);
+            if ($holder !== null) {
+                $pdo->rollBack();
+                denyAccess(423, 'sheet_locked', 'Prancha em edição por ' . $holder . '.', ['holder' => $holder]);
+            }
+            $stmt = $pdo->prepare("SELECT id, sort_order, data, rev, client_id, updated_by, deleted FROM cm_print_sheets WHERE project_id = ? AND id = ? FOR UPDATE");
+            $stmt->execute([$projectId, $sheetId]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC);
+            // Outro cliente gravou depois da versão que este cliente conhece
+            if ($current && $baseRev !== null && (int)$current['rev'] > $baseRev && $current['client_id'] !== $clientId) {
+                $pdo->rollBack();
+                denyAccess(409, 'sheet_conflict', 'A prancha foi alterada por outro operador.', ['sheet' => decodePrintSheetRow($current)]);
+            }
+            $rev = nextRevision($pdo, $projectId);
+            $pdo->prepare("
+                INSERT INTO cm_print_sheets (project_id, id, sort_order, data, rev, client_id, updated_by, deleted)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                ON DUPLICATE KEY UPDATE sort_order = ?, data = ?, rev = ?, client_id = ?, updated_by = ?, deleted = 0
+            ")->execute([$projectId, $sheetId, $order, $json, $rev, $clientId, $userName, $order, $json, $rev, $clientId, $userName]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'rev' => $rev]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'print_save_failed', 'Falha ao salvar a prancha', ['detail' => $e->getMessage()]);
+        }
+
+    case 'print_delete_sheet':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        $clientId = sanitizeClientId($body['clientId'] ?? '');
+        $sheetId = cleanSheetId($body['sheetId'] ?? '');
+        if ($sheetId === '' || !$clientId) denyAccess(400, 'bad_request', 'Prancha ou cliente ausente.');
+        requireRole($pdo, $projectId, 'editor');
+        $pdo->beginTransaction();
+        try {
+            $holder = acquirePrintLock($pdo, $projectId, $sheetId, $clientId, printClientName($body['userName'] ?? ''));
+            if ($holder !== null) {
+                $pdo->rollBack();
+                denyAccess(423, 'sheet_locked', 'Prancha em edição por ' . $holder . '.', ['holder' => $holder]);
+            }
+            $rev = nextRevision($pdo, $projectId);
+            $pdo->prepare("UPDATE cm_print_sheets SET deleted = 1, data = '{}', rev = ?, client_id = ? WHERE project_id = ? AND id = ?")
+                ->execute([$rev, $clientId, $projectId, $sheetId]);
+            $pdo->prepare("DELETE FROM cm_print_locks WHERE project_id = ? AND sheet_id = ?")->execute([$projectId, $sheetId]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'rev' => $rev]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'print_delete_failed', 'Falha ao excluir a prancha', ['detail' => $e->getMessage()]);
+        }
+
+    case 'print_save_library':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        $clientId = sanitizeClientId($body['clientId'] ?? '');
+        $parsed = printJsonField($body['libraryJson'] ?? null);
+        if (!$parsed || !$clientId) denyAccess(400, 'bad_request', 'Biblioteca ou cliente ausente.');
+        requireRole($pdo, $projectId, 'editor');
+        $json = $parsed[0];
+        if (strlen($json) > CM_PRINT_MAX_BYTES) denyAccess(400, 'bad_library', 'Biblioteca grande demais.');
+        $baseRev = isset($body['baseRev']) ? (int)$body['baseRev'] : null;
+        $pdo->beginTransaction();
+        try {
+            $stmt = $pdo->prepare("SELECT data, rev, client_id FROM cm_print_library WHERE project_id = ? FOR UPDATE");
+            $stmt->execute([$projectId]);
+            $current = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($current && $baseRev !== null && (int)$current['rev'] > $baseRev && $current['client_id'] !== $clientId) {
+                $pdo->rollBack();
+                denyAccess(409, 'library_conflict', 'A biblioteca foi alterada por outro operador.', ['library' => ['json' => $current['data'], 'rev' => (int)$current['rev']]]);
+            }
+            $rev = nextRevision($pdo, $projectId);
+            $pdo->prepare("
+                INSERT INTO cm_print_library (project_id, data, rev, client_id) VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE data = ?, rev = ?, client_id = ?
+            ")->execute([$projectId, $json, $rev, $clientId, $json, $rev, $clientId]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'rev' => $rev]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'print_library_failed', 'Falha ao salvar a biblioteca', ['detail' => $e->getMessage()]);
+        }
+
     default:
         http_response_code(400);
         echo json_encode([
             'error'           => 'Ação não informada ou desconhecida.',
-            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite', 'my_projects', 'delete_project']
+            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite', 'my_projects', 'delete_project', 'print_changes', 'print_lock', 'print_save_sheet', 'print_delete_sheet', 'print_save_library']
         ]);
         exit;
 }

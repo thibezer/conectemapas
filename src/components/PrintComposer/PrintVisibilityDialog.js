@@ -82,7 +82,8 @@ export class PrintVisibilityDialog {
   static render(composer, item, state) {
     const view = PrintViewResolver.effectiveView(item, composer.library);
     const maps = this.mapItems(composer.items);
-    const locked = item.locked === true;
+    const readOnly = composer.readOnly === true;
+    const locked = item.locked === true || readOnly;
     const tab = VV_TABS.some(t => t.id === state.tab) ? state.tab : 'layers';
     const body = this.renderTab(tab, composer, item, view, locked);
     return `
@@ -101,7 +102,8 @@ export class PrintVisibilityDialog {
         <div class="cm-vv-tabs" role="tablist">
           ${VV_TABS.map(t => `<button type="button" role="tab" class="cm-vv-tab ${t.id === tab ? 'is-active' : ''}" aria-selected="${t.id === tab}" data-vv-tab="${t.id}">${t.label}</button>`).join('')}
         </div>
-        ${locked ? '<div class="cm-vv-note">🔒 Mapa bloqueado: desbloqueie na lista de elementos para mudar a vista.</div>' : ''}
+        ${readOnly ? '<div class="cm-vv-note">🔒 Prancha só para visualização: outro operador está editando.</div>'
+          : locked ? '<div class="cm-vv-note">🔒 Mapa bloqueado: desbloqueie na lista de elementos para mudar a vista.</div>' : ''}
         ${view.followProject ? '<div class="cm-vv-note cm-vv-note--info">Este mapa ainda espelha o mapa principal. A primeira alteração aqui o torna independente.</div>' : ''}
         <div class="cm-vv-body">${body}</div>
         <div class="cm-vv-footer">
@@ -250,7 +252,7 @@ export class PrintVisibilityDialog {
       const layer = (composer.layers || []).find(l => String(l.id) === String(id));
       if (!layer) return null;
       const count = (composer.features || []).filter(f => f.layerId === layer.id).length;
-      return this.layerRow(composer, layer, view, item.locked === true, count);
+      return this.layerRow(composer, layer, view, item.locked === true || composer.readOnly === true, count);
     }
     return null;
   }

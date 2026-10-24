@@ -6,6 +6,8 @@
 import { StorageService } from '../services/StorageService.js';
 import { CLOUD_ENABLED } from '../services/Storage/StorageConstants.js';
 import { AuthService } from '../services/Storage/AuthService.js';
+import { AccessManager } from '../services/Storage/AccessManager.js';
+import { PrintCloudStore } from '../services/Storage/PrintCloudStore.js';
 import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { ShareModal } from '../components/Modals/ShareModal.js';
 import { AuthModal } from '../components/Modals/AuthModal.js';
@@ -108,7 +110,17 @@ export class AppModalsBuilder {
       projectName: app.projectName,
       layers: app.layers,
       features: app.features,
-      currentBasemap: app.currentBasemap
+      currentBasemap: app.currentBasemap,
+      // Pranchas na nuvem (sem nuvem configurada, ficam só neste navegador)
+      clientId: StorageService.getClientId(),
+      canWrite: (projectId) => AccessManager.canWrite(projectId),
+      createCloudStore: (projectId) => (CLOUD_ENABLED
+        ? new PrintCloudStore({
+          projectId,
+          clientId: StorageService.getClientId(),
+          getUserName: () => app.collabHub?.currentUser?.displayName || ''
+        })
+        : null)
     });
     app.printComposerModal.render(document.getElementById('print-composer-mount'));
 

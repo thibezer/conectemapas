@@ -292,3 +292,14 @@
   opacity: 0.9;
 }
 
+
+/* Prancha só para visualização (outro operador está editando) */
+.cm-print-lock-banner {
+  background: linear-gradient(90deg, #3a2f12 0%, #261f0d 100%);
+  border-bottom-color: rgba(245, 197, 66, 0.4);
+  color: #fbe3a0;
+}
+
+.cm-print-lock-banner [hidden] {
+  display: none;
+}

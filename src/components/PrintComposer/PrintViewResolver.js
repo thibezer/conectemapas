@@ -68,10 +68,12 @@ export const PrintViewResolver = {
       item.viewConfig = { ...this.emptyView(), followProject: true };
     }
     const v = item.viewConfig;
-    v.layers = v.layers && typeof v.layers === 'object' ? v.layers : {};
-    v.labels = v.labels && typeof v.labels === 'object' ? v.labels : {};
+    // Mapas (id -> ajuste) precisam ser objetos: uma lista aqui perderia as chaves ao gravar
+    const asMap = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? o : {});
+    v.layers = asMap(v.layers);
+    v.labels = asMap(v.labels);
     v.filters = Array.isArray(v.filters) ? v.filters : [];
-    v.elements = v.elements && typeof v.elements === 'object' ? v.elements : {};
+    v.elements = asMap(v.elements);
     return v;
   },
 
