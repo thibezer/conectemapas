@@ -143,6 +143,8 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **Painel nunca recria os mapas**: editar um item usa `composer.refreshItemContent(item)` (redesenha só aquele item; mapas só atualizam grade/escala). `renderAllItems` destrói e recria os Leaflet e fica para mudanças estruturais (inserir, excluir, visibilidade, ordem, desfazer).
 - **Callbacks de mapa conferem a instância**: `updateGridAndScale` e o `moveend` saem se `leafletMaps.get(item.id) !== map`; timeouts dos mapas ficam em `mapTimers` e são cancelados em `destroyLeafletMaps`.
 - **Escala exata**: mapas com `zoomSnap: 0` e `setZoom(..., { animate: false })`; o campo do painel é atualizado a partir da escala real do mapa.
+- **Visibilidade de item**: visível é sempre `visible !== false` (prancha, exportador, guias e lista do painel); item sem o campo gravado aparece.
+- **Lista de elementos**: a linha selecionada usa `is-selected`, a oculta `is-hidden`; cadeado e olho têm `aria-pressed`. Ao reconstruir o painel, `updatePropertiesPanel` devolve o foco ao controle da lista que o tinha (`listFocusSelector`).
 - **Bloqueio**: item `locked` não é excluído (`deleteItem` recusa) nem editado pelo painel (campos num `<fieldset disabled>`); só o próprio bloqueio muda.
 - **Empilhamento = ordem de `composer.items`** (z-index inline no `renderAllItems`, a mesma ordem do exportador). Não reintroduzir z-index por tipo no CSS; moldura nova entra logo acima dos mapas (`PrintItemsManager.insertionIndex`).
 - **Barra de escala**: `PrintItemsManager.scaleBarModel` é a fonte única (régua = distância redonda rotulada, em px absolutos na tela e em `w × ratio` no exportador). Toda barra acompanha a escala do mapa principal.

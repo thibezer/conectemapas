@@ -208,6 +208,30 @@ panelComposer.selectedItemId = unlocked.id;
 html = PrintPropertiesPanel.render(panelComposer);
 assert.ok(!/<fieldset class="cm-print-props-fields"\s+disabled/.test(html), 'Item livre continua editável');
 assert.ok(html.includes('Layout padrão'), 'O botão de reset diz o que faz');
+
+// Lista de elementos: seleção, ocultos e estado dos botões
+const rowHtml = (id) => html.match(new RegExp(`<div class="[^"]*cm-pp-item-row[^"]*" data-composer-item-id="${id}">[\\s\\S]*?</div>\\s*</div>`))[0];
+assert.ok(rowHtml(unlocked.id).includes('is-selected') && !rowHtml(locked.id).includes('is-selected'),'Linha do item selecionado é destacada');
+assert.ok(rowHtml(unlocked.id).includes('aria-current="true"'), 'Item selecionado é anunciado como atual');
+const noVisible = panelItems.find(i => i.type === 'scale_bar');
+delete noVisible.visible;
+const hiddenItem = panelItems.find(i => i.type === 'title_block');
+hiddenItem.visible = false;
+html = PrintPropertiesPanel.render(panelComposer);
+assert.ok(!rowHtml(noVisible.id).includes('is-hidden'), 'Item sem "visible" gravado aparece como visível (mesma regra da prancha)');
+assert.ok(/data-composer-vis="[^"]+" aria-pressed="false"/.test(rowHtml(noVisible.id)), 'Olho do item visível não fica marcado');
+assert.ok(rowHtml(hiddenItem.id).includes('is-hidden'), 'Item oculto fica apagado na lista');
+assert.ok(/data-composer-vis="[^"]+" aria-pressed="true"/.test(rowHtml(hiddenItem.id)), 'Olho do item oculto fica marcado');
+assert.ok(/data-composer-lock="[^"]+" aria-pressed="true"/.test(rowHtml(locked.id)), 'Cadeado do item bloqueado fica marcado');
+panelComposer.selectedItemId = hiddenItem.id;
+assert.ok(PrintPropertiesPanel.render(panelComposer).includes('Item oculto'), 'Painel avisa que o item selecionado está oculto');
+
+const fakeMount = { contains: () => true };
+const fakeBtn = (attr, val) => ({ hasAttribute: (a) => a === attr, getAttribute: () => val });
+assert.strictEqual(PrintPropertiesPanel.listFocusSelector(fakeBtn('data-composer-lock', 'item-legend'), fakeMount), '[data-composer-lock="item-legend"]', 'Foco no cadeado é devolvido após reconstruir');
+assert.strictEqual(PrintPropertiesPanel.listFocusSelector(fakeBtn('data-composer-vis', 'a"b'), fakeMount), '[data-composer-vis="a\\"b"]', 'Id com aspas é escapado no seletor');
+assert.strictEqual(PrintPropertiesPanel.listFocusSelector(fakeBtn('id', 'x'), fakeMount), null, 'Foco fora da lista não é restaurado');
+assert.strictEqual(PrintPropertiesPanel.listFocusSelector(null, fakeMount), null, 'Sem foco, nada a restaurar');
 console.log('✔ Painel validado');
 
 // ============================================================================

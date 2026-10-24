@@ -192,21 +192,76 @@
 
 /* Lista de elementos da prancha */
 .cm-pp-item-row {
+  /* .cm-ai-row trava a altura em 24px; aqui a linha tem 26px */
   height: 26px;
-  padding: 0 6px;
+  min-height: 26px;
+  max-height: 26px;
+  padding: 0 4px 0 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-radius: 4px;
   cursor: pointer;
+  box-shadow: inset 2px 0 0 transparent;
+}
+
+.cm-pp-item-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cm-pp-item-row.is-selected {
+  background: rgba(0, 224, 138, 0.12);
+  box-shadow: inset 2px 0 0 var(--cm-primary, #00E08A);
+}
+
+.cm-pp-item-row.is-selected .cm-pp-item-name {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Oculto: continua na lista, mas apagado (não sai na prancha nem na exportação) */
+.cm-pp-item-row.is-hidden .cm-pp-item-icon,
+.cm-pp-item-row.is-hidden .cm-pp-item-name {
+  opacity: 0.45;
+}
+
+.cm-pp-item-row.is-hidden .cm-pp-item-name {
+  font-style: italic;
 }
 
 .cm-pp-item-main {
+  flex: 1;
+  height: 100%;
+  padding: 0 0 0 6px;
   display: flex;
   align-items: center;
   gap: 6px;
   overflow: hidden;
   min-width: 0;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cm-pp-item-main:focus-visible,
+.cm-pp-item-btn:focus-visible {
+  outline: 1px solid var(--cm-primary, #00E08A);
+  outline-offset: -1px;
+}
+
+/* Bloqueio e visibilidade no estado comum ficam discretos; o estado que pede atenção fica em cor */
+.cm-pp-item-btn.is-off {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.cm-pp-item-row:hover .cm-pp-item-btn.is-off,
+.cm-pp-item-btn.is-off:focus-visible {
+  opacity: 0.75;
 }
 
 .cm-pp-item-icon {
@@ -371,6 +426,16 @@
 
 .cm-print-props-fields:disabled {
   opacity: 0.55;
+}
+
+.cm-print-props-hidden-note {
+  margin: 8px 8px 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--cm-text-muted);
+  font-size: 10.5px;
 }
 
 .cm-print-props-locked-note {

@@ -791,6 +791,8 @@ export class PrintComposerModal {
       // Preserva a rolagem ao reconstruir após cada seleção/arrasto (as seções abertas ficam em this.panelSections)
       const prevScroll = mount.querySelector('.cm-print-props-scroll')?.scrollTop || 0;
       const keptPaper = mount.querySelector('details[data-section="paper"]');
+      // Quem usa o teclado não perde o lugar na lista ao bloquear, ocultar ou selecionar
+      const focusSel = PrintPropertiesPanel.listFocusSelector(document.activeElement, mount);
       mount.innerHTML = PrintPropertiesPanel.render(this);
       // A seção da folha continua a mesma na tela, só com os valores atualizados
       const freshPaper = mount.querySelector('details[data-section="paper"]');
@@ -801,6 +803,7 @@ export class PrintComposerModal {
       const scroller = mount.querySelector('.cm-print-props-scroll');
       if (scroller) scroller.scrollTop = prevScroll;
       PrintPropertiesPanel.bindEvents(this);
+      if (focusSel) mount.querySelector(focusSel)?.focus({ preventScroll: true });
     }
   }
 

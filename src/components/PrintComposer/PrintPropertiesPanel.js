@@ -30,19 +30,25 @@ export class PrintPropertiesPanel {
           <details class="cm-inspector-accordion" data-section="items" ${openAttr('items')}>
             <summary class="cm-pp-summary">📑 Elementos da Prancha (${composer.items.length})</summary>
             <div class="cm-pp-body cm-pp-body--list">
-              ${composer.items.map((it) => `
-                <div class="cm-ai-row cm-pp-item-row ${it.id === composer.selectedItemId ? 'ai-selected' : ''}" data-composer-item-id="${esc(it.id)}">
-                  <div class="cm-pp-item-main">
-                    <span class="cm-pp-item-icon">${this.getItemIcon(it.type)}</span>
-                    <span class="cm-pp-item-name">${esc(it.name)}</span>
-                  </div>
+              ${composer.items.map((it) => {
+                // Sem `visible` gravado o item aparece (mesma regra da prancha e do exportador)
+                const shown = it.visible !== false;
+                const selected = it.id === composer.selectedItemId;
+                const name = esc(it.name || 'Item');
+                return `
+                <div class="cm-ai-row cm-pp-item-row ${selected ? 'is-selected' : ''} ${shown ? '' : 'is-hidden'}" data-composer-item-id="${esc(it.id)}">
+                  <button type="button" class="cm-pp-item-main" data-composer-select="${esc(it.id)}" ${selected ? 'aria-current="true"' : ''} title="${shown ? name : `${name} (oculto)`}">
+                    <span class="cm-pp-item-icon" aria-hidden="true">${this.getItemIcon(it.type)}</span>
+                    <span class="cm-pp-item-name">${name}</span>
+                  </button>
                   <div class="cm-pp-item-actions">
-                    <button class="cm-ai-micro-btn" data-composer-lock="${esc(it.id)}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${it.locked ? '🔒' : '🔓'}</button>
-                    <button class="cm-ai-micro-btn" data-composer-vis="${esc(it.id)}" title="${it.visible ? 'Ocultar' : 'Exibir'}">${it.visible ? '👁️' : '✕'}</button>
-                    <button class="cm-ai-micro-btn" data-composer-del="${esc(it.id)}" title="${it.locked ? 'Desbloqueie para excluir' : 'Excluir'}" ${it.locked ? 'disabled' : ''}>🗑️</button>
+                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn ${it.locked ? '' : 'is-off'}" data-composer-lock="${esc(it.id)}" aria-pressed="${it.locked ? 'true' : 'false'}" aria-label="Bloquear ${name}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${it.locked ? '🔒' : '🔓'}</button>
+                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn ${shown ? '' : 'is-off'}" data-composer-vis="${esc(it.id)}" aria-pressed="${shown ? 'false' : 'true'}" aria-label="Ocultar ${name}" title="${shown ? 'Ocultar' : 'Exibir'}">👁️</button>
+                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn" data-composer-del="${esc(it.id)}" aria-label="Excluir ${name}" title="${it.locked ? 'Desbloqueie para excluir' : 'Excluir (Ctrl+Z desfaz)'}" ${it.locked ? 'disabled' : ''}>🗑️</button>
                   </div>
                 </div>
-              `).join('')}
+              `;
+              }).join('')}
             </div>
           </details>
 
@@ -52,6 +58,9 @@ export class PrintPropertiesPanel {
               <summary class="cm-pp-summary cm-pp-summary--active">🎯 ${esc(selectedItem.name)}</summary>
               ${selectedItem.locked ? `
                 <div class="cm-print-props-locked-note">🔒 Item bloqueado: desbloqueie na lista acima para editar.</div>
+              ` : ''}
+              ${selectedItem.visible === false ? `
+                <div class="cm-print-props-hidden-note">Item oculto: não aparece na prancha nem na exportação.</div>
               ` : ''}
               <fieldset class="cm-print-props-fields" ${selectedItem.locked ? 'disabled' : ''}>
                 <!-- Barra de Ações Rápidas e Alinhamento -->
@@ -203,6 +212,17 @@ export class PrintPropertiesPanel {
       if (freshDel.dataset.presetId) del.dataset.presetId = freshDel.dataset.presetId;
       else delete del.dataset.presetId;
     }
+  }
+
+  static LIST_FOCUS_ATTRS = ['data-composer-select', 'data-composer-lock', 'data-composer-vis', 'data-composer-del'];
+
+  /** Seletor do controle da lista de elementos que está com o foco (para devolvê-lo após reconstruir o painel) */
+  static listFocusSelector(active, mount) {
+    if (!active || !mount?.contains(active)) return null;
+    const attr = this.LIST_FOCUS_ATTRS.find(a => active.hasAttribute?.(a));
+    if (!attr) return null;
+    const id = String(active.getAttribute(attr)).replace(/["\\]/g, '\\$&');
+    return `[${attr}="${id}"]`;
   }
 
   /** Campos específicos do tipo do elemento selecionado */
