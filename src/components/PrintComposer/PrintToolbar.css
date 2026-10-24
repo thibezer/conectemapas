@@ -303,3 +303,10 @@
 .cm-print-lock-banner [hidden] {
   display: none;
 }
+
+/* Escolha de feição no mapa da prancha */
+.cm-print-pick-banner {
+  background: linear-gradient(90deg, #12303a 0%, #0d2229 100%);
+  border-bottom-color: rgba(34, 211, 238, 0.4);
+  color: #bdf4ff;
+}

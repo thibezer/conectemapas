@@ -187,22 +187,56 @@ export const PrintViewResolver = {
   /** A feição aparece nesta vista? */
   isVisible(feat, ctx) {
     if (!feat || isDeleted(feat)) return false;
+    return this.hiddenReason(feat, ctx) === null;
+  },
+
+  /**
+   * Por que a feição não aparece na vista: 'project' (espelho do mapa principal), 'layer',
+   * 'scale', 'element' ou 'filter'; null = aparece. Usado por "Revelar ocultos".
+   */
+  hiddenReason(feat, ctx) {
     const { view } = ctx;
     const layer = ctx.layersById.get(feat.layerId);
     if (view.followProject) {
-      if (layer?.visible === false || feat.visible === false) return false;
+      if (layer?.visible === false || feat.visible === false) return 'project';
     }
     const layerOv = view.layers?.[feat.layerId];
-    if (layerOv?.visible === false) return false;
-    if (!this.inScaleRange(layerOv, ctx.scale)) return false;
+    if (layerOv?.visible === false) return 'layer';
+    if (!this.inScaleRange(layerOv, ctx.scale)) return 'scale';
 
     const el = view.elements?.[feat.id];
-    if (el && has(el, 'visible')) return el.visible !== false;
+    if (el && has(el, 'visible')) return el.visible !== false ? null : 'element';
 
     for (const f of ctx.filters) {
-      if (f.entry.visible === false && f.ids.has(String(feat.id))) return false;
+      if (f.entry.visible === false && f.ids.has(String(feat.id))) return 'filter';
     }
-    return true;
+    return null;
+  },
+
+  /**
+   * Isolar/ocultar temporário (só na tela, não é salvo nem exportado):
+   * { isolateLayers, hideLayers, isolateFeatures, hideFeatures } (Sets de ids)
+   */
+  hiddenByTemp(feat, temp) {
+    if (!temp) return false;
+    const id = String(feat.id);
+    if (temp.hideFeatures?.has(id) || temp.hideLayers?.has(String(feat.layerId))) return true;
+    if (temp.isolateFeatures?.size && !temp.isolateFeatures.has(id)) return true;
+    if (temp.isolateLayers?.size && !temp.isolateLayers.has(String(feat.layerId))) return true;
+    return false;
+  },
+
+  /** Gráfico de "Revelar ocultos" (magenta, como no Revit) */
+  revealGraphics(g) {
+    g.stroke.color = '#ff00ff';
+    g.stroke.widthMm = Math.max(0.25, g.stroke.widthMm);
+    g.stroke.dashMm = [1.5, 1];
+    g.fill.color = '#ff00ff';
+    g.fill.opacity = 0.18;
+    g.fill.pattern = 'solido';
+    g.halftone = false;
+    g.revealed = true;
+    return g;
   },
 
   /**
@@ -211,9 +245,14 @@ export const PrintViewResolver = {
    *   point: { sizeMm }, text: { color, sizePt, halo }, label: { show, text, sizePt, color, halo }, halftone }
    */
   resolve(feat, ctx) {
-    if (!this.isVisible(feat, ctx)) return null;
+    if (!feat || isDeleted(feat)) return null;
+    const hidden = this.hiddenReason(feat, ctx) !== null;
+    // Revelar ocultos: o que a vista esconde aparece em magenta (só na tela)
+    if (hidden && !ctx.reveal) return null;
+    if (!hidden && this.hiddenByTemp(feat, ctx.temp)) return null;
     const layer = ctx.layersById.get(feat.layerId);
-    return this.graphicsOf(feat, layer, this.overridesFor(feat, ctx), this.labelOverride(ctx.view, feat.layerId));
+    const g = this.graphicsOf(feat, layer, this.overridesFor(feat, ctx), this.labelOverride(ctx.view, feat.layerId));
+    return hidden ? this.revealGraphics(g) : g;
   },
 
   /** Rótulo da camada: padrão de todos os rótulos + o da camada */

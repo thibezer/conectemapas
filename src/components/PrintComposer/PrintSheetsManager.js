@@ -127,6 +127,7 @@ export class PrintSheetsManager {
     if (!target) return;
 
     const previousId = this.activeSheetId;
+    this.composer.clearTempStates?.();
     this.activeSheetId = target.id;
     this.saveToStorage();
 

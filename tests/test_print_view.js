@@ -392,4 +392,47 @@ assert.ok(tvHtml.includes('Editando o modelo') && !tvHtml.includes('data-vv-tab=
 assert.ok(!/data-row-kind="layer"[\s\S]*?data-gfx="fill.color"[^>]*disabled/.test(tvHtml), 'No modo de edição do modelo os campos ficam liberados');
 console.log('✔ Modelos de vista validados');
 
+// ============================================================================
+// 8. Feições, temporários, revelar ocultos e clique no mapa
+// ============================================================================
+console.log('8. Feições e temporários...');
+const fv = { ...PrintViewResolver.emptyView(), layers: { rios: { visible: false } }, elements: { c2: { visible: false } }, filters: [{ filterId: 'f-com', enabled: true, visible: false }] };
+const fctx = { ...PrintViewResolver.prepare(fv, { features, layers, library }), view: fv };
+const reason = (id) => PrintViewResolver.hiddenReason(features.find(f => f.id === id), fctx);
+assert.strictEqual(reason('r1'), 'layer');
+assert.strictEqual(reason('c2'), 'element');
+assert.strictEqual(reason('c1'), 'filter');
+assert.strictEqual(reason('c3'), null, 'Vista independente: oculta no projeto aparece');
+assert.strictEqual(PrintViewResolver.resolve(features.find(f => f.id === 'r1'), fctx), null);
+const revealed = PrintViewResolver.resolve(features.find(f => f.id === 'r1'), { ...fctx, reveal: true });
+assert.ok(revealed && revealed.revealed && revealed.stroke.color === '#ff00ff', 'Revelar ocultos: aparece em magenta');
+assert.strictEqual(PrintViewResolver.resolve(features.find(f => f.id === 'x1'), { ...fctx, reveal: true }), null, 'Excluída nunca é revelada');
+const tctx = (temp) => ({ ...PrintViewResolver.prepare(PrintViewResolver.emptyView(), { features, layers, library }), view: PrintViewResolver.emptyView(), temp });
+assert.strictEqual(PrintViewResolver.resolve(features[4], tctx({ isolateLayers: new Set(['casas']) })), null, 'Isolar camada esconde as outras');
+assert.ok(PrintViewResolver.resolve(features[0], tctx({ isolateLayers: new Set(['casas']) })));
+assert.strictEqual(PrintViewResolver.resolve(features[0], tctx({ hideFeatures: new Set(['c1']) })), null, 'Ocultar feição temporariamente');
+assert.ok(PrintViewResolver.resolve(features[1], tctx({ isolateFeatures: new Set(['c2']) })), 'Isolar feição mantém só ela');
+// Clique no mapa: polígono com furo, linha e ponto
+const hitFeatures = [
+  { id: 'poly', layerId: 'casas', type: 'Polygon', coordinates: [[[0, 0], [0, 10], [10, 10], [10, 0]], [[3, 3], [3, 7], [7, 7], [7, 3]]] },
+  { id: 'line', layerId: 'rios', type: 'LineString', coordinates: [[20, 0], [20, 10]] },
+  { id: 'pt', layerId: 'arvores', type: 'Point', coordinates: [30, 5] }
+];
+const hp = ([lat, lng]) => ({ x: lng * 10, y: lat * 10 });
+const hctx = { ...PrintViewResolver.prepare(PrintViewResolver.emptyView(), { features: hitFeatures, layers, library }), view: PrintViewResolver.emptyView() };
+const hit = (x, y) => PrintMapRenderer.hitTest({ features: hitFeatures, layers, resolveCtx: hctx, project: hp, point: { x, y } })?.id || null;
+assert.strictEqual(hit(15, 15), 'poly', 'Dentro do polígono');
+assert.strictEqual(hit(50, 50), null, 'Dentro do furo não pega');
+assert.strictEqual(hit(52, 202), 'line', 'Perto da linha');
+assert.strictEqual(hit(51, 301), 'pt', 'Perto do ponto');
+assert.strictEqual(hit(500, 500), null, 'Longe de tudo');
+// Aba Feições
+const elComposer = { items: [{ id: 'm', type: 'map', viewConfig: { ...PrintViewResolver.emptyView(), elements: { c1: { stroke: { color: '#ef4444' } }, sumiu: { visible: false } } } }], layers, features, library };
+const elHtml = PrintVisibilityDialog.render(elComposer, elComposer.items[0], { tab: 'elements', elQuery: 'casa' });
+assert.strictEqual((elHtml.match(/data-row-kind="element"/g) || []).length, 2, 'Uma linha por feição ajustada');
+assert.ok(elHtml.includes('Feição excluída do projeto'), 'Ajuste de feição apagada é mostrado');
+assert.ok(elHtml.includes('data-vv-el-action="hide" data-feature-id="c2"'), 'Busca pelo nome oferece ações rápidas');
+assert.strictEqual(PrintVisibilityDialog.searchFeatures(elComposer, 'ipe').length, 1, 'Busca ignora acentos');
+console.log('✔ Feições e temporários validados');
+
 console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');// ============================================================================

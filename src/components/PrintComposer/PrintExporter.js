@@ -316,7 +316,7 @@ export class PrintExporter {
 
       // 2. Feições pela vista do mapa: o mesmo desenho da tela (PrintMapRenderer), em px CSS escalados
       if (item.type === 'map') {
-        const state = composer.vectorStateFor(item, map);
+        const state = composer.vectorStateFor(item, map, { forExport: true });
         if (state) {
           ctx.save();
           ctx.translate(x, y);

@@ -534,6 +534,32 @@ export class PrintPropertiesPanel {
         <ui-botao-primario inline id="btn-prop-open-vv" variante="secundario" class="cm-pp-wide-btn" title="Visibilidade e gráficos deste mapa (V V)">
           👁️ Visibilidade/Gráficos (VV)
         </ui-botao-primario>
+        ${this.renderTempControls(item, composer)}
+      </div>
+    `;
+  }
+
+  /** Isolar/ocultar temporário e "Revelar ocultos" (só na tela; não salva nem exporta) */
+  static renderTempControls(item, composer) {
+    const esc = PrintItemsManager.escapeHtml;
+    const temp = composer.tempViews?.get?.(item.id) || null;
+    const revealing = Boolean(composer.revealHidden?.has?.(item.id));
+    const layers = composer.layers || [];
+    return `
+      <div class="cm-pp-temp" role="group" aria-label="Visualização temporária">
+        <span class="cm-param-label">Temporário (não sai no PDF):</span>
+        <div class="cm-pp-inline">
+          <select id="prop-temp-layer" class="cm-native-select cm-pp-grow cm-pp-compact-select" aria-label="Camada">
+            ${layers.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}
+          </select>
+          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-isolate" title="Mostra só esta camada">Isolar</button>
+          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-hide" title="Esconde esta camada">Ocultar</button>
+        </div>
+        <div class="cm-pp-inline">
+          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-isolate-feature" title="Clique numa feição: só ela aparece">Isolar feição…</button>
+          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn ${revealing ? 'is-active' : ''}" id="btn-reveal-hidden" aria-pressed="${revealing}" title="Mostra em magenta o que esta vista esconde; clique para religar">💡 Revelar ocultos</button>
+          ${temp ? '<button type="button" class="cm-ai-micro-btn cm-pp-text-btn is-active" id="btn-temp-reset" title="Volta a mostrar a vista salva">↺ Restaurar</button>' : ''}
+        </div>
       </div>
     `;
   }
@@ -767,6 +793,24 @@ export class PrintPropertiesPanel {
       btnPanMap.addEventListener('click', () => composer.setInteractionMode('content_pan'));
     }
     document.getElementById('btn-prop-open-vv')?.addEventListener('click', () => composer.openVisibilityDialog(composer.selectedItemId));
+
+    // Temporários do mapa selecionado (padrão Revit: óculos escuros e lâmpada)
+    const tempLayer = () => document.getElementById('prop-temp-layer')?.value;
+    document.getElementById('btn-temp-isolate')?.addEventListener('click', () => {
+      if (tempLayer()) composer.setTempView(composer.selectedItemId, { isolateLayers: new Set([tempLayer()]) });
+    });
+    document.getElementById('btn-temp-hide')?.addEventListener('click', () => {
+      const cur = composer.tempViews.get(composer.selectedItemId);
+      const hide = new Set([...(cur?.hideLayers || []), tempLayer()].filter(Boolean));
+      composer.setTempView(composer.selectedItemId, { ...(cur || {}), hideLayers: hide });
+    });
+    document.getElementById('btn-temp-isolate-feature')?.addEventListener('click', async () => {
+      const itemId = composer.selectedItemId;
+      const feat = await composer.pickFeature(itemId, { message: 'Clique na feição que deve ficar sozinha no mapa (Esc cancela).' });
+      if (feat) composer.setTempView(itemId, { isolateFeatures: new Set([String(feat.id)]) });
+    });
+    document.getElementById('btn-temp-reset')?.addEventListener('click', () => composer.setTempView(composer.selectedItemId, null));
+    document.getElementById('btn-reveal-hidden')?.addEventListener('click', () => composer.toggleRevealHidden(composer.selectedItemId));
     const propLegendMap = document.getElementById('prop-legend-map');
     if (propLegendMap) {
       propLegendMap.addEventListener('change', (e) => {

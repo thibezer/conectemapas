@@ -486,3 +486,19 @@
   height: 100%;
   box-sizing: border-box;
 }
+
+/* Isolar/ocultar temporário e "Revelar ocultos" (padrão Revit): só na tela */
+.cm-item-map-frame.cm-temp-view {
+  outline: 2px dashed #22d3ee;
+  outline-offset: 2px;
+}
+
+.cm-item-map-frame.cm-reveal-hidden {
+  outline: 2px solid #ff00ff;
+  outline-offset: 2px;
+}
+
+.cm-item-map-frame.cm-picking,
+.cm-item-map-frame.cm-picking * {
+  cursor: crosshair !important;
+}

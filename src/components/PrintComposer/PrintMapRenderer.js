@@ -124,6 +124,56 @@ export const PrintMapRenderer = {
     return items.length;
   },
 
+  /**
+   * Feição sob o ponto (px do contêiner do mapa), a de cima primeiro; só as que aparecem
+   * na vista (ou reveladas). Tolerância em px para linhas e pontos.
+   */
+  hitTest({ features = [], layers = [], resolveCtx, project, point, tolerance = 6 }) {
+    const order = new Map(layers.map((l, i) => [l.id, i]));
+    const candidates = [];
+    features.forEach((f, idx) => {
+      const g = PrintViewResolver.resolve(f, resolveCtx);
+      if (g) candidates.push({ f, g, idx, layerOrder: order.has(f.layerId) ? order.get(f.layerId) : layers.length });
+    });
+    // De cima para baixo: inverso da ordem de desenho
+    candidates.sort((a, b) => (a.layerOrder - b.layerOrder) || (b.idx - a.idx));
+    const distSeg = (p, a, b) => {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const len = dx * dx + dy * dy;
+      const t = len ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len)) : 0;
+      return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+    };
+    const inRing = (p, r) => {
+      let inside = false;
+      for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+        if ((r[i].y > p.y) !== (r[j].y > p.y) && p.x < ((r[j].x - r[i].x) * (p.y - r[i].y)) / (r[j].y - r[i].y) + r[i].x) inside = !inside;
+      }
+      return inside;
+    };
+    for (const { f, g } of candidates) {
+      if (g.kind === 'polygon') {
+        const polys = this.polygonsOf(f.coordinates).map(rings => rings.map(r => r.map(ll => project(ll))));
+        // evenodd: dentro de um número ímpar de anéis (furo não conta)
+        if (polys.some(rings => rings.filter(r => inRing(point, r)).length % 2 === 1)) return f;
+        if (polys.some(rings => rings.some(r => r.some((pt, i) => distSeg(point, pt, r[(i + 1) % r.length]) <= tolerance)))) return f;
+      } else if (g.kind === 'line') {
+        const parts = this.linesOf(f.coordinates).map(pts => pts.map(ll => project(ll)));
+        if (parts.some(pts => pts.some((pt, i) => i > 0 && distSeg(point, pts[i - 1], pt) <= tolerance))) return f;
+      } else {
+        const ll = this.pointOf(f.coordinates);
+        if (!ll) continue;
+        const p = project(ll);
+        let r = tolerance + 2;
+        if (g.kind === 'circle') {
+          const edge = project([ll[0] + (Number(f.radius) > 0 ? Number(f.radius) : 500) / 111320, ll[1]]);
+          r = Math.max(r, Math.hypot(edge.x - p.x, edge.y - p.y));
+        }
+        if (Math.hypot(point.x - p.x, point.y - p.y) <= r) return f;
+      }
+    }
+    return null;
+  },
+
   /** Desenha uma feição e devolve onde o rótulo vai ({ x, y, angle }) */
   drawFeature(ctx, f, g, project, pxPerMm) {
     const mm = (v) => v * pxPerMm;

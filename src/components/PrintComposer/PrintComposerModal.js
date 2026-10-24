@@ -24,6 +24,7 @@ import { PrintLegendRenderer } from './PrintLegendRenderer.js';
 import { PrintVisibilityDialog } from './PrintVisibilityDialog.js';
 import { PrintCloudSync } from './PrintCloudSync.js';
 import { PrintViewTemplates } from './PrintViewTemplates.js';
+import { PrintViewEdits } from './PrintViewEdits.js';
 import './PrintVisibilityDialog.css';
 
 export class PrintComposerModal {
@@ -70,6 +71,9 @@ export class PrintComposerModal {
     this.vectorLayers = new Map(); // Camada vetorial (canvas) de cada mapa
     this.resolveCache = new Map(); // Filtros casados por mapa, refeitos só quando a vista ou as feições mudam
     this.library = { filters: [], viewTemplates: [] }; // Filtros e modelos de vista do projeto
+    this.tempViews = new Map(); // Isolar/ocultar temporário por mapa (só na tela)
+    this.revealHidden = new Set(); // Mapas com "Revelar ocultos" ligado
+    this._pick = null; // Escolha de feição no mapa em andamento
     this.canvasEngine = new PrintCanvasEngine(this);
     this.visibilityDialog = new PrintVisibilityDialog(this);
 
@@ -201,6 +205,12 @@ export class PrintComposerModal {
           <button type="button" class="cm-pan-banner-btn" data-lock-edit hidden>Editar</button>
         </div>
 
+        <!-- Escolha de feição no mapa (ajuste por feição, revelar ocultos) -->
+        <div id="cm-print-pick-banner" class="cm-print-pan-banner cm-print-pick-banner hidden" role="status">
+          <span>🎯 <span data-pick-text></span></span>
+          <button type="button" class="cm-pan-banner-btn" data-pick-cancel>Cancelar</button>
+        </div>
+
         <!-- Faixa de Aviso Quando no Modo Navegação de Conteúdo -->
         <div id="cm-print-pan-alert-banner" class="cm-print-pan-banner hidden">
           <span>🖐️ <strong>Modo Navegação de Mapa Ativo:</strong> Arraste o mapa com o botão esquerdo para enquadrar a feição | Use o scroll para ajustar o zoom. Quando terminar, clique em <strong>Layout</strong>.</span>
@@ -285,6 +295,7 @@ export class PrintComposerModal {
   loadActiveSheetIntoComposer({ keepSelection = false } = {}) {
     const sheet = this.sheetsManager.getCurrentSheet();
     if (!sheet) return;
+    this.clearTempStates();
     this.paperSize = sheet.paperSize;
     this.showAbntMargins = sheet.showAbntMargins !== false;
     this.items = JSON.parse(JSON.stringify(sheet.items || []));
@@ -410,7 +421,15 @@ export class PrintComposerModal {
     });
   }
 
+  /** Temporários valem só para a prancha aberta */
+  clearTempStates() {
+    this.cancelPick();
+    this.tempViews.clear();
+    this.revealHidden.clear();
+  }
+
   close() {
+    this.clearTempStates();
     this.visibilityDialog?.close();
     this.cloud?.stop();
     if (this.sheetsManager) this.sheetsManager.saveCurrentStateFromComposer();
@@ -688,6 +707,7 @@ export class PrintComposerModal {
             // Feições: desenhadas pela vista do mapa (mesmo desenho da exportação)
             const vectors = new PrintVectorLayer(() => this.vectorStateFor(item, map), () => this.vectorResolution()).addTo(map);
             this.vectorLayers.set(item.id, vectors);
+            this.applyTempFrameState(item.id);
             const bounds = [];
             this.features.forEach(f => {
               const box = PrintMapRenderer.bboxOf(f);
@@ -797,7 +817,7 @@ export class PrintComposerModal {
   }
 
   /** Estado da camada vetorial de um mapa: vista efetiva + filtros casados (cache por vista) */
-  vectorStateFor(item, map) {
+  vectorStateFor(item, map, { forExport = false } = {}) {
     if (item.type !== 'map') return null;
     const view = PrintViewResolver.effectiveView(item, this.library);
     const key = JSON.stringify([view.followProject, view.filters, this.library?.filters || []]);
@@ -812,9 +832,136 @@ export class PrintComposerModal {
     return {
       features: this.features,
       layers: this.layers,
-      resolveCtx: { ...cached.ctx, view, scale },
+      // Temporários e "Revelar ocultos" são só da tela: a exportação sai como a vista salva
+      resolveCtx: {
+        ...cached.ctx,
+        view,
+        scale,
+        temp: forExport ? null : (this.tempViews.get(item.id) || null),
+        reveal: !forExport && this.revealHidden.has(item.id)
+      },
       pxPerMm: PrintCanvasEngine.BASE_PX_PER_MM
     };
+  }
+
+  /** Marca o mapa com isolar/ocultar temporário ou "Revelar ocultos" ativos (borda colorida) */
+  applyTempFrameState(itemId) {
+    const frame = document.querySelector(`[data-item-id="${itemId}"] .cm-item-map-frame`);
+    if (!frame) return;
+    frame.classList.toggle('cm-temp-view', this.tempViews.has(itemId));
+    frame.classList.toggle('cm-reveal-hidden', this.revealHidden.has(itemId));
+  }
+
+  /**
+   * Isolar/ocultar temporário (padrão Revit): `temp` = { isolateLayers, hideLayers,
+   * isolateFeatures, hideFeatures } com Sets de ids; null restaura. Não entra no histórico.
+   */
+  setTempView(itemId, temp) {
+    if (temp) this.tempViews.set(itemId, temp);
+    else this.tempViews.delete(itemId);
+    this.applyTempFrameState(itemId);
+    this.redrawMapVectors(itemId);
+    if (this.selectedItemId === itemId) this.updatePropertiesPanel();
+  }
+
+  /** Liga/desliga "Revelar ocultos": o que a vista esconde aparece em magenta e um clique religa */
+  async toggleRevealHidden(itemId) {
+    if (this.revealHidden.has(itemId)) {
+      this.revealHidden.delete(itemId);
+      this.cancelPick();
+    } else {
+      this.revealHidden.add(itemId);
+    }
+    this.applyTempFrameState(itemId);
+    this.redrawMapVectors(itemId);
+    if (this.selectedItemId === itemId) this.updatePropertiesPanel();
+    // Enquanto revela, cada clique numa feição oculta a religa nesta vista
+    while (this.revealHidden.has(itemId) && this.isOpen) {
+      const feat = await this.pickFeature(itemId, { message: 'Revelar ocultos: clique numa feição em magenta para religá-la nesta vista (Esc encerra).' });
+      if (!feat) {
+        if (this.revealHidden.has(itemId)) this.toggleRevealHidden(itemId);
+        return;
+      }
+      this.unhideFeature(itemId, feat);
+    }
+  }
+
+  /** Religa uma feição oculta na vista, desfazendo o que a escondia */
+  unhideFeature(itemId, feat) {
+    const item = this.items.find(i => i.id === itemId);
+    if (!item) return false;
+    const view = PrintViewResolver.effectiveView(item, this.library);
+    const ctx = { ...PrintViewResolver.prepare(view, { features: this.features, layers: this.layers, library: this.library, scale: item.scale }), view };
+    const reason = PrintViewResolver.hiddenReason(feat, ctx);
+    if (!reason) return false;
+    if ((reason === 'layer' || reason === 'scale') && PrintViewResolver.isLockedByTemplate(item, this.library, 'layers')) {
+      UIToast.notificar({ tipo: 'alerta', titulo: 'Controlado pelo modelo de vista', mensagem: 'A camada está oculta pelo modelo. Edite o modelo para religá-la.', duracao: 4000 });
+      return false;
+    }
+    return this.updateMapView(itemId, (v) => {
+      if (reason === 'layer') PrintViewEdits.setVisible(v, 'layer', feat.layerId, true);
+      else if (reason === 'scale') {
+        PrintViewEdits.setField(v, 'layer', feat.layerId, 'minScale', null);
+        PrintViewEdits.setField(v, 'layer', feat.layerId, 'maxScale', null);
+      } else if (reason === 'element') PrintViewEdits.setField(v, 'element', feat.id, 'visible', null);
+      else PrintViewEdits.setField(v, 'element', feat.id, 'visible', true); // filtro ou espelho do projeto
+    }, `Revelar ${feat.name || 'feição'}`);
+  }
+
+  /**
+   * Espera um clique numa feição do mapa da prancha (Esc cancela). Devolve a feição ou null.
+   * O clique não arrasta o item: é capturado antes da prancheta.
+   */
+  pickFeature(itemId, { message = 'Clique numa feição do mapa (Esc cancela).' } = {}) {
+    this.cancelPick();
+    const item = this.items.find(i => i.id === itemId);
+    const map = this.leafletMaps.get(itemId);
+    const frame = document.querySelector(`[data-item-id="${itemId}"] .cm-item-map-frame`);
+    if (!item || !map || !frame) return Promise.resolve(null);
+    const banner = document.getElementById('cm-print-pick-banner');
+    if (banner) {
+      banner.querySelector('[data-pick-text]').textContent = message;
+      banner.classList.remove('hidden');
+    }
+    frame.classList.add('cm-picking');
+    return new Promise((resolve) => {
+      const finish = (feat) => {
+        frame.removeEventListener('mousedown', onDown, true);
+        window.removeEventListener('keydown', onKey, true);
+        frame.classList.remove('cm-picking');
+        banner?.classList.add('hidden');
+        this._pick = null;
+        resolve(feat);
+      };
+      const onDown = (e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const el = map.getContainer();
+        const rect = el.getBoundingClientRect();
+        // O mapa é montado a 100% e escalado pela prancheta: converte para px do contêiner
+        const point = {
+          x: (e.clientX - rect.left) * (el.offsetWidth / rect.width),
+          y: (e.clientY - rect.top) * (el.offsetHeight / rect.height)
+        };
+        const state = this.vectorStateFor(item, map);
+        const feat = state && PrintMapRenderer.hitTest({ ...state, project: (ll) => map.latLngToContainerPoint(ll), point });
+        if (feat) finish(feat);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.stopPropagation();
+          finish(null);
+        }
+      };
+      frame.addEventListener('mousedown', onDown, true);
+      window.addEventListener('keydown', onKey, true);
+      this._pick = { finish };
+    });
+  }
+
+  cancelPick() {
+    this._pick?.finish(null);
   }
 
   /** Pixels de tela por px CSS do mapa (zoom da prancheta × densidade da tela) */
@@ -1044,6 +1191,7 @@ export class PrintComposerModal {
     PrintToolbar.bind(this);
 
     document.querySelector('#cm-print-lock-banner [data-lock-edit]')?.addEventListener('click', () => this.cloud?.tryEdit());
+    document.querySelector('#cm-print-pick-banner [data-pick-cancel]')?.addEventListener('click', () => this.cancelPick());
 
     const btnDismissBanner = document.getElementById('btn-dismiss-pan-banner');
     if (btnDismissBanner) btnDismissBanner.addEventListener('click', () => this.setInteractionMode('layout'));

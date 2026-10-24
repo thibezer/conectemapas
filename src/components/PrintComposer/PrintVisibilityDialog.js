@@ -27,7 +27,7 @@ export const VV_TABS = [
 export class PrintVisibilityDialog {
   constructor(composer) {
     this.composer = composer;
-    this.state = { itemId: null, tab: 'layers', query: '', filterDraft: null, editTemplateId: null };
+    this.state = { itemId: null, tab: 'layers', query: '', filterDraft: null, editTemplateId: null, elQuery: '', pickedId: null };
     this.root = null;
     // Critérios do filtro em edição (mesmo construtor da Busca Avançada)
     this.builder = new QueryBuilder({
@@ -623,6 +623,88 @@ export class PrintVisibilityDialog {
     `;
   }
 
+  /** Feições encontradas pela busca da aba Feições (nome, até 20) */
+  static searchFeatures(composer, query) {
+    const norm = (t) => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const q = norm(query).trim();
+    if (!q) return [];
+    return (composer.features || []).filter(f => norm(f.name).includes(q)).slice(0, 20);
+  }
+
+  static renderElementsTab(composer, item, view, locked, state) {
+    const dis = locked ? 'disabled' : '';
+    const layerName = (id) => (composer.layers || []).find(l => l.id === id)?.name || '—';
+    const byId = new Map((composer.features || []).map(f => [String(f.id), f]));
+    const entries = Object.keys(view.elements || {});
+    const results = this.searchFeatures(composer, state.elQuery);
+    const picked = state.pickedId ? byId.get(String(state.pickedId)) : null;
+    const quick = (f) => `
+      <button type="button" class="cm-vv-btn" data-vv-el-action="hide" data-feature-id="${esc(f.id)}" ${dis}>Ocultar nesta vista</button>
+      <button type="button" class="cm-vv-btn" data-vv-el-action="highlight" data-feature-id="${esc(f.id)}" ${dis}>Destacar</button>
+      <button type="button" class="cm-vv-btn" data-vv-el-action="halftone" data-feature-id="${esc(f.id)}" ${dis}>Meio-tom</button>`;
+    return `
+      <div class="cm-vv-toolbar">
+        <button type="button" class="cm-vv-btn cm-vv-btn--primary" data-vv-action="el-pick" ${dis} title="Clique numa feição do mapa da prancha">🎯 Escolher no mapa</button>
+        <input type="search" class="cm-vertex-input cm-vv-search" data-vv-el-search value="${esc(state.elQuery || '')}" placeholder="Buscar feição pelo nome…" aria-label="Buscar feição pelo nome" />
+      </div>
+      ${picked ? `
+        <div class="cm-vv-picked">
+          <strong>${esc(picked.name || picked.id)}</strong> <span class="cm-vv-muted">(${esc(layerName(picked.layerId))})</span>
+          <span class="cm-vv-grow"></span>${quick(picked)}
+        </div>` : ''}
+      ${results.length ? `
+        <table class="cm-vv-table cm-vv-table--compact">
+          <tbody>
+            ${results.map(f => `
+              <tr class="cm-vv-row">
+                <td class="cm-vv-cell">${esc(f.name || f.id)} <span class="cm-vv-muted">(${esc(layerName(f.layerId))})</span></td>
+                <td class="cm-vv-cell cm-vv-actions-cell">${quick(f)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>` : (state.elQuery ? '<div class="cm-vv-empty cm-vv-empty--small">Nenhuma feição com esse nome.</div>' : '')}
+
+      <div class="cm-vv-section-title">Feições com ajuste nesta vista <span class="cm-vv-muted">(vencem camadas e filtros)</span></div>
+      ${entries.length ? `
+        <table class="cm-vv-table">
+          <thead>
+            <tr><th class="cm-vv-center">Visível</th><th>Feição</th><th>Traço</th><th>Preenchimento</th><th class="cm-vv-center">Meio-tom</th><th></th></tr>
+          </thead>
+          <tbody>${entries.map(id => this.elementRow(composer, view, id, byId.get(String(id)), locked)).join('')}</tbody>
+        </table>` : '<div class="cm-vv-empty cm-vv-empty--small">Nenhuma feição ajustada. Escolha no mapa ou busque pelo nome.</div>'}
+    `;
+  }
+
+  static elementRow(composer, view, id, feat, locked) {
+    const ov = view.elements?.[id] || {};
+    const dis = locked ? 'disabled' : '';
+    if (!feat) {
+      return `
+        <tr class="cm-vv-row is-hidden" data-row-kind="element" data-row-id="${esc(id)}">
+          <td class="cm-vv-cell" colspan="5">Feição excluída do projeto</td>
+          <td class="cm-vv-cell cm-vv-center"><button type="button" class="cm-vv-reset" data-vv-reset ${dis} title="Tirar o ajuste">↺</button></td>
+        </tr>`;
+    }
+    const layer = (composer.layers || []).find(l => l.id === feat.layerId) || {};
+    const list = [view.layerDefaults, view.layers?.[feat.layerId], ov].filter(Boolean);
+    const g = PrintViewResolver.graphicsOf(feat, layer, list);
+    return `
+      <tr class="cm-vv-row ${ov.visible === false ? 'is-hidden' : ''}" data-row-kind="element" data-row-id="${esc(id)}">
+        <td class="cm-vv-cell cm-vv-center ${ov.visible !== undefined ? 'is-overridden' : ''}">
+          <input type="checkbox" data-gfx="visible" ${ov.visible === false ? '' : 'checked'} ${dis} aria-label="Visível: ${esc(feat.name || id)}" />
+        </td>
+        <td class="cm-vv-cell cm-vv-name">
+          ${this.swatch(g)}
+          <span class="cm-vv-name-text" title="${esc(feat.name || id)}">${esc(feat.name || id)}</span>
+          <span class="cm-vv-muted">${esc(layer.name || '')}</span>
+        </td>
+        ${this.graphicsCells(g, ov, locked)}
+        <td class="cm-vv-cell cm-vv-center">
+          <button type="button" class="cm-vv-reset" data-vv-reset ${dis} title="Tirar o ajuste desta feição" aria-label="Tirar o ajuste de ${esc(feat.name || id)}">↺</button>
+        </td>
+      </tr>
+    `;
+  }
+
   /** Marcação de uma linha, para trocar só ela depois de uma edição */
   static rowHtml(composer, item, kind, id) {
     const view = PrintViewResolver.effectiveView(item, composer.library);
@@ -635,6 +717,11 @@ export class PrintVisibilityDialog {
     if (kind === 'label') {
       const layer = (composer.layers || []).find(l => String(l.id) === String(id));
       return layer ? this.labelRow(composer, layer, view, item.locked === true || composer.readOnly === true) : null;
+    }
+    if (kind === 'element') {
+      if (!view.elements?.[id]) return null;
+      const feat = (composer.features || []).find(f => String(f.id) === String(id));
+      return this.elementRow(composer, view, id, feat, item.locked === true || composer.readOnly === true);
     }
     return null;
   }
@@ -682,9 +769,12 @@ export class PrintVisibilityDialog {
         this.state.tab = tab.dataset.vvTab;
         this.state.query = '';
         this.state.filterDraft = null;
+        this.state.pickedId = null;
         this.refresh();
         return;
       }
+      const elAction = t.closest('[data-vv-el-action]');
+      if (elAction && !elAction.disabled) { this.runElementAction(elAction.dataset.vvElAction, elAction.dataset.featureId); return; }
       const chip = t.closest('[data-vv-field]');
       if (chip) { this.insertField(chip.dataset.vvField); return; }
       const action = t.closest('[data-vv-action]');
@@ -717,6 +807,16 @@ export class PrintVisibilityDialog {
       if (this.state.filterDraft && e.target.closest?.('[data-vv-editor]')) {
         if (e.target.matches('[data-vv-draft="name"]')) { this.state.filterDraft.name = e.target.value; return; }
         if (this.builder.handleInput(e)) return;
+      }
+      if (e.target.matches?.('[data-vv-el-search]')) {
+        this.state.elQuery = e.target.value;
+        clearTimeout(this._elSearchTimer);
+        this._elSearchTimer = setTimeout(() => {
+          this.refresh();
+          const input = this.root.querySelector('[data-vv-el-search]');
+          if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+        }, 200);
+        return;
       }
       if (e.target.matches?.('[data-vv-search]')) {
         this.state.query = e.target.value;
@@ -805,6 +905,7 @@ export class PrintVisibilityDialog {
     if (!item) return;
     if (action.startsWith('filter-')) { this.runFilterAction(action, el, item); return; }
     if (action.startsWith('tpl-')) { this.runTemplateAction(action, item); return; }
+    if (action === 'el-pick') { this.pickOnMap(item); return; }
     const layers = this.composer.layers || [];
     const ops = {
       'show-all': ['Mostrar todas as camadas', (v) => PrintViewEdits.setAllLayersVisible(v, layers, true)],
@@ -862,6 +963,35 @@ export class PrintVisibilityDialog {
       if (isNew) this.mutateView(item, (v) => PrintViewEdits.addFilter(v, saved.id), 'Adicionar filtro à vista');
       this.state.filterDraft = null;
     }
+    this.refresh();
+  }
+
+  /** Ajustes rápidos de uma feição nesta vista */
+  runElementAction(action, featureId) {
+    const item = this.currentItem();
+    if (!item || !featureId) return;
+    const ops = {
+      hide: ['Ocultar feição na vista', (v) => PrintViewEdits.setField(v, 'element', featureId, 'visible', false)],
+      highlight: ['Destacar feição', (v) => {
+        PrintViewEdits.setField(v, 'element', featureId, 'stroke.color', '#ef4444');
+        PrintViewEdits.setField(v, 'element', featureId, 'stroke.widthMm', 0.5);
+      }],
+      halftone: ['Meio-tom na feição', (v) => PrintViewEdits.setField(v, 'element', featureId, 'halftone', true)]
+    };
+    const op = ops[action];
+    if (!op) return;
+    this.composer.updateMapView(item.id, op[1], op[0]);
+    this.state.pickedId = null;
+    this.refresh();
+  }
+
+  /** Fecha a janela, espera o clique numa feição do mapa e volta com ela escolhida */
+  async pickOnMap(item) {
+    this.root.hidden = true;
+    const feat = await this.composer.pickFeature(item.id, { message: 'Clique numa feição do mapa para ajustá-la nesta vista (Esc cancela).' });
+    this.state.tab = 'elements';
+    this.state.pickedId = feat ? feat.id : null;
+    this.root.hidden = false;
     this.refresh();
   }
 
