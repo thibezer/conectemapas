@@ -294,4 +294,14 @@ assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('halftone', { type
 assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('visible', { type: 'checkbox', checked: false })), false);
 console.log('✔ Edições e janela VV validadas');
 
+// Aba Rótulos
+const lbComposer = { items: [{ id: 'm', type: 'map', viewConfig: { ...PrintViewResolver.emptyView(), labels: { casas: { show: true, text: 'Lote {name}' } } } }], layers, features, library };
+const lbHtml = PrintVisibilityDialog.render(lbComposer, lbComposer.items[0], { tab: 'labels' });
+assert.strictEqual((lbHtml.match(/data-row-kind="label"/g) || []).length, 3, 'Uma linha de rótulo por camada');
+assert.ok(lbHtml.includes('Lote Casa grande'), 'Exemplo do rótulo com o primeiro objeto da camada');
+assert.ok(lbHtml.includes('data-vv-field="uso"'), 'Campos de properties oferecidos como chips');
+assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('halo', { type: 'checkbox', checked: false })), false, 'Halo desmarcado grava false (o padrão é com halo)');
+console.log('✔ Aba Rótulos validada');
+
+
 console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');// ============================================================================

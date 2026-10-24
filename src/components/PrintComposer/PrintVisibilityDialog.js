@@ -9,6 +9,7 @@
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintViewResolver, PEN_WIDTHS_MM, LINE_PATTERNS, FILL_PATTERNS } from './PrintViewResolver.js';
 import { PrintViewEdits } from './PrintViewEdits.js';
+import { FeatureQuery } from '../../services/FeatureQuery.js';
 
 const esc = (s) => PrintItemsManager.escapeHtml(s);
 const fmtMm = (v) => String(Math.round(v * 100) / 100).replace('.', ',');
@@ -116,6 +117,7 @@ export class PrintVisibilityDialog {
 
   static renderTab(tab, composer, item, view, locked) {
     if (tab === 'layers') return this.renderLayersTab(composer, item, view, locked);
+    if (tab === 'labels') return this.renderLabelsTab(composer, item, view, locked);
     return '<div class="cm-vv-empty">Em breve.</div>';
   }
 
@@ -245,6 +247,84 @@ export class PrintVisibilityDialog {
     `;
   }
 
+  /** Campos que podem ir no rótulo: os da feição e as chaves de `properties` do projeto */
+  static labelFields(features) {
+    const base = ['name', 'category', 'description', 'type'];
+    const props = FeatureQuery.discoverProperties(features || []).map(p => p.label).filter(k => typeof k === 'string');
+    return [...base, ...props.filter(k => !base.includes(k) && !k.startsWith('_'))];
+  }
+
+  static renderLabelsTab(composer, item, view, locked) {
+    const layers = composer.layers || [];
+    if (!layers.length) return '<div class="cm-vv-empty">O projeto ainda não tem camadas.</div>';
+    const fields = this.labelFields(composer.features);
+    const dis = locked ? 'disabled' : '';
+    return `
+      <div class="cm-vv-toolbar">
+        <input type="search" class="cm-vertex-input cm-vv-search" data-vv-search placeholder="Buscar camada…" aria-label="Buscar camada" />
+        <button type="button" class="cm-vv-btn" data-vv-action="labels-on" ${dis}>Ligar todos</button>
+        <button type="button" class="cm-vv-btn" data-vv-action="labels-off" ${dis}>Desligar todos</button>
+      </div>
+      <p class="cm-vv-hint cm-vv-help">Escreva o texto e use campos entre chaves, por exemplo <code>Lote {name}</code>. Para quebrar a linha, digite <code>\\n</code>.</p>
+      <div class="cm-vv-chips" aria-label="Campos disponíveis">
+        ${fields.map(f => `<button type="button" class="cm-vv-chip" data-vv-field="${esc(f)}" title="Inserir {${esc(f)}} no texto em foco">{${esc(f)}}</button>`).join('')}
+      </div>
+      <table class="cm-vv-table">
+        <thead>
+          <tr>
+            <th class="cm-vv-center">Mostrar</th>
+            <th>Camada</th>
+            <th>Texto</th>
+            <th>Tamanho (pt)</th>
+            <th>Cor</th>
+            <th class="cm-vv-center">Halo</th>
+            <th>Exemplo</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${layers.map(l => this.labelRow(composer, l, view, locked)).join('')}</tbody>
+      </table>
+    `;
+  }
+
+  static labelRow(composer, layer, view, locked) {
+    const ov = view.labels?.[layer.id] || null;
+    const g = PrintViewResolver.layerPreview(layer, composer.features, view);
+    const lb = g.label;
+    const dis = locked ? 'disabled' : '';
+    const sample = (composer.features || []).find(f => f.layerId === layer.id);
+    const example = sample ? PrintViewResolver.labelText(sample, lb.text) : '';
+    const hex = (c) => (PrintItemsManager.parseColor(c) || { hex: '#111111' }).hex;
+    const mark = (k) => (ov && ov[k] !== undefined ? 'is-overridden' : '');
+    return `
+      <tr class="cm-vv-row ${lb.show ? '' : 'is-hidden'}" data-row-kind="label" data-row-id="${esc(layer.id)}" data-name="${esc(String(layer.name || '').toLowerCase())}">
+        <td class="cm-vv-cell cm-vv-center ${mark('show')}">
+          <input type="checkbox" data-gfx="show" ${lb.show ? 'checked' : ''} ${dis} aria-label="Mostrar rótulo: ${esc(layer.name)}" />
+        </td>
+        <td class="cm-vv-cell cm-vv-name">
+          ${this.swatch(g)}
+          <span class="cm-vv-name-text" title="${esc(layer.name)}">${esc(layer.name || 'Camada')}</span>
+        </td>
+        <td class="cm-vv-cell ${mark('text')}">
+          <input type="text" class="cm-vertex-input cm-vv-text" data-gfx="text" value="${esc(ov?.text ?? '')}" placeholder="${esc(lb.text)}" ${dis} aria-label="Texto do rótulo de ${esc(layer.name)}" />
+        </td>
+        <td class="cm-vv-cell ${mark('sizePt')}">
+          <input type="number" class="cm-vertex-input cm-vv-num" data-gfx="sizePt" min="3" max="48" step="0.5" value="${ov?.sizePt ?? ''}" placeholder="${lb.sizePt}" ${dis} aria-label="Tamanho do rótulo (pt)" />
+        </td>
+        <td class="cm-vv-cell ${mark('color')}">
+          <input type="color" class="cm-vv-color" data-gfx="color" value="${hex(lb.color)}" ${dis} aria-label="Cor do rótulo" />
+        </td>
+        <td class="cm-vv-cell cm-vv-center ${mark('halo')}">
+          <input type="checkbox" data-gfx="halo" ${lb.halo ? 'checked' : ''} ${dis} aria-label="Halo branco" title="Contorno branco para ler sobre a imagem" />
+        </td>
+        <td class="cm-vv-cell cm-vv-example" title="${esc(example)}">${example ? esc(example.split('\n').join(' / ')) : '<span class="cm-vv-muted">—</span>'}</td>
+        <td class="cm-vv-cell cm-vv-center">
+          <button type="button" class="cm-vv-reset" data-vv-reset ${ov && !locked ? '' : 'disabled'} title="Voltar ao rótulo do projeto" aria-label="Voltar o rótulo de ${esc(layer.name)} ao projeto">↺</button>
+        </td>
+      </tr>
+    `;
+  }
+
   /** Marcação de uma linha, para trocar só ela depois de uma edição */
   static rowHtml(composer, item, kind, id) {
     const view = PrintViewResolver.effectiveView(item, composer.library);
@@ -254,6 +334,10 @@ export class PrintVisibilityDialog {
       const count = (composer.features || []).filter(f => f.layerId === layer.id).length;
       return this.layerRow(composer, layer, view, item.locked === true || composer.readOnly === true, count);
     }
+    if (kind === 'label') {
+      const layer = (composer.layers || []).find(l => String(l.id) === String(id));
+      return layer ? this.labelRow(composer, layer, view, item.locked === true || composer.readOnly === true) : null;
+    }
     return null;
   }
 
@@ -261,7 +345,7 @@ export class PrintVisibilityDialog {
   static parseField(input) {
     const path = input.dataset.gfx;
     if (input.type === 'checkbox') {
-      if (path === 'visible' || path === 'show' || path === 'enabled') return input.checked;
+      if (path === 'visible' || path === 'show' || path === 'enabled' || path === 'halo') return input.checked;
       return input.checked ? true : null; // meio-tom, halo: desmarcado volta a herdar
     }
     const raw = input.value;
@@ -289,6 +373,8 @@ export class PrintVisibilityDialog {
         this.refresh();
         return;
       }
+      const chip = t.closest('[data-vv-field]');
+      if (chip) { this.insertField(chip.dataset.vvField); return; }
       const action = t.closest('[data-vv-action]');
       if (action && !action.disabled) { this.runAction(action.dataset.vvAction, action); return; }
       const reset = t.closest('[data-vv-reset]');
@@ -302,7 +388,7 @@ export class PrintVisibilityDialog {
       const input = e.target.closest?.('[data-gfx]');
       if (!input || input.disabled) return;
       // Cores e números: aplica ao vivo ('input') e só reconstrói a linha ao confirmar ('change')
-      if (!committed && !(input.type === 'color' || input.type === 'range')) return;
+      if (!committed && !(input.type === 'color' || input.type === 'range' || input.type === 'text')) return;
       const row = input.closest('[data-row-kind]');
       if (!row) return;
       const kind = row.dataset.rowKind;
@@ -330,6 +416,9 @@ export class PrintVisibilityDialog {
         return;
       }
       onField(e, true);
+    });
+    root.addEventListener('focusin', (e) => {
+      if (e.target.matches?.('[data-gfx="text"]')) this.lastTextInput = e.target;
     });
     root.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -373,12 +462,29 @@ export class PrintVisibilityDialog {
     const ops = {
       'show-all': ['Mostrar todas as camadas', (v) => PrintViewEdits.setAllLayersVisible(v, layers, true)],
       'hide-all': ['Ocultar todas as camadas', (v) => PrintViewEdits.setAllLayersVisible(v, layers, false)],
-      'copy-project': ['Copiar visibilidade do mapa principal', (v) => PrintViewEdits.copyProjectVisibility(v, layers)]
+      'copy-project': ['Copiar visibilidade do mapa principal', (v) => PrintViewEdits.copyProjectVisibility(v, layers)],
+      'labels-on': ['Ligar rótulos', (v) => layers.forEach(l => PrintViewEdits.setField(v, 'label', l.id, 'show', true))],
+      'labels-off': ['Desligar rótulos', (v) => layers.forEach(l => PrintViewEdits.setField(v, 'label', l.id, 'show', false))]
     };
     const op = ops[action];
     if (!op) return;
     this.composer.updateMapView(item.id, op[1], op[0]);
     this.refresh();
+  }
+
+  /** Insere {campo} no texto de rótulo em foco (ou no último usado) */
+  insertField(field) {
+    const last = this.lastTextInput && this.root.contains(this.lastTextInput) ? this.lastTextInput : null;
+    const input = last || this.root.querySelector('[data-gfx="text"]:not(:disabled)');
+    if (!input || input.disabled) return;
+    const token = `{${field}}`;
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.value = input.value.slice(0, start) + token + input.value.slice(end);
+    input.focus();
+    input.setSelectionRange(start + token.length, start + token.length);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
   applySearch() {

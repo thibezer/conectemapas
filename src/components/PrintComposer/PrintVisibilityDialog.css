@@ -370,3 +370,26 @@
 .cm-vv-hint {
   color: #8b8b96;
 }
+
+.cm-vv-help {
+  margin: 0 0 6px;
+}
+
+.cm-vv-help code {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #e1e1e6;
+}
+
+.cm-vv-example {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cfcfd6;
+}
+
+.cm-vv-muted {
+  color: #6b6b76;
+}
