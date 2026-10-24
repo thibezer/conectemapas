@@ -217,17 +217,20 @@ export class PrintComposerModal {
     }, 100);
   }
 
-  /** Substitui todos os itens pelo layout padrão, dentro das margens da folha atual (pode ser desfeito) */
+  /** Volta a folha ao padrão: margens ABNT, moldura e itens do layout padrão (mantém o papel; pode ser desfeito) */
   resetDefaultLayout() {
+    this.paperSize = PrintItemsManager.withMargins(this.paperSize, null);
+    this.showAbntMargins = true;
     this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
     this.selectedItemId = 'item-map-main';
+    this.updatePaperSheetDOM();
     this.renderAllItems();
     this.updatePropertiesPanel();
-    this.pushHistoryState('Restaurar Layout Padrão');
+    this.pushHistoryState('Layout Padrão ABNT');
     UIToast.notificar({
       tipo: 'informativo',
       titulo: 'Layout padrão aplicado',
-      mensagem: 'Ctrl+Z desfaz.',
+      mensagem: 'Margens ABNT e elementos padrão. Ctrl+Z desfaz.',
       duracao: 3000
     });
   }

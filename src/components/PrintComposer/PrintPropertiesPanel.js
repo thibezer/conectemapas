@@ -157,11 +157,11 @@ export class PrintPropertiesPanel {
               <option value="" ${match ? '' : 'selected'}>${presets.length ? 'Pré-definições…' : 'Nenhuma pré-definição'}</option>
               ${presets.map(p => `<option value="${esc(p.id)}" ${match?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
             </select>
-            <button class="cm-ai-micro-btn cm-pp-icon-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais">💾</button>
-            <button class="cm-ai-micro-btn cm-pp-icon-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'}>🗑️</button>
+            <button class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais">💾</button>
+            <button class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'}>🗑️</button>
           </div>
 
-          <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Reorganiza os elementos no layout padrão, dentro das margens (Ctrl+Z desfaz)">
+          <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Volta às margens ABNT e ao layout padrão dos elementos (Ctrl+Z desfaz)">
             📐 Layout padrão
           </ui-botao-primario>
         </div>
