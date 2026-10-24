@@ -264,16 +264,38 @@
   flex: 1;
 }
 
-/* Folha: margens em 4 campos compactos */
+/* Folha: seletores baixos e margens em 2 linhas (rótulo à esquerda do campo) */
+.cm-print-props-panel .cm-pp-compact-select {
+  height: 24px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 11px;
+}
+
+.cm-pp-margins {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .cm-pp-margins-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 20px;
+  height: 18px;
+}
+
+.cm-pp-margins-head .cm-param-label {
+  margin: 0;
+}
+
+.cm-pp-margins-head [hidden] {
+  display: none;
 }
 
 .cm-pp-margins-head .cm-ai-micro-btn {
   white-space: nowrap;
+  padding: 0 6px;
 }
 
 .cm-pp-badge {
@@ -288,19 +310,25 @@
 
 .cm-pp-margins-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 6px;
 }
 
-.cm-pp-margin {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+.cm-pp-margin-label {
+  font-size: 10.5px;
+  color: #a0a0b0;
+  min-width: 26px;
+  cursor: pointer;
+}
+
+.cm-print-props-panel .cm-pp-margin-input {
+  width: 100%;
   min-width: 0;
-}
-
-.cm-pp-margin .cm-param-label {
-  font-size: 9.5px;
+  height: 24px;
+  box-sizing: border-box;
+  text-align: center;
+  border-radius: 6px;
 }
 
 .cm-pp-grid2 {

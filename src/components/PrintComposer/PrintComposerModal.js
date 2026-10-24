@@ -787,7 +787,14 @@ export class PrintComposerModal {
     if (mount) {
       // Preserva a rolagem ao reconstruir após cada seleção/arrasto (as seções abertas ficam em this.panelSections)
       const prevScroll = mount.querySelector('.cm-print-props-scroll')?.scrollTop || 0;
+      const keptPaper = mount.querySelector('details[data-section="paper"]');
       mount.innerHTML = PrintPropertiesPanel.render(this);
+      // A seção da folha continua a mesma na tela, só com os valores atualizados
+      const freshPaper = mount.querySelector('details[data-section="paper"]');
+      if (keptPaper && freshPaper) {
+        PrintPropertiesPanel.syncPaperSection(keptPaper, freshPaper);
+        freshPaper.replaceWith(keptPaper);
+      }
       const scroller = mount.querySelector('.cm-print-props-scroll');
       if (scroller) scroller.scrollTop = prevScroll;
       PrintPropertiesPanel.bindEvents(this);

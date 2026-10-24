@@ -118,17 +118,15 @@ export class PrintPropertiesPanel {
     const maxW = Math.floor(paper.width / 2);
     const maxH = Math.floor(paper.height / 2);
     const marginInput = (side, label, max) => `
-      <label class="cm-pp-margin">
-        <span class="cm-param-label">${label}</span>
-        <input type="number" class="cm-vertex-input cm-pp-full" data-margin-side="${side}" min="0" max="${max}" step="0.5" value="${m[side]}" />
-      </label>
+      <label class="cm-pp-margin-label" for="print-margin-${side}">${label}</label>
+      <input type="number" id="print-margin-${side}" class="cm-vertex-input cm-pp-margin-input" data-margin-side="${side}" min="0" max="${max}" step="0.5" value="${m[side]}" />
     `;
 
     return `
       <details class="cm-inspector-accordion" data-section="paper" ${openAttr('paper')}>
         <summary class="cm-pp-summary">📄 Folha</summary>
         <div class="cm-pp-body">
-          <select id="print-paper-size-select" class="cm-native-select cm-pp-full" title="Tamanho do papel">
+          <select id="print-paper-size-select" class="cm-native-select cm-pp-full cm-pp-compact-select" title="Tamanho do papel">
             ${this.PAPER_OPTIONS.map(([id, label]) => {
               const sz = sizes[id];
               const dims = sz ? ` · ${sz.width}×${sz.height}` : '';
@@ -136,17 +134,18 @@ export class PrintPropertiesPanel {
             }).join('')}
           </select>
 
-          <div class="cm-pp-margins-head">
-            <span class="cm-param-label">Margens (mm)</span>
-            ${isAbnt
-              ? '<span class="cm-pp-badge" title="25 mm à esquerda para encadernação">ABNT</span>'
-              : '<button class="cm-ai-micro-btn" id="btn-margins-abnt" title="Voltar às margens ABNT">↺ ABNT</button>'}
-          </div>
-          <div class="cm-pp-margins-grid">
-            ${marginInput('top', 'Sup.', maxH)}
-            ${marginInput('bottom', 'Inf.', maxH)}
-            ${marginInput('left', 'Esq.', maxW)}
-            ${marginInput('right', 'Dir.', maxW)}
+          <div class="cm-pp-margins">
+            <div class="cm-pp-margins-head">
+              <span class="cm-param-label">Margens (mm)</span>
+              <span class="cm-pp-badge" id="print-margins-abnt-badge" title="25 mm à esquerda para encadernação" ${isAbnt ? '' : 'hidden'}>ABNT</span>
+              <button class="cm-ai-micro-btn" id="btn-margins-abnt" title="Voltar às margens ABNT" ${isAbnt ? 'hidden' : ''}>↺ ABNT</button>
+            </div>
+            <div class="cm-pp-margins-grid">
+              ${marginInput('top', 'Sup.', maxH)}
+              ${marginInput('left', 'Esq.', maxW)}
+              ${marginInput('bottom', 'Inf.', maxH)}
+              ${marginInput('right', 'Dir.', maxW)}
+            </div>
           </div>
           <label class="cm-param-row" for="print-abnt-margins-check">
             <span class="cm-param-label">Moldura nas margens</span>
@@ -154,7 +153,7 @@ export class PrintPropertiesPanel {
           </label>
 
           <div class="cm-pp-inline">
-            <select id="print-preset-select" class="cm-native-select cm-pp-grow" title="Pré-definições deste projeto">
+            <select id="print-preset-select" class="cm-native-select cm-pp-grow cm-pp-compact-select" title="Pré-definições deste projeto">
               <option value="" ${match ? '' : 'selected'}>${presets.length ? 'Pré-definições…' : 'Nenhuma pré-definição'}</option>
               ${presets.map(p => `<option value="${esc(p.id)}" ${match?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
             </select>
@@ -168,6 +167,42 @@ export class PrintPropertiesPanel {
         </div>
       </details>
     `;
+  }
+
+  /**
+   * Copia o estado da seção da folha recém-renderizada para a que já está na tela, sem recriar
+   * os controles: um clique em pré-definição ou "↺ ABNT" logo após editar uma margem (o `change`
+   * do campo reconstrói o painel) continua caindo num elemento vivo.
+   */
+  static syncPaperSection(kept, fresh) {
+    const pick = (root, sel) => root.querySelector(sel);
+    const copyValue = (sel) => {
+      const a = pick(kept, sel);
+      const b = pick(fresh, sel);
+      if (a && b) a.value = b.value;
+    };
+    copyValue('#print-paper-size-select');
+    kept.querySelectorAll('[data-margin-side]').forEach(input => copyValue(`[data-margin-side="${input.dataset.marginSide}"]`));
+    ['#print-margins-abnt-badge', '#btn-margins-abnt'].forEach(sel => {
+      const a = pick(kept, sel);
+      const b = pick(fresh, sel);
+      if (a && b) a.hidden = b.hidden;
+    });
+    const check = pick(kept, '#print-abnt-margins-check');
+    if (check) check.checked = !!pick(fresh, '#print-abnt-margins-check')?.checked;
+    const presets = pick(kept, '#print-preset-select');
+    const freshPresets = pick(fresh, '#print-preset-select');
+    if (presets && freshPresets) {
+      presets.innerHTML = freshPresets.innerHTML;
+      presets.value = freshPresets.value;
+    }
+    const del = pick(kept, '#btn-preset-delete');
+    const freshDel = pick(fresh, '#btn-preset-delete');
+    if (del && freshDel) {
+      del.disabled = freshDel.disabled;
+      if (freshDel.dataset.presetId) del.dataset.presetId = freshDel.dataset.presetId;
+      else delete del.dataset.presetId;
+    }
   }
 
   /** Campos específicos do tipo do elemento selecionado */
@@ -450,22 +485,10 @@ export class PrintPropertiesPanel {
     return '📦';
   }
 
-  static bindEvents(composer) {
-    // Lembra quais seções o usuário abriu ou fechou, pelo nome (sobrevive à reconstrução do painel)
-    composer.panelSections = composer.panelSections || {};
-    document.querySelectorAll('#cm-print-props-panel-mount details[data-section]').forEach(d => {
-      d.addEventListener('toggle', () => { composer.panelSections[d.dataset.section] = d.open; });
-    });
-
-    const paperSelect = document.getElementById('print-paper-size-select');
-    if (paperSelect) {
-      paperSelect.addEventListener('change', (e) => composer.setPaperSize(e.target.value));
-    }
-
-    const abntMarginsCheck = document.getElementById('print-abnt-margins-check');
-    if (abntMarginsCheck) {
-      abntMarginsCheck.addEventListener('change', (e) => composer.setAbntMargins(e.target.checked));
-    }
+  /** Eventos da seção da folha (ligados uma única vez; os controles sobrevivem às reconstruções) */
+  static bindPaperEvents(composer) {
+    document.getElementById('print-paper-size-select')?.addEventListener('change', (e) => composer.setPaperSize(e.target.value));
+    document.getElementById('print-abnt-margins-check')?.addEventListener('change', (e) => composer.setAbntMargins(e.target.checked));
 
     // Margens: aplicadas ao confirmar o campo (Enter, setas ou ao sair), um passo no histórico cada
     document.querySelectorAll('[data-margin-side]').forEach(input => {
@@ -484,10 +507,22 @@ export class PrintPropertiesPanel {
     presetDel?.addEventListener('click', () => {
       if (presetDel.dataset.presetId) composer.deletePagePreset(presetDel.dataset.presetId);
     });
+    document.getElementById('btn-prop-align-abnt')?.addEventListener('click', () => composer.resetDefaultLayout());
+  }
 
-    const btnAlignAbnt = document.getElementById('btn-prop-align-abnt');
-    if (btnAlignAbnt) {
-      btnAlignAbnt.addEventListener('click', () => composer.resetDefaultLayout());
+  static bindEvents(composer) {
+    // Lembra quais seções o usuário abriu ou fechou, pelo nome (sobrevive à reconstrução do painel)
+    composer.panelSections = composer.panelSections || {};
+    document.querySelectorAll('#cm-print-props-panel-mount details[data-section]').forEach(d => {
+      if (d.dataset.bound) return;
+      d.addEventListener('toggle', () => { composer.panelSections[d.dataset.section] = d.open; });
+    });
+
+    // A seção da folha é mantida entre reconstruções (syncPaperSection): seus eventos são ligados uma vez
+    const paperSection = document.querySelector('#cm-print-props-panel-mount details[data-section="paper"]');
+    if (paperSection && !paperSection.dataset.bound) {
+      paperSection.dataset.bound = '1';
+      this.bindPaperEvents(composer);
     }
 
     document.querySelectorAll('[data-composer-item-id]').forEach(el => {

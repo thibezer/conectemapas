@@ -139,8 +139,11 @@ const panelComposer = {
   paperSize: A4, showAbntMargins: true, sheetsManager: mgr
 };
 let html = PrintPropertiesPanel.render(panelComposer);
-assert.ok(html.includes('class="cm-pp-badge"'), 'Margens ABNT mostram o selo');
-assert.ok(!html.includes('btn-margins-abnt'), 'Sem botão de voltar quando já é ABNT');
+assert.ok(/id="print-margins-abnt-badge"[^>]*>ABNT</.test(html) && !/id="print-margins-abnt-badge"[^>]*hidden/.test(html), 'Margens ABNT mostram o selo');
+assert.ok(/id="btn-margins-abnt"[^>]*hidden/.test(html), 'Sem botão de voltar quando já é ABNT');
+const order = ['top', 'left', 'bottom', 'right'].map(side => html.indexOf(`data-margin-side="${side}"`));
+assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'Duas linhas: Sup. e Esq., depois Inf. e Dir.');
+assert.ok(/<label class="cm-pp-margin-label" for="print-margin-top">Sup\.<\/label>/.test(html), 'Rótulo à esquerda do campo');
 ['top', 'right', 'bottom', 'left'].forEach(side => {
   assert.ok(new RegExp(`data-margin-side="${side}"[^>]*value="${PrintItemsManager.sheetMargins(A4)[side]}"`).test(html), `Campo da margem ${side}`);
 });
@@ -151,9 +154,38 @@ assert.ok(html.includes('A4 Paisagem · 297×210'));
 
 panelComposer.paperSize = custom;
 html = PrintPropertiesPanel.render(panelComposer);
-assert.ok(html.includes('id="btn-margins-abnt"'), 'Margem personalizada oferece voltar à ABNT');
+assert.ok(/id="btn-margins-abnt"(?![^>]*hidden)/.test(html), 'Margem personalizada oferece voltar à ABNT');
+assert.ok(/id="print-margins-abnt-badge"[^>]*hidden/.test(html), 'Selo ABNT some com margem personalizada');
 assert.ok(/id="btn-preset-delete"[^>]*disabled/.test(html), 'Sem pré-definição correspondente, excluir fica desabilitado');
 assert.ok(html.includes('value="30"'));
+
+// Reconstrução mantém os controles da folha e só copia os valores (o clique não cai num elemento removido)
+const fakeSection = (state) => {
+  const nodes = {
+    '#print-paper-size-select': { value: state.paper },
+    '#print-margins-abnt-badge': { hidden: !state.abnt },
+    '#btn-margins-abnt': { hidden: state.abnt },
+    '#print-abnt-margins-check': { checked: state.frame },
+    '#print-preset-select': { value: state.preset, innerHTML: state.options },
+    '#btn-preset-delete': { disabled: !state.preset, dataset: state.preset ? { presetId: state.preset } : {} }
+  };
+  const margins = ['top', 'left', 'bottom', 'right'].map(side => ({ dataset: { marginSide: side }, value: String(state.m[side]) }));
+  margins.forEach(i => { nodes[`[data-margin-side="${i.dataset.marginSide}"]`] = i; });
+  return { querySelector: (sel) => nodes[sel] || null, querySelectorAll: () => margins, nodes };
+};
+const kept = fakeSection({ paper: 'A4_L', abnt: false, frame: false, preset: '', options: '<option>a</option>', m: { top: 10, left: 20.5, bottom: 10, right: 10 } });
+const keptTop = kept.nodes['[data-margin-side="top"]'];
+const fresh = fakeSection({ paper: 'A3_L', abnt: true, frame: true, preset: 'p1', options: '<option>b</option>', m: { top: 10, left: 25, bottom: 10, right: 10 } });
+PrintPropertiesPanel.syncPaperSection(kept, fresh);
+assert.strictEqual(kept.nodes['[data-margin-side="top"]'], keptTop, 'Mesmo elemento');
+assert.strictEqual(kept.nodes['[data-margin-side="left"]'].value, '25', 'Campos refletem a margem aplicada');
+assert.strictEqual(kept.nodes['#print-paper-size-select'].value, 'A3_L');
+assert.strictEqual(kept.nodes['#print-margins-abnt-badge'].hidden, false);
+assert.strictEqual(kept.nodes['#btn-margins-abnt'].hidden, true);
+assert.strictEqual(kept.nodes['#print-abnt-margins-check'].checked, true);
+assert.strictEqual(kept.nodes['#print-preset-select'].value, 'p1');
+assert.strictEqual(kept.nodes['#btn-preset-delete'].dataset.presetId, 'p1');
+assert.strictEqual(kept.nodes['#btn-preset-delete'].disabled, false);
 console.log('✔ Painel validado');
 
 console.log('\n🎉 TESTES DA CONFIGURAÇÃO DA FOLHA PASSARAM!');
