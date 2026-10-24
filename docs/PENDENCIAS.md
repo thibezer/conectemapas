@@ -4,10 +4,9 @@ Problemas conhecidos que ainda não foram corrigidos.
 
 ## Layout de Impressão
 
-### Painel lateral: itens restantes da revisão de 23/10/2026
+### Painel lateral: itens menores da revisão de 23/10/2026
 
-- **Frente/Trás quase sem efeito:** o `z-index` fixo por tipo em `PrintComposer.css` (mapa 2, forma 5, demais 10–12) prevalece sobre a ordem de `composer.items`.
-- **Logotipo grande para o salvamento sem aviso:** a imagem vai inteira (data URL) para o localStorage; quando a cota estoura, `PrintSheetsManager.saveToStorage` só registra no console.
-- **Barra de escala e legenda** não têm propriedades no painel.
-- **Tamanho mínimo diferente:** 10 mm digitando no painel, 15 mm arrastando as alças; o campo não impede o item de sair da folha.
-- **Menores:** cor de preenchimento da forma é texto livre (vai ao `style` sem sanitização); o estado aberto/fechado das seções é guardado pelo índice; estilos quase todos inline.
+- **Cor de preenchimento da forma** é texto livre e vai ao `style` (tela e exportação) sem validação; a cor da borda usa o seletor de cor.
+- **Seções abertas/fechadas** são guardadas pelo índice em `updatePropertiesPanel`; quando a seção do item aparece ou some, outra seção pode abrir ou fechar.
+- **Estilos inline** em quase todo o `PrintPropertiesPanel` (contra a regra de `.css` próprio do `GEMINI.md`).
+- **Itens antigos acima de tudo:** pranchas salvas antes da ordem de empilhamento por lista podem ter uma moldura (`shape`) no fim da lista, cobrindo os demais elementos; "Trás" resolve.

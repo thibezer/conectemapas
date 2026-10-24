@@ -106,34 +106,15 @@
   cursor: move;
   user-select: none;
   box-sizing: border-box;
-  z-index: 10;
+  /* O empilhamento vem da ordem em composer.items (z-index inline), a mesma do PDF exportado */
 }
 
-.cm-print-item[data-item-type="map"] {
-  z-index: 2;
-}
-
-.cm-print-item[data-item-type="inset_map"] {
-  z-index: 6;
-}
-
-.cm-print-item[data-item-type="shape"] {
-  z-index: 5;
-}
-
-.cm-print-item[data-item-type="image"],
-.cm-print-item[data-item-type="label"],
-.cm-print-item[data-item-type="north_arrow"],
-.cm-print-item[data-item-type="scale_bar"],
-.cm-print-item[data-item-type="legend"],
-.cm-print-item[data-item-type="title_block"],
-.cm-print-item[data-item-type="table_vertices"],
-.cm-print-item[data-item-type="text_block"] {
-  z-index: 12;
+/* Contexto de empilhamento próprio: itens ficam abaixo da moldura ABNT e das guias */
+#cm-print-items-layer {
+  z-index: 1;
 }
 
 .cm-print-item.selected {
-  z-index: 30 !important;
   outline: 2px solid #38bdf8;
   box-shadow: 0 0 0 1px #0284c7, 0 4px 14px rgba(0, 0, 0, 0.25);
 }
@@ -295,11 +276,13 @@
   box-sizing: border-box;
 }
 
+/* A largura da régua vem de PrintItemsManager.scaleBarModel (inline): corresponde à distância rotulada */
 .cm-scale-bar-ruler {
   display: flex;
   width: 90%;
   height: 6px;
   border: 1px solid #000;
+  box-sizing: border-box;
   margin-top: 2px;
 }
 
@@ -312,12 +295,20 @@
 .cm-scale-bar-seg:nth-child(even) { background: #fff; }
 
 .cm-scale-bar-labels {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
   width: 90%;
+  height: 9px;
   font-size: 7px;
   font-weight: bold;
   margin-top: 2px;
+}
+
+/* Cada rótulo fica centrado na sua divisão da régua */
+.cm-scale-bar-labels span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 /* Legenda Temática */

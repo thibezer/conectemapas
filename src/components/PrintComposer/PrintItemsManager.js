@@ -10,6 +10,86 @@ import { Geodesy } from '../../services/Geodesy.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
 
 export class PrintItemsManager {
+  /** Menor lado de um item, em mm (o mesmo para as alças e para o painel) */
+  static MIN_ITEM_MM = 10;
+
+  /** Título padrão da legenda */
+  static DEFAULT_LEGEND_TITLE = 'LEGENDA CONVENCIONAL';
+
+  /**
+   * Posição de inserção na pilha (fim = frente). Moldura entra logo acima dos mapas,
+   * para não cobrir os demais elementos; o resto vai para a frente.
+   */
+  static insertionIndex(items = [], type) {
+    if (type !== 'shape') return items.length;
+    let lastMap = -1;
+    items.forEach((it, i) => { if (it.type === 'map' || it.type === 'inset_map') lastMap = i; });
+    return lastMap + 1;
+  }
+
+  /**
+   * Mantém o item dentro da folha e com o tamanho mínimo (altera e retorna o próprio item)
+   */
+  static clampItemToPaper(item, paper) {
+    const min = this.MIN_ITEM_MM;
+    const num = (v, fallback) => (Number.isFinite(v) ? v : fallback);
+    item.width = Math.min(paper.width, Math.max(min, num(item.width, min)));
+    item.height = Math.min(paper.height, Math.max(min, num(item.height, min)));
+    item.x = Math.min(paper.width - item.width, Math.max(0, num(item.x, 0)));
+    item.y = Math.min(paper.height - item.height, Math.max(0, num(item.y, 0)));
+    return item;
+  }
+
+  /**
+   * Arredonda para baixo a um valor "redondo" de cartografia (1, 2, 2,5 ou 5 × 10ⁿ)
+   */
+  static niceFloor(value) {
+    if (!(value > 0)) return 0;
+    const pow = Math.pow(10, Math.floor(Math.log10(value)));
+    const f = value / pow;
+    const step = f >= 5 ? 5 : f >= 2.5 ? 2.5 : f >= 2 ? 2 : 1;
+    return step * pow;
+  }
+
+  /**
+   * Geometria da barra de escala: comprimento da régua (fração da largura do item) que
+   * corresponde exatamente a uma distância redonda no terreno, e os rótulos de cada divisão.
+   * Usada pela prancheta e pelo exportador, para que os dois mostrem a mesma régua.
+   */
+  static scaleBarModel(item, mapScale = 10000) {
+    const scale = Math.max(1, Number(mapScale) || 10000);
+    const segments = Math.min(8, Math.max(1, Math.round(Number(item.segments) || 4)));
+    const maxRatio = 0.9; // a régua ocupa no máximo 90% da largura do item
+    const maxGroundM = ((item.width || 60) * maxRatio / 1000) * scale;
+    const segmentM = this.niceFloor(maxGroundM / segments);
+    const totalM = segmentM * segments;
+    const units = item.units === 'm' || item.units === 'km' ? item.units : (totalM >= 1000 ? 'km' : 'm');
+    const div = units === 'km' ? 1000 : 1;
+    const fmt = (m) => (m / div).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+    const labelEvery = segments <= 4 ? 1 : segments;
+
+    const labels = [];
+    for (let i = 0; i <= segments; i += labelEvery) {
+      labels.push({ position: i / segments, text: i === segments ? `${fmt(i * segmentM)} ${units}` : fmt(i * segmentM) });
+    }
+
+    return {
+      segments,
+      units,
+      totalMeters: totalM,
+      ratio: totalM > 0 ? (totalM / scale * 1000) / (item.width || 60) : 0,
+      labels,
+      showText: item.showScaleText !== false,
+      scaleText: `Escala 1:${Math.round(scale).toLocaleString('pt-BR')}`
+    };
+  }
+
+  /** Camadas exibidas na legenda: visíveis no projeto e não ocultadas no item */
+  static legendLayers(item, layers = []) {
+    const hidden = new Set((item.hiddenLayerIds || []).map(String));
+    return layers.filter(l => l.visible !== false && !hidden.has(String(l.id)));
+  }
+
   /**
    * Sanitização rigorosa de strings para evitar ataques XSS
    */
@@ -194,36 +274,19 @@ export class PrintItemsManager {
    * Renderiza a Barra de Escala Gráfica segmentada com precisão métrica
    */
   static renderScaleBar(item, mapScale = 10000) {
-    const widthMm = item.width || 60;
-    const groundDistanceMeters = (widthMm / 1000) * mapScale;
-    let labelEnd = '';
-    let labelMid = '';
-
-    if (groundDistanceMeters >= 1000) {
-      const km = (groundDistanceMeters / 1000).toFixed(1);
-      const halfKm = (groundDistanceMeters / 2000).toFixed(1);
-      labelEnd = `${km} km`;
-      labelMid = `${halfKm} km`;
-    } else {
-      const m = Math.round(groundDistanceMeters);
-      const halfM = Math.round(groundDistanceMeters / 2);
-      labelEnd = `${m} m`;
-      labelMid = `${halfM} m`;
-    }
+    const model = this.scaleBarModel(item, mapScale);
+    // Comprimento absoluto (não %): a caixa tem recuo interno e a régua precisa medir exatamente
+    // a distância rotulada. 3,78 px/mm = PrintCanvasEngine.BASE_PX_PER_MM (conteúdo a 100%).
+    const barPx = (model.ratio * (item.width || 60) * 3.78).toFixed(2);
 
     return `
       <div class="cm-item-scale-bar">
-        <div style="font-size: 7.5px; font-weight: bold; margin-bottom: 2px;">Escala 1:${mapScale.toLocaleString('pt-BR')}</div>
-        <div class="cm-scale-bar-ruler">
-          <div class="cm-scale-bar-seg"></div>
-          <div class="cm-scale-bar-seg"></div>
-          <div class="cm-scale-bar-seg"></div>
-          <div class="cm-scale-bar-seg"></div>
+        ${model.showText ? `<div style="font-size: 7.5px; font-weight: bold; margin-bottom: 2px;">${model.scaleText}</div>` : ''}
+        <div class="cm-scale-bar-ruler" style="width: ${barPx}px;">
+          ${'<div class="cm-scale-bar-seg"></div>'.repeat(model.segments)}
         </div>
-        <div class="cm-scale-bar-labels">
-          <span>0</span>
-          <span>${labelMid}</span>
-          <span>${labelEnd}</span>
+        <div class="cm-scale-bar-labels" style="width: ${barPx}px;">
+          ${model.labels.map(l => `<span style="left: ${(l.position * 100).toFixed(3)}%;">${this.escapeHtml(l.text)}</span>`).join('')}
         </div>
       </div>
     `;
@@ -234,10 +297,11 @@ export class PrintItemsManager {
    */
   static renderLegend(item, layers = []) {
     const esc = this.escapeHtml.bind(this);
-    const visibleLayers = layers.filter(l => l.visible !== false);
+    const visibleLayers = this.legendLayers(item, layers);
+    const title = item.title ?? this.DEFAULT_LEGEND_TITLE;
     return `
       <div class="cm-item-legend">
-        <div class="cm-legend-title">LEGENDA CONVENCIONAL</div>
+        ${title ? `<div class="cm-legend-title">${esc(title)}</div>` : ''}
         <div class="cm-legend-content">
           ${visibleLayers.length > 0 ? visibleLayers.map(l => `
             <div class="cm-legend-row" title="${esc(l.name)}">

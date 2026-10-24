@@ -6,6 +6,7 @@
 
 import { PrintSmartGuides } from './PrintSmartGuides.js';
 import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
+import { PrintItemsManager } from './PrintItemsManager.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
 export class PrintCanvasEngine {
@@ -370,7 +371,7 @@ export class PrintCanvasEngine {
     if (!it) return;
 
     const sp = this.itemStartProps;
-    const min = 15;
+    const min = PrintItemsManager.MIN_ITEM_MM;
 
     if (this.resizeHandle === 'e' || this.resizeHandle === 'se' || this.resizeHandle === 'ne') {
       it.width = Math.max(min, sp.width + dx);

@@ -5,6 +5,8 @@
    entre múltiplos elementos e margens da folha ABNT, com feedback visual em tempo real.
    ========================================================================== */
 
+import { PrintItemsManager } from './PrintItemsManager.js';
+
 export class PrintSmartGuides {
   constructor(canvasEngine) {
     this.canvasEngine = canvasEngine;
@@ -164,7 +166,7 @@ export class PrintSmartGuides {
         }
       }
       if (bestRef) {
-        resW = Math.max(15, bestRef.val - newX);
+        resW = Math.max(PrintItemsManager.MIN_ITEM_MM, bestRef.val - newX);
         guides.push({ type: 'vertical', x: bestRef.val, source: bestRef.source, label: bestRef.label });
       }
     }
@@ -181,7 +183,7 @@ export class PrintSmartGuides {
           bestRef = ref;
         }
       }
-      if (bestRef && fixedRight - bestRef.val >= 15) {
+      if (bestRef && fixedRight - bestRef.val >= PrintItemsManager.MIN_ITEM_MM) {
         resX = bestRef.val;
         resW = fixedRight - resX;
         guides.push({ type: 'vertical', x: bestRef.val, source: bestRef.source, label: bestRef.label });
@@ -201,7 +203,7 @@ export class PrintSmartGuides {
         }
       }
       if (bestRef) {
-        resH = Math.max(15, bestRef.val - newY);
+        resH = Math.max(PrintItemsManager.MIN_ITEM_MM, bestRef.val - newY);
         guides.push({ type: 'horizontal', y: bestRef.val, source: bestRef.source, label: bestRef.label });
       }
     }
@@ -218,7 +220,7 @@ export class PrintSmartGuides {
           bestRef = ref;
         }
       }
-      if (bestRef && fixedBottom - bestRef.val >= 15) {
+      if (bestRef && fixedBottom - bestRef.val >= PrintItemsManager.MIN_ITEM_MM) {
         resY = bestRef.val;
         resH = fixedBottom - resY;
         guides.push({ type: 'horizontal', y: bestRef.val, source: bestRef.source, label: bestRef.label });

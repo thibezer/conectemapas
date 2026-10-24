@@ -144,4 +144,8 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - **Callbacks de mapa conferem a instância**: `updateGridAndScale` e o `moveend` saem se `leafletMaps.get(item.id) !== map`; timeouts dos mapas ficam em `mapTimers` e são cancelados em `destroyLeafletMaps`.
 - **Escala exata**: mapas com `zoomSnap: 0` e `setZoom(..., { animate: false })`; o campo do painel é atualizado a partir da escala real do mapa.
 - **Bloqueio**: item `locked` não é excluído (`deleteItem` recusa) nem editado pelo painel (campos num `<fieldset disabled>`); só o próprio bloqueio muda.
+- **Empilhamento = ordem de `composer.items`** (z-index inline no `renderAllItems`, a mesma ordem do exportador). Não reintroduzir z-index por tipo no CSS; moldura nova entra logo acima dos mapas (`PrintItemsManager.insertionIndex`).
+- **Barra de escala**: `PrintItemsManager.scaleBarModel` é a fonte única (régua = distância redonda rotulada, em px absolutos na tela e em `w × ratio` no exportador). Toda barra acompanha a escala do mapa principal.
+- **Tamanho e limites**: `PrintItemsManager.MIN_ITEM_MM` vale para alças, guias e painel; o painel passa por `clampItemToPaper`.
+- **Imagens** passam por `PrintImageUtils.prepareImageFile` (máx. 1200 px, JPEG se a data URL passar de ~500 KB). Falha de gravação das pranchas avisa o usuário uma vez por sequência (`saveFailed`).
 - **Trocar o papel preserva os itens** (`PrintItemsManager.fitItemsToPaper`, proporcional à área útil ABNT). Só "Restaurar Layout Padrão ABNT" substitui os itens, e ambos podem ser desfeitos.

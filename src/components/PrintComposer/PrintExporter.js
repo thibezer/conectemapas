@@ -605,33 +605,29 @@ export class PrintExporter {
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
 
-    const scaleNum = item.scale || 10000;
+    // Mesma régua da prancheta: comprimento = distância rotulada na escala do mapa
+    const model = PrintItemsManager.scaleBarModel(item, item.scale || 10000);
     const fontSize = Math.max(7, Math.round(h * 0.22));
     ctx.fillStyle = '#000000';
     ctx.font = `bold ${fontSize}px Arial, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(`Escala 1:${scaleNum.toLocaleString('pt-BR')}`, x + w / 2, y + h * 0.28);
+    if (model.showText) ctx.fillText(model.scaleText, x + w / 2, y + h * 0.28);
 
-    const barY = y + h * 0.48;
+    const barY = y + h * (model.showText ? 0.48 : 0.3);
     const barH = h * 0.22;
-    const segW = (w * 0.82) / 4;
-    const barX = x + w * 0.09;
+    const barW = w * model.ratio;
+    const segW = barW / model.segments;
+    const barX = x + (w - barW) / 2;
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < model.segments; i++) {
       ctx.fillStyle = i % 2 === 0 ? '#000000' : '#ffffff';
       ctx.fillRect(barX + i * segW, barY, segW, barH);
       ctx.strokeRect(barX + i * segW, barY, segW, barH);
     }
 
-    // Rótulos de distância métrica
-    const groundDistanceMeters = ((item.width || 60) / 1000) * scaleNum;
-    const labelEnd = groundDistanceMeters >= 1000 ? `${(groundDistanceMeters / 1000).toFixed(1)} km` : `${Math.round(groundDistanceMeters)} m`;
-    const labelMid = groundDistanceMeters >= 1000 ? `${(groundDistanceMeters / 2000).toFixed(1)} km` : `${Math.round(groundDistanceMeters / 2)} m`;
-
+    ctx.fillStyle = '#000000';
     ctx.font = `bold ${Math.round(fontSize * 0.85)}px Arial, sans-serif`;
-    ctx.fillText('0', barX, barY + barH + fontSize + 1);
-    ctx.fillText(labelMid, barX + segW * 2, barY + barH + fontSize + 1);
-    ctx.fillText(labelEnd, barX + segW * 4, barY + barH + fontSize + 1);
+    model.labels.forEach(l => ctx.fillText(l.text, barX + barW * l.position, barY + barH + fontSize + 1));
   }
 
   /**
@@ -843,15 +839,18 @@ export class PrintExporter {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x, y, w, h);
 
-    const headH = Math.min(20 * (scaleFactor / (300 / 25.4)), h * 0.25);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x, y, w, headH);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(headH * 0.5)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText('LEGENDA CONVENCIONAL', x + w / 2, y + headH * 0.68);
+    const title = item.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE;
+    const headH = title ? Math.min(20 * (scaleFactor / (300 / 25.4)), h * 0.25) : 0;
+    if (title) {
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(x, y, w, headH);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(headH * 0.5)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText(title, x + w / 2, y + headH * 0.68);
+    }
 
-    const visibleLayers = composer.layers.filter(l => l.visible !== false);
+    const visibleLayers = PrintItemsManager.legendLayers(item, composer.layers);
     const rowStep = Math.min(20 * (scaleFactor / (300 / 25.4)), (h - headH) / Math.max(1, visibleLayers.length));
     let rowY = y + headH + rowStep * 0.75;
     const swatchSize = Math.max(6, Math.round(rowStep * 0.5));

@@ -210,4 +210,127 @@ assert.ok(!/<fieldset class="cm-print-props-fields"\s+disabled/.test(html), 'Ite
 assert.ok(html.includes('Restaurar Layout Padrão ABNT'), 'O botão de reset diz o que faz');
 console.log('✔ Painel validado');
 
+// ============================================================================
+// 6. Ordem de empilhamento ao inserir
+// ============================================================================
+console.log('6. insertionIndex...');
+const stack = PrintItemsManager.createDefaultItems('Projeto', paperSizes.A4_L);
+const lastMapIdx = stack.map(i => i.type).lastIndexOf('inset_map');
+assert.strictEqual(PrintItemsManager.insertionIndex(stack, 'shape'), lastMapIdx + 1, 'Moldura entra logo acima dos mapas');
+assert.strictEqual(PrintItemsManager.insertionIndex(stack, 'label'), stack.length, 'Demais elementos vão para a frente');
+assert.strictEqual(PrintItemsManager.insertionIndex([], 'shape'), 0);
+console.log('✔ insertionIndex validado');
+
+// ============================================================================
+// 7. Limites da folha e tamanho mínimo
+// ============================================================================
+console.log('7. clampItemToPaper...');
+const A4 = paperSizes.A4_L;
+const MIN = PrintItemsManager.MIN_ITEM_MM;
+let c = PrintItemsManager.clampItemToPaper({ x: 280, y: 5, width: 50, height: 20 }, A4);
+assert.deepStrictEqual([c.x, c.width], [247, 50], 'Item que passa da borda direita é trazido para dentro');
+c = PrintItemsManager.clampItemToPaper({ x: -12, y: -3, width: 2, height: 1 }, A4);
+assert.deepStrictEqual([c.x, c.y, c.width, c.height], [0, 0, MIN, MIN], 'Posição negativa e tamanho abaixo do mínimo');
+c = PrintItemsManager.clampItemToPaper({ x: 10, y: 10, width: 999, height: 999 }, A4);
+assert.deepStrictEqual([c.x, c.y, c.width, c.height], [0, 0, 297, 210], 'Maior que a folha vira a folha inteira');
+c = PrintItemsManager.clampItemToPaper({ x: NaN, y: 20, width: 40, height: NaN }, A4);
+assert.deepStrictEqual([c.x, c.height], [0, MIN], 'Valores inválidos não viram NaN');
+console.log('✔ clampItemToPaper validado');
+
+// ============================================================================
+// 8. Barra de escala: régua = distância rotulada
+// ============================================================================
+console.log('8. scaleBarModel...');
+assert.strictEqual(PrintItemsManager.niceFloor(737), 500);
+assert.strictEqual(PrintItemsManager.niceFloor(2.7), 2.5);
+assert.strictEqual(PrintItemsManager.niceFloor(0.0042), 0.0025);
+assert.strictEqual(PrintItemsManager.niceFloor(0), 0);
+
+for (const [width, scale, segments] of [[60, 10000, 4], [43, 2848, 3], [100, 50000, 5], [25, 1234567, 2], [80, 500, 8]]) {
+  const m = PrintItemsManager.scaleBarModel({ width, segments }, scale);
+  const barMm = m.ratio * width;
+  assert.ok(Math.abs(barMm / 1000 * scale - m.totalMeters) < 1e-6, `Régua deve medir exatamente ${m.totalMeters} m no terreno (${width} mm, 1:${scale})`);
+  assert.ok(m.ratio <= 0.9 + 1e-9 && m.ratio > 0.35, `Régua ocupa uma fração razoável do item (${m.ratio})`);
+  const seg = m.totalMeters / m.segments;
+  assert.strictEqual(PrintItemsManager.niceFloor(seg), seg, 'Cada divisão é um valor redondo');
+}
+
+const sb = PrintItemsManager.scaleBarModel({ width: 60 }, 10000);
+assert.strictEqual(sb.segments, 4, 'Padrão: 4 divisões');
+assert.strictEqual(sb.totalMeters, 400, '60 mm × 90% a 1:10.000 = 540 m → 4 × 100 m = 400 m');
+assert.deepStrictEqual(sb.labels.map(l => l.text), ['0', '100', '200', '300', '400 m']);
+assert.strictEqual(sb.units, 'm');
+assert.strictEqual(sb.scaleText, 'Escala 1:10.000');
+
+const sbKm = PrintItemsManager.scaleBarModel({ width: 60, units: 'km' }, 10000);
+assert.strictEqual(sbKm.labels.at(-1).text, '0,4 km', 'Unidade forçada em km');
+assert.strictEqual(PrintItemsManager.scaleBarModel({ width: 60 }, 100000).units, 'km', 'Automática vira km acima de 1 km');
+assert.strictEqual(PrintItemsManager.scaleBarModel({ width: 60, segments: 99 }, 10000).segments, 8, 'Máximo de 8 divisões');
+assert.strictEqual(PrintItemsManager.scaleBarModel({ width: 60, segments: 6 }, 10000).labels.length, 2, 'Muitas divisões: só 0 e o total');
+
+const sbHtml = PrintItemsManager.renderScaleBar({ width: 60, segments: 3, showScaleText: false }, 10000);
+assert.strictEqual((sbHtml.match(/cm-scale-bar-seg/g) || []).length, 3, 'HTML com o número de divisões escolhido');
+assert.ok(!sbHtml.includes('Escala 1:'), 'Escala numérica pode ser ocultada');
+console.log('✔ Barra de escala validada');
+
+// ============================================================================
+// 9. Legenda: título e camadas
+// ============================================================================
+console.log('9. Legenda...');
+const layers = [
+  { id: 1, name: 'Lotes', color: '#f00' },
+  { id: 'app', name: 'APP', color: '#0f0' },
+  { id: 'oculta', name: 'Oculta', color: '#00f', visible: false }
+];
+assert.deepStrictEqual(PrintItemsManager.legendLayers({}, layers).map(l => l.name), ['Lotes', 'APP'], 'Camadas ocultas no projeto não entram');
+assert.deepStrictEqual(PrintItemsManager.legendLayers({ hiddenLayerIds: ['1'] }, layers).map(l => l.name), ['APP'], 'Id numérico ocultado pelo painel (string)');
+let legHtml = PrintItemsManager.renderLegend({ title: 'CONVENÇÕES <b>' }, layers);
+assert.ok(legHtml.includes('CONVENÇÕES &lt;b&gt;'), 'Título personalizado e escapado');
+legHtml = PrintItemsManager.renderLegend({ title: '' }, layers);
+assert.ok(!legHtml.includes('cm-legend-title'), 'Título vazio remove o cabeçalho');
+assert.ok(PrintItemsManager.renderLegend({}, layers).includes(PrintItemsManager.DEFAULT_LEGEND_TITLE), 'Sem título definido usa o padrão');
+console.log('✔ Legenda validada');
+
+// ============================================================================
+// 10. Imagem reduzida e falha de gravação avisada
+// ============================================================================
+console.log('10. PrintImageUtils e falha de gravação...');
+const { PrintImageUtils } = await import('../src/components/PrintComposer/PrintImageUtils.js');
+assert.deepStrictEqual(PrintImageUtils.fitWithin(4000, 2000, 1200), { width: 1200, height: 600 }, 'Reduz pelo maior lado');
+assert.deepStrictEqual(PrintImageUtils.fitWithin(300, 900, 1200), { width: 300, height: 900 }, 'Nunca amplia');
+assert.deepStrictEqual(PrintImageUtils.fitWithin(0, 10), { width: 0, height: 0 });
+
+const { UIToast } = await import('@thibezer/ui-components-kit');
+const toasts = [];
+const originalNotify = UIToast.notificar;
+UIToast.notificar = (o) => toasts.push(o);
+const failMgr = new PrintSheetsManager(sheetComposer);
+failMgr.init('proj-cota', 'Projeto', paperSizes);
+const originalSet = globalThis.localStorage.setItem;
+globalThis.localStorage.setItem = () => { throw new Error('QuotaExceededError'); };
+assert.strictEqual(failMgr.saveToStorage(), false, 'Falha de cota é reportada');
+failMgr.saveToStorage();
+assert.strictEqual(toasts.filter(t => t.titulo === 'Prancha não salva').length, 1, 'Avisa uma única vez por sequência de falhas');
+globalThis.localStorage.setItem = originalSet;
+assert.strictEqual(failMgr.saveToStorage(), true);
+assert.strictEqual(failMgr.saveFailed, false, 'Gravação bem-sucedida rearma o aviso');
+UIToast.notificar = originalNotify;
+console.log('✔ Imagem e falha de gravação validadas');
+
+// ============================================================================
+// 11. Painel: controles da barra de escala e da legenda
+// ============================================================================
+console.log('11. Painel da barra de escala e legenda...');
+const pItems = PrintItemsManager.createDefaultItems('Projeto', paperSizes.A4_L);
+const pComposer = { items: pItems, features: [], layers, paperSize: paperSizes.A4_L, showAbntMargins: true };
+pComposer.selectedItemId = pItems.find(i => i.type === 'scale_bar').id;
+html = PrintPropertiesPanel.render(pComposer);
+['prop-sb-segments', 'prop-sb-units', 'prop-sb-text'].forEach(id => assert.ok(html.includes(`id="${id}"`), `Painel da barra deve ter ${id}`));
+assert.ok(html.includes(`min="${PrintItemsManager.MIN_ITEM_MM}"`), 'Campos de tamanho usam o mínimo comum');
+pComposer.selectedItemId = pItems.find(i => i.type === 'legend').id;
+html = PrintPropertiesPanel.render(pComposer);
+assert.ok(html.includes('id="prop-legend-title"'), 'Painel da legenda tem o título');
+assert.strictEqual((html.match(/data-legend-layer=/g) || []).length, 2, 'Uma caixa por camada visível');
+console.log('✔ Painel validado');
+
 console.log('\n🎉 TESTES DO PAINEL LATERAL E HISTÓRICO PASSARAM!');

@@ -401,8 +401,21 @@ export class PrintSheetsManager {
       if (this.activeSheetId) {
         localStorage.setItem(PrintSheetsManager.ACTIVE_PREFIX + this.projectId, this.activeSheetId);
       }
+      this.saveFailed = false;
+      return true;
     } catch (e) {
       console.warn('[PrintSheetsManager] Falha ao persistir pranchas no LocalStorage:', e);
+      // Avisa uma vez por sequência de falhas (o salvamento automático tenta a cada edição)
+      if (!this.saveFailed) {
+        UIToast.notificar({
+          tipo: 'erro',
+          titulo: 'Prancha não salva',
+          mensagem: 'O espaço de armazenamento do navegador acabou. Remova ou troque imagens grandes da prancha; as próximas edições não serão gravadas até lá.',
+          duracao: 8000
+        });
+      }
+      this.saveFailed = true;
+      return false;
     }
   }
 

@@ -323,7 +323,7 @@ export class PrintComposerModal {
 
     this.destroyLeafletMaps();
 
-    layer.innerHTML = this.items.map(item => {
+    layer.innerHTML = this.items.map((item, index) => {
       if (item.visible === false) return '';
       const isSel = item.id === this.selectedItemId;
       const xPx = item.x * this.canvasEngine.mmToPx;
@@ -337,7 +337,7 @@ export class PrintComposerModal {
         <div class="cm-print-item ${isSel ? 'selected' : ''} ${item.locked ? 'locked' : ''}"
              data-item-id="${item.id}"
              data-item-type="${item.type}"
-             style="left: ${xPx}px; top: ${yPx}px; width: ${wPx}px; height: ${hPx}px;">
+             style="left: ${xPx}px; top: ${yPx}px; width: ${wPx}px; height: ${hPx}px; z-index: ${index + 1};">
           <div class="cm-item-scaler" style="${this.getScalerStyle(item)}">${this.getItemInnerContent(item)}</div>
           ${isSel && !item.locked ? this.getResizeHandlesHTML() : ''}
         </div>
@@ -493,12 +493,11 @@ export class PrintComposerModal {
 
             // Sincroniza barra de escala
             if (item.type === 'map') {
-              const scaleBar = this.items.find(i => i.type === 'scale_bar');
-              if (scaleBar) {
+              this.items.filter(i => i.type === 'scale_bar').forEach(scaleBar => {
                 scaleBar.scale = item.scale;
                 const sbEl = document.querySelector(`[data-item-id="${scaleBar.id}"] .cm-item-scale-bar`);
                 if (sbEl) sbEl.outerHTML = PrintItemsManager.renderScaleBar(scaleBar, item.scale);
-              }
+              });
 
               // Sincroniza retângulo no Inset Map
               this.updateInsetMapExtent();
@@ -732,7 +731,7 @@ export class PrintComposerModal {
   insertItem(type) {
     const item = PrintItemsManager.createNewItem(type, this.projectName, this.items.length);
     if (!item) return null;
-    this.items.push(item);
+    this.items.splice(PrintItemsManager.insertionIndex(this.items, item.type), 0, item);
     this.renderAllItems();
     this.selectItem(item.id);
     this.pushHistoryState('Inserir Item');

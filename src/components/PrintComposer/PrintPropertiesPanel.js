@@ -1,4 +1,6 @@
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintImageUtils } from './PrintImageUtils.js';
+import { UIToast } from '@thibezer/ui-components-kit';
 
 export class PrintPropertiesPanel {
   static render(composer) {
@@ -103,19 +105,19 @@ export class PrintPropertiesPanel {
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                   <div>
                     <span class="cm-param-label">Posição X (mm):</span>
-                    <input type="number" id="prop-item-x" class="cm-vertex-input" style="width: 100%;" value="${Math.round(selectedItem.x)}" />
+                    <input type="number" id="prop-item-x" class="cm-vertex-input" min="0" max="${composer.paperSize.width}" style="width: 100%;" value="${Math.round(selectedItem.x)}" />
                   </div>
                   <div>
                     <span class="cm-param-label">Posição Y (mm):</span>
-                    <input type="number" id="prop-item-y" class="cm-vertex-input" style="width: 100%;" value="${Math.round(selectedItem.y)}" />
+                    <input type="number" id="prop-item-y" class="cm-vertex-input" min="0" max="${composer.paperSize.height}" style="width: 100%;" value="${Math.round(selectedItem.y)}" />
                   </div>
                   <div>
                     <span class="cm-param-label">Largura (mm):</span>
-                    <input type="number" id="prop-item-w" class="cm-vertex-input" style="width: 100%;" value="${Math.round(selectedItem.width)}" />
+                    <input type="number" id="prop-item-w" class="cm-vertex-input" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.width}" style="width: 100%;" value="${Math.round(selectedItem.width)}" />
                   </div>
                   <div>
                     <span class="cm-param-label">Altura (mm):</span>
-                    <input type="number" id="prop-item-h" class="cm-vertex-input" style="width: 100%;" value="${Math.round(selectedItem.height)}" />
+                    <input type="number" id="prop-item-h" class="cm-vertex-input" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.height}" style="width: 100%;" value="${Math.round(selectedItem.height)}" />
                   </div>
                 </div>
 
@@ -184,6 +186,53 @@ export class PrintPropertiesPanel {
                     <div style="display: flex; align-items: center; gap: 4px;">
                       <input type="range" id="prop-arrow-rot-range" min="0" max="360" value="${selectedItem.rotation || 0}" style="width: 80px;" />
                       <input type="number" id="prop-arrow-rot" class="cm-vertex-input" style="width: 50px;" min="0" max="360" value="${selectedItem.rotation || 0}" />
+                    </div>
+                  </div>
+                ` : ''}
+
+                <!-- Propriedades da Barra de Escala -->
+                ${selectedItem.type === 'scale_bar' ? `
+                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Escala (vinculada ao mapa):</span>
+                      <span style="font-size: 10.5px; color: #e1e1e6; font-family: monospace;">1:${Math.round(selectedItem.scale || 10000).toLocaleString('pt-BR')}</span>
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Divisões:</span>
+                      <input type="number" id="prop-sb-segments" class="cm-vertex-input" style="width: 60px;" min="1" max="8" step="1" value="${selectedItem.segments || 4}" />
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Unidade:</span>
+                      <select id="prop-sb-units" class="cm-native-select" style="width: 120px;">
+                        <option value="auto" ${!selectedItem.units || selectedItem.units === 'auto' ? 'selected' : ''}>Automática</option>
+                        <option value="m" ${selectedItem.units === 'm' ? 'selected' : ''}>Metros (m)</option>
+                        <option value="km" ${selectedItem.units === 'km' ? 'selected' : ''}>Quilômetros (km)</option>
+                      </select>
+                    </div>
+                    <div class="cm-param-row">
+                      <span class="cm-param-label">Mostrar escala numérica:</span>
+                      <input type="checkbox" id="prop-sb-text" ${selectedItem.showScaleText !== false ? 'checked' : ''} />
+                    </div>
+                    <div style="font-size: 9.5px; color: #888899; line-height: 1.3;">
+                      O comprimento da régua corresponde exatamente à distância indicada, arredondada a um valor redondo.
+                    </div>
+                  </div>
+                ` : ''}
+
+                <!-- Propriedades da Legenda -->
+                ${selectedItem.type === 'legend' ? `
+                  <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+                    <span class="cm-param-label">Título da Legenda (vazio = sem título):</span>
+                    <input type="text" id="prop-legend-title" class="cm-vertex-input" value="${esc(selectedItem.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE)}" />
+                    <span class="cm-param-label">Camadas exibidas:</span>
+                    <div style="display: flex; flex-direction: column; gap: 3px;">
+                      ${(composer.layers || []).filter(l => l.visible !== false).map(l => `
+                        <label class="cm-param-row" style="justify-content: flex-start; gap: 6px; cursor: pointer;" for="prop-legend-layer-${esc(l.id)}">
+                          <input type="checkbox" id="prop-legend-layer-${esc(l.id)}" data-legend-layer="${esc(l.id)}" ${(selectedItem.hiddenLayerIds || []).map(String).includes(String(l.id)) ? '' : 'checked'} />
+                          <span style="width: 10px; height: 8px; border: 1px solid #000; background: ${esc(l.color || '#00E08A')};"></span>
+                          <span style="font-size: 10.5px; color: #e1e1e6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${esc(l.name)}</span>
+                        </label>
+                      `).join('') || '<span style="font-size: 10px; color: #888899;">Nenhuma camada visível no projeto.</span>'}
                     </div>
                   </div>
                 ` : ''}
@@ -437,13 +486,16 @@ export class PrintPropertiesPanel {
     if (propImgFile) {
       propImgFile.onchange = (e) => {
         const file = e.target.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (re) => {
-            updateCurrent(it => it.imageUrl = re.target.result);
-          };
-          reader.readAsDataURL(file);
-        }
+        if (!file) return;
+        // Reduz a imagem antes de gravar: a prancha inteira precisa caber no localStorage
+        PrintImageUtils.prepareImageFile(file)
+          .then(({ dataUrl }) => updateCurrent(it => it.imageUrl = dataUrl))
+          .catch(err => UIToast.notificar({
+            tipo: 'erro',
+            titulo: 'Imagem não carregada',
+            mensagem: err.message || 'Não foi possível ler a imagem.',
+            duracao: 4000
+          }));
       };
     }
     if (propImgFit) propImgFit.onchange = (e) => updateCurrent(it => it.objectFit = e.target.value);
@@ -467,10 +519,22 @@ export class PrintPropertiesPanel {
     const propW = document.getElementById('prop-item-w');
     const propH = document.getElementById('prop-item-h');
 
-    if (propX) propX.addEventListener('change', (e) => updateCurrent(it => it.x = parseFloat(e.target.value) || 0, false, true));
-    if (propY) propY.addEventListener('change', (e) => updateCurrent(it => it.y = parseFloat(e.target.value) || 0, false, true));
-    if (propW) propW.addEventListener('change', (e) => updateCurrent(it => it.width = Math.max(10, parseFloat(e.target.value) || 10), false, true));
-    if (propH) propH.addEventListener('change', (e) => updateCurrent(it => it.height = Math.max(10, parseFloat(e.target.value) || 10), false, true));
+    // Valor digitado é limitado à folha e ao tamanho mínimo; o campo mostra o valor aplicado
+    const bindGeometryField = (input, key) => {
+      if (!input) return;
+      input.addEventListener('change', (e) => {
+        const v = parseFloat(e.target.value);
+        updateCurrent(it => {
+          if (Number.isFinite(v)) it[key] = v;
+          PrintItemsManager.clampItemToPaper(it, composer.paperSize);
+          e.target.value = Math.round(it[key]);
+        }, false, true);
+      });
+    };
+    bindGeometryField(propX, 'x');
+    bindGeometryField(propY, 'y');
+    bindGeometryField(propW, 'width');
+    bindGeometryField(propH, 'height');
 
     // Propriedades do Mapa
     const propMapBasemap = document.getElementById('prop-map-basemap');
@@ -522,6 +586,35 @@ export class PrintPropertiesPanel {
 
     if (propArrowRot) propArrowRot.addEventListener('input', (e) => syncArrowRot(e.target.value));
     if (propArrowRotRange) propArrowRotRange.addEventListener('input', (e) => syncArrowRot(e.target.value));
+
+    // Barra de escala
+    const propSbSegments = document.getElementById('prop-sb-segments');
+    const propSbUnits = document.getElementById('prop-sb-units');
+    const propSbText = document.getElementById('prop-sb-text');
+    if (propSbSegments) {
+      propSbSegments.addEventListener('change', (e) => {
+        const n = Math.min(8, Math.max(1, Math.round(parseFloat(e.target.value) || 4)));
+        e.target.value = n;
+        updateCurrent(it => it.segments = n);
+      });
+    }
+    if (propSbUnits) propSbUnits.addEventListener('change', (e) => updateCurrent(it => it.units = e.target.value));
+    if (propSbText) propSbText.addEventListener('change', (e) => updateCurrent(it => it.showScaleText = e.target.checked));
+
+    // Legenda
+    const propLegendTitle = document.getElementById('prop-legend-title');
+    if (propLegendTitle) propLegendTitle.addEventListener('input', (e) => updateCurrent(it => it.title = e.target.value));
+    document.querySelectorAll('[data-legend-layer]').forEach(chk => {
+      chk.addEventListener('change', () => {
+        const id = chk.getAttribute('data-legend-layer');
+        updateCurrent(it => {
+          const hidden = new Set(it.hiddenLayerIds || []);
+          if (chk.checked) hidden.delete(id);
+          else hidden.add(id);
+          it.hiddenLayerIds = [...hidden];
+        });
+      });
+    });
 
     // Tabela de vértices
     const propVertFeature = document.getElementById('prop-vert-feature');
