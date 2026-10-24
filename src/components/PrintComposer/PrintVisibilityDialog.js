@@ -10,6 +10,7 @@ import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintViewResolver, PEN_WIDTHS_MM, LINE_PATTERNS, FILL_PATTERNS, TEMPLATE_SECTIONS, DEFAULT_LABEL } from './PrintViewResolver.js';
 import { PrintViewTemplates, BUILTIN_TEMPLATES } from './PrintViewTemplates.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
+import { PrintCategoryFilters, CATEGORY_PALETTES } from './PrintCategoryFilters.js';
 import { PrintViewEdits } from './PrintViewEdits.js';
 import { FeatureQuery } from '../../services/FeatureQuery.js';
 import { QueryBuilder } from '../AdvancedSearch/QueryBuilder.js';
@@ -529,6 +530,8 @@ export class PrintVisibilityDialog {
         <button type="button" class="cm-vv-btn" data-vv-action="filter-add" ${dis || (available.length ? '' : 'disabled')}>Adicionar à vista</button>
       </div>
 
+      ${this.renderCategoryGenerator(composer, dis)}
+
       <div class="cm-vv-section-title">Biblioteca de filtros do projeto <span class="cm-vv-muted">(vale para todas as pranchas)</span></div>
       <table class="cm-vv-table cm-vv-table--compact">
         <thead><tr><th>Nome</th><th>Camadas</th><th>Feições</th><th></th></tr></thead>
@@ -551,6 +554,28 @@ export class PrintVisibilityDialog {
         <button type="button" class="cm-vv-btn cm-vv-btn--primary" data-vv-action="filter-new" ${libLocked ? 'disabled' : ''}>+ Novo filtro</button>
       </div>
       ${state.filterDraft ? this.renderFilterEditor(composer, state.filterDraft) : ''}
+    `;
+  }
+
+  /** Mapa temático: um filtro por valor de um campo, cada um com uma cor */
+  static renderCategoryGenerator(composer, dis) {
+    const props = FeatureQuery.discoverProperties(composer.features || []);
+    const fields = [['category', 'Categoria'], ...props.map(p => [p.id, p.label])];
+    return `
+      <div class="cm-vv-section-title">Mapa temático <span class="cm-vv-muted">(um filtro por valor, cada um com uma cor)</span></div>
+      <div class="cm-vv-toolbar">
+        <select class="cm-native-select" data-vv-cat="layer" aria-label="Camada" ${dis}>
+          <option value="">Todas as camadas</option>
+          ${(composer.layers || []).map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}
+        </select>
+        <select class="cm-native-select" data-vv-cat="field" aria-label="Campo" ${dis}>
+          ${fields.map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join('')}
+        </select>
+        <select class="cm-native-select" data-vv-cat="palette" aria-label="Paleta" ${dis}>
+          ${Object.entries(CATEGORY_PALETTES).map(([id, p]) => `<option value="${id}">${esc(p.label)}</option>`).join('')}
+        </select>
+        <button type="button" class="cm-vv-btn" data-vv-action="filter-categories" ${dis}>Gerar filtros</button>
+      </div>
     `;
   }
 
@@ -939,6 +964,23 @@ export class PrintVisibilityDialog {
     } else if (action === 'filter-delete' && def) {
       if (!confirm(`Excluir o filtro "${def.name || 'Filtro'}" da biblioteca? Ele sai de todas as pranchas.`)) return;
       composer.updateLibrary(lib => { lib.filters = lib.filters.filter(f => f.id !== def.id); });
+    } else if (action === 'filter-categories') {
+      const get = (k) => this.root.querySelector(`[data-vv-cat="${k}"]`)?.value || '';
+      const layerIds = get('layer') ? [get('layer')] : [];
+      const built = PrintCategoryFilters.build(composer.features, { field: get('field'), layerIds, palette: get('palette') });
+      if (!built.filters.length) {
+        alert('Nenhum valor encontrado nesse campo para as camadas escolhidas.');
+        return;
+      }
+      if (!composer.updateLibrary(lib => { lib.filters.push(...built.filters); })) return;
+      // Na ordem dos valores (o mais comum no topo), acima dos filtros que já estavam
+      this.mutateView(item, (v) => {
+        const ids = new Set(built.entries.map(e => e.filterId));
+        v.filters = [...built.entries, ...(v.filters || []).filter(f => !ids.has(f.filterId))];
+      }, 'Mapa temático');
+      if (built.total > built.filters.length) {
+        alert(`O campo tem ${built.total} valores; foram criados filtros para os ${built.filters.length} mais comuns.`);
+      }
     } else if (action === 'filter-cancel') {
       this.state.filterDraft = null;
     } else if (action === 'filter-save') {

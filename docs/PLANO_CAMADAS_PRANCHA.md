@@ -218,6 +218,20 @@ Cada fase fecha com testes em `tests/` e verificação no navegador, e é public
 
 ---
 
+## 8.1 Situação (2026-10-24)
+
+| Fase | Situação |
+|---|---|
+| 0. Fundação | ✅ `FeatureStyle`, `BasemapCatalog`, `PrintViewResolver`, `PrintMapRenderer` (tela = PDF, furos e multipolígonos) |
+| 1. Camadas na vista | ✅ Janela Visibilidade/Gráficos (V V), legenda ligada ao mapa, migração `followProject` |
+| 2. Nuvem | ✅ `cm_print_sheets`/`cm_print_locks`/`cm_print_library`, edição exclusiva por prancha, só visualização para os demais |
+| 3. Rótulos | ✅ Por camada e "todos os rótulos", modelo de texto com campos |
+| 4. Filtros | ✅ Biblioteca de filtros (QueryBuilder da Busca Avançada), prioridade, gráficos, legenda |
+| 5. Modelos de vista | ✅ Prontos (acadêmico e urbano) e do projeto; vincular, aplicar uma vez, editar, desvincular |
+| 6. Feições e temporários | ✅ Ajuste por feição (clique ou busca), isolar/ocultar temporário, revelar ocultos |
+| 7. Escala e padrões | ✅ Faixa de escala, padrões de linha, hachuras; mapa temático (um filtro por valor, paletas) |
+| 8. Microsoft (Azure Maps) | ⏸ Parada até haver opção gratuita viável |
+
 ## 9. Riscos
 
 - **Desempenho:** muitos filtros × muitas feições. O resolvedor calcula os casamentos uma vez por vista e guarda em cache; o desenho usa recorte pela área do mapa e `GeometrySimplifier` por escala.

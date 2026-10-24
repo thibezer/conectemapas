@@ -18,6 +18,7 @@ import { PrintViewEdits } from '../src/components/PrintComposer/PrintViewEdits.j
 import { PrintVisibilityDialog } from '../src/components/PrintComposer/PrintVisibilityDialog.js';
 import { QueryBuilder } from '../src/components/AdvancedSearch/QueryBuilder.js';
 import { PrintViewTemplates, BUILTIN_TEMPLATES } from '../src/components/PrintComposer/PrintViewTemplates.js';
+import { PrintCategoryFilters, CATEGORY_PALETTES } from '../src/components/PrintComposer/PrintCategoryFilters.js';
 
 console.log('--- Teste das vistas de mapa da prancha ---');
 
@@ -435,4 +436,28 @@ assert.ok(elHtml.includes('data-vv-el-action="hide" data-feature-id="c2"'), 'Bus
 assert.strictEqual(PrintVisibilityDialog.searchFeatures(elComposer, 'ipe').length, 1, 'Busca ignora acentos');
 console.log('✔ Feições e temporários validados');
 
-console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');// ============================================================================
+// ============================================================================
+// 9. Mapa temático (um filtro por valor)
+// ============================================================================
+console.log('9. Mapa temático...');
+const catFeatures = [
+  ...features,
+  { id: 'c4', layerId: 'casas', type: 'Polygon', name: 'Casa 4', coordinates: [[0, 0], [0, 1], [1, 1]], properties: { uso: 'comercial' } },
+  { id: 'c5', layerId: 'casas', type: 'Polygon', name: 'Casa 5', coordinates: [[0, 0], [0, 1], [1, 1]], properties: { uso: 'Comercial ' } }
+];
+assert.deepStrictEqual(PrintCategoryFilters.distinctValues(catFeatures, 'prop:uso', ['casas']).map(v => [v.value, v.count]),
+  [['comercial', 3], ['residencial', 1]], 'Valores distintos sem diferenciar maiúsculas, do mais comum ao menos comum');
+const built = PrintCategoryFilters.build(catFeatures, { field: 'prop:uso', layerIds: ['casas'], palette: 'urbano', idPrefix: 'cat' });
+assert.deepStrictEqual(built.filters.map(f => f.name), ['uso: comercial', 'uso: residencial']);
+assert.strictEqual(built.entries[0].fill.color, CATEGORY_PALETTES.urbano.colors[0], 'Cores da paleta, na ordem');
+const catLib = { filters: built.filters, viewTemplates: [] };
+const catView = { ...PrintViewResolver.emptyView(), filters: built.entries };
+const catCtx = { ...PrintViewResolver.prepare(catView, { features: catFeatures, layers, library: catLib }), view: catView };
+assert.strictEqual(PrintViewResolver.resolve(catFeatures.find(f => f.id === 'c2'), catCtx).fill.color, CATEGORY_PALETTES.urbano.colors[1], 'Feição recebe a cor do seu valor');
+assert.strictEqual(PrintViewResolver.resolve(catFeatures.find(f => f.id === 'c5'), catCtx).fill.color, CATEGORY_PALETTES.urbano.colors[0], '"Comercial " cai no mesmo grupo de "comercial"');
+assert.ok(PrintViewResolver.legendEntries(catView, { features: catFeatures, layers, library: catLib }).some(e => e.name === 'uso: residencial'), 'Cada valor vira item da legenda');
+assert.strictEqual(PrintCategoryFilters.build(catFeatures, { field: 'prop:inexistente' }).filters.length, 0);
+console.log('✔ Mapa temático validado');
+
+console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');
+// ============================================================================
