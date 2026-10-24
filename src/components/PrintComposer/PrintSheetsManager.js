@@ -12,6 +12,7 @@ export class PrintSheetsManager {
   static STORAGE_PREFIX = 'cm_print_sheets_';
   static ACTIVE_PREFIX = 'cm_print_active_sheet_';
   static PRESETS_PREFIX = 'cm_print_presets_';
+  static LIBRARY_PREFIX = 'cm_print_library_';
   static AUTOSAVE_DELAY_MS = 400;
 
   constructor(composer) {
@@ -469,6 +470,36 @@ export class PrintSheetsManager {
     const next = presets.filter(p => p.id !== presetId);
     if (next.length === presets.length) return false;
     return this.savePresets(next);
+  }
+
+  /** Biblioteca de impressão do projeto: { filters: [], viewTemplates: [] } */
+  loadLibrary(projectId = this.projectId) {
+    const empty = { filters: [], viewTemplates: [] };
+    if (typeof localStorage === 'undefined') return empty;
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PrintSheetsManager.LIBRARY_PREFIX + projectId) || 'null');
+      if (!parsed || typeof parsed !== 'object') return empty;
+      return {
+        filters: Array.isArray(parsed.filters) ? parsed.filters.filter(f => f && f.id) : [],
+        viewTemplates: Array.isArray(parsed.viewTemplates) ? parsed.viewTemplates.filter(t => t && t.id) : []
+      };
+    } catch (e) {
+      return empty;
+    }
+  }
+
+  saveLibrary(library) {
+    if (typeof localStorage === 'undefined') return false;
+    try {
+      localStorage.setItem(PrintSheetsManager.LIBRARY_PREFIX + this.projectId, JSON.stringify({
+        filters: library?.filters || [],
+        viewTemplates: library?.viewTemplates || []
+      }));
+      return true;
+    } catch (e) {
+      console.warn('[PrintSheetsManager] Biblioteca não salva:', e);
+      return false;
+    }
   }
 
   /** Pré-definição idêntica à folha atual (para mostrá-la selecionada), ou null */

@@ -1,6 +1,7 @@
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintImageUtils } from './PrintImageUtils.js';
 import { UIToast } from '@thibezer/ui-components-kit';
+import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 
 export class PrintPropertiesPanel {
   static render(composer) {
@@ -237,14 +238,13 @@ export class PrintPropertiesPanel {
           <div class="cm-param-row">
             <span class="cm-param-label">Camada Base:</span>
             <select id="prop-map-basemap" class="cm-native-select cm-pp-w-xl">
-              <option value="satelite" ${sel(item.basemap === 'satelite')}>🛰️ Esri Satélite</option>
-              <option value="google_satelite_puro" ${sel(item.basemap === 'google_satelite_puro')}>🛰️ Google Satélite Puro</option>
-              <option value="google_satelite" ${sel(item.basemap === 'google_satelite')}>🛰️ Google Híbrido</option>
-              <option value="osm" ${sel(item.basemap === 'osm')}>🗺️ OpenStreetMap</option>
-              <option value="esri_light" ${sel(item.basemap === 'esri_light' || item.basemap === 'cartodb_positron')}>☀️ Esri Claro Neutro</option>
-              <option value="esri_dark" ${sel(item.basemap === 'esri_dark' || item.basemap === 'cartodb_dark')}>🌙 Esri Escuro</option>
-              <option value="relevo" ${sel(item.basemap === 'relevo')}>⛰️ Relevo Topo</option>
-              <option value="branco" ${sel(item.basemap === 'branco')}>⚪ Fundo Branco CAD</option>
+              ${(() => {
+                // Sem fundo gravado, o mapa usa o do mapa principal (mesma regra do mountLeafletMaps)
+                const current = BasemapCatalog.normalize(item.basemap || (item.type === 'inset_map' ? 'esri_light' : composer.currentBasemap));
+                return BasemapCatalog.list().map(b => `
+                  <option value="${b.id}" ${sel(current === b.id)}>${b.icon} ${esc(b.name)}${b.exportable ? '' : ' (pode não sair no PDF)'}</option>
+                `).join('');
+              })()}
             </select>
           </div>
           <div class="cm-param-row">

@@ -112,6 +112,15 @@
   z-index: 0;
 }
 
+/* Feições do mapa da prancha (PrintVectorLayer): acima dos tiles, sem capturar o mouse */
+.cm-print-vector-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 450;
+  pointer-events: none;
+}
+
 /* Grade de Coordenadas (Graticule Grid) */
 .cm-item-grid-border {
   position: absolute;

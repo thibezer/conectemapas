@@ -18,6 +18,8 @@ import { CanvasHost } from './MapEngine/CanvasHost.js';
 import { FeatureGeometryUtils } from './MapEngine/FeatureGeometryUtils.js';
 import { GeometryVersionManager } from './GeometryVersionManager.js';
 import { SpatialIndex } from './SpatialIndex.js';
+import { BasemapCatalog } from './BasemapCatalog.js';
+import { FeatureStyle } from './FeatureStyle.js';
 
 /** Ferramenta do app -> ferramenta do componente (`select` = nenhuma). */
 const TOOL_TO_KIT = {
@@ -146,31 +148,15 @@ export class CanvasMapEngine {
   }
 
   _initBaseLayers() {
-    this.baseLayers = {
-      google_satelite_puro: L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-        maxNativeZoom: 20, maxZoom: 22, attribution: '© Google Maps (Satélite Puro)', crossOrigin: true
-      }),
-      google_satelite: L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-        maxNativeZoom: 20, maxZoom: 22, attribution: '© Google Maps (Híbrido)', crossOrigin: true
-      }),
-      satelite: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        maxNativeZoom: 18, maxZoom: 22, attribution: 'Esri Satellite', crossOrigin: true
-      }),
-      osm: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxNativeZoom: 19, maxZoom: 22, attribution: '© OpenStreetMap', crossOrigin: true
-      }),
-      topografia: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        maxNativeZoom: 17, maxZoom: 22, attribution: 'OpenTopoMap', crossOrigin: true
-      }),
-      dark: L.layerGroup([
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
-          maxNativeZoom: 16, maxZoom: 22, attribution: 'Esri Dark Gray', crossOrigin: true
-        }),
-        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
-          maxNativeZoom: 16, maxZoom: 22, crossOrigin: true
-        })
-      ])
-    };
+    // Mesma lista das pranchas (BasemapCatalog); 'none' é tratado em setBaseLayer
+    this.baseLayers = {};
+    BasemapCatalog.list().forEach(b => {
+      if (b.tiles.length === 0) return;
+      const tiles = b.tiles.map(t => L.tileLayer(t.url, {
+        maxNativeZoom: t.maxNativeZoom, maxZoom: 22, attribution: t.attribution, crossOrigin: true
+      }));
+      this.baseLayers[b.id] = tiles.length === 1 ? tiles[0] : L.layerGroup(tiles);
+    });
 
     this.setBaseLayer(this.options.initialBasemap !== undefined ? this.options.initialBasemap : 'google_satelite');
   }
@@ -187,7 +173,14 @@ export class CanvasMapEngine {
       return;
     }
     if (container) container.classList.remove('cm-no-basemap');
-    const target = this.baseLayers[name];
+    // Aceita as chaves antigas (branco, cartodb_*...); desconhecida segue sem fundo como antes
+    const key = BasemapCatalog.normalize(name, name);
+    if (key === 'none') {
+      if (container) container.classList.add('cm-no-basemap');
+      this.currentBasemapName = 'none';
+      return;
+    }
+    const target = this.baseLayers[key];
     if (target) {
       target.addTo(this.map);
       this.currentBaseLayer = target;
@@ -360,30 +353,21 @@ export class CanvasMapEngine {
   }
 
   _styleOf(feat, layer) {
-    const s = feat.style || {};
-    const base = feat.color || layer?.color || '#00E08A';
-    const isText = feat.type === 'Text';
-    const isFillNone = s.fillColor === 'none' || s.fillColor === 'transparent';
-    const isStrokeNone = s.strokeColor === 'none' || s.strokeColor === 'transparent';
-    const stroke = isText
-      ? (s.textColor || '#ffffff')
-      : (isStrokeNone
-          ? 'none'
-          : (s.strokeColor || (feat.type === 'LineString' ? base : (s.fillColor && !isFillNone ? '#ffffff' : base))));
-    const fill = isFillNone ? 'none' : (s.fillColor || base);
+    // Mesma leitura de estilo das pranchas (FeatureStyle)
+    const st = FeatureStyle.base(feat, layer);
     return {
-      corTraco: stroke,
-      corPreenchimento: fill,
-      opacidadePreenchimento: isFillNone ? 0 : (s.fillOpacity !== undefined ? Number(s.fillOpacity) : 0.35),
-      espessuraTraco: isStrokeNone ? 0 : (s.strokeWidth !== undefined ? Number(s.strokeWidth) : 2.5),
-      dashArray: s.strokeDashArray || undefined,
-      icone: SVG_MARKER_ICONS.has(s.markerIcon) ? s.markerIcon : undefined,
-      tamanhoIcone: s.markerSize !== undefined ? Number(s.markerSize) : 24,
-      rotacaoIcone: s.markerRotation !== undefined ? Number(s.markerRotation) : 0,
-      mostrarRotulo: s.showLabel === true,
-      campoRotulo: s.labelField || 'name',
-      halo: Boolean(s.halo),
-      tamanhoFonte: s.fontSize !== undefined ? Number(s.fontSize) : undefined
+      corTraco: st.stroke.color,
+      corPreenchimento: st.fill.color,
+      opacidadePreenchimento: st.fill.opacity,
+      espessuraTraco: st.stroke.width,
+      dashArray: st.stroke.dash,
+      icone: SVG_MARKER_ICONS.has(st.marker.icon) ? st.marker.icon : undefined,
+      tamanhoIcone: st.marker.size,
+      rotacaoIcone: st.marker.rotation,
+      mostrarRotulo: st.label.show,
+      campoRotulo: st.label.field,
+      halo: st.text.halo,
+      tamanhoFonte: st.text.size
     };
   }
 

@@ -9,6 +9,9 @@ import { jsPDF } from 'jspdf';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintMapRenderer } from './PrintMapRenderer.js';
+import { PrintCanvasEngine } from './PrintCanvasEngine.js';
+import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 
 export class PrintExporter {
   /**
@@ -273,7 +276,8 @@ export class PrintExporter {
     ctx.clip();
 
     // Fundo do mapa
-    ctx.fillStyle = item.basemap === 'branco' ? '#ffffff' : '#f0f3f5';
+    const basemapId = BasemapCatalog.normalize(item.basemap);
+    ctx.fillStyle = BasemapCatalog.backgroundOf(basemapId);
     ctx.fillRect(x, y, w, h);
 
     const domEl = document.getElementById(`leaf-map-${item.id}`);
@@ -285,7 +289,7 @@ export class PrintExporter {
       const scaleY = h / mapRect.height;
 
       // 1. Renderiza Tiles de Imagem (se habilitado)
-      if (includeTiles && item.basemap !== 'branco') {
+      if (includeTiles && BasemapCatalog.get(basemapId).tiles.length) {
         const tiles = Array.from(domEl.querySelectorAll('.leaflet-tile-pane img'));
         tiles.forEach((img) => {
           if (!img.complete || img.naturalWidth === 0) return;
@@ -308,9 +312,20 @@ export class PrintExporter {
       const cssScaleX = w / (domEl.offsetWidth || mapRect.width);
       const cssScaleY = h / (domEl.offsetHeight || mapRect.height);
 
-      // 2. Renderiza Feições Vetoriais em Resolução Nativa Subpixel
-      if (item.type === 'map' && composer.features.length > 0) {
-        this.drawNativeVectorFeatures(ctx, map, mapRect, composer.features, composer.layers, x, y, cssScaleX, cssScaleY, scaleFactor);
+      // 2. Feições pela vista do mapa: o mesmo desenho da tela (PrintMapRenderer), em px CSS escalados
+      if (item.type === 'map') {
+        const state = composer.vectorStateFor(item, map);
+        if (state) {
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.scale(cssScaleX, cssScaleY);
+          PrintMapRenderer.draw(ctx, {
+            ...state,
+            pxPerMm: PrintCanvasEngine.BASE_PX_PER_MM,
+            project: (ll) => map.latLngToContainerPoint(ll)
+          });
+          ctx.restore();
+        }
       }
 
       // 3. Se for Inset Map, desenha o Retângulo de Abrangência (Extent Box) do mapa principal
@@ -330,134 +345,6 @@ export class PrintExporter {
     if (item.showGrid && map) {
       this.drawMapGraticule(ctx, item, map, x, y, w, h, scaleFactor);
     }
-  }
-
-  /**
-   * Renderiza feições vetoriais com precisão cartográfica subpixel
-   */
-  static drawNativeVectorFeatures(ctx, map, mapRect, features, layers, originX, originY, scaleX, scaleY, scaleFactor) {
-    const reversedLayers = [...layers].reverse();
-
-    reversedLayers.forEach(layer => {
-      if (layer.visible === false) return;
-      const layerFeatures = features.filter(f => f.layerId === layer.id && f.visible !== false);
-
-      layerFeatures.forEach(feat => {
-        const color = feat.color || layer.color || '#00E08A';
-        const rawType = (feat.type || '').toLowerCase();
-        const coords = feat.coordinates;
-        if (!coords || coords.length === 0) return;
-
-        ctx.save();
-
-        if (rawType === 'polygon' || rawType === 'multipolygon') {
-          let ring = coords;
-          if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) ring = coords[0];
-
-          const pts = ring.map(c => {
-            const lat = Array.isArray(c) ? c[0] : c.lat;
-            const lng = Array.isArray(c) ? c[1] : c.lng;
-            const p = map.latLngToContainerPoint([lat, lng]);
-            return {
-              x: originX + p.x * scaleX,
-              y: originY + p.y * scaleY
-            };
-          });
-
-          if (pts.length >= 3) {
-            ctx.beginPath();
-            ctx.moveTo(pts[0].x, pts[0].y);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-            ctx.closePath();
-
-            // Preenchimento
-            ctx.fillStyle = this.hexToRgba(color, 0.35);
-            ctx.fill();
-
-            // Borda nítida
-            ctx.strokeStyle = color;
-            ctx.lineWidth = Math.max(1.5, 2.5 * (scaleFactor / (300 / 25.4)));
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-
-            // Rótulo no centro
-            if (feat.name) {
-              const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-              const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-              this.drawFeatureLabel(ctx, feat.name, cx, cy, color, scaleFactor);
-            }
-          }
-        } else if (rawType === 'linestring' || rawType === 'line') {
-          const pts = coords.map(c => {
-            const lat = Array.isArray(c) ? c[0] : c.lat;
-            const lng = Array.isArray(c) ? c[1] : c.lng;
-            const p = map.latLngToContainerPoint([lat, lng]);
-            return {
-              x: originX + p.x * scaleX,
-              y: originY + p.y * scaleY
-            };
-          });
-
-          if (pts.length >= 2) {
-            ctx.beginPath();
-            ctx.moveTo(pts[0].x, pts[0].y);
-            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = Math.max(1.5, 2.5 * (scaleFactor / (300 / 25.4)));
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.stroke();
-          }
-        } else if (rawType === 'point') {
-          const pt = Array.isArray(coords[0]) ? coords[0] : coords;
-          const lat = Array.isArray(pt) ? pt[0] : pt.lat;
-          const lng = Array.isArray(pt) ? pt[1] : pt.lng;
-
-          if (!isNaN(lat) && !isNaN(lng)) {
-            const p = map.latLngToContainerPoint([lat, lng]);
-            const px = originX + p.x * scaleX;
-            const py = originY + p.y * scaleY;
-            const r = Math.max(3, 6 * (scaleFactor / (300 / 25.4)));
-
-            ctx.beginPath();
-            ctx.arc(px, py, r, 0, Math.PI * 2);
-            ctx.fillStyle = color;
-            ctx.fill();
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.arc(px, py, r * 0.35, 0, Math.PI * 2);
-            ctx.fillStyle = '#ffffff';
-            ctx.fill();
-          }
-        }
-
-        ctx.restore();
-      });
-    });
-  }
-
-  /**
-   * Rótulo de feição com halo protetor branco para máxima legibilidade
-   */
-  static drawFeatureLabel(ctx, text, x, y, color, scaleFactor) {
-    const fontSize = Math.max(10, Math.round(11 * (scaleFactor / (300 / 25.4))));
-    ctx.save();
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Halo branco
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = Math.max(3, fontSize * 0.3);
-    ctx.strokeText(text, x, y);
-
-    // Texto preto de alto contraste
-    ctx.fillStyle = '#111111';
-    ctx.fillText(text, x, y);
-    ctx.restore();
   }
 
   /**
@@ -1027,17 +914,5 @@ export class PrintExporter {
         duracao: 4500
       });
     }
-  }
-
-  static hexToRgba(hex, alpha = 1) {
-    if (!hex || typeof hex !== 'string') return `rgba(0, 224, 138, ${alpha})`;
-    let c = hex.replace('#', '');
-    if (c.length === 3) c = c.split('').map(x => x + x).join('');
-    const num = parseInt(c, 16);
-    if (isNaN(num)) return `rgba(0, 224, 138, ${alpha})`;
-    const r = (num >> 16) & 255;
-    const g = (num >> 8) & 255;
-    const b = num & 255;
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 }

@@ -16,6 +16,10 @@ import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
 import { PrintToolbar } from './PrintToolbar.js';
 import { PrintHistory } from './PrintHistory.js';
 import { UIToast } from '@thibezer/ui-components-kit';
+import { BasemapCatalog } from '../../services/BasemapCatalog.js';
+import { PrintViewResolver } from './PrintViewResolver.js';
+import { PrintMapRenderer } from './PrintMapRenderer.js';
+import { PrintVectorLayer } from './PrintVectorLayer.js';
 
 export class PrintComposerModal {
   constructor(options = {}) {
@@ -52,6 +56,9 @@ export class PrintComposerModal {
     this.mapRefreshers = new Map(); // Atualização de grade/escala de cada mapa, sem recriá-lo
     this.mapTimers = new Set(); // Timeouts dos mapas montados, cancelados ao destruí-los
     this.insetExtentLayer = null; // Retângulo no Inset Map
+    this.vectorLayers = new Map(); // Camada vetorial (canvas) de cada mapa
+    this.resolveCache = new Map(); // Filtros casados por mapa, refeitos só quando a vista ou as feições mudam
+    this.library = { filters: [], viewTemplates: [] }; // Filtros e modelos de vista do projeto
     this.canvasEngine = new PrintCanvasEngine(this);
 
     // Ao recarregar/sair da página com o compositor aberto, grava a edição que ainda aguarda o salvamento automático
@@ -194,6 +201,7 @@ export class PrintComposerModal {
     this.canvasEngine.bindKeyboardShortcuts();
 
     // Inicializa ou carrega as pranchas do projeto
+    this.library = this.sheetsManager.loadLibrary(this.projectId);
     const currentSheet = this.sheetsManager.init(this.projectId, this.projectName, this.paperSizes);
     if (currentSheet) {
       this.paperSize = currentSheet.paperSize;
@@ -488,12 +496,15 @@ export class PrintComposerModal {
             // Zoom fracionário: a escala digitada no painel (ex.: 1:5.000) é aplicada exatamente
             zoomSnap: 0,
             zoomDelta: 0.5,
+            // Sem animação: a camada vetorial (canvas próprio) acompanha cada quadro sem defasagem
+            zoomAnimation: false,
+            fadeAnimation: false,
             dragging: this.interactionMode === 'content_pan',
             scrollWheelZoom: this.interactionMode === 'content_pan'
           });
 
           // Adiciona Basemap configurado
-          this.applyBasemapToMap(map, item.basemap || (item.type === 'inset_map' ? 'cartodb_positron' : this.currentBasemap));
+          this.applyBasemapToMap(map, item.basemap || (item.type === 'inset_map' ? 'esri_light' : this.currentBasemap));
 
           const savedView = item.view && Array.isArray(item.view.center) && Number.isFinite(item.view.zoom) ? item.view : null;
 
@@ -504,38 +515,16 @@ export class PrintComposerModal {
             const valid = pts.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1]));
             map.setView(valid.length ? L.latLngBounds(valid).getCenter() : [-15.78, -47.92], 4);
           } else {
-            // Renderiza geometrias vetoriais das camadas
-            if (this.features.length > 0) {
-              const bounds = [];
-              this.features.forEach(f => {
-                if (f.visible === false) return;
-                const layer = this.layers.find(l => l.id === f.layerId) || {};
-                const color = layer.color || f.color || '#00E08A';
-                const style = { color, fillColor: color, fillOpacity: 0.35, weight: 2 };
-
-                const rawType = (f.type || '').toLowerCase();
-                const coords = f.coordinates;
-
-                if ((rawType === 'polygon' || rawType === 'multipolygon') && Array.isArray(coords)) {
-                  L.polygon(coords, style).addTo(map);
-                  this.pushBounds(bounds, coords);
-                } else if ((rawType === 'linestring' || rawType === 'line') && Array.isArray(coords)) {
-                  L.polyline(coords, style).addTo(map);
-                  this.pushBounds(bounds, coords);
-                } else if (rawType === 'point' && coords) {
-                  const pt = Array.isArray(coords[0]) ? coords[0] : coords;
-                  if (!isNaN(pt[0]) && !isNaN(pt[1])) {
-                    L.circleMarker(pt, { ...style, radius: 6, fillOpacity: 0.85 }).addTo(map);
-                    bounds.push(pt);
-                  }
-                }
-              });
-
-              if (bounds.length > 0) map.fitBounds(bounds, { padding: [20, 20] });
-              else map.setView([-15.78, -47.92], 14);
-            } else {
-              map.setView([-15.78, -47.92], 14);
-            }
+            // Feições: desenhadas pela vista do mapa (mesmo desenho da exportação)
+            const vectors = new PrintVectorLayer(() => this.vectorStateFor(item, map), () => this.vectorResolution()).addTo(map);
+            this.vectorLayers.set(item.id, vectors);
+            const bounds = [];
+            this.features.forEach(f => {
+              const box = PrintMapRenderer.bboxOf(f);
+              if (box && f.visible !== false) bounds.push([box[0], box[1]], [box[2], box[3]]);
+            });
+            if (bounds.length > 0) map.fitBounds(bounds, { padding: [20, 20] });
+            else map.setView([-15.78, -47.92], 14);
           }
 
           // Restaura o enquadramento salvo da prancha (pan/zoom/escala feitos pelo usuário)
@@ -623,35 +612,46 @@ export class PrintComposerModal {
       if (l instanceof L.TileLayer) map.removeLayer(l);
     });
 
-    if (basemapKey === 'none' || basemapKey === 'branco') {
-      map.getContainer().style.background = '#ffffff';
-      return;
+    // Mesma lista do mapa principal (aceita as chaves antigas das pranchas)
+    const basemap = BasemapCatalog.get(basemapKey);
+    map.getContainer().style.background = BasemapCatalog.backgroundOf(basemap.id);
+    basemap.tiles.forEach(t => {
+      // Acima do zoom nativo os tiles são ampliados: escalas grandes (1:200) continuam possíveis
+      L.tileLayer(t.url, { maxNativeZoom: t.maxNativeZoom, maxZoom: 23, crossOrigin: true }).addTo(map);
+    });
+  }
+
+  /** Estado da camada vetorial de um mapa: vista efetiva + filtros casados (cache por vista) */
+  vectorStateFor(item, map) {
+    if (item.type !== 'map') return null;
+    const view = PrintViewResolver.effectiveView(item, this.library);
+    const key = JSON.stringify([view.followProject, view.filters, this.library?.filters || []]);
+    let cached = this.resolveCache.get(item.id);
+    if (!cached || cached.key !== key || cached.features !== this.features || cached.layers !== this.layers) {
+      const ctx = PrintViewResolver.prepare(view, { features: this.features, layers: this.layers, library: this.library });
+      cached = { key, features: this.features, layers: this.layers, ctx };
+      this.resolveCache.set(item.id, cached);
     }
+    // Escala ao vivo (durante o zoom o item ainda não foi atualizado) para as faixas de escala
+    const scale = map ? PrintItemsManager.calculateScale(map.getZoom(), map.getCenter().lat) : item.scale;
+    return {
+      features: this.features,
+      layers: this.layers,
+      resolveCtx: { ...cached.ctx, view, scale },
+      pxPerMm: PrintCanvasEngine.BASE_PX_PER_MM
+    };
+  }
 
-    let url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-    let maxZoom = 19;
+  /** Pixels de tela por px CSS do mapa (zoom da prancheta × densidade da tela) */
+  vectorResolution() {
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    return Math.min(4, dpr * Math.max(1, this.canvasEngine?.zoom || 1));
+  }
 
-    if (basemapKey === 'osm') {
-      url = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-      maxZoom = 19;
-    } else if (basemapKey === 'cartodb_positron' || basemapKey === 'esri_light' || basemapKey === 'light') {
-      // Esri Light Gray Canvas: Elegante, sem API Key, perfeito para inset/overview map
-      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-      maxZoom = 16;
-    } else if (basemapKey === 'cartodb_dark' || basemapKey === 'esri_dark' || basemapKey === 'dark') {
-      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-      maxZoom = 16;
-    } else if (basemapKey === 'relevo' || basemapKey === 'topografia') {
-      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}';
-    } else if (basemapKey === 'google_satelite_puro') {
-      url = 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}';
-      maxZoom = 20;
-    } else if (basemapKey === 'google_satelite') {
-      url = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-      maxZoom = 20;
-    }
-
-    L.tileLayer(url, { maxZoom, crossOrigin: true }).addTo(map);
+  /** Redesenha as feições de um mapa (ou de todos) depois de mudar a vista */
+  redrawMapVectors(itemId = null) {
+    if (itemId) this.vectorLayers.get(itemId)?.redraw();
+    else this.vectorLayers.forEach(v => v.redraw());
   }
 
   updateInsetMapExtent() {
@@ -702,6 +702,8 @@ export class PrintComposerModal {
       try { map.remove(); } catch (e) { /* ignore */ }
     });
     this.leafletMaps.clear();
+    this.vectorLayers.clear();
+    this.resolveCache.clear();
     this.mapRefreshers.clear();
     this.mapTimers.forEach(t => clearTimeout(t));
     this.mapTimers.clear();
@@ -732,6 +734,7 @@ export class PrintComposerModal {
   refreshItemContent(item) {
     if (item.type === 'map' || item.type === 'inset_map') {
       this.mapRefreshers.get(item.id)?.();
+      this.redrawMapVectors(item.id);
       return;
     }
     const scaler = document.querySelector(`[data-item-id="${item.id}"] > .cm-item-scaler`);
