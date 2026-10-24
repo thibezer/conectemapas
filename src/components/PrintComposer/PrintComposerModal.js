@@ -20,6 +20,9 @@ import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 import { PrintViewResolver } from './PrintViewResolver.js';
 import { PrintMapRenderer } from './PrintMapRenderer.js';
 import { PrintVectorLayer } from './PrintVectorLayer.js';
+import { PrintLegendRenderer } from './PrintLegendRenderer.js';
+import { PrintVisibilityDialog } from './PrintVisibilityDialog.js';
+import './PrintVisibilityDialog.css';
 
 export class PrintComposerModal {
   constructor(options = {}) {
@@ -60,6 +63,7 @@ export class PrintComposerModal {
     this.resolveCache = new Map(); // Filtros casados por mapa, refeitos só quando a vista ou as feições mudam
     this.library = { filters: [], viewTemplates: [] }; // Filtros e modelos de vista do projeto
     this.canvasEngine = new PrintCanvasEngine(this);
+    this.visibilityDialog = new PrintVisibilityDialog(this);
 
     // Ao recarregar/sair da página com o compositor aberto, grava a edição que ainda aguarda o salvamento automático
     if (typeof window !== 'undefined') {
@@ -133,7 +137,32 @@ export class PrintComposerModal {
     this.updatePaperSheetDOM();
     this.renderAllItems();
     this.updatePropertiesPanel();
+    this.visibilityDialog.refresh();
     this.sheetsManager.saveCurrentStateFromComposer();
+  }
+
+  /**
+   * Altera a vista de um mapa (camadas, rótulos, filtros, feições): um passo no histórico.
+   * A 1ª edição de um mapa que espelhava o mapa principal o torna independente.
+   * Mapa bloqueado não muda de vista.
+   */
+  updateMapView(itemId, mutate, actionName = 'Vista do mapa', { coalesceKey = null } = {}) {
+    const item = this.items.find(i => i.id === itemId && i.type === 'map');
+    if (!item || item.locked) return false;
+    PrintViewResolver.detachFromProject(item, this.layers, this.features);
+    const view = PrintViewResolver.ensureView(item);
+    if (mutate(view, item) === false) return false;
+    this.resolveCache.delete(item.id);
+    this.redrawMapVectors(item.id);
+    this.refreshLegends();
+    this.pushHistoryState(actionName, { coalesceKey });
+    if (this.selectedItemId === item.id) this.updatePropertiesPanel();
+    return true;
+  }
+
+  /** Abre a janela Visibilidade/Gráficos (V V) do mapa selecionado ou do primeiro mapa */
+  openVisibilityDialog(itemId = null) {
+    return this.visibilityDialog.open(itemId);
   }
 
   alignLeft() { PrintAlignmentHelper.alignLeft(this); }
@@ -244,6 +273,7 @@ export class PrintComposerModal {
   }
 
   close() {
+    this.visibilityDialog?.close();
     if (this.sheetsManager) this.sheetsManager.saveCurrentStateFromComposer();
     this.destroyLeafletMaps();
     if (this.canvasEngine) this.canvasEngine.destroy();
@@ -413,6 +443,7 @@ export class PrintComposerModal {
     }).join('');
 
     this.mountLeafletMaps();
+    this.refreshLegends();
     this.canvasEngine.bindInteractions(layer);
   }
 
@@ -428,7 +459,7 @@ export class PrintComposerModal {
     } else if (item.type === 'scale_bar') {
       return PrintItemsManager.renderScaleBar(item, item.scale || 10000);
     } else if (item.type === 'legend') {
-      return PrintItemsManager.renderLegend(item, this.layers);
+      return PrintItemsManager.renderLegendCanvas(item);
     } else if (item.type === 'title_block') {
       return PrintItemsManager.renderTitleBlock(item, this.projectName, this.items.find(i => i.type === 'map')?.scale);
     } else if (item.type === 'table_vertices') {
@@ -553,6 +584,9 @@ export class PrintComposerModal {
 
               // O carimbo mostra a escala do mapa principal
               this.items.filter(i => i.type === 'title_block').forEach(tb => this.refreshItemContent(tb));
+              // Faixas de escala da vista mudam o que a legenda lista
+              this.items.filter(i => i.type === 'legend' && PrintItemsManager.legendMapItem(i, this.items)?.id === item.id)
+                .forEach(lg => this.drawLegendCanvas(lg));
 
               // Sincroniza retângulo no Inset Map
               this.updateInsetMapExtent();
@@ -728,6 +762,7 @@ export class PrintComposerModal {
     }
     const map = this.leafletMaps.get(item.id);
     if (map && invalidateMap) map.invalidateSize();
+    if (item.type === 'legend') this.drawLegendCanvas(item);
   }
 
   /** Redesenha só o conteúdo de um item; mapas só atualizam grade e escala (o Leaflet não é recriado) */
@@ -739,6 +774,46 @@ export class PrintComposerModal {
     }
     const scaler = document.querySelector(`[data-item-id="${item.id}"] > .cm-item-scaler`);
     if (scaler) scaler.innerHTML = this.getItemInnerContent(item);
+    if (item.type === 'legend') this.drawLegendCanvas(item);
+  }
+
+  /** Entradas da legenda: camadas e filtros que aparecem na vista do mapa vinculado */
+  legendEntriesFor(item) {
+    const mapItem = PrintItemsManager.legendMapItem(item, this.items);
+    if (!mapItem) return [];
+    const view = PrintViewResolver.effectiveView(mapItem, this.library);
+    return PrintViewResolver.legendEntries(view, {
+      features: this.features,
+      layers: this.layers,
+      library: this.library,
+      scale: mapItem.scale,
+      hiddenLayerIds: item.hiddenLayerIds
+    });
+  }
+
+  /** Desenha a legenda no canvas do item, na nitidez do zoom atual da prancheta */
+  drawLegendCanvas(item) {
+    const canvas = document.querySelector(`[data-legend-canvas="${item.id}"]`);
+    if (!canvas) return;
+    const base = PrintCanvasEngine.BASE_PX_PER_MM;
+    const res = this.vectorResolution();
+    canvas.width = Math.max(1, Math.round(item.width * base * res));
+    canvas.height = Math.max(1, Math.round(item.height * base * res));
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    PrintLegendRenderer.draw(ctx, {
+      entries: this.legendEntriesFor(item),
+      wMm: item.width,
+      hMm: item.height,
+      pxPerMm: base * res,
+      title: PrintItemsManager.legendTitle(item)
+    });
+  }
+
+  /** Redesenha as legendas (vista do mapa mudou, ou o zoom da prancheta pede outra nitidez) */
+  refreshLegends() {
+    this.items.filter(i => i.type === 'legend' && i.visible !== false).forEach(i => this.drawLegendCanvas(i));
   }
 
   /** Reposiciona todos os itens após mudança de zoom (os mapas não mudam de tamanho: só o transform) */
@@ -746,6 +821,8 @@ export class PrintComposerModal {
     this.items.forEach(item => {
       if (item.visible !== false) this.updateItemPositionDOM(item, false);
     });
+    // A nitidez das feições acompanha o zoom da prancheta
+    this.redrawMapVectors();
   }
 
   toggleItemLock(itemId) {

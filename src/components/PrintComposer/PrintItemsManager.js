@@ -224,10 +224,15 @@ export class PrintItemsManager {
     return { type: 'point', x: (nw.x + se.x) / 2, y: (nw.y + se.y) / 2 };
   }
 
-  /** Camadas exibidas na legenda: visíveis no projeto e não ocultadas no item */
-  static legendLayers(item, layers = []) {
-    const hidden = new Set((item.hiddenLayerIds || []).map(String));
-    return layers.filter(l => l.visible !== false && !hidden.has(String(l.id)));
+  /** Título da legenda ('' = sem título; ausente = padrão) */
+  static legendTitle(item) {
+    return item?.title ?? this.DEFAULT_LEGEND_TITLE;
+  }
+
+  /** Mapa ao qual a legenda está ligada (o escolhido ou o primeiro mapa da prancha) */
+  static legendMapItem(item, items = []) {
+    const maps = items.filter(i => i.type === 'map');
+    return maps.find(m => m.id === item?.mapItemId) || maps[0] || null;
   }
 
   /**
@@ -432,26 +437,9 @@ export class PrintItemsManager {
     `;
   }
 
-  /**
-   * Renderiza a Legenda Temática das camadas ativas
-   */
-  static renderLegend(item, layers = []) {
-    const esc = this.escapeHtml.bind(this);
-    const visibleLayers = this.legendLayers(item, layers);
-    const title = item.title ?? this.DEFAULT_LEGEND_TITLE;
-    return `
-      <div class="cm-item-legend">
-        ${title ? `<div class="cm-legend-title">${esc(title)}</div>` : ''}
-        <div class="cm-legend-content">
-          ${visibleLayers.length > 0 ? visibleLayers.map(l => `
-            <div class="cm-legend-row" title="${esc(l.name)}">
-              <div class="cm-legend-swatch" style="background: ${this.sanitizeColor(l.color, '#00E08A')};"></div>
-              <span class="cm-legend-name">${esc(l.name)}</span>
-            </div>
-          `).join('') : '<div style="font-size: 7px; color: #777; text-align: center; padding: 4px 0;">Nenhuma camada visível</div>'}
-        </div>
-      </div>
-    `;
+  /** Legenda na tela: um canvas desenhado pelo PrintLegendRenderer (o mesmo da exportação) */
+  static renderLegendCanvas(item) {
+    return `<canvas class="cm-item-legend-canvas" data-legend-canvas="${this.escapeHtml(item.id)}"></canvas>`;
   }
 
   /**

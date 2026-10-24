@@ -2,6 +2,7 @@ import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintImageUtils } from './PrintImageUtils.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
+import { PrintViewResolver } from './PrintViewResolver.js';
 
 export class PrintPropertiesPanel {
   static render(composer) {
@@ -271,6 +272,7 @@ export class PrintPropertiesPanel {
           <ui-botao-primario inline id="btn-prop-pan-map" variante="secundario" class="cm-pp-wide-btn">
             🖐️ Enquadrar Terreno neste Mapa
           </ui-botao-primario>
+          ${item.type === 'map' ? this.renderViewSummary(item, composer) : ''}
         </div>
       `;
     }
@@ -325,21 +327,36 @@ export class PrintPropertiesPanel {
     }
 
     if (item.type === 'legend') {
-      const hidden = (item.hiddenLayerIds || []).map(String);
-      const layers = (composer.layers || []).filter(l => l.visible !== false);
+      const hidden = new Set((item.hiddenLayerIds || []).map(String));
+      const maps = (composer.items || []).filter(i => i.type === 'map');
+      const mapItem = PrintItemsManager.legendMapItem(item, composer.items || []);
+      // Candidatas: tudo que aparece na vista do mapa vinculado (a legenda só esconde, não inventa)
+      const candidates = mapItem
+        ? PrintViewResolver.legendEntries(PrintViewResolver.effectiveView(mapItem, composer.library), {
+          features: composer.features || [], layers: composer.layers || [], library: composer.library, scale: mapItem.scale
+        })
+        : [];
       return `
         <div class="cm-pp-stack">
           <span class="cm-param-label">Título da Legenda (vazio = sem título):</span>
           <input type="text" id="prop-legend-title" class="cm-vertex-input" value="${esc(item.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE)}" />
-          <span class="cm-param-label">Camadas exibidas:</span>
+          ${maps.length > 1 ? `
+            <div class="cm-param-row">
+              <span class="cm-param-label">Mapa vinculado:</span>
+              <select id="prop-legend-map" class="cm-native-select cm-pp-w-l">
+                ${maps.map(m => `<option value="${esc(m.id)}" ${sel(mapItem?.id === m.id)}>${esc(m.name || 'Mapa')}</option>`).join('')}
+              </select>
+            </div>
+          ` : ''}
+          <span class="cm-param-label">Itens exibidos (do que aparece no mapa):</span>
           <div class="cm-pp-layer-list">
-            ${layers.map(l => `
-              <label class="cm-param-row cm-pp-layer-row" for="prop-legend-layer-${esc(l.id)}">
-                <input type="checkbox" id="prop-legend-layer-${esc(l.id)}" data-legend-layer="${esc(l.id)}" ${hidden.includes(String(l.id)) ? '' : 'checked'} />
-                <span class="cm-pp-swatch" style="background: ${PrintItemsManager.sanitizeColor(l.color, '#00E08A')};"></span>
-                <span class="cm-pp-layer-name">${esc(l.name)}</span>
+            ${candidates.map(e => `
+              <label class="cm-param-row cm-pp-layer-row" for="prop-legend-layer-${esc(e.id)}">
+                <input type="checkbox" id="prop-legend-layer-${esc(e.id)}" data-legend-layer="${esc(e.id)}" ${hidden.has(String(e.id)) ? '' : 'checked'} />
+                <span class="cm-pp-swatch" style="background: ${PrintItemsManager.sanitizeColor(e.graphics.fill.color !== 'none' ? e.graphics.fill.color : e.graphics.stroke.color, '#00E08A')};"></span>
+                <span class="cm-pp-layer-name">${e.isFilter ? 'Filtro: ' : ''}${esc(e.name)}</span>
               </label>
-            `).join('') || '<span class="cm-pp-hint">Nenhuma camada visível no projeto.</span>'}
+            `).join('') || '<span class="cm-pp-hint">Nada aparece no mapa vinculado.</span>'}
           </div>
         </div>
       `;
@@ -488,6 +505,37 @@ export class PrintPropertiesPanel {
     }
 
     return '';
+  }
+
+  /** Resumo da vista do mapa (padrão Revit) e acesso à janela Visibilidade/Gráficos */
+  static renderViewSummary(item, composer) {
+    const esc = PrintItemsManager.escapeHtml;
+    const view = PrintViewResolver.effectiveView(item, composer.library);
+    const layers = composer.layers || [];
+    const hiddenLayers = view.followProject
+      ? layers.filter(l => l.visible === false).length
+      : layers.filter(l => view.layers?.[l.id]?.visible === false).length;
+    const styled = Object.values(view.layers || {}).filter(o => o && (o.stroke || o.fill || o.halftone)).length;
+    const activeFilters = (view.filters || []).filter(f => f.enabled !== false).length;
+    const labels = Object.values(view.labels || {}).filter(l => l && l.show).length;
+    const parts = [
+      view.followProject ? 'espelha o mapa principal' : `${hiddenLayers} camada(s) oculta(s)`,
+      styled ? `${styled} com gráficos próprios` : '',
+      activeFilters ? `${activeFilters} filtro(s)` : '',
+      labels ? `${labels} com rótulo` : ''
+    ].filter(Boolean);
+    return `
+      <div class="cm-pp-view-summary">
+        <div class="cm-pp-view-line">
+          <span class="cm-param-label">Vista:</span>
+          <span class="cm-pp-view-template">${view.template ? `📐 ${esc(view.template.name)}` : 'Sem modelo'}</span>
+        </div>
+        <div class="cm-pp-hint">${esc(parts.join(' · '))}</div>
+        <ui-botao-primario inline id="btn-prop-open-vv" variante="secundario" class="cm-pp-wide-btn" title="Visibilidade e gráficos deste mapa (V V)">
+          👁️ Visibilidade/Gráficos (VV)
+        </ui-botao-primario>
+      </div>
+    `;
   }
 
   static getItemIcon(type) {
@@ -717,6 +765,14 @@ export class PrintPropertiesPanel {
     }
     if (btnPanMap) {
       btnPanMap.addEventListener('click', () => composer.setInteractionMode('content_pan'));
+    }
+    document.getElementById('btn-prop-open-vv')?.addEventListener('click', () => composer.openVisibilityDialog(composer.selectedItemId));
+    const propLegendMap = document.getElementById('prop-legend-map');
+    if (propLegendMap) {
+      propLegendMap.addEventListener('change', (e) => {
+        updateCurrent(it => { it.mapItemId = e.target.value; });
+        composer.updatePropertiesPanel();
+      });
     }
 
     // Rosa dos ventos

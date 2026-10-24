@@ -441,6 +441,22 @@ export class PrintCanvasEngine {
       }
       if (e.altKey) return;
 
+      // Com a janela Visibilidade/Gráficos aberta, a prancheta não recebe teclas (só desfazer/refazer, acima)
+      if (this.composer.visibilityDialog?.isOpen()) return;
+
+      // V V abre Visibilidade/Gráficos do mapa (atalho do Revit)
+      if (e.key === 'v' || e.key === 'V') {
+        const now = Date.now();
+        if (this.lastVKeyAt && now - this.lastVKeyAt < 600) {
+          e.preventDefault();
+          this.lastVKeyAt = 0;
+          this.composer.openVisibilityDialog();
+        } else {
+          this.lastVKeyAt = now;
+        }
+        return;
+      }
+
       // Atalho rápido 'U' para ligar/desligar Smart Guides (como Illustrator)
       if (e.key === 'u' || e.key === 'U') {
         e.preventDefault();

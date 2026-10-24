@@ -306,13 +306,22 @@ const layers = [
   { id: 'app', name: 'APP', color: '#0f0' },
   { id: 'oculta', name: 'Oculta', color: '#00f', visible: false }
 ];
-assert.deepStrictEqual(PrintItemsManager.legendLayers({}, layers).map(l => l.name), ['Lotes', 'APP'], 'Camadas ocultas no projeto não entram');
-assert.deepStrictEqual(PrintItemsManager.legendLayers({ hiddenLayerIds: ['1'] }, layers).map(l => l.name), ['APP'], 'Id numérico ocultado pelo painel (string)');
-let legHtml = PrintItemsManager.renderLegend({ title: 'CONVENÇÕES <b>' }, layers);
+const legFeatures = [
+  { id: 'f1', layerId: 1, type: 'Polygon', coordinates: [[0, 0], [0, 1], [1, 1]] },
+  { id: 'f2', layerId: 'app', type: 'Polygon', coordinates: [[0, 0], [0, 1], [1, 1]] },
+  { id: 'f3', layerId: 'oculta', type: 'Polygon', coordinates: [[0, 0], [0, 1], [1, 1]] }
+];
+const legMap = { id: 'm1', type: 'map', name: 'Mapa', scale: 1000 };
+const legItem = { id: 'lg', type: 'legend', hiddenLayerIds: ['1'] };
+assert.strictEqual(PrintItemsManager.legendMapItem(legItem, [legItem, legMap]).id, 'm1', 'Sem vínculo, usa o primeiro mapa');
+assert.strictEqual(PrintItemsManager.legendTitle({ title: '' }), '', 'Título vazio = sem título');
+assert.strictEqual(PrintItemsManager.legendTitle({}), PrintItemsManager.DEFAULT_LEGEND_TITLE, 'Sem título definido usa o padrão');
+let legHtml = PrintPropertiesPanel.renderTypeFields(legItem, { items: [legItem, legMap], layers, features: legFeatures, library: null }, []);
+assert.ok(legHtml.includes('data-legend-layer="app"') && legHtml.includes('data-legend-layer="1"'), 'Painel lista o que aparece no mapa vinculado');
+assert.ok(!legHtml.includes('data-legend-layer="oculta"'), 'Camada oculta no mapa (espelhando o projeto) não é candidata');
+assert.ok(/data-legend-layer="1"\s*\/>/.test(legHtml), 'Camada desmarcada na legenda aparece desmarcada');
+legHtml = PrintPropertiesPanel.renderTypeFields({ ...legItem, title: 'CONVENÇÕES <b>' }, { items: [legItem, legMap], layers, features: legFeatures }, []);
 assert.ok(legHtml.includes('CONVENÇÕES &lt;b&gt;'), 'Título personalizado e escapado');
-legHtml = PrintItemsManager.renderLegend({ title: '' }, layers);
-assert.ok(!legHtml.includes('cm-legend-title'), 'Título vazio remove o cabeçalho');
-assert.ok(PrintItemsManager.renderLegend({}, layers).includes(PrintItemsManager.DEFAULT_LEGEND_TITLE), 'Sem título definido usa o padrão');
 console.log('✔ Legenda validada');
 
 // ============================================================================
@@ -346,7 +355,7 @@ console.log('✔ Imagem e falha de gravação validadas');
 // ============================================================================
 console.log('11. Painel da barra de escala e legenda...');
 const pItems = PrintItemsManager.createDefaultItems('Projeto', paperSizes.A4_L);
-const pComposer = { items: pItems, features: [], layers, paperSize: paperSizes.A4_L, showAbntMargins: true };
+const pComposer = { items: pItems, features: legFeatures, layers, paperSize: paperSizes.A4_L, showAbntMargins: true };
 pComposer.selectedItemId = pItems.find(i => i.type === 'scale_bar').id;
 html = PrintPropertiesPanel.render(pComposer);
 ['prop-sb-segments', 'prop-sb-units', 'prop-sb-text'].forEach(id => assert.ok(html.includes(`id="${id}"`), `Painel da barra deve ter ${id}`));
@@ -354,7 +363,7 @@ assert.ok(html.includes(`min="${PrintItemsManager.MIN_ITEM_MM}"`), 'Campos de ta
 pComposer.selectedItemId = pItems.find(i => i.type === 'legend').id;
 html = PrintPropertiesPanel.render(pComposer);
 assert.ok(html.includes('id="prop-legend-title"'), 'Painel da legenda tem o título');
-assert.strictEqual((html.match(/data-legend-layer=/g) || []).length, 2, 'Uma caixa por camada visível');
+assert.strictEqual((html.match(/data-legend-layer=/g) || []).length, 2, 'Uma caixa por camada que aparece no mapa');
 console.log('✔ Painel validado');
 
 // ============================================================================

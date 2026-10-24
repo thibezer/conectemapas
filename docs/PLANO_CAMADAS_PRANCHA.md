@@ -99,10 +99,12 @@ printLibrary: {
 
 ### 3.3 Vista do item de mapa
 
+`item.view` já guarda o enquadramento (centro/zoom); a vista fica em `item.viewConfig`.
+
 ```js
 {
   type: 'map',
-  view: {
+  viewConfig: {
     templateId: null,                // com modelo, as seções incluídas vêm dele e ficam travadas no painel
     followProject: false,            // true só em pranchas migradas que ainda não foram editadas
     basemap: 'google_satelite',
@@ -115,7 +117,7 @@ printLibrary: {
 
 - Ajustes **esparsos**: só o que difere. Camada sem entrada segue o projeto e fica visível.
 - Camada ou filtro excluído do projeto: a entrada órfã é ignorada na leitura e limpa ao salvar.
-- **Migração:** itens antigos ganham `view` com `followProject: true`. Na primeira edição, a visibilidade atual do projeto é fotografada como ajustes e `followProject` vira `false`.
+- **Migração:** itens antigos ganham `viewConfig` com `followProject: true`. Na primeira edição, a visibilidade atual do projeto é fotografada como ajustes e `followProject` vira `false`.
 
 ---
 

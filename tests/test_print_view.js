@@ -14,6 +14,8 @@ import { FeatureStyle, PX_TO_MM } from '../src/services/FeatureStyle.js';
 import { BasemapCatalog } from '../src/services/BasemapCatalog.js';
 import { PrintViewResolver } from '../src/components/PrintComposer/PrintViewResolver.js';
 import { PrintMapRenderer } from '../src/components/PrintComposer/PrintMapRenderer.js';
+import { PrintViewEdits } from '../src/components/PrintComposer/PrintViewEdits.js';
+import { PrintVisibilityDialog } from '../src/components/PrintComposer/PrintVisibilityDialog.js';
 
 console.log('--- Teste das vistas de mapa da prancha ---');
 
@@ -97,15 +99,15 @@ assert.strictEqual(view.followProject, true, 'Item sem vista espelha o mapa prin
 assert.deepStrictEqual(visibleIds(view), ['c1', 'c2', 'r1'], 'Espelha camada e feição ocultas no projeto; excluída nunca aparece');
 
 // Vista nova: independente do mapa principal (padrão Revit: visível até desligar)
-view = PrintViewResolver.effectiveView({ type: 'map', view: PrintViewResolver.emptyView() }, library);
+view = PrintViewResolver.effectiveView({ type: 'map', view: { center: [0, 0], zoom: 3 }, viewConfig: PrintViewResolver.emptyView() }, library);
 assert.deepStrictEqual(visibleIds(view), ['c1', 'c2', 'c3', 'a1', 'r1'], 'Vista independente mostra tudo que não foi desligado nela');
 
 // Migração na primeira edição: fotografa a visibilidade do projeto
 const migrating = { type: 'map' };
 assert.ok(PrintViewResolver.detachFromProject(migrating, layers, features));
-assert.strictEqual(migrating.view.followProject, false);
-assert.deepStrictEqual(migrating.view.layers.arvores, { visible: false });
-assert.deepStrictEqual(migrating.view.elements.c3, { visible: false });
+assert.strictEqual(migrating.viewConfig.followProject, false);
+assert.deepStrictEqual(migrating.viewConfig.layers.arvores, { visible: false });
+assert.deepStrictEqual(migrating.viewConfig.elements.c3, { visible: false });
 assert.ok(!PrintViewResolver.detachFromProject(migrating, layers, features), 'Só migra uma vez');
 assert.deepStrictEqual(visibleIds(PrintViewResolver.effectiveView(migrating, library)), ['c1', 'c2', 'r1'], 'Depois da migração a prancha continua igual');
 
@@ -176,14 +178,14 @@ assert.strictEqual(PrintViewResolver.labelText(features[0], g.label.text), 'Lote
 assert.strictEqual(resolveOf(PrintViewResolver.emptyView(), 'c1').label.show, false, 'Sem configuração, sem rótulo');
 
 // Modelo de vista: seções incluídas vêm do modelo
-const withTpl = { type: 'map', basemap: 'osm', view: { ...PrintViewResolver.emptyView(), templateId: 't1', layers: { casas: { visible: false } }, filters: [{ filterId: 'f-com', enabled: true, visible: false }] } };
+const withTpl = { type: 'map', basemap: 'osm', viewConfig: { ...PrintViewResolver.emptyView(), templateId: 't1', layers: { casas: { visible: false } }, filters: [{ filterId: 'f-com', enabled: true, visible: false }] } };
 view = PrintViewResolver.effectiveView(withTpl, library);
 assert.strictEqual(view.basemap, 'none', 'Fundo vem do modelo (chave antiga normalizada)');
 assert.deepStrictEqual(view.layers, { rios: { visible: false } }, 'Camadas vêm do modelo, não do item');
 assert.strictEqual(view.filters.length, 1, 'Filtros não incluídos continuam do item');
 assert.ok(PrintViewResolver.isLockedByTemplate(withTpl, library, 'layers'));
 assert.ok(!PrintViewResolver.isLockedByTemplate(withTpl, library, 'filters'));
-withTpl.view.templateId = 'apagado';
+withTpl.viewConfig.templateId = 'apagado';
 assert.deepStrictEqual(PrintViewResolver.effectiveView(withTpl, library).layers, { casas: { visible: false } }, 'Modelo excluído: volta a valer o item');
 console.log('✔ PrintViewResolver validado');
 
@@ -244,4 +246,52 @@ assert.strictEqual(entries[2].graphics.fill.color, '#ff8800');
 assert.deepStrictEqual(PrintViewResolver.legendEntries(legView, { features, layers, library, hiddenLayerIds: ['rios'] }).map(e => e.name), ['Casas', 'Comercial'], 'Camada desmarcada na legenda');
 console.log('✔ Legenda validada');
 
-console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');
+// 6. Edições da vista (esparsas) e janela Visibilidade/Gráficos
+// ============================================================================
+console.log('6. Edições e janela VV...');
+const ev = PrintViewResolver.emptyView();
+PrintViewEdits.setField(ev, 'layer', 'casas', 'fill.color', '#9ca3af');
+PrintViewEdits.setField(ev, 'layer', 'casas', 'stroke.widthMm', 0.35);
+assert.deepStrictEqual(ev.layers.casas, { fill: { color: '#9ca3af' }, stroke: { widthMm: 0.35 } });
+PrintViewEdits.setField(ev, 'layer', 'casas', 'fill.color', null);
+assert.deepStrictEqual(ev.layers.casas, { stroke: { widthMm: 0.35 } }, 'Vazio volta a herdar e some o objeto vazio');
+PrintViewEdits.setVisible(ev, 'layer', 'rios', false);
+assert.deepStrictEqual(ev.layers.rios, { visible: false });
+PrintViewEdits.setVisible(ev, 'layer', 'rios', true);
+assert.ok(!('rios' in ev.layers), 'Religar remove o ajuste (visível é o padrão)');
+assert.ok(PrintViewEdits.hasOverride(ev, 'layer', 'casas'));
+PrintViewEdits.reset(ev, 'layer', 'casas');
+assert.ok(!PrintViewEdits.hasOverride(ev, 'layer', 'casas'), 'Voltar ao projeto');
+PrintViewEdits.copyProjectVisibility(ev, layers);
+assert.deepStrictEqual(Object.keys(ev.layers), ['arvores'], 'Copia só o que está desligado no mapa principal');
+PrintViewEdits.addFilter(ev, 'f-com');
+PrintViewEdits.addFilter(ev, 'f-casas');
+assert.deepStrictEqual(ev.filters.map(f => f.filterId), ['f-casas', 'f-com'], 'Filtro novo entra no topo');
+assert.ok(!PrintViewEdits.addFilter(ev, 'f-com'), 'Sem filtro repetido');
+PrintViewEdits.moveFilter(ev, 'f-com', -1);
+assert.deepStrictEqual(ev.filters.map(f => f.filterId), ['f-com', 'f-casas']);
+PrintViewEdits.setField(ev, 'filter', 'f-com', 'fill.color', '#ff0000');
+PrintViewEdits.reset(ev, 'filter', 'f-com');
+assert.deepStrictEqual(ev.filters[0], { filterId: 'f-com', enabled: true }, 'Reset do filtro mantém vínculo e ativo');
+PrintViewEdits.removeFilter(ev, 'f-com');
+assert.deepStrictEqual(ev.filters.map(f => f.filterId), ['f-casas']);
+
+const vvComposer = { items: [{ id: 'm', type: 'map', name: 'Mapa' }], layers, features, library };
+let vvHtml = PrintVisibilityDialog.render(vvComposer, vvComposer.items[0], { tab: 'layers' });
+assert.ok(vvHtml.includes('espelha o mapa principal'), 'Avisa que o mapa ainda espelha o principal');
+assert.strictEqual((vvHtml.match(/data-row-kind="layer"/g) || []).length, 3, 'Uma linha por camada do projeto');
+vvComposer.items[0].viewConfig = { ...PrintViewResolver.emptyView(), layers: { casas: { fill: { color: '#9ca3af' } } } };
+vvHtml = PrintVisibilityDialog.render(vvComposer, vvComposer.items[0], { tab: 'layers' });
+assert.ok(vvHtml.includes('is-overridden'), 'Célula com ajuste próprio é marcada');
+vvComposer.items[0].locked = true;
+vvHtml = PrintVisibilityDialog.render(vvComposer, vvComposer.items[0], { tab: 'layers' });
+assert.ok(vvHtml.includes('Mapa bloqueado') && /data-gfx="visible"[^>]*disabled/.test(vvHtml), 'Mapa bloqueado: campos desabilitados');
+const fakeInput = (gfx, props) => ({ dataset: { gfx }, type: 'text', ...props });
+assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('fill.opacity', { value: '70' })), 0.7);
+assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('fill.opacity', { value: '' })), null, 'Vazio herda');
+assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('minScale', { value: '0' })), null, 'Escala 0 = sem limite');
+assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('halftone', { type: 'checkbox', checked: false })), null, 'Meio-tom desmarcado herda');
+assert.strictEqual(PrintVisibilityDialog.parseField(fakeInput('visible', { type: 'checkbox', checked: false })), false);
+console.log('✔ Edições e janela VV validadas');
+
+console.log('\n🎉 TESTES DAS VISTAS DE MAPA PASSARAM!');// ============================================================================

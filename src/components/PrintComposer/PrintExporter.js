@@ -10,6 +10,7 @@ import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintMapRenderer } from './PrintMapRenderer.js';
+import { PrintLegendRenderer } from './PrintLegendRenderer.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 
@@ -745,44 +746,17 @@ export class PrintExporter {
    * Renderiza a Legenda Temática
    */
   static drawLegendItem(ctx, item, x, y, w, h, composer, scaleFactor) {
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(x, y, w, h);
-
-    const title = item.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE;
-    const headH = title ? Math.min(20 * (scaleFactor / (300 / 25.4)), h * 0.25) : 0;
-    if (title) {
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(x, y, w, headH);
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.round(headH * 0.5)}px Arial, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText(title, x + w / 2, y + headH * 0.68);
-    }
-
-    const visibleLayers = PrintItemsManager.legendLayers(item, composer.layers);
-    const rowStep = Math.min(20 * (scaleFactor / (300 / 25.4)), (h - headH) / Math.max(1, visibleLayers.length));
-    let rowY = y + headH + rowStep * 0.75;
-    const swatchSize = Math.max(6, Math.round(rowStep * 0.5));
-    const fontRow = Math.max(6.5, Math.round(rowStep * 0.55));
-
-    for (const layer of visibleLayers) {
-      if (rowY > y + h - 4) break;
-      ctx.fillStyle = PrintItemsManager.sanitizeColor(layer.color, '#00E08A');
-      ctx.fillRect(x + 8, rowY - swatchSize + 2, swatchSize, swatchSize);
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x + 8, rowY - swatchSize + 2, swatchSize, swatchSize);
-
-      ctx.fillStyle = '#000000';
-      ctx.font = `bold ${fontRow}px Arial, sans-serif`;
-      ctx.textAlign = 'left';
-      ctx.fillText(layer.name, x + 8 + swatchSize + 6, rowY);
-
-      rowY += rowStep;
-    }
+    // Mesmo desenho da tela (PrintLegendRenderer), na resolução da exportação
+    ctx.save();
+    ctx.translate(x, y);
+    PrintLegendRenderer.draw(ctx, {
+      entries: composer.legendEntriesFor(item),
+      wMm: item.width,
+      hMm: item.height,
+      pxPerMm: scaleFactor,
+      title: PrintItemsManager.legendTitle(item)
+    });
+    ctx.restore();
   }
 
   /**

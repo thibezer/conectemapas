@@ -59,12 +59,15 @@ export const PrintViewResolver = {
     return { templateId: null, followProject: false, layers: {}, labels: {}, filters: [], elements: {} };
   },
 
-  /** Vista do item, criando a estrutura se faltar (itens antigos espelham o projeto até a 1ª edição) */
+  /**
+   * Vista do item (`item.viewConfig`; `item.view` é o enquadramento centro/zoom do mapa),
+   * criando a estrutura se faltar (itens antigos espelham o projeto até a 1ª edição)
+   */
   ensureView(item) {
-    if (!item.view || typeof item.view !== 'object') {
-      item.view = { ...this.emptyView(), followProject: true };
+    if (!item.viewConfig || typeof item.viewConfig !== 'object') {
+      item.viewConfig = { ...this.emptyView(), followProject: true };
     }
-    const v = item.view;
+    const v = item.viewConfig;
     v.layers = v.layers && typeof v.layers === 'object' ? v.layers : {};
     v.labels = v.labels && typeof v.labels === 'object' ? v.labels : {};
     v.filters = Array.isArray(v.filters) ? v.filters : [];
@@ -91,7 +94,7 @@ export const PrintViewResolver = {
 
   /** Vista efetiva: as seções incluídas no modelo vêm dele; as demais, do próprio item */
   effectiveView(item, library) {
-    const own = item?.view && typeof item.view === 'object' ? item.view : { ...this.emptyView(), followProject: true };
+    const own = item?.viewConfig && typeof item.viewConfig === 'object' ? item.viewConfig : { ...this.emptyView(), followProject: true };
     const tpl = own.templateId ? (library?.viewTemplates || []).find(t => t.id === own.templateId) : null;
     const pick = (section, fallback) => {
       if (tpl && tpl.include?.[section]) return tpl.view?.[section] ?? fallback;
@@ -110,7 +113,7 @@ export const PrintViewResolver = {
 
   /** A seção está travada por um modelo de vista? */
   isLockedByTemplate(item, library, section) {
-    const id = item?.view?.templateId;
+    const id = item?.viewConfig?.templateId;
     if (!id) return false;
     const tpl = (library?.viewTemplates || []).find(t => t.id === id);
     return Boolean(tpl?.include?.[section]);
@@ -201,8 +204,12 @@ export const PrintViewResolver = {
   resolve(feat, ctx) {
     if (!this.isVisible(feat, ctx)) return null;
     const layer = ctx.layersById.get(feat.layerId);
-    const base = FeatureStyle.base(feat, layer);
+    return this.graphicsOf(feat, layer, this.overridesFor(feat, ctx), ctx.view.labels?.[feat.layerId]);
+  },
 
+  /** Gráficos do projeto + ajustes (do mais fraco ao mais forte) + rótulo da camada */
+  graphicsOf(feat, layer, overrides = [], labelOv = null) {
+    const base = FeatureStyle.base(feat, layer);
     const g = {
       kind: base.kind,
       stroke: {
@@ -220,14 +227,24 @@ export const PrintViewResolver = {
       halftone: false
     };
 
-    for (const ov of this.overridesFor(feat, ctx)) this.applyOverride(g, ov);
-
-    const labelOv = ctx.view.labels?.[feat.layerId];
+    for (const ov of overrides) this.applyOverride(g, ov);
     if (labelOv) Object.assign(g.label, this.cleanLabel(labelOv));
 
     if (g.stroke.pattern) g.stroke.dashMm = this.patternDash(g.stroke.pattern, g.stroke.widthMm);
     if (g.fill.pattern === 'nenhum') g.fill.opacity = 0;
     if (g.halftone) this.applyHalftone(g);
+    return g;
+  },
+
+  /**
+   * Gráficos de uma camada para a janela Visibilidade/Gráficos: estilo do projeto (1ª feição
+   * da camada, ou a cor da camada) com o ajuste da camada na vista, sem filtros nem feições.
+   */
+  layerPreview(layer, features, view, { withHalftone = true } = {}) {
+    const sample = (features || []).find(f => f.layerId === layer.id && !isDeleted(f))
+      || { id: '__amostra', layerId: layer.id, type: 'Polygon', coordinates: [] };
+    const ov = view?.layers?.[layer.id];
+    const g = this.graphicsOf(sample, layer, ov ? [withHalftone ? ov : { ...ov, halftone: false }] : [], view?.labels?.[layer.id]);
     return g;
   },
 
@@ -330,7 +347,7 @@ export const PrintViewResolver = {
       if (g) entries.push({ id: l.id, name: l.name || 'Camada', kind: g.kind, graphics: g });
     });
     ctx.filters.forEach(({ entry, def, ids }) => {
-      if (entry.visible === false || !ids.size) return;
+      if (entry.visible === false || !ids.size || hidden.has(`filter:${def.id}`)) return;
       if (!entry.stroke && !entry.fill && !entry.color && !entry.halftone) return;
       const sample = features.find(f => ids.has(String(f.id)) && this.isVisible(f, ctx));
       if (!sample) return;

@@ -1,0 +1,372 @@
+/* ==========================================================================
+   ConecteMapas - PrintVisibilityDialog
+   Janela Visibilidade/Gráficos do mapa da prancha (atalho V V).
+   ========================================================================== */
+
+.cm-vv-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.cm-vv-overlay[hidden] {
+  display: none;
+}
+
+.cm-vv-dialog {
+  width: min(1180px, calc(100vw - 32px));
+  height: min(760px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  background: #18181c;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  color: #e1e1e6;
+  font-size: 11px;
+  outline: none;
+}
+
+.cm-vv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cm-vv-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: #ffffff;
+}
+
+.cm-vv-map-name {
+  color: var(--cm-primary, #00E08A);
+  font-weight: 600;
+}
+
+.cm-vv-map-select {
+  font-size: 11px;
+}
+
+.cm-vv-close {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #a0a0ab;
+  cursor: pointer;
+}
+
+.cm-vv-close:hover,
+.cm-vv-close:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.cm-vv-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cm-vv-tab {
+  padding: 8px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: #a0a0ab;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.cm-vv-tab:hover {
+  color: #ffffff;
+}
+
+.cm-vv-tab.is-active {
+  color: #ffffff;
+  border-bottom-color: var(--cm-primary, #00E08A);
+  font-weight: 600;
+}
+
+.cm-vv-note {
+  margin: 8px 14px 0;
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(255, 196, 0, 0.08);
+  border: 1px solid rgba(255, 196, 0, 0.25);
+  color: #f5c542;
+}
+
+.cm-vv-note--info {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.25);
+  color: #7dd3fc;
+}
+
+.cm-vv-note-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.cm-vv-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 14px;
+}
+
+.cm-vv-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.cm-vv-search {
+  width: 200px;
+}
+
+.cm-vv-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+  background: #22222a;
+  color: #e1e1e6;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.cm-vv-btn:hover:not(:disabled) {
+  border-color: var(--cm-primary, #00E08A);
+  color: #ffffff;
+}
+
+.cm-vv-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cm-vv-btn--primary {
+  background: var(--cm-primary, #00E08A);
+  border-color: var(--cm-primary, #00E08A);
+  color: #0b0b0e;
+  font-weight: 600;
+}
+
+.cm-vv-btn--primary:hover:not(:disabled) {
+  color: #0b0b0e;
+  filter: brightness(1.08);
+}
+
+.cm-vv-btn--danger:hover:not(:disabled) {
+  border-color: #f87171;
+  color: #fca5a5;
+}
+
+.cm-vv-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.cm-vv-table th {
+  position: sticky;
+  top: -10px;
+  z-index: 1;
+  padding: 6px 6px;
+  background: #1f1f25;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #a0a0ab;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.cm-vv-cell {
+  padding: 4px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  vertical-align: middle;
+}
+
+.cm-vv-row:hover .cm-vv-cell {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Campo com ajuste próprio (como as células de sobreposição do Revit) */
+.cm-vv-cell.is-overridden {
+  box-shadow: inset 2px 0 0 var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.06);
+}
+
+.cm-vv-row.is-hidden .cm-vv-name,
+.cm-vv-row.is-hidden .cm-vv-cell:not(:first-child) > * {
+  opacity: 0.45;
+}
+
+.cm-vv-center {
+  text-align: center;
+}
+
+.cm-vv-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.cm-vv-name-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-vv-count {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #a0a0ab;
+  font-size: 9.5px;
+}
+
+.cm-vv-swatch {
+  width: 28px;
+  height: 14px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-radius: 2px;
+}
+
+.cm-vv-inline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cm-vv-color {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  background: none;
+  cursor: pointer;
+}
+
+.cm-vv-select {
+  height: 22px;
+  font-size: 10.5px;
+  max-width: 110px;
+}
+
+.cm-vv-num {
+  width: 48px;
+  height: 22px;
+}
+
+.cm-vv-num--wide {
+  width: 64px;
+}
+
+.cm-vv-text {
+  width: 100%;
+  min-width: 160px;
+  height: 22px;
+}
+
+.cm-vv-reset,
+.cm-vv-icon-btn {
+  width: 24px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  background: transparent;
+  color: #e1e1e6;
+  cursor: pointer;
+}
+
+.cm-vv-reset:hover:not(:disabled),
+.cm-vv-icon-btn:hover:not(:disabled) {
+  border-color: var(--cm-primary, #00E08A);
+}
+
+.cm-vv-reset:disabled,
+.cm-vv-icon-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.cm-vv-color:focus-visible,
+.cm-vv-reset:focus-visible,
+.cm-vv-icon-btn:focus-visible,
+.cm-vv-tab:focus-visible,
+.cm-vv-btn:focus-visible {
+  outline: 1px solid var(--cm-primary, #00E08A);
+  outline-offset: 1px;
+}
+
+.cm-vv-empty {
+  padding: 40px 0;
+  text-align: center;
+  color: #a0a0ab;
+}
+
+.cm-vv-section-title {
+  margin: 14px 0 6px;
+  color: #ffffff;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.cm-vv-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.cm-vv-chip {
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: transparent;
+  color: #cfcfd6;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.cm-vv-chip:hover {
+  border-color: var(--cm-primary, #00E08A);
+  color: #ffffff;
+}
+
+.cm-vv-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cm-vv-hint {
+  color: #8b8b96;
+}
