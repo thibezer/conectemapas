@@ -4,6 +4,7 @@
    ========================================================================== */
 import './NewFeatureModal.css';
 import { normalizeFeature } from '../../services/MockData.js';
+import { nextFeatureName } from '../../utils/featureNaming.js';
 
 export class NewFeatureModal {
   constructor(options = {}) {
@@ -11,6 +12,7 @@ export class NewFeatureModal {
     this.activeLayerId = options.activeLayerId || (this.layers[0]?.id || null);
     this.pendingFeature = null;
     this.onSave = options.onSave || (() => {});
+    this.getFeatures = options.getFeatures || (() => []);
   }
 
   setActiveLayerId(layerId) {
@@ -77,13 +79,13 @@ export class NewFeatureModal {
     let defaultCat = 'Geral';
 
     if (rawFeature.type === 'Point') {
-      defaultName = `Ponto #${Math.floor(Math.random() * 900 + 100)}`;
+      defaultName = rawFeature.name || nextFeatureName(this.getFeatures(), 'Ponto');
       defaultCat = 'Marco Topográfico';
     } else if (rawFeature.type === 'LineString') {
-      defaultName = `Rota #${Math.floor(Math.random() * 900 + 100)}`;
+      defaultName = rawFeature.name || nextFeatureName(this.getFeatures(), 'Rota');
       defaultCat = 'Eixo Viário';
     } else if (rawFeature.type === 'Polygon') {
-      defaultName = `Polígono #${Math.floor(Math.random() * 900 + 100)}`;
+      defaultName = rawFeature.name || nextFeatureName(this.getFeatures(), 'Polígono');
       defaultCat = 'Área Delimitada';
     } else if (rawFeature.type === 'Circle') {
       defaultName = `Buffer de Raio (${rawFeature.radius}m)`;

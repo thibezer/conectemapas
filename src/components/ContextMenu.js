@@ -9,6 +9,7 @@ import { GeometryVersionManager } from '../services/GeometryVersionManager.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { ModifyActionsController } from '../controllers/ModifyActionsController.js';
 import { copyToClipboardWithToast } from '../utils/toastHelpers.js';
+import { nextFeatureName } from '../utils/featureNaming.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
 export class ContextMenu {
@@ -411,7 +412,6 @@ export class ContextMenu {
           const newPt = {
             type: 'Point',
             coordinates: ptCoords,
-            name: `Ponto #${Math.floor(Math.random() * 900 + 100)}`,
             layerId: activeLayer?.id,
             color: activeLayer?.color
           };
@@ -422,7 +422,7 @@ export class ContextMenu {
             type: 'Circle',
             coordinates: [latlng.lat, latlng.lng],
             radius: 100,
-            name: `Raio 100m #${Math.floor(Math.random() * 900 + 100)}`,
+            name: nextFeatureName(this.app.features, 'Raio 100m'),
             layerId: activeLayer?.id,
             color: activeLayer?.color
           };

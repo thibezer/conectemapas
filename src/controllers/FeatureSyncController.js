@@ -11,6 +11,7 @@ import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyUndoable } from '../utils/toastHelpers.js';
 import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 import { AppGeometryCoordinator } from '../bootstrap/AppGeometryCoordinator.js';
+import { nextFeatureName } from '../utils/featureNaming.js';
 
 export class FeatureSyncController {
   /**
@@ -33,24 +34,24 @@ export class FeatureSyncController {
     let defaultName = rawFeature.name;
     let defaultCat = rawFeature.category || 'Geral';
     if (!defaultName) {
-      const num = Math.floor(Math.random() * 900 + 100);
+      const name = (prefix) => nextFeatureName(app.features, prefix);
       if (rawFeature.type === 'Point') {
-        defaultName = `Ponto #${num}`;
+        defaultName = name('Ponto');
         defaultCat = 'Marco Topográfico';
       } else if (rawFeature.type === 'LineString') {
-        defaultName = `Rota #${num}`;
+        defaultName = name('Rota');
         defaultCat = 'Eixo Viário';
       } else if (rawFeature.type === 'Polygon') {
-        defaultName = `Polígono #${num}`;
+        defaultName = name('Polígono');
         defaultCat = 'Área Delimitada';
       } else if (rawFeature.type === 'Circle') {
         defaultName = `Buffer (${rawFeature.radius || 500}m)`;
         defaultCat = 'Raio de Cobertura';
       } else if (rawFeature.type === 'Text') {
-        defaultName = rawFeature.properties?.text || `Texto #${num}`;
+        defaultName = rawFeature.properties?.text || name('Texto');
         defaultCat = 'Anotação / Rótulo';
       } else {
-        defaultName = `Feição #${num}`;
+        defaultName = name('Feição');
       }
     }
 

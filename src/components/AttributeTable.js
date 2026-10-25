@@ -184,6 +184,10 @@ export class AttributeTable {
       } else if (f.type === 'Polygon') {
         const segs = Array.isArray(f.coordinates) ? f.coordinates.length : 0;
         dim = f.properties?.['Área (ha)'] || f.properties?.areaCalculada || `${segs} nós`;
+      }
+      if (f.type === 'LineString' || f.type === 'Polygon') {
+        // métricas gravadas usam ponto decimal; a tabela exibe no padrão pt-BR, como o inspetor
+        dim = String(dim).replace(/(\d)\.(\d)/g, '$1,$2');
       } else if (f.type === 'Circle') {
         dim = `Raio: ${f.radius || 500}m`;
       } else if (f.type === 'Text') {

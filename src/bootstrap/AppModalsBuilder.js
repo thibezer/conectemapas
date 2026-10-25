@@ -75,6 +75,7 @@ export class AppModalsBuilder {
     app.newFeatureModal = new NewFeatureModal({
       layers: app.layers,
       activeLayerId: app.activeLayerId,
+      getFeatures: () => app.features,
       onSave: (newFeature) => FeatureSyncController.createFeature(app, newFeature)
     });
     app.newFeatureModal.render(document.getElementById('new-feature-modal-mount'));
