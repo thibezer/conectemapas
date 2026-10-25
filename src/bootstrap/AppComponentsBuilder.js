@@ -400,38 +400,15 @@ export class AppComponentsBuilder {
       };
 
       app.mapEngine.onFeatureSplit = (targetFeat, polygons) => {
-        ShortcutsController.pushHistory(app, 'Dividir Polígono');
-        const oldId = targetFeat.id;
-        app.features = app.features.filter(f => f.id !== oldId);
-        StorageService.deleteFeature(oldId, app.projectId);
+        FeatureSyncController.splitFeature(app, targetFeat, polygons);
+      };
 
-        const baseName = targetFeat.name || 'Polígono';
-        const featA = {
-          ...JSON.parse(JSON.stringify(targetFeat)),
-          id: 'feat_' + Date.now() + '_a',
-          name: `${baseName} (Parte 1)`,
-          coordinates: polygons[0]
-        };
-        const featB = {
-          ...JSON.parse(JSON.stringify(targetFeat)),
-          id: 'feat_' + (Date.now() + 1) + '_b',
-          name: `${baseName} (Parte 2)`,
-          coordinates: polygons[1]
-        };
-
-        app.features.push(featA, featB);
-        StorageService.saveFeature(featA, app.projectId);
-        StorageService.saveFeature(featB, app.projectId);
-
-        app.refreshMapAndTable();
-        app.saveMetadata(true);
-
-        UIToast.notificar({
-          tipo: 'sucesso',
-          titulo: 'Polígono Dividido [K]',
-          mensagem: `"${baseName}" foi dividido em 2 partes com sucesso.`,
-          duracao: 3500
-        });
+      // Edição de vértices iniciada por qualquer caminho (HUD, inspetor, menu): a barra do componente
+      // ocupa o topo, então o HUD de seleção sai e volta ao concluir
+      app.mapEngine.onVertexEditChange = (editing) => {
+        if (editing) app.selectionHUD?.hide();
+        else app.updateSelectionState(Array.from(app.mapEngine.selectedFeatureIds || [])
+          .map(id => app.features.find(f => f.id === id)).filter(Boolean));
       };
 
       app.mapEngine.onSplitFailed = (reason) => {

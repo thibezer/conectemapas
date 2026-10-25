@@ -250,7 +250,13 @@ export class CanvasMapEngine {
     });
 
     this._on('cad-feicao-atualizada', (e) => this._handleKitUpdated(e.detail));
-    this._on('cad-edicao-concluida', () => { this._vertexCallback = null; });
+    this._on('cad-edicao-iniciada', () => {
+      if (typeof this.onVertexEditChange === 'function') this.onVertexEditChange(true);
+    });
+    this._on('cad-edicao-concluida', () => {
+      this._vertexCallback = null;
+      if (typeof this.onVertexEditChange === 'function') this.onVertexEditChange(false);
+    });
     this._on('cad-edicao-recusada', (e) => this._notifyEditRefused(e.detail.motivo));
     this._on('cad-desenho-recusado', (e) => {
       if (e.detail.motivo === 'camada-bloqueada') {
@@ -930,7 +936,8 @@ export class CanvasMapEngine {
     // As partes criadas pelo componente são descartadas: o app gera as próprias feições (ids, nomes, gravação)
     partes.forEach(p => this.host.removerFeicao(p.camadaId, p.id));
     const target = this._featureMap.get(origem.id);
-    const polygons = partes.map(p => p.geometria.aneis[0]);
+    // todas as partes, com furos (o app recalcula as métricas de cada uma)
+    const polygons = partes.map(p => this._coordinatesOf(p)).filter(Boolean);
     this.host.definirFerramenta(null);
     this._syncToolState('select');
     if (target && typeof this.onFeatureSplit === 'function') this.onFeatureSplit(target, polygons, null);

@@ -288,6 +288,60 @@ export class FeatureSyncController {
     }
   }
 
+  /**
+   * Divisão de polígono: troca a feição original por uma feição por parte (todas as partes, com furos),
+   * métricas recalculadas, um passo de histórico e gravação em lote. Feição bloqueada não é dividida.
+   */
+  static splitFeature(app, target, parts) {
+    const current = target ? app.features.find(f => f.id === target.id) : null;
+    if (!current) return [];
+    if (current.locked === true) {
+      FeatureSyncController.notifyLocked(`"${current.name || 'A feição'}"`);
+      return [];
+    }
+    const valid = (parts || []).filter(p => Array.isArray(p) && p.length > 0);
+    if (valid.length < 2) return [];
+
+    app.pushHistory('Dividir Polígono');
+    const baseName = current.name || 'Polígono';
+    const stamp = Date.now();
+    const suffix = Math.floor(Math.random() * 1000);
+    const pieces = valid.map((coordinates, i) => {
+      const piece = {
+        ...JSON.parse(JSON.stringify(current)),
+        id: `feat_${stamp}_${suffix}_${i + 1}`,
+        name: `${baseName} (Parte ${i + 1})`,
+        coordinates
+      };
+      piece.properties = { ...(piece.properties || {}), ...FeatureGeometryUtils.computeMetricProperties(piece) };
+      return piece;
+    });
+
+    app.features = app.features.filter(f => f.id !== current.id);
+    for (const piece of pieces) app.features.push(piece);
+    app.removeFeaturesBulk([current.id]);
+    app.saveFeaturesBulk(pieces);
+
+    if (app.collabHub) {
+      app.collabHub.notifyFeatureDeleted(current.id);
+      pieces.forEach(p => app.collabHub.notifyFeatureCreated(p));
+      const audit = app.collabHub.logAudit(`Dividiu "${baseName}" em ${pieces.length} partes`, current.id);
+      app.auditLog.unshift(audit);
+      StorageService.logAudit(audit);
+      if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
+    }
+    app.layerPanel?.handleSelectedFeatureRemoved?.(current.id);
+    app.refreshMapAndTable();
+
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: 'Polígono Dividido [K]',
+      mensagem: `"${baseName}" foi dividido em ${pieces.length} partes.`,
+      duracao: 3500
+    });
+    return pieces;
+  }
+
   /** Feição bloqueada não pode ser excluída nem alterada por atalhos/ações em lote. */
   static isFeatureLocked(app, featureId) {
     const feat = app && Array.isArray(app.features) ? app.features.find(f => f.id === featureId) : null;
