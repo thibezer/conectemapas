@@ -148,6 +148,16 @@ const pointCfg = FeaturePropertiesAdapter.gerarConfiguracao(panel, { id: 'pt', t
 const icon = pointCfg.categorias.find(cat => cat.id === 'simbologia').propriedades.find(p => p.id === 'markerIcon');
 assert(icon.opcoes.every(o => ['pin', 'tower', 'tree', 'warning', 'water', 'boundary'].includes(o.id)) && icon.valor === 'pin', 'símbolos oferecidos são os que o mapa desenha');
 
+console.log('--- Sincronização de texto e geometrias densas ---');
+const textFeat = { id: 'txt1', type: 'Text', name: 'Anotação', coordinates: c, properties: { text: 'Anotação' } };
+const textDraft = JSON.parse(JSON.stringify(textFeat));
+FeaturePropertiesAdapter.applyToDraft(panel, textDraft, 'name', 'Nova Anotação');
+assert(textDraft.name === 'Nova Anotação' && textDraft.properties.text === 'Nova Anotação', 'renomear feição Text atualiza properties.text');
+
+const denseRings = [{ label: 'Exterior', points: Array.from({ length: 150 }, (_, i) => [c[0] + i * 0.0001, c[1] + i * 0.0001]), closed: true }];
+const denseProps = FeaturePropertiesAdapter.buildVertexProps(denseRings, 'Polygon', false);
+assert(denseProps.length === 1 && denseProps[0].id === 'vtx_dense_warning', 'geometria densa (>100 vértices) exibe aviso e previne sobrecarga do DOM');
+
 if (failures > 0) {
   console.error(`\n${failures} verificação(ões) falharam`);
   process.exit(1);

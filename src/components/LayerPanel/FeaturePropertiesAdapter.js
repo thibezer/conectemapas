@@ -444,7 +444,7 @@ export class FeaturePropertiesAdapter {
       if (peerCats.some(c => !c)) continue;
       const propriedades = [];
       for (const prop of cat.propriedades) {
-        const rows = [prop, ...peerCats.map(c => c.propriedades.find(p => p.id === prop.id))];
+        const rows = [prop, ...peerCats.map(c => c.propriedades.find(p => p.id === prop.id || (cat.id === 'atributos' && p.rotulo === prop.rotulo)))];
         if (rows.some(p => !p || p.tipo !== prop.tipo || p.rotulo !== prop.rotulo)) continue;
         // Bloqueadas são puladas na gravação: a linha só fica somente leitura se todas forem
         const merged = { ...prop, somenteLeitura: rows.every(p => p.somenteLeitura === true) };
@@ -536,7 +536,20 @@ export class FeaturePropertiesAdapter {
   static buildVertexProps(rings, type, isLocked) {
     const minVertices = type === 'Polygon' ? 3 : 2;
     const multi = rings.length > 1;
+    const totalVertices = rings.reduce((acc, r) => acc + r.points.length, 0);
+    const MAX_VERTEX_FIELDS = 100;
     const props = [];
+
+    if (totalVertices > MAX_VERTEX_FIELDS) {
+      props.push({
+        id: 'vtx_dense_warning',
+        rotulo: 'Geometria densa',
+        tipo: 'readonly',
+        valor: `${totalVertices} vértices (utilize as alças no mapa [V] ou Simplificar)`
+      });
+      return props;
+    }
+
     rings.forEach((ring, ri) => {
       const prefix = multi ? `${ring.label} · ` : '';
       const [latLabel, lngLabel] = multi ? ['Lat', 'Lng'] : ['Latitude', 'Longitude'];
@@ -686,6 +699,10 @@ export class FeaturePropertiesAdapter {
         const name = String(novoValor ?? '').trim();
         if (!name) { ctx.rejectedMessage = 'O nome não pode ficar vazio.'; return false; }
         draft.name = name;
+        if (draft.type === 'Text') {
+          if (!draft.properties || typeof draft.properties !== 'object' || Array.isArray(draft.properties)) draft.properties = {};
+          draft.properties.text = name;
+        }
         return;
       }
       case 'description':
@@ -841,15 +858,21 @@ export class FeaturePropertiesAdapter {
           if (!this.applyVertexEdit(draft, propId, novoValor, (msg) => { ctx.rejectedMessage = msg; })) return false;
           return;
         }
-        if (propId.startsWith('prop_')) {
-          const key = propId.slice('prop_'.length);
+        if (propId.startsWith('prop_') || propId.startsWith('custom_key_')) {
+          const key = propId.startsWith('prop_') ? propId.slice('prop_'.length) : propId.slice('custom_key_'.length);
           if (METRIC_KEYS.has(key)) return false;
-          const previous = draft.properties[key];
+          const customItem = Array.isArray(draft.customAttributes) ? draft.customAttributes.find(a => a && a.key === key) : null;
+          if (customItem) {
+            customItem.value = novoValor;
+            return;
+          }
+          const previous = draft.properties ? draft.properties[key] : undefined;
           if (typeof previous === 'number') {
             const n = parseNumber(novoValor);
             if (n === null) { ctx.rejectedMessage = `"${key}" deve ser numérico.`; return false; }
             draft.properties[key] = n;
           } else {
+            if (!draft.properties || typeof draft.properties !== 'object') draft.properties = {};
             draft.properties[key] = novoValor;
           }
           return;
@@ -858,14 +881,6 @@ export class FeaturePropertiesAdapter {
           const idx = parseInt(propId.slice('custom_attr_'.length), 10);
           if (!Array.isArray(draft.customAttributes) || !draft.customAttributes[idx]) return false;
           draft.customAttributes[idx].value = novoValor;
-          return;
-        }
-        // Várias feições: o mesmo campo pode estar em posições diferentes de cada uma
-        if (propId.startsWith('custom_key_')) {
-          const key = propId.slice('custom_key_'.length);
-          const item = Array.isArray(draft.customAttributes) ? draft.customAttributes.find(a => a && a.key === key) : null;
-          if (!item) return false;
-          item.value = novoValor;
           return;
         }
         return false;
@@ -1023,7 +1038,16 @@ export class FeaturePropertiesAdapter {
       case 'acao_duplicar': {
         const clone = SpatialAlgorithms.duplicateWithOffset(feat, 30);
         if (clone) {
-          panel.onFeatureCreate(clone);
+          const created = panel.onFeatureCreate(clone);
+          if (created && panel.app?.mapEngine) {
+            panel.app.mapEngine.selectFeature(created.id);
+          }
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Elemento Duplicado',
+            mensagem: `Cópia criada a 30m de distância para "${feat.name || 'Feição'}".`,
+            duracao: 3000
+          });
         }
         break;
       }
@@ -1110,12 +1134,33 @@ export class FeaturePropertiesAdapter {
   }
 
   static copyToClipboard(text, titulo, mensagem) {
+    const fallbackCopy = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (success) {
+          UIToast.notificar({ tipo: 'sucesso', titulo, mensagem });
+          return;
+        }
+      } catch (err) {
+        // fallback falhou
+      }
+      UIToast.notificar({ tipo: 'erro', titulo: 'Erro', mensagem: 'Não foi possível acessar a área de transferência.' });
+    };
+
     if (!navigator.clipboard || !navigator.clipboard.writeText) {
-      UIToast.notificar({ tipo: 'erro', titulo: 'Erro', mensagem: 'Área de transferência indisponível neste navegador.' });
+      fallbackCopy();
       return;
     }
     navigator.clipboard.writeText(text)
       .then(() => UIToast.notificar({ tipo: 'sucesso', titulo, mensagem }))
-      .catch(() => UIToast.notificar({ tipo: 'erro', titulo: 'Erro', mensagem: 'Não foi possível acessar a área de transferência.' }));
+      .catch(() => fallbackCopy());
   }
 }

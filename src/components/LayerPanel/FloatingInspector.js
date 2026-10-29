@@ -8,6 +8,8 @@
 import { FeatureInspectorTab } from './FeatureInspectorTab.js';
 
 export class FloatingInspector {
+  static _savedPosition = null;
+
   static toggle(panel) {
     panel.isFloating = !panel.isFloating;
     let floatWin = document.getElementById('cm-floating-inspector-window');
@@ -17,6 +19,11 @@ export class FloatingInspector {
         floatWin.id = 'cm-floating-inspector-window';
         floatWin.className = 'cm-floating-window';
         document.body.appendChild(floatWin);
+      }
+      if (this._savedPosition) {
+        floatWin.style.right = 'auto';
+        floatWin.style.left = `${this._savedPosition.left}px`;
+        floatWin.style.top = `${this._savedPosition.top}px`;
       }
       floatWin.style.display = 'flex';
     } else if (floatWin) {
@@ -42,8 +49,8 @@ export class FloatingInspector {
           ${name ? `<span style="font-size: 10px; opacity: 0.7;">(${name})</span>` : ''}
         </div>
         <div style="display: flex; gap: 4px; align-items: center;">
-          <button data-float="dock" class="cm-native-select" style="padding: 1px 5px; font-size: 10px;" title="Acoplar de volta na barra lateral">📌 Acoplar</button>
-          <button data-float="close" class="cm-vertex-del-btn" style="font-size: 16px; padding: 0 4px;" title="Fechar">×</button>
+          <ui-botao-primario inline variante="ghost" data-float="dock" title="Acoplar de volta na barra lateral" style="--ui-botao-altura: 22px; font-size: 10.5px; padding: 0 6px;">📌 Acoplar</ui-botao-primario>
+          <ui-botao-primario inline variante="ghost" data-float="close" title="Fechar" style="--ui-botao-altura: 22px; font-size: 14px; min-width: 22px; padding: 0;">✕</ui-botao-primario>
         </div>
       </div>
       <div class="cm-floating-body">
@@ -67,7 +74,7 @@ export class FloatingInspector {
     let initialLeft = 0, initialTop = 0;
 
     header.onmousedown = (e) => {
-      if (e.target.closest('button')) return;
+      if (e.target.closest('button, ui-botao-primario')) return;
       isDragging = true;
       startX = e.clientX;
       startY = e.clientY;
@@ -91,6 +98,7 @@ export class FloatingInspector {
 
         win.style.left = `${newLeft}px`;
         win.style.top = `${newTop}px`;
+        this._savedPosition = { left: newLeft, top: newTop };
       };
 
       document.onmouseup = () => {

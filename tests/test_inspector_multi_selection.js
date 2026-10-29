@@ -128,6 +128,18 @@ promptAnswer = 'Matrícula';
 A.executarAcaoMulti(panel, ['a', 'c'], 'acao_adicionar_atributo');
 assert(pick('a', 'c').every(f => f.customAttributes.some(x => x.key === 'Matrícula')), 'novo atributo criado em todas');
 
+console.log('--- Mesclagem mista properties x customAttributes ---');
+app.features.push(
+  { id: 'mix_prop', type: 'Polygon', name: 'Misto 1', layerId: 'l1', coordinates: square(0.01), style: {}, properties: { Talhao: '10' }, customAttributes: [] },
+  { id: 'mix_cust', type: 'Polygon', name: 'Misto 2', layerId: 'l1', coordinates: square(0.02), style: {}, properties: {}, customAttributes: [{ key: 'Talhao', value: '10' }] }
+);
+const mixedCfg = A.gerarConfiguracaoMulti(panel, pick('mix_prop', 'mix_cust'));
+const mixedRows = rowsOf(mixedCfg);
+const talhaoProp = [...mixedRows.values()].find(p => p.rotulo === 'Talhao');
+assert(talhaoProp && talhaoProp.valor === '10', 'atributo presente em properties e customAttributes mescla com sucesso');
+A.aplicarAlteracaoMulti(panel, ['mix_prop', 'mix_cust'], talhaoProp.id, '20');
+assert(pick('mix_prop')[0].properties.Talhao === '20' && pick('mix_cust')[0].customAttributes[0].value === '20', 'edição em lote atualiza cada feição em seu respectivo formato');
+
 console.log('--- LayerPanel ---');
 const lp = new LayerPanel({ app, layers: app.layers, features: app.features });
 lp.selectedFeatureIds = new Set(['a', 'c']);
