@@ -67,6 +67,11 @@ ui-select {
   padding: 0;
 }
 
+/* O reset acima vence o :host do shadow DOM e zerava o padding do seletor de cor do kit */
+ui-seletor-cor {
+  padding: 13px;
+}
+
 html, body {
   width: 100%;
   height: 100%;
