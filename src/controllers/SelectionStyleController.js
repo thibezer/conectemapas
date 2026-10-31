@@ -48,34 +48,30 @@ export class SelectionStyleController {
     AppGeometryCoordinator.resyncToolbarWithSelection(app);
   }
 
-  /**
-   * Devolve às feições as cores do snapshot (só nas propriedades indicadas), cada uma com a sua.
-   * @param {Map<string, {color: string, style: Object}>} snapshots de BatchActions.snapshotStyles()
-   * @param {Array<'fillColor'|'strokeColor'|'fillOpacity'>} props
-   */
-  static restoreSelectionStyles(app, snapshots, props) {
-    if (!snapshots?.size || !props?.length) return;
-    const ids = [...snapshots.keys()].filter(id => !FeatureSyncController.isFeatureLocked(app, id));
-    if (ids.length === 0) return;
-    if (ids.length === 1 && typeof app.layerPanel?.commitFeatureEdit === 'function') {
-      app.layerPanel.commitFeatureEdit(ids[0], (draft) => {
-        if (!BatchActions._restoreProps(draft, snapshots.get(ids[0]), props)) return false;
-      });
-    } else {
-      BatchActions.restoreStyleProps(app, new Map(ids.map(id => [id, snapshots.get(id)])), props);
+  /** Desfaz a prévia do seletor aberto: devolve ao mapa as feições como estão em app.features. */
+  static revertStylePreview(app) {
+    const ids = app._stylePreviewIds;
+    app._stylePreviewIds = null;
+    if (!ids?.length || !app.mapEngine?.updateFeature) return;
+    const byId = new Map((app.features || []).map(f => [f.id, f]));
+    for (const id of ids) {
+      const feat = byId.get(id);
+      if (feat) app.mapEngine.updateFeature(feat, app.layers);
     }
-    AppGeometryCoordinator.resyncToolbarWithSelection(app);
   }
 
   /**
    * Seletor de estilo da seleção (botão "Estilo" do HUD), com pré-visualização ao vivo.
-   * Cada passo grava só o que mudou; o que volta ao valor inicial (inclusive no "Cancelar")
-   * é restaurado feição por feição, então seleções com cores diferentes não são uniformizadas.
+   * A prévia só pinta o mapa (cópias das feições): nada de histórico, gravação ou colaboração.
+   * Ao confirmar, grava de uma vez só o que mudou desde a abertura (1 histórico, 1 gravação),
+   * então seleções com cores diferentes não são uniformizadas. Cancelar só desfaz a prévia.
    * @param {Function} [open] abrirSeletorCor (substituível em testes)
    * @returns {Object|null} controle do seletor aberto
    */
   static openStylePicker(app, hudFeatures, anchorEl, open = abrirSeletorCor) {
     if (!hudFeatures || hudFeatures.length === 0) return null;
+    // Um seletor novo descarta a prévia do anterior (o kit o fecha sem avisar)
+    this.revertStylePreview(app);
     // O HUD guarda a seleção de quando foi aberto; o seletor parte das cores atuais
     const byId = new Map((app.features || []).map(f => [f.id, f]));
     const features = hudFeatures.map(f => byId.get(f.id) || f);
@@ -83,25 +79,39 @@ export class SelectionStyleController {
     const first = features[0];
     const fillOf = (f) => f.style?.fillColor || f.style?.textColor || f.color || '#00E08A';
 
-    const snapshots = BatchActions.snapshotStyles(features);
     let initial = null;
-    let last = null;
 
-    const step = (res) => {
+    // Propriedades que diferem do estado de abertura (nomes do app)
+    const changedProps = (res) => Object.keys(PICKER_PROPS).filter(k => res[k] !== initial[k]).map(k => PICKER_PROPS[k]);
+    const toColors = (res) => ({
+      fillColor: res.preenchimento,
+      strokeColor: res.traco,
+      fillOpacity: res.opacidade,
+      strokeWidth: res.espessuraTraco
+    });
+
+    const preview = (res) => {
       if (!initial) return;
-      const moved = Object.keys(PICKER_PROPS).filter(k => res[k] !== last[k]);
-      last = res;
-      const restore = moved.filter(k => res[k] === initial[k]).map(k => PICKER_PROPS[k]);
-      const paint = moved.filter(k => res[k] !== initial[k]).map(k => PICKER_PROPS[k]);
-      if (restore.length) this.restoreSelectionStyles(app, snapshots, restore);
-      if (paint.length) {
-        this.applyColorsToSelection(app, {
-          fillColor: res.preenchimento,
-          strokeColor: res.traco,
-          fillOpacity: res.opacidade,
-          strokeWidth: res.espessuraTraco
-        }, paint);
+      const props = changedProps(res);
+      if (props.length === 0) { this.revertStylePreview(app); return; }
+      const colors = toColors(res);
+      const ids = [];
+      for (const feat of features) {
+        if (FeatureSyncController.isFeatureLocked(app, feat.id)) continue;
+        const original = byId.get(feat.id) || feat;
+        const draft = JSON.parse(JSON.stringify(original));
+        BatchActions._paint(draft, colors, props);
+        app.mapEngine?.updateFeature?.(draft, app.layers);
+        ids.push(feat.id);
       }
+      app._stylePreviewIds = ids;
+    };
+
+    const confirm = (res) => {
+      if (!initial) return;
+      const props = changedProps(res);
+      this.revertStylePreview(app);
+      if (props.length) this.applyColorsToSelection(app, toColors(res), props);
     };
 
     const handle = open({
@@ -115,12 +125,12 @@ export class SelectionStyleController {
       espessuraTraco: first.style?.strokeWidth !== undefined ? Number(first.style.strokeWidth) : 2.5,
       misto: new Set(features.map(f => String(fillOf(f)).toLowerCase())).size > 1,
       coresProjeto: (app.layers || []).map(l => l.color),
-      aoAlterar: step,
-      aoConfirmar: step
+      aoAlterar: preview,
+      aoConfirmar: confirm,
+      aoCancelar: () => this.revertStylePreview(app)
     });
     // Valores já normalizados pelo componente (#rrggbb minúsculo), para comparar com os eventos
     initial = handle?.elemento?.obterEstado?.() || null;
-    last = initial;
     return handle;
   }
 }

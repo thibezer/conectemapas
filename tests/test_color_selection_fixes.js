@@ -92,26 +92,39 @@ const style = (app, id) => app.features.find(f => f.id === id).style;
 
   const ev = (over) => ({ alvo: 'traco', cor: '#ffffff', preenchimento: '#ff0000', traco: '#ffffff', opacidade: 0.2, ...over });
 
-  // Muda só o traço: preenchimentos e opacidades continuam diferentes
+  const previews = [];
+  app.mapEngine.updateFeature = (f) => previews.push(f);
+
+  // Prévia: pinta só o mapa (cópias), sem tocar em app.features, histórico ou gravação
   opts.aoAlterar(ev({ traco: '#0000ff' }));
-  assert.strictEqual(style(app, 'a').strokeColor, '#0000ff');
-  assert.strictEqual(style(app, 'b').strokeColor, '#0000ff');
-  assert.strictEqual(style(app, 'b').fillColor, '#00ff00', 'Preenchimento misto preservado');
-  assert.strictEqual(style(app, 'b').fillOpacity, 0.8, 'Opacidade de B preservada');
+  opts.aoAlterar(ev({ traco: '#0000aa' }));
+  assert.strictEqual(app.history.length, 0, 'Prévia não cria histórico');
+  assert.strictEqual(style(app, 'a').strokeColor, '#ffffff', 'Prévia não altera as feições do app');
+  assert.strictEqual(style(app, 'b').strokeColor, '#cccccc');
+  const lastB = previews.filter(f => f.id === 'b').at(-1);
+  assert.strictEqual(lastB.style.strokeColor, '#0000aa', 'Prévia mostra o traço novo no mapa');
+  assert.strictEqual(lastB.style.fillColor, '#00ff00', 'Preenchimento misto preservado na prévia');
+  assert.strictEqual(lastB.style.fillOpacity, 0.8, 'Opacidade de B preservada na prévia');
 
-  // Cancelar: o componente emite as cores iniciais; cada feição volta ao seu traço original
+  // Voltar ao valor inicial (ou Cancelar) devolve ao mapa as feições originais
   opts.aoAlterar(ev({ traco: '#ffffff' }));
-  assert.strictEqual(style(app, 'a').strokeColor, '#ffffff');
-  assert.strictEqual(style(app, 'b').strokeColor, '#cccccc', 'B volta ao próprio traço, não ao de A');
-  assert.strictEqual(style(app, 'b').fillColor, '#00ff00');
+  assert.strictEqual(previews.at(-1).style.strokeColor, '#cccccc', 'B volta ao próprio traço, não ao de A');
+  assert.strictEqual(app.history.length, 0);
+  opts.aoAlterar(ev({ traco: '#123123' }));
+  opts.aoCancelar();
+  assert.strictEqual(previews.at(-1).style.strokeColor, '#cccccc', 'Cancelar desfaz a prévia');
+  assert.strictEqual(app.history.length, 0, 'Cancelar não grava nada');
 
-  // Opacidade e confirmação
+  // Confirmar: um único histórico, só o que mudou desde a abertura
   opts.aoAlterar(ev({ opacidade: 0.5 }));
+  opts.aoAlterar(ev({ opacidade: 0.6 }));
   opts.aoConfirmar(ev({ opacidade: 0.5 }));
+  assert.strictEqual(app.history.length, 1, 'Confirmar grava 1 passo de histórico');
   assert.strictEqual(style(app, 'a').fillOpacity, 0.5);
   assert.strictEqual(style(app, 'b').fillOpacity, 0.5);
   assert.strictEqual(style(app, 'b').fillColor, '#00ff00');
-  console.log('✔ Estilo do HUD grava só o que mudou e restaura feição por feição');
+  assert.strictEqual(style(app, 'b').strokeColor, '#cccccc', 'Traço não tocado continua o de cada feição');
+  console.log('✔ Estilo do HUD: prévia só visual, 1 histórico ao confirmar, só o que mudou');
 }
 
 // --------------------------------------------------------------------------

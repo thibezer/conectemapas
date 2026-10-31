@@ -383,13 +383,20 @@ export class AppComponentsBuilder {
         const targetLayer = app.layers.find(l => l.id === feat.layerId);
         const color = feat.style?.fillColor || feat.color || targetLayer?.color || '#00E08A';
         const stroke = feat.style?.strokeColor || feat.style?.color || feat.color || '#ffffff';
-        
-        if (app.drawingToolbar) {
-          app.drawingToolbar.setColors({ fillColor: color, strokeColor: stroke });
-        }
-        app.mapEngine.setActiveDrawingStyles(app.drawingToolbar?.getColors() || { fillColor: color, strokeColor: stroke });
+        const fillOpacity = feat.style?.fillOpacity !== undefined ? Number(feat.style.fillOpacity) : undefined;
+        const strokeWidth = feat.style?.strokeWidth !== undefined ? Number(feat.style.strokeWidth) : undefined;
 
-        AppComponentsBuilder.applyColorsToSelection(app, app.drawingToolbar?.getColors() || { fillColor: color, strokeColor: stroke });
+        if (app.drawingToolbar) {
+          app.drawingToolbar.setColors({ fillColor: color, strokeColor: stroke, fillOpacity, strokeWidth });
+        }
+        const colors = app.drawingToolbar?.getColors() || { fillColor: color, strokeColor: stroke };
+        app.mapEngine.setActiveDrawingStyles(colors);
+
+        // Copia também opacidade e espessura, quando a feição amostrada as define
+        const changed = ['fillColor', 'strokeColor'];
+        if (fillOpacity !== undefined) changed.push('fillOpacity');
+        if (strokeWidth !== undefined) changed.push('strokeWidth');
+        AppComponentsBuilder.applyColorsToSelection(app, { ...colors, fillOpacity, strokeWidth }, changed);
 
         UIToast.notificar({
           tipo: 'sucesso',
