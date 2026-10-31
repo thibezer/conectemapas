@@ -126,7 +126,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 22px;
+  height: 24px;
   padding: 0 7px;
   background: transparent;
   border: 0;
@@ -151,15 +151,17 @@
 .cm-sel-btn.danger:hover { background: rgba(248, 113, 113, 0.16); color: #f87171; }
 
 /* Botões só com ícone (tabela, duplicar, mais ações, excluir e fechar) */
-.cm-sel-btn:not(:has(.cm-sel-label)) { width: 22px; padding: 0; justify-content: center; }
+.cm-sel-btn:not(:has(.cm-sel-label)) { width: 24px; padding: 0; justify-content: center; }
 
 /* Pouco espaço livre (tela estreita ou painel largo): só ícones (o title de cada
    botão continua explicando). A classe é ligada por SelectionHUD.fit(). */
 .cm-selection-hud.compact .cm-sel-label { display: none; }
-.cm-selection-hud.compact .cm-sel-btn { width: 22px; padding: 0; justify-content: center; }
+.cm-selection-hud.compact .cm-sel-btn { width: 24px; padding: 0; justify-content: center; }
 .cm-selection-hud.compact .cm-sel-tag,
 .cm-selection-hud.compact .cm-sel-metric { display: none; }
 .cm-selection-hud.compact .cm-sel-sep { margin: 0 1px; }
+/* No modo compacto o título cede espaço (reticências) para os botões caberem na faixa livre */
+.cm-selection-hud.compact .cm-sel-info { min-width: 110px; }
 
 /* Menus suspensos: "Mover para camada" e "Mais ações" (mesma superfície e borda da barra) */
 .cm-sel-menu {
@@ -210,3 +212,8 @@
 .cm-sel-menu-ico { flex: none; display: inline-flex; width: 13px; height: 13px; color: var(--cm-sel-muted); }
 .cm-sel-menu-ico svg { width: 13px; height: 13px; }
 .cm-sel-menu-sep { height: 1px; margin: 3px 2px; background: var(--cm-sel-border); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-selection-hud { animation: none; }
+  .cm-sel-btn { transition: none; }
+}

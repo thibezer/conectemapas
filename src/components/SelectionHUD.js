@@ -30,6 +30,25 @@ const lbl = (t) => `<span class="cm-sel-label">${t}</span>`;
 /** Teto de feições para somar métricas no cabeçalho (evita travar com seleções enormes). */
 const METRIC_LIMIT = 200;
 
+/** Comprimento em pt-BR (vírgula decimal), igual à área; FeatureGeometryUtils.formatLength segue para tabela e exportações. */
+const fmtLength = (m) => (m > 1000
+  ? `${(m / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
+  : `${m.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} m`);
+
+/** Medidas por geometria: o HUD se redesenha a cada seleção/ação e polígonos grandes são caros de medir. */
+const measureCache = new WeakMap();
+const measure = (f) => {
+  const coords = f.coordinates;
+  const cacheable = coords && typeof coords === 'object';
+  if (cacheable && measureCache.has(coords)) return measureCache.get(coords);
+  const U = FeatureGeometryUtils;
+  const m = f.type === 'Polygon'
+    ? { area: U.calculatePolygonArea(coords), perimeter: U.calculatePolygonPerimeter(coords) }
+    : { length: U.calculatePolylineLength(coords) };
+  if (cacheable) measureCache.set(coords, m);
+  return m;
+};
+
 /** Itens do menu "mais ações": comandos da aba Modificar, executados por onAction(id). */
 const MORE_MENU = [
   { title: 'Copiar como', items: [
@@ -153,6 +172,7 @@ export class SelectionHUD {
   show() {
     if (this.element && this.selectedFeatures.length > 0) {
       this.element.style.display = 'flex';
+      this.fit();
     }
   }
 
@@ -164,6 +184,11 @@ export class SelectionHUD {
   update(features = [], layers = []) {
     this.selectedFeatures = Array.isArray(features) ? features : (features ? [features] : []);
     this.layers = layers || [];
+
+    // O HUD é redesenhado a cada ação (ex.: Bloquear): quem navega por teclado não perde o foco
+    const active = document.activeElement;
+    const hadFocus = !!this.element?.contains?.(active);
+    const restoreAct = hadFocus ? (active?.dataset?.act || this._menuAnchor?.dataset?.act) : null;
     this.closeMenu();
 
     if (!this.element) return;
@@ -186,6 +211,11 @@ export class SelectionHUD {
     this.element.style.display = 'flex';
     this.element.innerHTML = `${this.renderInfo()}${this.renderActions()}`;
     this.initRoving();
+    if (hadFocus) {
+      const target = (restoreAct && this.element.querySelector(`[data-act="${restoreAct}"]`)) || this.element.querySelector('.cm-sel-actions .cm-sel-btn');
+      target?.focus?.();
+      if (target) this.initRoving(target);
+    }
     this.fit();
   }
 
@@ -209,7 +239,7 @@ export class SelectionHUD {
         : FeatureGeometryUtils.getTypeLabel(feat.type);
       this.element.style.setProperty?.('--cm-sel-layer', layer.color || '#00E08A');
       return `
-        <div class="cm-sel-info" aria-live="polite" title="Camada: ${this.escape(layer.name)}">
+        <div class="cm-sel-info" title="Camada: ${this.escape(layer.name)}">
           <span class="cm-sel-badge-count">1</span>
           <span class="cm-sel-title" title="${this.escape(featName)}">${this.escape(featName)}</span>
           ${feat.locked ? `<span class="cm-sel-lock" title="Feição bloqueada">${ICONS.lock}</span>` : ''}
@@ -224,7 +254,7 @@ export class SelectionHUD {
     const subtitle = extraCount > 0 ? `${firstNames} (+${extraCount})` : firstNames;
     this.element.style.removeProperty?.('--cm-sel-layer');
     return `
-        <div class="cm-sel-info" aria-live="polite">
+        <div class="cm-sel-info">
           <span class="cm-sel-badge-count">${count}</span>
           <span class="cm-sel-title">${count} Feições Selecionadas</span>
           <span class="cm-sel-tag" title="${this.escape(subtitle)}">${this.escape(subtitle)}</span>
@@ -301,20 +331,20 @@ export class SelectionHUD {
       const U = FeatureGeometryUtils;
       if (feats.length === 1) {
         const f = feats[0];
-        if (f.type === 'Polygon') return `${U.formatArea(U.calculatePolygonArea(f.coordinates))} · ${U.formatLength(U.calculatePolygonPerimeter(f.coordinates))}`;
-        if (f.type === 'LineString') return U.formatLength(U.calculatePolylineLength(f.coordinates));
-        if (f.type === 'Circle' && Number(f.radius) > 0) return `raio ${U.formatLength(Number(f.radius))}`;
+        if (f.type === 'Polygon') { const m = measure(f); return `${U.formatArea(m.area)} · ${fmtLength(m.perimeter)}`; }
+        if (f.type === 'LineString') return fmtLength(measure(f).length);
+        if (f.type === 'Circle' && Number(f.radius) > 0) return `raio ${fmtLength(Number(f.radius))}`;
         return '';
       }
       let area = 0;
       let length = 0;
       for (const f of feats) {
-        if (f.type === 'Polygon') area += U.calculatePolygonArea(f.coordinates);
-        else if (f.type === 'LineString') length += U.calculatePolylineLength(f.coordinates);
+        if (f.type === 'Polygon') area += measure(f).area;
+        else if (f.type === 'LineString') length += measure(f).length;
       }
       const parts = [];
       if (area > 0) parts.push(`Σ ${U.formatArea(area)}`);
-      if (length > 0) parts.push(`Σ ${U.formatLength(length)}`);
+      if (length > 0) parts.push(`Σ ${fmtLength(length)}`);
       return parts.join(' · ');
     } catch (_) {
       return '';
@@ -405,6 +435,14 @@ export class SelectionHUD {
     }
   }
 
+  /** Fecha o menu devolvendo o foco ao botão que o abriu (o item focado deixa de existir). */
+  closeMenuKeepingFocus() {
+    const hadFocus = !!this.element?.contains?.(document.activeElement);
+    const anchor = this._menuAnchor;
+    this.closeMenu();
+    if (hadFocus) anchor?.focus?.();
+  }
+
   /** Abre (ou fecha, se já estava aberto para o mesmo botão) o menu `kind` ('layer' | 'more'). */
   toggleMenu(anchor, kind, focusFirst = false) {
     const reopen = this._menuAnchor !== anchor;
@@ -464,14 +502,14 @@ export class SelectionHUD {
     const menu = item.closest('.cm-sel-menu');
     const inheritColor = !!menu?.querySelector('#cm-sel-inherit-color')?.checked;
     const layerId = item.dataset.layerId;
-    this.closeMenu();
+    this.closeMenuKeepingFocus();
     this.onMoveToLayer(this.selectedFeatures, layerId, { inheritColor });
   }
 
   pickModAction(item) {
     if (item.disabled) return;
     const anchor = this._menuAnchor;
-    this.closeMenu();
+    this.closeMenuKeepingFocus();
     this.onAction(item.dataset.mod, { anchor });
   }
 

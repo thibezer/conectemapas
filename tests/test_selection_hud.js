@@ -44,11 +44,21 @@ const circle = { id: 'c1', type: 'Circle', name: 'Raio', layerId: 'l1', radius: 
 // --- Métricas ---------------------------------------------------------------
 assert.match(hud.metricOf([poly]), /(ha|km²|m²) · .*(m|km)$/, 'polígono: área · perímetro');
 assert.match(hud.metricOf([line]), /(m|km)$/, 'linha: extensão');
-assert.strictEqual(hud.metricOf([circle]), 'raio 250.0 m');
+assert.strictEqual(hud.metricOf([circle]), 'raio 250,0 m');
 assert.strictEqual(hud.metricOf([{ id: 'pt', type: 'Point', coordinates: [-15, -47] }]), '', 'ponto não tem métrica');
 assert.match(hud.metricOf([poly, line]), /^Σ .* · Σ /, 'seleção múltipla soma área e extensão');
 assert.strictEqual(hud.metricOf(Array.from({ length: 201 }, () => poly)), '', 'acima do limite não calcula');
 assert.strictEqual(hud.metricOf([{ type: 'Polygon', coordinates: null }]).includes('NaN'), false, 'dado inválido não vaza NaN');
+
+// Medidas em cache: a mesma geometria não é remedida a cada redesenho
+const { FeatureGeometryUtils: FGU } = await import('../src/services/MapEngine/FeatureGeometryUtils.js');
+const orig = FGU.calculatePolygonArea;
+let areaCalls = 0;
+FGU.calculatePolygonArea = function (...a) { areaCalls++; return orig.apply(this, a); };
+const cachedPoly = { ...poly, coordinates: poly.coordinates.map(p => [...p]) };
+hud.metricOf([cachedPoly]); hud.metricOf([cachedPoly]); hud.metricOf([cachedPoly, line]);
+assert.strictEqual(areaCalls, 1, 'área calculada uma única vez por geometria');
+FGU.calculatePolygonArea = orig;
 
 // --- Estrutura dos botões ---------------------------------------------------
 const acts = (groups) => groups.flat().map(b => b.act);
@@ -99,6 +109,18 @@ hud.pickModAction({ disabled: true, dataset: { mod: 'mod-buffer' } });
 assert.deepStrictEqual(calls, [
   ['inspect', 'p1'], ['action', 'mod-duplicate'], ['table', 1], ['delete', 1], ['action', 'mod-lock']
 ]);
+
+// Foco: após redesenhar, volta ao mesmo botão
+hud.selectedFeatures = [poly];
+const fakeBtn = { dataset: { act: 'more' }, focus() { this.focused = true; }, tabIndex: 0 };
+hud.element.contains = () => true;
+hud.element.querySelector = (q) => (q.includes('data-act="more"') ? fakeBtn : null);
+document.activeElement = { dataset: { act: 'more' } };
+hud.update([poly], layers);
+assert.ok(fakeBtn.focused, 'foco restaurado no botão que o tinha');
+document.activeElement = null;
+delete hud.element.contains;
+hud.element.querySelector = () => null;
 
 // update() com stubs não quebra e esconde com seleção vazia
 hud.update([poly], layers);
