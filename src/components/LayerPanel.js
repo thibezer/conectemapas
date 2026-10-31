@@ -145,14 +145,14 @@ export class LayerPanel {
           aria-label="Ajustar largura do painel" tabindex="0"
           title="Arraste para ajustar a largura (duplo clique restaura)"></div>
         <div class="cm-sidebar-header">
-          <ui-segmented id="cm-sidebar-segmented" tamanho="sm" valor="${this.activeTab}" style="flex: 1;">
-            <span valor="layers">Camadas</span>
-            <span valor="inspector">Inspeção</span>
-            <span valor="collab">Equipe</span>
-          </ui-segmented>
-          <ui-botao-primario inline variante="ghost" id="btn-collapse-sidebar" title="Recolher Painel Lateral" style="height: 24px; width: 24px; padding: 0; min-width: 24px; font-size: 11px;">
-            ❯
-          </ui-botao-primario>
+          <div class="cm-sidebar-tabs" id="cm-sidebar-segmented" role="tablist">
+            ${[['layers', 'Camadas'], ['inspector', 'Inspeção'], ['collab', 'Equipe']].map(([id, label]) =>
+              `<button type="button" role="tab" class="cm-sidebar-tab-btn${this.activeTab === id ? ' active' : ''}" data-tab="${id}" aria-selected="${this.activeTab === id}">${label}</button>`
+            ).join('')}
+          </div>
+          <button type="button" class="cm-sidebar-collapse-btn" id="btn-collapse-sidebar" title="Recolher Painel Lateral" aria-label="Recolher Painel Lateral">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 1.5 7 5l-3.5 3.5"/></svg>
+          </button>
         </div>
         <div class="cm-sidebar-body" id="cm-sidebar-tab-content">
           ${this.renderTabContent()}
@@ -198,10 +198,11 @@ export class LayerPanel {
     }
 
     const segmented = this.container?.querySelector('#cm-sidebar-segmented');
-    if (segmented && (segmented.valor !== this.activeTab && segmented.value !== this.activeTab)) {
-      segmented.valor = this.activeTab;
-      segmented.value = this.activeTab;
-    }
+    segmented?.querySelectorAll('.cm-sidebar-tab-btn').forEach(btn => {
+      const ativo = btn.dataset.tab === this.activeTab;
+      btn.classList.toggle('active', ativo);
+      btn.setAttribute('aria-selected', String(ativo));
+    });
   }
 
   bindEvents() {
@@ -209,15 +210,13 @@ export class LayerPanel {
 
     const segmented = this.container.querySelector('#cm-sidebar-segmented');
     if (segmented) {
-      const handleTabChange = (e) => {
-        const novoValor = e.detail?.valor || e.target.value || e.target.valor;
+      segmented.addEventListener('click', (e) => {
+        const novoValor = e.target.closest('.cm-sidebar-tab-btn')?.dataset.tab;
         if (novoValor && novoValor !== this.activeTab) {
           this.activeTab = novoValor;
           this.updateContent();
         }
-      };
-      segmented.addEventListener('ui-change', handleTabChange);
-      segmented.addEventListener('change', handleTabChange);
+      });
     }
 
     const btnCollapse = this.container.querySelector('#btn-collapse-sidebar');
