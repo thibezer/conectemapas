@@ -184,7 +184,7 @@ export class SelectionHUD {
     }
 
     this.element.style.display = 'flex';
-    this.element.innerHTML = `${this.renderInfo()}<div class="cm-sel-divider"></div>${this.renderActions()}`;
+    this.element.innerHTML = `${this.renderInfo()}${this.renderActions()}`;
     this.initRoving();
     this.fit();
   }
@@ -195,7 +195,10 @@ export class SelectionHUD {
   renderInfo() {
     const feats = this.selectedFeatures;
     const metric = this.metricOf(feats);
-    const metricHtml = metric ? `<span class="cm-sel-metric" title="${this.escape(metric)}">${this.escape(metric)}</span>` : '';
+    const [metricMain, ...metricRest] = metric.split(' · ');
+    const metricHtml = metric
+      ? `<span class="cm-sel-metric" title="${this.escape(metric)}"><b>${this.escape(metricMain)}</b>${metricRest.length ? ` · ${this.escape(metricRest.join(' · '))}` : ''}</span>`
+      : '';
 
     if (feats.length === 1) {
       const feat = feats[0];
@@ -204,10 +207,10 @@ export class SelectionHUD {
       const category = feat.category && feat.category !== feat.type
         ? feat.category
         : FeatureGeometryUtils.getTypeLabel(feat.type);
+      this.element.style.setProperty?.('--cm-sel-layer', layer.color || '#00E08A');
       return `
-        <div class="cm-sel-info" aria-live="polite">
+        <div class="cm-sel-info" aria-live="polite" title="Camada: ${this.escape(layer.name)}">
           <span class="cm-sel-badge-count">1</span>
-          <span class="cm-sel-dot" style="background: ${this.escape(layer.color || '#38bdf8')}" title="${this.escape(layer.name)}"></span>
           <span class="cm-sel-title" title="${this.escape(featName)}">${this.escape(featName)}</span>
           ${feat.locked ? `<span class="cm-sel-lock" title="Feição bloqueada">${ICONS.lock}</span>` : ''}
           <span class="cm-sel-tag">${this.escape(category)}</span>
@@ -219,6 +222,7 @@ export class SelectionHUD {
     const firstNames = feats.slice(0, 2).map(f => f.name || f.id).join(', ');
     const extraCount = count - 2;
     const subtitle = extraCount > 0 ? `${firstNames} (+${extraCount})` : firstNames;
+    this.element.style.removeProperty?.('--cm-sel-layer');
     return `
         <div class="cm-sel-info" aria-live="polite">
           <span class="cm-sel-badge-count">${count}</span>
