@@ -9,9 +9,10 @@
 
 .cm-sidebar {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  bottom: calc(var(--cm-table-h, 34px) + 12px);
+  /* Ancorado na lateral direita, de ponta a ponta (sem mapa ao redor) */
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: 335px;
   max-width: calc(100vw - 110px);
   z-index: 500;
@@ -19,9 +20,10 @@
   flex-direction: column;
   /* Fundo sólido: o mapa por trás atrapalhava a leitura */
   background: var(--cm-bg, #0b0b0d);
-  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
-  border-radius: var(--ui-raio-borda, 8px);
-  box-shadow: var(--cm-shadow-md, 0 8px 24px rgba(0, 0, 0, 0.5));
+  border: none;
+  border-left: 1px solid var(--cm-border, rgba(255, 255, 255, 0.1));
+  border-radius: 0;
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.35);
   overflow: hidden;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
 }
@@ -80,7 +82,7 @@ body.cm-resizing-x * {
 }
 
 .cm-sidebar.collapsed {
-  transform: translateX(calc(100% + 20px));
+  transform: translateX(100%);
   opacity: 0;
   pointer-events: none;
 }
@@ -120,12 +122,14 @@ body.cm-resizing-x * {
 
 .cm-sidebar-floating-toggle {
   position: absolute;
+  /* Recolhido: só o ícone da pasta, colado na borda direita */
   top: 10px;
-  right: 10px;
+  right: 0;
   z-index: 499;
-  background: var(--cm-glass-bg, rgba(17, 17, 20, 0.94));
+  background: var(--cm-bg, #0b0b0d);
   border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.15));
-  border-radius: var(--ui-raio-borda, 6px);
+  border-right: none;
+  border-radius: var(--ui-raio-borda, 6px) 0 0 var(--ui-raio-borda, 6px);
   color: var(--cm-text, #ffffff);
   width: 28px;
   height: 28px;
