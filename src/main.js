@@ -405,8 +405,8 @@ class ConecteMapasApp {
     AppGeometryCoordinator.updateSelectionState(this, features);
   }
 
-  updateHUD(selectedCount = null) {
-    AppGeometryCoordinator.updateHUD(this, selectedCount);
+  updateHUD() {
+    AppGeometryCoordinator.updateHUD(this);
   }
 
   /** Atualiza o estado dos botões da ribbon (agrupa várias chamadas do mesmo ciclo em uma). */

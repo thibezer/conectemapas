@@ -64,7 +64,7 @@ export class AppGeometryCoordinator {
     }
 
     this.syncToolbarColors(app, list);
-    this.updateHUD(app, list.length);
+    this.updateHUD(app);
   }
 
   /** Ids da seleção atual (HUD, painel de camadas ou feição do inspetor). */
@@ -170,22 +170,9 @@ export class AppGeometryCoordinator {
     }
   }
 
-  static updateHUD(app, selectedCount = null) {
+  static updateHUD(app) {
     // Seleção, recarga do mapa e desfazer/refazer passam por aqui: a aba Modificar acompanha
     app.syncRibbon?.();
-    const countSpan = document.getElementById('hud-features-count');
-    if (countSpan) {
-      const total = app.features ? app.features.length : 0;
-      const count = selectedCount !== null 
-        ? selectedCount 
-        : (app.mapEngine?.selectedFeatureIds?.size || (app.mapEngine?.selectedFeatureId ? 1 : 0));
-
-      if (count > 0) {
-        countSpan.innerHTML = `<strong>${total}</strong> Feições Ativas <span style="color: #38bdf8; font-weight: 600;">(${count} selecionada${count > 1 ? 's' : ''})</span>`;
-      } else {
-        countSpan.textContent = `${total} Feições Ativas`;
-      }
-    }
   }
 
   static toggleFeatureGeometryVersion(app, featureId) {
