@@ -604,9 +604,15 @@ export class LayerPanel {
   addChatMessage(msg) {
     this.chatMessages.push(msg);
     if (this.activeTab === 'collab') {
-      this.updateContent();
       const box = document.getElementById('cm-chat-messages-box');
-      if (box) box.scrollTop = box.scrollHeight;
+      if (!box) {
+        this.updateContent();
+        return;
+      }
+      // Anexa direto ao DOM para não perder foco/texto do input
+      box.querySelector('#cm-chat-empty')?.remove();
+      box.insertAdjacentHTML('beforeend', CollabAuditTab.renderMessage(this, msg));
+      box.scrollTop = box.scrollHeight;
     }
   }
 

@@ -213,6 +213,7 @@ export class CollaborationHub {
       action,
       details,
       user: this.currentUser.name,
+      createdAt: Date.now(),
       timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     };
     this.broadcast('audit:log', { entry });
