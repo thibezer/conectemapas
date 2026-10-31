@@ -1,6 +1,6 @@
 /* ==========================================================================
    ConecteMapas - HeaderBar Component Styles (SRP Encapsulated)
-   Faixa de título fina (26px): logo, nome do projeto e status soltos, sem
+   Faixa de título fina (30px, igual à linha de abas do ribbon): logo, nome do projeto e status soltos, sem
    caixas, e os operadores online à direita. As ações ficam no <ui-ribbon>.
    ========================================================================== */
 
@@ -10,9 +10,9 @@
 }
 
 .cm-header {
-  height: var(--cm-titlebar-height, 26px);
-  min-height: var(--cm-titlebar-height, 26px);
-  max-height: var(--cm-titlebar-height, 26px);
+  height: var(--cm-titlebar-height, 30px);
+  min-height: var(--cm-titlebar-height, 30px);
+  max-height: var(--cm-titlebar-height, 30px);
   background: var(--cm-glass-bg, rgba(13, 14, 18, 0.95));
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
