@@ -52,7 +52,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 220px; /* abaixo disso o título vira reticências: melhor compactar os botões */
+  min-width: 300px; /* abaixo disso o título vira reticências: melhor compactar os botões */
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -99,6 +99,7 @@
   background: rgba(255, 255, 255, 0.08);
   color: #9a9aab;
   max-width: 180px;
+  flex: 0 100 auto; /* o tipo encolhe antes do título */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,18 +186,34 @@
   justify-content: center;
 }
 
-/* Botões só com ícone (excluir e fechar) */
-.cm-sel-btn.danger:not(:has(.cm-sel-label)) { width: 26px; padding: 0; justify-content: center; }
+/* Botões só com ícone (tabela, duplicar, mais ações, excluir e fechar) */
+.cm-sel-btn:not(:has(.cm-sel-label)) { width: 26px; padding: 0; justify-content: center; }
+
+/* Traço fino entre os grupos de ações (ver · editar · organizar · encerrar) */
+.cm-sel-sep { flex: none; width: 1px; height: 14px; margin: 0 3px; background: rgba(255, 255, 255, 0.1); }
+
+/* Métrica da geometria (área · perímetro, extensão, raio) e aviso de feição bloqueada */
+.cm-sel-metric {
+  flex: none;
+  font-size: 10.5px;
+  color: #b4b4c0;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--cm-fonte-mono, monospace);
+  white-space: nowrap;
+}
+.cm-sel-lock { flex: none; display: inline-flex; color: #fbbf24; }
 
 /* Pouco espaço livre (tela estreita ou painel largo): só ícones (o title de cada
    botão continua explicando). A classe é ligada por SelectionHUD.fit(). */
 .cm-selection-hud.compact .cm-sel-label { display: none; }
 .cm-selection-hud.compact .cm-sel-btn { width: 28px; padding: 0; justify-content: center; }
 .cm-selection-hud.compact .cm-sel-btn.danger:has(.cm-sel-label) { width: 28px; }
-.cm-selection-hud.compact .cm-sel-tag { display: none; }
+.cm-selection-hud.compact .cm-sel-tag,
+.cm-selection-hud.compact .cm-sel-metric { display: none; }
+.cm-selection-hud.compact .cm-sel-sep { margin: 0 1px; }
 
-/* Menu "Mover para camada" */
-.cm-sel-layer-menu {
+/* Menus suspensos: "Mover para camada" e "Mais ações" */
+.cm-sel-menu {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
@@ -225,7 +242,13 @@
   text-align: left;
   cursor: pointer;
 }
-.cm-sel-layer-item:hover, .cm-sel-layer-item:focus-visible { background: rgba(56, 189, 248, 0.18); outline: none; }
+.cm-sel-layer-item:disabled { opacity: 0.4; cursor: not-allowed; }
+.cm-sel-layer-item:not(:disabled):hover, .cm-sel-layer-item:not(:disabled):focus-visible { background: rgba(56, 189, 248, 0.18); outline: none; }
 .cm-sel-layer-item.current { background: rgba(255, 255, 255, 0.06); font-weight: 600; }
 .cm-sel-layer-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cm-sel-layer-opt { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #b4b4c0; padding: 6px 8px 2px; cursor: pointer; }
+
+.cm-sel-more-menu { min-width: 190px; }
+.cm-sel-menu-ico { flex: none; display: inline-flex; width: 14px; height: 14px; color: #9a9aab; }
+.cm-sel-menu-ico svg { width: 14px; height: 14px; }
+.cm-sel-menu-sep { height: 1px; margin: 4px 2px; background: rgba(255, 255, 255, 0.08); }

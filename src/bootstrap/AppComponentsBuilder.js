@@ -643,6 +643,13 @@ export class AppComponentsBuilder {
       onStyle: (hudFeatures, anchorEl) => {
         SelectionStyleController.openStylePicker(app, hudFeatures, anchorEl);
       },
+      // Duplicar, copiar, bloquear, buffer…: mesmos comandos da aba Modificar
+      onAction: (id, ctx) => {
+        ModifyActionsController.run(app, id, ctx);
+        // Bloquear, ocultar, simplificar… alteram as feições: o HUD relê as versões atuais
+        const fresh = ModifyActionsController.getSelection(app);
+        if (fresh.length > 0) app.selectionHUD.update(fresh, app.layers);
+      },
       onClear: () => {
         if (app.mapEngine) app.mapEngine.clearSelection();
         if (app.layerPanel) {

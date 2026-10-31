@@ -238,6 +238,8 @@ export class ShortcutsController {
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
       if (this.isTypingTarget(e)) return;
+      // Menu suspenso do HUD de seleção aberto: o Esc só o fecha (tratado pelo próprio HUD)
+      if (e.target?.closest?.('.cm-sel-menu')) return;
       this.clearSelectionOnEscape(app);
     }, true);
 

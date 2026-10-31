@@ -27,6 +27,16 @@ export class FeatureGeometryUtils {
     return m > 1000 ? (m / 1000).toFixed(2) + ' km' : m.toFixed(1) + ' m';
   }
 
+  /** Área legível: m² até 1 ha, depois hectares (formato pt-BR). */
+  static formatArea(m2) {
+    const n = Number(m2) || 0;
+    return n >= 10000
+      ? n / 10000 >= 1000
+        ? `${(n / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} km²`
+        : `${(n / 10000).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`
+      : `${Math.round(n).toLocaleString('pt-BR')} m²`;
+  }
+
   /**
    * Atributos métricos derivados da geometria, gravados em feat.properties
    * (exibidos na tabela de atributos e exportados no DBF/GeoJSON).
