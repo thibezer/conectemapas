@@ -237,14 +237,17 @@ export class PrintCanvasEngine {
         window.addEventListener('resize', () => requestAnimationFrame(() => this.renderRulers()));
       }
 
-      // Zoom com Ctrl + roda, ancorado no cursor
+      // Zoom com a roda, ancorado no cursor. Sobre um mapa em modo "conteúdo", a roda é do Leaflet (zoom do mapa);
+      // Shift + roda rola na horizontal (comportamento nativo).
       vp.addEventListener('wheel', (e) => {
-        if (e.ctrlKey || e.metaKey || e.altKey) {
-          e.preventDefault();
-          const anchor = { x: e.clientX, y: e.clientY };
-          if (e.deltaY < 0) this.zoomIn(anchor);
-          else this.zoomOut(anchor);
-        }
+        if (e.shiftKey || !e.deltaY) return;
+        const modoConteudo = this.composer.interactionMode === 'content_pan';
+        const sobreMapa = e.target.closest?.('.cm-item-map-frame');
+        if (modoConteudo && sobreMapa && !(e.ctrlKey || e.metaKey || e.altKey)) return;
+        e.preventDefault();
+        const anchor = { x: e.clientX, y: e.clientY };
+        if (e.deltaY < 0) this.zoomIn(anchor);
+        else this.zoomOut(anchor);
       }, { passive: false });
 
       // Pan da prancheta com Botão do Meio ou arrasto fora dos itens
@@ -416,8 +419,15 @@ export class PrintCanvasEngine {
       if (!this.composer.isOpen) return;
 
       // Salvaguarda: NUNCA intercepta teclas quando o foco estiver em campos de input ou texto (Regra GEMINI.md)
-      const target = e.target;
-      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : [e.target];
+      const isInput = path.some(el => {
+        if (!el || !el.tagName) return false;
+        const tag = el.tagName.toUpperCase();
+        return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+          || tag === 'UI-CAMPO-TEXTO' || tag === 'UI-INPUT' || tag === 'UI-AREA-TEXTO' || tag === 'UI-TEXTAREA'
+          || tag === 'UI-SELECT' || tag === 'UI-LISTA-FLUTUANTE' || tag === 'UI-TABELA-PROPRIEDADES'
+          || el.isContentEditable;
+      });
       if (isInput) return;
 
       // Atalhos com modificadores (Desfazer, Refazer, Duplicar)

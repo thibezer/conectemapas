@@ -159,7 +159,7 @@ export class PrintToolbar {
 
         <div class="cm-ptb-spacer"></div>
 
-        ${this.dropdown('zoom', `<span id="cm-print-zoom-val">100%</span>`, this.renderZoomMenu(), { triggerClass: 'cm-ptb-outline cm-ptb-zoom', align: 'right', title: 'Zoom da prancheta (Ctrl + roda do mouse)' })}
+        ${this.dropdown('zoom', `<span id="cm-print-zoom-val">100%</span>`, this.renderZoomMenu(), { triggerClass: 'cm-ptb-outline cm-ptb-zoom', align: 'right', title: 'Zoom da prancheta (roda do mouse)' })}
         ${this.dropdown('export', `${PRINT_ICONS.download}<span>Exportar</span>`, this.renderExportMenu(composer), { triggerClass: 'cm-ptb-primary', align: 'right', title: 'Exportar em PDF ou PNG' })}
         <button type="button" id="btn-close-print-composer" class="cm-print-tool-btn cm-print-icon-btn cm-print-close-btn" title="Fechar layout" aria-label="Fechar layout">${PRINT_ICONS.close}</button>
       </header>
