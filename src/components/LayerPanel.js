@@ -145,10 +145,10 @@ export class LayerPanel {
           aria-label="Ajustar largura do painel" tabindex="0"
           title="Arraste para ajustar a largura (duplo clique restaura)"></div>
         <div class="cm-sidebar-header">
-          <ui-segmented id="cm-sidebar-segmented" tamanho="sm" valor="${this.activeTab}" style="flex: 1; margin-right: 4px;">
-            <span valor="layers">🗂️ Camadas</span>
-            <span valor="inspector">🔍 Inspeção</span>
-            <span valor="collab">💬 Equipe</span>
+          <ui-segmented id="cm-sidebar-segmented" tamanho="sm" valor="${this.activeTab}" style="flex: 1;">
+            <span valor="layers">Camadas</span>
+            <span valor="inspector">Inspeção</span>
+            <span valor="collab">Equipe</span>
           </ui-segmented>
           <ui-botao-primario inline variante="ghost" id="btn-collapse-sidebar" title="Recolher Painel Lateral" style="height: 24px; width: 24px; padding: 0; min-width: 24px; font-size: 11px;">
             ❯
