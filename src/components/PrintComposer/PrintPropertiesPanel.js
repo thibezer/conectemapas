@@ -69,17 +69,17 @@ export class PrintPropertiesPanel {
                 <div class="cm-pp-toolbox">
                   <div class="cm-pp-toolbox-title">Alinhar na folha</div>
                   <div class="cm-pp-btn-row">
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda">⇤ Esq</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente">⧿ Centro</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita">⇥ Dir</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo">⤒ Topo</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente">⧾ Meio</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base">⤓ Base</button>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda">⇤ Esq</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente">⧿ Centro</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita">⇥ Dir</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo">⤒ Topo</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente">⧾ Meio</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base">⤓ Base</ui-botao-primario>
                   </div>
                   <div class="cm-pp-btn-row">
-                    <button class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)">📋 Duplicar</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente">⬆️ Frente</button>
-                    <button class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás">⬇️ Trás</button>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)">📋 Duplicar</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente">⬆️ Frente</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás">⬇️ Trás</ui-botao-primario>
                   </div>
                 </div>
 
@@ -87,19 +87,19 @@ export class PrintPropertiesPanel {
                 <div class="cm-pp-grid2">
                   <div>
                     <span class="cm-param-label">Posição X (mm):</span>
-                    <input type="number" id="prop-item-x" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.width}" value="${Math.round(selectedItem.x)}" />
+                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-x" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.width}" value="${Math.round(selectedItem.x)}"></ui-campo-texto>
                   </div>
                   <div>
                     <span class="cm-param-label">Posição Y (mm):</span>
-                    <input type="number" id="prop-item-y" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.height}" value="${Math.round(selectedItem.y)}" />
+                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-y" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.height}" value="${Math.round(selectedItem.y)}"></ui-campo-texto>
                   </div>
                   <div>
                     <span class="cm-param-label">Largura (mm):</span>
-                    <input type="number" id="prop-item-w" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.width}" value="${Math.round(selectedItem.width)}" />
+                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-w" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.width}" value="${Math.round(selectedItem.width)}"></ui-campo-texto>
                   </div>
                   <div>
                     <span class="cm-param-label">Altura (mm):</span>
-                    <input type="number" id="prop-item-h" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.height}" value="${Math.round(selectedItem.height)}" />
+                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-h" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.height}" value="${Math.round(selectedItem.height)}"></ui-campo-texto>
                   </div>
                 </div>
 
@@ -130,26 +130,26 @@ export class PrintPropertiesPanel {
     const maxH = Math.floor(paper.height / 2);
     const marginInput = (side, label, max) => `
       <label class="cm-pp-margin-label" for="print-margin-${side}">${label}</label>
-      <input type="number" id="print-margin-${side}" class="cm-vertex-input cm-pp-margin-input" data-margin-side="${side}" min="0" max="${max}" step="0.5" value="${m[side]}" />
+      <ui-campo-texto type="number" tamanho="sm" id="print-margin-${side}" class="cm-vertex-input cm-pp-margin-input" data-margin-side="${side}" min="0" max="${max}" step="0.5" value="${m[side]}"></ui-campo-texto>
     `;
 
     return `
       <details class="cm-inspector-accordion" data-section="paper" ${openAttr('paper')}>
         <summary class="cm-pp-summary">📄 Folha</summary>
         <div class="cm-pp-body">
-          <select id="print-paper-size-select" class="cm-native-select cm-pp-full cm-pp-compact-select" title="Tamanho do papel">
+          <ui-select id="print-paper-size-select" class="cm-native-select cm-pp-full cm-pp-compact-select" tamanho="sm" value="${esc(paper.id)}" title="Tamanho do papel">
             ${this.PAPER_OPTIONS.map(([id, label]) => {
               const sz = sizes[id];
               const dims = sz ? ` · ${sz.width}×${sz.height}` : '';
               return `<option value="${id}" ${paper.id === id ? 'selected' : ''}>${label}${dims}</option>`;
             }).join('')}
-          </select>
+          </ui-select>
 
           <div class="cm-pp-margins">
             <div class="cm-pp-margins-head">
               <span class="cm-param-label">Margens (mm)</span>
-              <span class="cm-pp-badge" id="print-margins-abnt-badge" title="25 mm à esquerda para encadernação" ${isAbnt ? '' : 'hidden'}>ABNT</span>
-              <button class="cm-ai-micro-btn" id="btn-margins-abnt" title="Voltar às margens ABNT" ${isAbnt ? 'hidden' : ''}>↺ ABNT</button>
+              <ui-badge variante="sucesso" tamanho="sm" class="cm-pp-badge" id="print-margins-abnt-badge" title="25 mm à esquerda para encadernação" ${isAbnt ? '' : 'hidden'}>ABNT</ui-badge>
+              <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-margins-abnt" title="Voltar às margens ABNT" ${isAbnt ? 'hidden' : ''}>↺ ABNT</ui-botao-primario>
             </div>
             <div class="cm-pp-margins-grid">
               ${marginInput('top', 'Sup.', maxH)}
@@ -160,16 +160,16 @@ export class PrintPropertiesPanel {
           </div>
           <label class="cm-param-row" for="print-abnt-margins-check">
             <span class="cm-param-label">Moldura nas margens</span>
-            <input type="checkbox" id="print-abnt-margins-check" ${composer.showAbntMargins ? 'checked' : ''} />
+            <ui-checkbox id="print-abnt-margins-check" ${composer.showAbntMargins ? 'checked' : ''}></ui-checkbox>
           </label>
 
           <div class="cm-pp-inline">
-            <select id="print-preset-select" class="cm-native-select cm-pp-grow cm-pp-compact-select" title="Pré-definições deste projeto">
+            <ui-select id="print-preset-select" class="cm-native-select cm-pp-grow cm-pp-compact-select" tamanho="sm" value="${match ? esc(match.id) : ''}" title="Pré-definições deste projeto">
               <option value="" ${match ? '' : 'selected'}>${presets.length ? 'Pré-definições…' : 'Nenhuma pré-definição'}</option>
               ${presets.map(p => `<option value="${esc(p.id)}" ${match?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-            </select>
-            <button class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais">💾</button>
-            <button class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'}>🗑️</button>
+            </ui-select>
+            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais">💾</ui-botao-primario>
+            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'}>🗑️</ui-botao-primario>
           </div>
 
           <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Volta às margens ABNT e ao layout padrão dos elementos (Ctrl+Z desfaz)">
@@ -205,6 +205,7 @@ export class PrintPropertiesPanel {
     const freshPresets = pick(fresh, '#print-preset-select');
     if (presets && freshPresets) {
       presets.innerHTML = freshPresets.innerHTML;
+      presets.carregarItensFilhos?.();
       presets.value = freshPresets.value;
     }
     const del = pick(kept, '#btn-preset-delete');
@@ -234,39 +235,36 @@ export class PrintPropertiesPanel {
     const colorValue = (value, fallback) => (PrintItemsManager.parseColor(value) || { hex: fallback }).hex;
 
     if (item.type === 'map' || item.type === 'inset_map') {
+      const currentBasemap = BasemapCatalog.normalize(composer.basemapFor ? composer.basemapFor(item) : (item.basemap || (item.type === 'inset_map' ? 'esri_light' : composer.currentBasemap)));
       return `
         <div class="cm-pp-stack cm-pp-section">
           <div class="cm-param-row">
             <span class="cm-param-label">Camada Base:</span>
-            <select id="prop-map-basemap" class="cm-native-select cm-pp-w-xl" ${PrintViewResolver.isLockedByTemplate(item, composer.library, 'basemap') ? 'disabled title="Controlado pelo modelo de vista"' : ''}>
-              ${(() => {
-                // Fundo efetivo (modelo vinculado ou o do item; sem nenhum, o do mapa principal)
-                const current = BasemapCatalog.normalize(composer.basemapFor ? composer.basemapFor(item) : (item.basemap || (item.type === 'inset_map' ? 'esri_light' : composer.currentBasemap)));
-                return BasemapCatalog.list().map(b => `
-                  <option value="${b.id}" ${sel(current === b.id)}>${b.icon} ${esc(b.name)}${b.exportable ? '' : ' (pode não sair no PDF)'}</option>
-                `).join('');
-              })()}
-            </select>
+            <ui-select id="prop-map-basemap" class="cm-native-select cm-pp-w-xl" tamanho="sm" value="${esc(currentBasemap)}" ${PrintViewResolver.isLockedByTemplate(item, composer.library, 'basemap') ? 'disabled title="Controlado pelo modelo de vista"' : ''}>
+              ${BasemapCatalog.list().map(b => `
+                <option value="${b.id}" ${sel(currentBasemap === b.id)}>${b.icon} ${esc(b.name)}${b.exportable ? '' : ' (pode não sair no PDF)'}</option>
+              `).join('')}
+            </ui-select>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Escala Numérica (1:):</span>
-            <input type="number" id="prop-map-scale" class="cm-vertex-input cm-pp-w-m" step="500" value="${Number(item.scale) || 10000}" />
+            <ui-campo-texto type="number" tamanho="sm" id="prop-map-scale" class="cm-vertex-input cm-pp-w-m" step="500" value="${Number(item.scale) || 10000}"></ui-campo-texto>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Rotação do Mapa:</span>
-            <input type="number" id="prop-map-rot" class="cm-vertex-input cm-pp-w-s" min="0" max="360" value="${Number(item.rotation) || 0}" />
+            <ui-campo-texto type="number" tamanho="sm" id="prop-map-rot" class="cm-vertex-input cm-pp-w-s" min="0" max="360" value="${Number(item.rotation) || 0}"></ui-campo-texto>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Grade de Coordenadas:</span>
-            <input type="checkbox" id="prop-map-grid" ${item.showGrid ? 'checked' : ''} />
+            <ui-checkbox id="prop-map-grid" ${item.showGrid ? 'checked' : ''}></ui-checkbox>
           </div>
           ${item.showGrid ? `
             <div class="cm-param-row">
               <span class="cm-param-label">Tipo de Grade:</span>
-              <select id="prop-map-grid-type" class="cm-native-select cm-pp-w-l">
+              <ui-select id="prop-map-grid-type" class="cm-native-select cm-pp-w-l" tamanho="sm" value="${item.gridType === 'utm' ? 'utm' : 'dms'}">
                 <option value="dms" ${sel(item.gridType === 'dms')}>Geográfica (DMS)</option>
                 <option value="utm" ${sel(item.gridType === 'utm')}>Métrica UTM (Metros)</option>
-              </select>
+              </ui-select>
             </div>
           ` : ''}
           <ui-botao-primario inline id="btn-prop-pan-map" variante="secundario" class="cm-pp-wide-btn">
@@ -282,17 +280,17 @@ export class PrintPropertiesPanel {
         <div class="cm-pp-stack">
           <div class="cm-param-row">
             <span class="cm-param-label">Estilo da Seta:</span>
-            <select id="prop-arrow-style" class="cm-native-select cm-pp-w-l">
+            <ui-select id="prop-arrow-style" class="cm-native-select cm-pp-w-l" tamanho="sm" value="${esc(item.arrowStyle || 'classic')}">
               <option value="classic" ${sel(item.arrowStyle === 'classic')}>Cartográfica Clássica</option>
               <option value="compass" ${sel(item.arrowStyle === 'compass')}>Bússola / Rosa</option>
               <option value="modern" ${sel(item.arrowStyle === 'modern')}>Moderna Técnica</option>
-            </select>
+            </ui-select>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Rotação (Norte):</span>
             <div class="cm-pp-inline">
               <input type="range" id="prop-arrow-rot-range" class="cm-pp-w-range" min="0" max="360" value="${Number(item.rotation) || 0}" />
-              <input type="number" id="prop-arrow-rot" class="cm-vertex-input cm-pp-w-xs" min="0" max="360" value="${Number(item.rotation) || 0}" />
+              <ui-campo-texto type="number" tamanho="sm" id="prop-arrow-rot" class="cm-vertex-input cm-pp-w-xs" min="0" max="360" value="${Number(item.rotation) || 0}"></ui-campo-texto>
             </div>
           </div>
         </div>
@@ -308,19 +306,19 @@ export class PrintPropertiesPanel {
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Divisões:</span>
-            <input type="number" id="prop-sb-segments" class="cm-vertex-input cm-pp-w-s" min="1" max="8" step="1" value="${Number(item.segments) || 4}" />
+            <ui-campo-texto type="number" tamanho="sm" id="prop-sb-segments" class="cm-vertex-input cm-pp-w-s" min="1" max="8" step="1" value="${Number(item.segments) || 4}"></ui-campo-texto>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Unidade:</span>
-            <select id="prop-sb-units" class="cm-native-select cm-pp-w-l">
+            <ui-select id="prop-sb-units" class="cm-native-select cm-pp-w-l" tamanho="sm" value="${esc(item.units || 'auto')}">
               <option value="auto" ${sel(!item.units || item.units === 'auto')}>Automática</option>
               <option value="m" ${sel(item.units === 'm')}>Metros (m)</option>
               <option value="km" ${sel(item.units === 'km')}>Quilômetros (km)</option>
-            </select>
+            </ui-select>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Mostrar escala numérica:</span>
-            <input type="checkbox" id="prop-sb-text" ${item.showScaleText !== false ? 'checked' : ''} />
+            <ui-checkbox id="prop-sb-text" ${item.showScaleText !== false ? 'checked' : ''}></ui-checkbox>
           </div>
         </div>
       `;
@@ -339,20 +337,20 @@ export class PrintPropertiesPanel {
       return `
         <div class="cm-pp-stack">
           <span class="cm-param-label">Título da Legenda (vazio = sem título):</span>
-          <input type="text" id="prop-legend-title" class="cm-vertex-input" value="${esc(item.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE)}" />
+          <ui-campo-texto type="text" tamanho="sm" id="prop-legend-title" class="cm-vertex-input" value="${esc(item.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE)}"></ui-campo-texto>
           ${maps.length > 1 ? `
             <div class="cm-param-row">
               <span class="cm-param-label">Mapa vinculado:</span>
-              <select id="prop-legend-map" class="cm-native-select cm-pp-w-l">
+              <ui-select id="prop-legend-map" class="cm-native-select cm-pp-w-l" tamanho="sm" value="${esc(mapItem?.id || '')}">
                 ${maps.map(m => `<option value="${esc(m.id)}" ${sel(mapItem?.id === m.id)}>${esc(m.name || 'Mapa')}</option>`).join('')}
-              </select>
+              </ui-select>
             </div>
           ` : ''}
           <span class="cm-param-label">Itens exibidos (do que aparece no mapa):</span>
           <div class="cm-pp-layer-list">
             ${candidates.map(e => `
               <label class="cm-param-row cm-pp-layer-row" for="prop-legend-layer-${esc(e.id)}">
-                <input type="checkbox" id="prop-legend-layer-${esc(e.id)}" data-legend-layer="${esc(e.id)}" ${hidden.has(String(e.id)) ? '' : 'checked'} />
+                <ui-checkbox id="prop-legend-layer-${esc(e.id)}" data-legend-layer="${esc(e.id)}" ${hidden.has(String(e.id)) ? '' : 'checked'}></ui-checkbox>
                 <span class="cm-pp-swatch" style="background: ${PrintItemsManager.sanitizeColor(e.graphics.fill.color !== 'none' ? e.graphics.fill.color : e.graphics.stroke.color, '#00E08A')};"></span>
                 <span class="cm-pp-layer-name">${e.isFilter ? 'Filtro: ' : ''}${esc(e.name)}</span>
               </label>
@@ -367,12 +365,12 @@ export class PrintPropertiesPanel {
         <div class="cm-pp-stack">
           <div class="cm-param-row">
             <span class="cm-param-label">Feição Referência:</span>
-            <select id="prop-vert-feature" class="cm-native-select cm-pp-w-xl">
+            <ui-select id="prop-vert-feature" class="cm-native-select cm-pp-w-xl" tamanho="sm" value="${esc(item.targetFeatureId || '')}">
               <option value="">-- Automático (1º Polígono) --</option>
               ${polygonFeatures.map(f => `
                 <option value="${esc(f.id)}" ${sel(item.targetFeatureId === f.id)}>${esc(f.name || f.id)}</option>
               `).join('')}
-            </select>
+            </ui-select>
           </div>
         </div>
       `;
@@ -382,12 +380,12 @@ export class PrintPropertiesPanel {
       return `
         <div class="cm-pp-stack">
           <span class="cm-param-label">Título do Bloco:</span>
-          <input type="text" id="prop-text-title" class="cm-vertex-input" value="${esc(item.title || '')}" />
+          <ui-campo-texto type="text" tamanho="sm" id="prop-text-title" class="cm-vertex-input" value="${esc(item.title || '')}"></ui-campo-texto>
           <span class="cm-param-label">Texto das Notas:</span>
-          <textarea id="prop-text-body" class="cm-vertex-input cm-pp-textarea" rows="5">${esc(item.text || '')}</textarea>
+          <ui-area-texto id="prop-text-body" class="cm-vertex-input cm-pp-textarea" linhas="5" value="${esc(item.text || '')}">${esc(item.text || '')}</ui-area-texto>
           <div class="cm-param-row">
             <span class="cm-param-label">Tamanho da Fonte (pt):</span>
-            <input type="number" id="prop-text-size" class="cm-vertex-input cm-pp-w-s" min="5" max="18" step="0.5" value="${Number(item.fontSize) || 7.5}" />
+            <ui-campo-texto type="number" tamanho="sm" id="prop-text-size" class="cm-vertex-input cm-pp-w-s" min="5" max="18" step="0.5" value="${Number(item.fontSize) || 7.5}"></ui-campo-texto>
           </div>
         </div>
       `;
@@ -414,7 +412,7 @@ export class PrintPropertiesPanel {
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Espessura da Borda (px):</span>
-            <input type="number" id="prop-shape-strokew" class="cm-vertex-input cm-pp-w-s" min="0" max="10" step="0.5" value="${item.strokeWidth == null ? 1.5 : (Number(item.strokeWidth) || 0)}" />
+            <ui-campo-texto type="number" tamanho="sm" id="prop-shape-strokew" class="cm-vertex-input cm-pp-w-s" min="0" max="10" step="0.5" value="${item.strokeWidth == null ? 1.5 : (Number(item.strokeWidth) || 0)}"></ui-campo-texto>
           </div>
         </div>
       `;
@@ -427,10 +425,10 @@ export class PrintPropertiesPanel {
           <input type="file" id="prop-image-file" accept="image/*" class="cm-vertex-input cm-pp-file" />
           <div class="cm-param-row">
             <span class="cm-param-label">Ajuste de Enquadramento:</span>
-            <select id="prop-image-fit" class="cm-native-select cm-pp-w-l">
+            <ui-select id="prop-image-fit" class="cm-native-select cm-pp-w-l" tamanho="sm" value="${esc(item.objectFit || 'contain')}">
               <option value="contain" ${sel(item.objectFit === 'contain')}>Conter (Manter Proporção)</option>
               <option value="cover" ${sel(item.objectFit === 'cover')}>Preencher (Cortar Excesso)</option>
-            </select>
+            </ui-select>
           </div>
           ${item.imageUrl ? `
             <ui-botao-primario inline id="btn-remove-image-url" variante="secundario" class="cm-pp-small-btn">
@@ -445,25 +443,25 @@ export class PrintPropertiesPanel {
       return `
         <div class="cm-pp-stack">
           <span class="cm-param-label">Texto do Título:</span>
-          <input type="text" id="prop-label-text" class="cm-vertex-input" value="${esc(item.text || '')}" />
+          <ui-campo-texto type="text" tamanho="sm" id="prop-label-text" class="cm-vertex-input" value="${esc(item.text || '')}"></ui-campo-texto>
           <div class="cm-param-row">
             <span class="cm-param-label">Tamanho da Fonte (pt):</span>
-            <input type="number" id="prop-label-size" class="cm-vertex-input cm-pp-w-s" min="6" max="36" value="${Number(item.fontSize) || 10}" />
+            <ui-campo-texto type="number" tamanho="sm" id="prop-label-size" class="cm-vertex-input cm-pp-w-s" min="6" max="36" value="${Number(item.fontSize) || 10}"></ui-campo-texto>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Peso da Fonte:</span>
-            <select id="prop-label-weight" class="cm-native-select cm-pp-w-m">
+            <ui-select id="prop-label-weight" class="cm-native-select cm-pp-w-m" tamanho="sm" value="${esc(item.fontWeight || 'bold')}">
               <option value="bold" ${sel(item.fontWeight === 'bold')}>Negrito</option>
               <option value="normal" ${sel(item.fontWeight === 'normal')}>Normal</option>
-            </select>
+            </ui-select>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Alinhamento:</span>
-            <select id="prop-label-align" class="cm-native-select cm-pp-w-m">
+            <ui-select id="prop-label-align" class="cm-native-select cm-pp-w-m" tamanho="sm" value="${esc(item.textAlign || 'center')}">
               <option value="center" ${sel(item.textAlign === 'center')}>Centralizado</option>
               <option value="left" ${sel(item.textAlign === 'left')}>À Esquerda</option>
               <option value="right" ${sel(item.textAlign === 'right')}>À Direita</option>
-            </select>
+            </ui-select>
           </div>
           <div class="cm-param-row">
             <span class="cm-param-label">Cor do Texto:</span>
@@ -477,7 +475,7 @@ export class PrintPropertiesPanel {
       const p = item.properties || {};
       const field = (id, label, key) => `
         <span class="cm-param-label">${label}:</span>
-        <input type="text" id="${id}" class="cm-vertex-input" value="${esc(p[key] || '')}" />
+        <ui-campo-texto type="text" tamanho="sm" id="${id}" class="cm-vertex-input" value="${esc(p[key] || '')}"></ui-campo-texto>
       `;
       return `
         <div class="cm-pp-stack cm-pp-stack--tight">
@@ -488,15 +486,15 @@ export class PrintPropertiesPanel {
           ${field('prop-tb-art', 'ART / Registro', 'art')}
           ${field('prop-tb-datum', 'Sistema Geodésico / Projeção', 'datum')}
           <span class="cm-param-label">Texto de Escala:</span>
-          <input type="text" id="prop-tb-scale" class="cm-vertex-input" value="${esc(PrintItemsManager.titleBlockScaleText(p, composer.items.find(i => i.type === 'map')?.scale))}" />
+          <ui-campo-texto id="prop-tb-scale" class="cm-vertex-input" value="${esc(PrintItemsManager.titleBlockScaleText(p, composer.items.find(i => i.type === 'map')?.scale))}" type="text" tamanho="sm"></ui-campo-texto>
           <div class="cm-param-row">
             <span class="cm-param-label">Acompanhar a escala do mapa:</span>
-            <input type="checkbox" id="prop-tb-scale-auto" ${PrintItemsManager.isTitleBlockScaleAuto(p) ? 'checked' : ''} />
+            <ui-checkbox id="prop-tb-scale-auto" ${PrintItemsManager.isTitleBlockScaleAuto(p) ? 'checked' : ''}></ui-checkbox>
           </div>
           <span class="cm-param-label">Área e Perímetro:</span>
           <div class="cm-pp-inline">
-            <input type="text" id="prop-tb-area" class="cm-vertex-input cm-pp-grow" value="${esc(p.areaPerimeter || '')}" />
-            <button id="btn-calc-area-carimbo" class="cm-ai-micro-btn cm-pp-icon-btn" title="Calcular das Feições">⚡</button>
+            <ui-campo-texto type="text" tamanho="sm" id="prop-tb-area" class="cm-vertex-input cm-pp-grow" value="${esc(p.areaPerimeter || '')}"></ui-campo-texto>
+            <ui-botao-primario inline variante="ghost" tamanho="sm" id="btn-calc-area-carimbo" class="cm-ai-micro-btn cm-pp-icon-btn" title="Calcular das Feições">⚡</ui-botao-primario>
           </div>
           ${field('prop-tb-loc', 'Localização / Imóvel', 'location')}
           ${field('prop-tb-date', 'Data da Planta', 'date')}
@@ -549,16 +547,16 @@ export class PrintPropertiesPanel {
       <div class="cm-pp-temp" role="group" aria-label="Visualização temporária">
         <span class="cm-param-label">Temporário (não sai no PDF):</span>
         <div class="cm-pp-inline">
-          <select id="prop-temp-layer" class="cm-native-select cm-pp-grow cm-pp-compact-select" aria-label="Camada">
+          <ui-select id="prop-temp-layer" class="cm-native-select cm-pp-grow cm-pp-compact-select" tamanho="sm" aria-label="Camada">
             ${layers.map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}
-          </select>
-          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-isolate" title="Mostra só esta camada">Isolar</button>
-          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-hide" title="Esconde esta camada">Ocultar</button>
+          </ui-select>
+          <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-isolate" title="Mostra só esta camada">Isolar</ui-botao-primario>
+          <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-hide" title="Esconde esta camada">Ocultar</ui-botao-primario>
         </div>
         <div class="cm-pp-inline">
-          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-isolate-feature" title="Clique numa feição: só ela aparece">Isolar feição…</button>
-          <button type="button" class="cm-ai-micro-btn cm-pp-text-btn ${revealing ? 'is-active' : ''}" id="btn-reveal-hidden" aria-pressed="${revealing}" title="Mostra em magenta o que esta vista esconde; clique para religar">💡 Revelar ocultos</button>
-          ${temp ? '<button type="button" class="cm-ai-micro-btn cm-pp-text-btn is-active" id="btn-temp-reset" title="Volta a mostrar a vista salva">↺ Restaurar</button>' : ''}
+          <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-isolate-feature" title="Clique numa feição: só ela aparece">Isolar feição…</ui-botao-primario>
+          <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn ${revealing ? 'is-active' : ''}" id="btn-reveal-hidden" aria-pressed="${revealing}" title="Mostra em magenta o que esta vista esconde; clique para religar">💡 Revelar ocultos</ui-botao-primario>
+          ${temp ? '<ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn is-active" id="btn-temp-reset" title="Volta a mostrar a vista salva">↺ Restaurar</ui-botao-primario>' : ''}
         </div>
       </div>
     `;

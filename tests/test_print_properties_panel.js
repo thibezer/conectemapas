@@ -320,7 +320,7 @@ assert.strictEqual(PrintItemsManager.legendTitle({}), PrintItemsManager.DEFAULT_
 let legHtml = PrintPropertiesPanel.renderTypeFields(legItem, { items: [legItem, legMap], layers, features: legFeatures, library: null }, []);
 assert.ok(legHtml.includes('data-legend-layer="app"') && legHtml.includes('data-legend-layer="1"'), 'Painel lista o que aparece no mapa vinculado');
 assert.ok(!legHtml.includes('data-legend-layer="oculta"'), 'Camada oculta no mapa (espelhando o projeto) não é candidata');
-assert.ok(/data-legend-layer="1"\s*\/>/.test(legHtml), 'Camada desmarcada na legenda aparece desmarcada');
+assert.ok(/data-legend-layer="1"\s*(?:\/>|>)/.test(legHtml), 'Camada desmarcada na legenda aparece desmarcada');
 legHtml = PrintPropertiesPanel.renderTypeFields({ ...legItem, title: 'CONVENÇÕES <b>' }, { items: [legItem, legMap], layers, features: legFeatures }, []);
 assert.ok(legHtml.includes('CONVENÇÕES &lt;b&gt;'), 'Título personalizado e escapado');
 console.log('✔ Legenda validada');
@@ -506,6 +506,8 @@ tbPanel.find(i => i.type === 'map').scale = 44396;
 html = PrintPropertiesPanel.render({ items: tbPanel, selectedItemId: tbItem2.id, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
 assert.ok(/id="prop-tb-scale" class="cm-vertex-input" value="1:44\.396"/.test(html), 'Campo mostra a escala do mapa');
 assert.ok(/id="prop-tb-scale-auto" checked/.test(html), 'Acompanhar a escala vem marcado');
+assert.ok(html.includes('<ui-campo-texto') && html.includes('<ui-select') && html.includes('<ui-checkbox') && html.includes('<ui-badge') && html.includes('<ui-botao-primario'), 'Painel usa Web Components do @thibezer/ui-components-kit');
+assert.ok(!/<select\b/.test(html) && !/<textarea\b/.test(html), 'Painel não usa <select> ou <textarea> nativos de fallback');
 console.log('✔ Carimbo validado');
 
 console.log('\n🎉 TESTES DO PAINEL LATERAL E HISTÓRICO PASSARAM!');

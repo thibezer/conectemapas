@@ -9,6 +9,12 @@
   z-index: 1000;
 }
 
+/* Ribbon compacto: anula o min-height: 122px interno do :host, fazendo o
+   componente abraçar a altura real dos botões e eliminando o vão preto abaixo da barra */
+#cm-ribbon {
+  min-height: 0;
+}
+
 .cm-header {
   height: var(--cm-titlebar-height, 30px);
   min-height: var(--cm-titlebar-height, 30px);

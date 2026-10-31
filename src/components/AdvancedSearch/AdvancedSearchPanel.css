@@ -45,6 +45,18 @@
 }
 
 .cm-adv-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cm-adv-window .cm-native-select {
+  height: 24px;
+  background: var(--cm-surface-elevated, #1a1a1e);
+  color: var(--cm-text, #e1e1e6);
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.12));
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+}
+.cm-adv-window .cm-native-select:focus { border-color: var(--cm-primary, #00E08A); }
 .cm-adv-toprow .cm-native-select { max-width: 150px; }
 .cm-adv-lbl { color: var(--cm-text-muted, #888899); }
 
