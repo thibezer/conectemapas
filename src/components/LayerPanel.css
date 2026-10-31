@@ -9,10 +9,10 @@
 
 .cm-sidebar {
   position: absolute;
-  /* Ancorado na lateral direita, de ponta a ponta (sem mapa ao redor) */
+  /* Ancorado na lateral direita, do topo até a tabela (sem mapa ao redor) */
   top: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--cm-table-h, 34px); /* termina acima da tabela de atributos */
   width: 335px;
   max-width: calc(100vw - 110px);
   z-index: 500;
