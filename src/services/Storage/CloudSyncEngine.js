@@ -401,10 +401,14 @@ export class CloudSyncEngine {
     });
   }
 
-  static async syncMetadataToCloud(projectData) {
-    if (!projectData) return;
+  static syncMetadataToCloud(projectData) {
+    if (!projectData) return Promise.resolve();
     const dirtyProjectId = projectData.id || 'projeto_padrao';
     this.flushLayerDeletes(dirtyProjectId);
+    return this._enqueuePush([], () => this._syncMetadataToCloudNow(projectData, dirtyProjectId));
+  }
+
+  static async _syncMetadataToCloudNow(projectData, dirtyProjectId) {
     _layerSyncInFlight++;
     try {
       _cloudStatus.syncing = true;

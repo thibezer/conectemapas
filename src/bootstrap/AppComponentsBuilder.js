@@ -413,9 +413,13 @@ export class AppComponentsBuilder {
       // Edição de vértices iniciada por qualquer caminho (HUD, inspetor, menu): a barra do componente
       // ocupa o topo, então o HUD de seleção sai e volta ao concluir
       app.mapEngine.onVertexEditChange = (editing) => {
-        if (editing) app.selectionHUD?.hide();
-        else app.updateSelectionState(Array.from(app.mapEngine.selectedFeatureIds || [])
-          .map(id => app.features.find(f => f.id === id)).filter(Boolean));
+        if (editing) {
+          app.selectionHUD?.hide();
+        } else {
+          const idSet = app.mapEngine.selectedFeatureIds;
+          const feats = idSet && idSet.size > 0 ? (app.features || []).filter(f => idSet.has(f.id)) : [];
+          app.updateSelectionState(feats);
+        }
       };
 
       app.mapEngine.onSplitFailed = (reason) => {
@@ -534,7 +538,8 @@ export class AppComponentsBuilder {
       onBulkDelete: (requestedIds) => {
         // Feições bloqueadas ficam de fora da exclusão em lote
         const lockedIds = requestedIds.filter(id => FeatureSyncController.isFeatureLocked(app, id));
-        const featureIds = requestedIds.filter(id => !lockedIds.includes(id));
+        const lockedSet = new Set(lockedIds);
+        const featureIds = requestedIds.filter(id => !lockedSet.has(id));
         if (lockedIds.length > 0) {
           FeatureSyncController.notifyLocked(`${lockedIds.length} feição(ões) selecionada(s)`);
         }
@@ -704,10 +709,11 @@ export class AppComponentsBuilder {
     return {
       select: (ids, mode = 'replace', { silent = false } = {}) => {
         const current = new Set(AppComponentsBuilder.getSelectedFeatures(app).map(f => f.id));
+        const idSet = new Set(ids);
         let final;
-        if (mode === 'add') final = new Set([...current, ...ids]);
-        else if (mode === 'subtract') final = new Set([...current].filter(id => !ids.includes(id)));
-        else final = new Set(ids);
+        if (mode === 'add') final = new Set([...current, ...idSet]);
+        else if (mode === 'subtract') final = new Set([...current].filter(id => !idSet.has(id)));
+        else final = idSet;
         const list = [...final];
         app.mapEngine?.selectFeatures(list);
         const byId = new Map(app.features.map(f => [f.id, f]));

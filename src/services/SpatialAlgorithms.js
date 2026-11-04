@@ -155,6 +155,7 @@ export class SpatialAlgorithms {
 
     // 1. Ponto ou Texto -> Círculo geodésico
     if (type === 'Point' || type === 'Text') {
+      if (radiusMeters < 0) return null; // retrair um ponto não tem sentido
       const coord = Array.isArray(feature.coordinates) && Number.isFinite(feature.coordinates[0])
         ? [Number(feature.coordinates[0]), Number(feature.coordinates[1])]
         : null;
@@ -193,7 +194,8 @@ export class SpatialAlgorithms {
     // 2. Círculo -> Expansão de Círculo
     if (type === 'Circle') {
       const currentRadius = Number(feature.radius) || 0;
-      const newRadius = Math.max(1, currentRadius + radiusMeters);
+      const newRadius = currentRadius + radiusMeters;
+      if (!(newRadius > 0)) return null; // retração maior que o raio: nada sobra
       const coord = Array.isArray(feature.coordinates) && Number.isFinite(feature.coordinates[0])
         ? [Number(feature.coordinates[0]), Number(feature.coordinates[1])]
         : null;
@@ -235,30 +237,32 @@ export class SpatialAlgorithms {
     if (!Array.isArray(rawCoords) || rawCoords.length === 0) return null;
 
     const isMulti = Array.isArray(rawCoords[0]) && Array.isArray(rawCoords[0][0]);
+    // Multipolígono (profundidade 4): não há buffer único para partes disjuntas
+    if (isMulti && Array.isArray(rawCoords[0][0][0])) return null;
     const inputRing = isMulti ? rawCoords[0] : rawCoords;
     if (!Array.isArray(inputRing) || inputRing.length < (type === 'Polygon' ? 3 : 2)) return null;
 
-    const pts = [];
-    for (const p of inputRing) {
-      if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
-        if (pts.length > 0) {
-          const prev = pts[pts.length - 1];
-          if (Math.abs(prev[0] - p[0]) < 1e-9 && Math.abs(prev[1] - p[1]) < 1e-9) continue;
+    // Remove pontos inválidos, repetidos em sequência e (em polígono) o vértice de fechamento duplicado
+    const cleanPts = (ring, closeAware) => {
+      const out = [];
+      for (const p of ring) {
+        if (Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])) {
+          if (out.length > 0) {
+            const prev = out[out.length - 1];
+            if (Math.abs(prev[0] - p[0]) < 1e-9 && Math.abs(prev[1] - p[1]) < 1e-9) continue;
+          }
+          out.push([Number(p[0]), Number(p[1])]);
         }
-        pts.push([Number(p[0]), Number(p[1])]);
       }
-    }
-
-    if (pts.length < (type === 'Polygon' ? 3 : 2)) return null;
-
-    // Remove vértice de fechamento duplicado no polígono para cálculo vetorial
-    if (type === 'Polygon' && pts.length >= 3) {
-      const first = pts[0];
-      const last = pts[pts.length - 1];
-      if (Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) {
-        pts.pop();
+      if (closeAware && out.length >= 3) {
+        const first = out[0];
+        const last = out[out.length - 1];
+        if (Math.abs(first[0] - last[0]) < 1e-7 && Math.abs(first[1] - last[1]) < 1e-7) out.pop();
       }
-    }
+      return out;
+    };
+
+    const pts = cleanPts(inputRing, type === 'Polygon');
 
     if (pts.length < (type === 'Polygon' ? 3 : 2)) return null;
 
@@ -280,6 +284,18 @@ export class SpatialAlgorithms {
     const ptsM = pts.map(toMeters);
     const d = radiusMeters;
     let bufferM = [];
+    const holesM = [];
+
+    // Anel deslocado cujo lado mudou de sentido em relação ao original = a retração passou da largura
+    const ringCollapsed = (orig, off) => {
+      for (let i = 0; i < orig.length; i++) {
+        const j = (i + 1) % orig.length;
+        const dot = (orig[j][0] - orig[i][0]) * (off[j][0] - off[i][0])
+                  + (orig[j][1] - orig[i][1]) * (off[j][1] - off[i][1]);
+        if (dot <= 0) return true;
+      }
+      return false;
+    };
 
     // Normal unitária perpendicular à esquerda do segmento [A -> B]
     const leftNormal = (p1, p2) => {
@@ -363,25 +379,49 @@ export class SpatialAlgorithms {
       bufferM = offsetPolyline(orientedPts, d, true);
 
       if (bufferM.length < 3) return null;
+      // Retração maior que a meia-largura inverte lados do anel: não há polígono válido
+      if (d < 0 && ringCollapsed(orientedPts, bufferM)) return null;
+
+      // Furos (profundidade 3) andam no sentido oposto: encolhem na expansão e crescem na retração
+      if (isMulti) {
+        for (const hole of rawCoords.slice(1)) {
+          const hp = cleanPts(hole, true);
+          if (hp.length < 3) continue;
+          const hm = hp.map(toMeters);
+          let ha = 0;
+          for (let i = 0; i < hm.length; i++) {
+            const p1 = hm[i];
+            const p2 = hm[(i + 1) % hm.length];
+            ha += (p2[0] - p1[0]) * (p2[1] + p1[1]);
+          }
+          const hOriented = ha > 0 ? hm : [...hm].reverse();
+          const hOff = offsetPolyline(hOriented, -d, true);
+          if (d > 0 && ringCollapsed(hOriented, hOff)) continue; // furo fechado pela expansão
+          holesM.push(hOff);
+        }
+      }
     }
 
     if (bufferM.length < 3) return null;
 
-    const bufferLatLng = bufferM.map(toLatLng);
+    const closeRing = (ringM) => {
+      const ll = ringM.map(toLatLng);
+      const a = ll[0];
+      const b = ll[ll.length - 1];
+      if (Math.abs(a[0] - b[0]) > 1e-7 || Math.abs(a[1] - b[1]) > 1e-7) ll.push([a[0], a[1]]);
+      return ll;
+    };
 
-    // Garante fechamento do polígono
-    const f0 = bufferLatLng[0];
-    const flast = bufferLatLng[bufferLatLng.length - 1];
-    if (Math.abs(f0[0] - flast[0]) > 1e-7 || Math.abs(f0[1] - flast[1]) > 1e-7) {
-      bufferLatLng.push([f0[0], f0[1]]);
-    }
+    const outerLatLng = closeRing(bufferM);
+    // Com furos remanescentes o resultado é externo + furos (profundidade 3)
+    const bufferCoords = holesM.length > 0 ? [outerLatLng, ...holesM.map(closeRing)] : outerLatLng;
 
     return {
       id: featureId,
-      name: `Buffer ${feature.name || 'Geometria'} (${absRadius}m)`,
+      name: `Buffer ${feature.name || 'Geometria'} (${type === 'Polygon' && d < 0 ? '-' : ''}${absRadius}m)`,
       layerId: targetLayerId,
       type: 'Polygon',
-      coordinates: bufferLatLng,
+      coordinates: bufferCoords,
       category: 'Zona de Amortecimento',
       color: bufferFill,
       style: {
@@ -411,36 +451,29 @@ export class SpatialAlgorithms {
    * @param {number} offsetMeters
    */
   static duplicateWithOffset(feature, offsetMeters = 30) {
-    if (!feature) return null;
+    if (!feature || !Number.isFinite(offsetMeters)) return null;
 
-    let refLat = 0;
-    if (feature.type === 'Point' || feature.type === 'Circle') {
-      refLat = feature.coordinates[0];
-    } else if (Array.isArray(feature.coordinates) && feature.coordinates[0]) {
-      const isMulti = Array.isArray(feature.coordinates[0]) && Array.isArray(feature.coordinates[0][0]);
-      refLat = isMulti ? feature.coordinates[0][0][0] : feature.coordinates[0][0];
-    }
+    // Primeira posição [lat, lng] em qualquer profundidade (ponto, linha, anel, furos, multipolígono)
+    let first = feature.coordinates;
+    while (Array.isArray(first) && Array.isArray(first[0])) first = first[0];
+    if (!Array.isArray(first) || !Number.isFinite(first[0]) || !Number.isFinite(first[1])) return null;
 
-    const dLat = this.metersToDegreesLat(offsetMeters, refLat);
-    const dLng = this.metersToDegreesLng(offsetMeters, refLat);
+    const dLat = this.metersToDegreesLat(offsetMeters, first[0]);
+    const dLng = this.metersToDegreesLng(offsetMeters, first[0]);
 
-    let newCoordinates;
-    if (feature.type === 'Point' || feature.type === 'Circle') {
-      newCoordinates = [feature.coordinates[0] + dLat, feature.coordinates[1] + dLng];
-    } else if (Array.isArray(feature.coordinates)) {
-      const isMulti = Array.isArray(feature.coordinates[0]) && Array.isArray(feature.coordinates[0][0]);
-      if (isMulti) {
-        newCoordinates = feature.coordinates.map(ring => ring.map(([lat, lng]) => [lat + dLat, lng + dLng]));
-      } else {
-        newCoordinates = feature.coordinates.map(([lat, lng]) => [lat + dLat, lng + dLng]);
-      }
-    }
+    const shift = (c) => (Array.isArray(c[0]) ? c.map(shift) : [c[0] + dLat, c[1] + dLng]);
 
+    const clone = JSON.parse(JSON.stringify(feature));
+    // A cópia nasce editável, viva e com id próprio (Date.now sozinho repete em chamadas no mesmo ms)
+    delete clone.is_deleted;
+    delete clone._deleted;
+    delete clone.deleted_at;
     return {
-      ...JSON.parse(JSON.stringify(feature)),
-      id: `feat-clone-${Date.now()}`,
-      name: `${feature.name} (Cópia)`,
-      coordinates: newCoordinates,
+      ...clone,
+      id: `feat-clone-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name: `${feature.name || 'Feição'} (Cópia)`,
+      coordinates: shift(feature.coordinates),
+      locked: false,
       createdAt: new Date().toISOString(),
       createdBy: 'Duplicação'
     };

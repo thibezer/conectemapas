@@ -15,6 +15,16 @@ export class NewFeatureModal {
     this.getFeatures = options.getFeatures || (() => []);
   }
 
+  escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   setActiveLayerId(layerId) {
     this.activeLayerId = layerId;
     const layerSelect = document.getElementById('new-feat-layer');
@@ -37,7 +47,7 @@ export class NewFeatureModal {
 
           <ui-lista-flutuante id="new-feat-layer" name="layerId" label="Camada de Destino">
             ${this.layers.map(l => `
-              <option value="${l.id}">${l.name}</option>
+              <option value="${this.escapeHtml(l.id)}">${this.escapeHtml(l.name || 'Camada')}</option>
             `).join('')}
           </ui-lista-flutuante>
 
@@ -107,10 +117,10 @@ export class NewFeatureModal {
   }
 
   updateLayers(layers) {
-    this.layers = layers;
+    this.layers = layers || [];
     const select = document.getElementById('new-feat-layer');
     if (select) {
-      select.innerHTML = layers.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+      select.innerHTML = this.layers.map(l => `<option value="${this.escapeHtml(l.id)}">${this.escapeHtml(l.name || 'Camada')}</option>`).join('');
     }
   }
 

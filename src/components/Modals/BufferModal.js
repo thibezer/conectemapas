@@ -25,6 +25,16 @@ export class BufferModal {
     this.container = null;
   }
 
+  escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   /**
    * Atualiza a lista de camadas no dropdown
    * @param {Array} [layers]
@@ -37,8 +47,9 @@ export class BufferModal {
 
     let html = `<option value="__same__">◎ Mesma camada de cada objeto de origem</option>`;
     for (const l of list) {
-      const name = l.name || 'Camada sem nome';
-      html += `<option value="${l.id}">📁 ${name}</option>`;
+      const name = this.escapeHtml(l.name || 'Camada sem nome');
+      const id = this.escapeHtml(l.id || '');
+      html += `<option value="${id}">📁 ${name}</option>`;
     }
     html += `<option value="__new__">➕ Criar em uma Nova Camada...</option>`;
 

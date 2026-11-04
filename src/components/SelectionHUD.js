@@ -481,7 +481,7 @@ export class SelectionHUD {
             <span class="cm-sel-layer-name">${this.escape(l.name)}</span>
           </button>`).join('')}
       </div>
-      <label class="cm-sel-layer-opt"><input type="checkbox" id="cm-sel-inherit-color"> Adotar a cor da camada</label>`;
+      <label class="cm-sel-layer-opt" for="cm-sel-inherit-color"><input type="checkbox" id="cm-sel-inherit-color"> Adotar a cor da camada</label>`;
   }
 
   /** Comandos da aba Modificar, habilitados conforme a seleção (mesma regra da ribbon). */

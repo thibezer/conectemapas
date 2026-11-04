@@ -1045,7 +1045,7 @@ export class FeaturePropertiesAdapter {
           UIToast.notificar({
             tipo: 'sucesso',
             titulo: 'Elemento Duplicado',
-            mensagem: `Cópia criada a 30m de distância para "${feat.name || 'Feição'}".`,
+            mensagem: `Cópia criada 30 m ao norte e 30 m a leste de "${feat.name || 'Feição'}".`,
             duracao: 3000
           });
         }

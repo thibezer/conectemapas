@@ -17,9 +17,11 @@ export class SelectionStyleController {
   static getSelectedFeatures(app) {
     const hudFeats = app.selectionHUD?.selectedFeatures || [];
     if (hudFeats.length > 0) return hudFeats;
-    const ids = app.layerPanel?.selectedFeatureIds ? Array.from(app.layerPanel.selectedFeatureIds) : [];
-    const fromIds = ids.map(id => app.features.find(f => f.id === id)).filter(Boolean);
-    if (fromIds.length > 0) return fromIds;
+    const idSet = app.layerPanel?.selectedFeatureIds;
+    if (idSet && idSet.size > 0) {
+      const fromIds = (app.features || []).filter(f => idSet.has(f.id));
+      if (fromIds.length > 0) return fromIds;
+    }
     return app.layerPanel?.selectedFeature ? [app.layerPanel.selectedFeature] : [];
   }
 

@@ -33,6 +33,11 @@ export class GeoWorkerClient {
 
         this.worker.onerror = (err) => {
           console.warn('[GeoWorkerClient] Erro no Worker:', err);
+          const errorMsg = err?.message || 'Falha na execução do Web Worker';
+          for (const promiseObj of this.pendingCalls.values()) {
+            promiseObj.reject(new Error(errorMsg));
+          }
+          this.pendingCalls.clear();
         };
       }
     } catch (e) {

@@ -21,6 +21,16 @@ export class TextPromptModal {
     this.currentBorderColor = 'rgba(255, 255, 255, 0.25)';
   }
 
+  escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   setActiveLayerId(layerId) {
     this.activeLayerId = layerId;
     const select = document.getElementById('text-feat-layer');
@@ -33,7 +43,7 @@ export class TextPromptModal {
     this.layers = layers || [];
     const select = document.getElementById('text-feat-layer');
     if (select) {
-      select.innerHTML = this.layers.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+      select.innerHTML = this.layers.map(l => `<option value="${this.escapeHtml(l.id)}">${this.escapeHtml(l.name || 'Camada')}</option>`).join('');
     }
   }
 
@@ -66,9 +76,9 @@ export class TextPromptModal {
           </div>
 
           <div>
-            <label style="font-size: 12px; color: var(--cm-text-muted, #94a3b8); font-weight: 500; display: block; margin-bottom: 4px;">
+            <span style="font-size: 12px; color: var(--cm-text-muted, #94a3b8); font-weight: 500; display: block; margin-bottom: 4px;">
               Cor do Texto
-            </label>
+            </span>
             <div class="cm-color-presets-row" id="text-color-presets">
               <button type="button" class="cm-color-swatch active" data-color="#ffffff" style="background: #ffffff;" title="Branco"></button>
               <button type="button" class="cm-color-swatch" data-color="#facc15" style="background: #facc15;" title="Amarelo"></button>
@@ -82,7 +92,7 @@ export class TextPromptModal {
 
           <ui-lista-flutuante id="text-feat-layer" name="layerId" label="Camada de Destino">
             ${this.layers.map(l => `
-              <option value="${l.id}">${l.name}</option>
+              <option value="${this.escapeHtml(l.id)}">${this.escapeHtml(l.name || 'Camada')}</option>
             `).join('')}
           </ui-lista-flutuante>
 

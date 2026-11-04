@@ -43,6 +43,10 @@ export class StorageService {
     return LocalStore.getCachedSyncCursor(_currentProjectId);
   }
 
+  static resetSyncCursor(projectId = null) {
+    LocalStore.saveSyncCursor(projectId || _currentProjectId, { rev: 0, id: '' });
+  }
+
   static hasPendingLocalChange(featureId) {
     return CloudSyncEngine.hasPendingLocalChange(featureId, _currentProjectId);
   }

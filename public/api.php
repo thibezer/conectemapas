@@ -829,11 +829,11 @@ switch ($action) {
 
     case 'get_feature':
         $featId = isset($_GET['id']) ? trim($_GET['id']) : '';
-        $stmtF = $pdo->prepare("SELECT * FROM cm_features WHERE id = ?");
+        $stmtF = $pdo->prepare("SELECT * FROM cm_features WHERE id = ? AND deleted = 0");
         $stmtF->execute([$featId]);
         $featRow = $stmtF->fetch(PDO::FETCH_ASSOC);
         if ($featRow) requireRole($pdo, $featRow['project_id'], 'viewer');
-        echo json_encode(['feature' => $featRow]);
+        echo json_encode(['feature' => $featRow ? decodeFeatureRow($featRow) : null]);
         exit;
 
     // --------------------------------------------------------------------------
@@ -1156,9 +1156,7 @@ switch ($action) {
     // ACTION: LOAD (Carregar Projeto Completo)
     // --------------------------------------------------------------------------
     case 'load':
-        $projectId = isset($_GET['projectId']) && !empty($_GET['projectId']) 
-            ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_GET['projectId']) 
-            : 'projeto_padrao';
+        $projectId = cleanProjectId($_GET['projectId'] ?? '');
         requireRole($pdo, $projectId, 'viewer');
 
         // Snapshot consistente: a revisão devolvida corresponde exatamente às feições lidas
@@ -1320,7 +1318,7 @@ switch ($action) {
         }
 
         $body = getJsonBody();
-        $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
+        $projectId = cleanProjectId($body['projectId'] ?? '');
         $clientId = sanitizeClientId($body['clientId'] ?? '');
         $layerIds = isset($body['layerIds']) && is_array($body['layerIds']) ? $body['layerIds'] : [];
         requireRole($pdo, $projectId, 'editor');
@@ -1349,7 +1347,7 @@ switch ($action) {
         }
 
         $body = getJsonBody();
-        $projectId = !empty($body['id']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['id']) : 'projeto_padrao';
+        $projectId = cleanProjectId($body['id'] ?? '');
         $name = !empty($body['name']) ? $body['name'] : 'Levantamento Topográfico - Umuarama';
         $description = isset($body['description']) ? $body['description'] : '';
         $basemap = !empty($body['basemap']) ? $body['basemap'] : 'google_satelite_puro';
@@ -1423,7 +1421,7 @@ switch ($action) {
         }
 
         $body = getJsonBody();
-        $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
+        $projectId = cleanProjectId($body['projectId'] ?? '');
         $clientId = sanitizeClientId($body['clientId'] ?? '');
         requireRole($pdo, $projectId, 'editor');
         $toUpsert = isset($body['toUpsert']) && is_array($body['toUpsert']) ? $body['toUpsert'] : [];
@@ -1547,7 +1545,7 @@ switch ($action) {
     // Modo legado (since=timestamp): mantido para clientes em cache durante o deploy.
     // --------------------------------------------------------------------------
     case 'pull_changes':
-        $projectId = !empty($_GET['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_GET['projectId']) : 'projeto_padrao';
+        $projectId = cleanProjectId($_GET['projectId'] ?? '');
         $accessRole = requireRole($pdo, $projectId, 'viewer');
 
         if (!isset($_GET['sinceRev'])) {
@@ -1766,7 +1764,7 @@ switch ($action) {
         }
 
         $body = getJsonBody();
-        $projectId = !empty($body['id']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['id']) : 'projeto_padrao';
+        $projectId = cleanProjectId($body['id'] ?? '');
         $clientId = sanitizeClientId($body['clientId'] ?? '');
         $baseRev = isset($body['baseRev']) && is_numeric($body['baseRev']) ? (int)$body['baseRev'] : null;
         $prune = !empty($body['prune']);
@@ -1914,7 +1912,7 @@ switch ($action) {
     // POST {projectId, confirm:true, revs?:[..], ids?:[..], namePrefixExclude?:[..]}
     // --------------------------------------------------------------------------
     case 'restore_features':
-        $projectId = !empty($_REQUEST['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $_REQUEST['projectId']) : 'projeto_padrao';
+        $projectId = cleanProjectId($_REQUEST['projectId'] ?? '');
         requireRole($pdo, $projectId, 'editor');
 
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -1980,7 +1978,7 @@ switch ($action) {
         }
 
         $body = getJsonBody();
-        $projectId = !empty($body['projectId']) ? preg_replace('/[^a-zA-Z0-9_\-]/', '', $body['projectId']) : 'projeto_padrao';
+        $projectId = cleanProjectId($body['projectId'] ?? '');
         $auditId = !empty($body['id']) ? $body['id'] : ('aud-' . time() . '-' . substr(md5(mt_rand()), 0, 5));
         requireRole($pdo, $projectId, 'editor');
 

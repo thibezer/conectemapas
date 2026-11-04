@@ -440,8 +440,7 @@ class ConecteMapasApp {
       duracao: 3000
     });
     try {
-      const { LocalStore } = await import('./services/Storage/LocalStore.js');
-      LocalStore.saveSyncCursor(this.projectId, { rev: 0, id: '' });
+      StorageService.resetSyncCursor(this.projectId);
       const success = await AppBootstrapSync.hydrateFromCloud(this);
       if (success) {
         UIToast.notificar({
