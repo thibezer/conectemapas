@@ -65,6 +65,21 @@
   z-index: 1;
 }
 
+
+/* Área de clique expandida (invisível) para itens cartográficos menores, facilitando seleção */
+.cm-print-item[data-item-type="north_arrow"]::before,
+.cm-print-item[data-item-type="scale_bar"]::before,
+.cm-print-item[data-item-type="label"]::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  right: -8px;
+  bottom: -8px;
+  z-index: -1;
+  pointer-events: auto;
+}
+
 .cm-print-item.selected {
   outline: 2px solid #38bdf8;
   box-shadow: 0 0 0 1px #0284c7, 0 4px 14px rgba(0, 0, 0, 0.25);
@@ -257,11 +272,58 @@
 /* Modo de Navegação de Terreno no Mapa */
 .cm-item-map-frame.pan-enabled {
   cursor: grab;
-  box-shadow: inset 0 0 0 2px var(--cm-primary, #00E08A), 0 0 12px rgba(0, 224, 138, 0.35);
+  outline: 2px solid var(--cm-primary, #00E08A);
+  box-shadow: inset 0 0 0 2px var(--cm-primary, #00E08A), 0 0 20px rgba(0, 224, 138, 0.5);
+  animation: cm-pulse-pan 2s infinite ease-in-out;
+}
+
+@keyframes cm-pulse-pan {
+  0%, 100% { outline-color: var(--cm-primary, #00E08A); box-shadow: inset 0 0 0 2px var(--cm-primary, #00E08A), 0 0 16px rgba(0, 224, 138, 0.45); }
+  50% { outline-color: #38bdf8; box-shadow: inset 0 0 0 2px #38bdf8, 0 0 22px rgba(56, 189, 248, 0.55); }
 }
 
 .cm-item-map-frame.pan-enabled:active {
   cursor: grabbing;
+}
+
+/* Badge flutuante sobre o mapa em navegação */
+.cm-map-pan-floating-badge {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(24, 24, 28, 0.94);
+  border: 1px solid var(--cm-primary, #00E08A);
+  color: #ffffff;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 1000;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+  user-select: none;
+  backdrop-filter: blur(8px);
+}
+
+.cm-map-pan-done-btn {
+  background: var(--cm-primary, #00E08A);
+  color: #121214;
+  border: none;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.cm-map-pan-done-btn:hover {
+  opacity: 0.88;
 }
 
 /* Tabela de Vértices Topográfica */

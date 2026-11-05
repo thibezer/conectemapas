@@ -209,6 +209,48 @@ export class PrintItemsManager {
     return `${date} (${props.sheetNumber || '01/01'})`;
   }
 
+  /**
+   * Sincroniza metadados do projeto com o carimbo técnico (Selo ABNT):
+   * Nome do projeto, Sistema de Coordenadas (SIRGAS 2000 UTM), Data atual,
+   * cálculo de área/perímetro das feições e escala do mapa principal.
+   */
+  static syncTitleBlockWithProject(item, composer) {
+    if (!item || item.type !== 'title_block') return null;
+    item.properties = item.properties || {};
+
+    const updated = [];
+    if (composer.projectName) {
+      item.properties.projectName = composer.projectName;
+      updated.push('Projeto');
+    }
+
+    const todayStr = new Intl.DateTimeFormat('pt-BR').format(new Date());
+    item.properties.date = todayStr;
+    updated.push('Data');
+
+    if (!item.properties.datum || item.properties.datum === 'SIRGAS 2000') {
+      item.properties.datum = 'SIRGAS 2000 / Projeção UTM';
+      updated.push('Datum');
+    }
+
+    if (composer.features && composer.features.length > 0) {
+      const data = this.extractVerticesData(composer.features);
+      if (data.totalAreaM2 > 0) {
+        item.properties.areaPerimeter = `${data.totalAreaM2.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m² (${data.totalAreaHa.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ha) | P: ${data.totalPerimeter.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m`;
+        updated.push('Área e Perímetro');
+      }
+    }
+
+    item.properties.scaleAuto = true;
+    const mapItem = (composer.items || []).find(i => i.type === 'map');
+    if (mapItem && mapItem.scale) {
+      item.properties.scaleText = this.titleBlockScaleText(item.properties, mapItem.scale);
+      updated.push('Escala');
+    }
+
+    return updated;
+  }
+
   /** Abaixo disso (px no mapa de localização) a área vira um marcador: o retângulo sumiria */
   static INSET_MIN_BOX_PX = 8;
 
@@ -405,7 +447,10 @@ export class PrintItemsManager {
     if (!targetFeature) {
       targetFeature = features.find(f => {
         const t = (f.type || '').toLowerCase();
-        return (t === 'polygon' || t === 'linestring' || t === 'line') && Array.isArray(f.coordinates) && f.coordinates.length >= 3;
+        if (t !== 'polygon' && t !== 'multipolygon' && t !== 'linestring' && t !== 'line') return false;
+        if (!Array.isArray(f.coordinates) || f.coordinates.length === 0) return false;
+        const ring = Array.isArray(f.coordinates[0]) ? (Array.isArray(f.coordinates[0][0]) ? f.coordinates[0][0] : f.coordinates[0]) : f.coordinates;
+        return Array.isArray(ring) && ring.length >= 2;
       });
     }
 

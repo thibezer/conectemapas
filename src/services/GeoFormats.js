@@ -49,6 +49,10 @@ export class GeoFormats {
     return GpxConverter.toGPX(features, projectName);
   }
 
+  static parseGPX(gpxText) {
+    return GpxConverter.parseGPX(gpxText);
+  }
+
   static toCSV(features) {
     return CsvConverter.toCSV(features);
   }
@@ -137,11 +141,16 @@ export class GeoFormats {
       return this.parseKML(content);
     }
 
+    // GPX
+    if (lowerName.endsWith('.gpx') || content.includes('<gpx')) {
+      return this.parseGPX(content);
+    }
+
     // CSV
     if (lowerName.endsWith('.csv') || content.includes(';')) {
       return this.parseCSV(content);
     }
 
-    throw new Error('Formato de arquivo não reconhecido. Suportamos AutoCAD (.dwg, .dxf), Shapefile (.zip/.shp/.dbf), GeoJSON, KML e CSV.');
+    throw new Error('Formato de arquivo não reconhecido. Suportamos AutoCAD (.dwg, .dxf), Shapefile (.zip/.shp/.dbf), GeoJSON, KML, GPX e CSV.');
   }
 }

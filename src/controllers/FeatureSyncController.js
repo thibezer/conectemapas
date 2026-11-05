@@ -404,6 +404,8 @@ export class FeatureSyncController {
       }
     } else if (type === 'feature:created') {
       if (!data.feature || app.features.some(f => f.id === data.feature.id)) return; // eco/reenvio da mesma feição
+      if (StorageService.hasLocalTombstone(data.feature.id, app.projectId)) return;
+      if (StorageService.hasPendingLocalChange(data.feature.id)) return;
       app.features.push(data.feature);
       app.mapEngine.updateFeature(data.feature, app.layers);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
@@ -421,6 +423,8 @@ export class FeatureSyncController {
       });
 
     } else if (type === 'feature:updated') {
+      if (!data.feature || StorageService.hasLocalTombstone(data.feature.id, app.projectId)) return;
+      if (StorageService.hasPendingLocalChange(data.feature.id)) return;
       const idx = app.features.findIndex(f => f.id === data.feature.id);
       if (idx >= 0) {
         app.features[idx] = data.feature;
@@ -458,7 +462,7 @@ export class FeatureSyncController {
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       }
     } else if (type === 'layer:updated') {
-      if (data.layer) {
+      if (data.layer && !StorageService.hasPendingLayerSync()) {
         const lIdx = app.layers.findIndex(l => l.id === data.layer.id);
         if (lIdx >= 0) {
           app.layers[lIdx] = data.layer;

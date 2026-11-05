@@ -24,6 +24,7 @@ export class PrintCanvasEngine {
     this.dragStartX = 0;
     this.dragStartY = 0;
     this.itemStartProps = null;
+    this.itemsStartProps = null;
 
     // Pan state da folha
     this.isPanning = false;
@@ -274,6 +275,7 @@ export class PrintCanvasEngine {
 
       const handle = e.target.closest('.cm-resize-handle');
       const itemEl = e.target.closest('.cm-print-item');
+      const isAdditive = e.shiftKey || e.ctrlKey || e.metaKey;
 
       if (handle && itemEl) {
         e.stopPropagation();
@@ -291,17 +293,29 @@ export class PrintCanvasEngine {
         const itemId = itemEl.getAttribute('data-item-id');
         const item = this.composer.items.find(i => i.id === itemId);
         if (!item || item.locked) {
-          if (item) this.composer.selectItem(itemId);
+          if (item) this.composer.selectItem(itemId, { additive: isAdditive });
           return;
+        }
+
+        if (isAdditive) {
+          this.composer.selectItem(itemId, { additive: true });
+          return;
+        }
+
+        const isAlreadySelected = this.composer.selectedItemIds ? this.composer.selectedItemIds.has(itemId) : (this.composer.selectedItemId === itemId);
+        if (!isAlreadySelected) {
+          this.composer.selectItem(itemId, { additive: false });
         }
 
         this.isDraggingItem = true;
         this.dragStartX = e.clientX;
         this.dragStartY = e.clientY;
+        this.itemsStartProps = (typeof this.composer.getSelectedItems === 'function' ? this.composer.getSelectedItems() : [item]).map(it => ({ ...it }));
         this.itemStartProps = { ...item };
-        this.composer.selectItem(itemId);
       } else {
-        this.composer.selectItem(null);
+        if (!isAdditive) {
+          this.composer.selectItem(null);
+        }
       }
     };
 
@@ -316,28 +330,41 @@ export class PrintCanvasEngine {
         return;
       }
 
-      if (this.isDraggingItem && this.itemStartProps) {
+      if (this.isDraggingItem && this.itemsStartProps && this.itemsStartProps.length > 0) {
         const rawDx = (e.clientX - this.dragStartX) / this.mmToPx;
         const rawDy = (e.clientY - this.dragStartY) / this.mmToPx;
-        const it = this.composer.items.find(i => i.id === this.itemStartProps.id);
-        if (it) {
-          const rawX = Math.max(0, Math.min(this.composer.paperSize.width - it.width, this.itemStartProps.x + rawDx));
-          const rawY = Math.max(0, Math.min(this.composer.paperSize.height - it.height, this.itemStartProps.y + rawDy));
 
-          // Aplica cálculo de atração magnética das Smart Guides (estilo Illustrator)
+        const primaryStart = this.itemStartProps;
+        const primaryItem = this.composer.items.find(i => i.id === primaryStart?.id);
+
+        let dx = rawDx;
+        let dy = rawDy;
+
+        if (primaryItem) {
+          const rawX = Math.max(0, Math.min(this.composer.paperSize.width - primaryItem.width, primaryStart.x + rawDx));
+          const rawY = Math.max(0, Math.min(this.composer.paperSize.height - primaryItem.height, primaryStart.y + rawDy));
+
+          const otherItems = this.composer.items.filter(i => !this.itemsStartProps.some(sp => sp.id === i.id));
           const { snappedX, snappedY } = this.smartGuides.calculateDragSnap(
-            it,
+            primaryItem,
             rawX,
             rawY,
-            this.composer.items,
+            otherItems,
             this.composer.paperSize,
             this.composer.showAbntMargins
           );
-
-          it.x = Math.max(0, Math.min(this.composer.paperSize.width - it.width, snappedX));
-          it.y = Math.max(0, Math.min(this.composer.paperSize.height - it.height, snappedY));
-          this.composer.updateItemPositionDOM(it);
+          dx = snappedX - primaryStart.x;
+          dy = snappedY - primaryStart.y;
         }
+
+        this.itemsStartProps.forEach(sp => {
+          const it = this.composer.items.find(i => i.id === sp.id);
+          if (it && !it.locked) {
+            it.x = Math.max(0, Math.min(this.composer.paperSize.width - it.width, sp.x + dx));
+            it.y = Math.max(0, Math.min(this.composer.paperSize.height - it.height, sp.y + dy));
+            this.composer.updateItemPositionDOM(it);
+          }
+        });
       } else if (this.isResizing && this.itemStartProps) {
         this.handleItemResize(e);
       }
@@ -349,13 +376,17 @@ export class PrintCanvasEngine {
         vp.style.cursor = '';
       }
       if (this.isDraggingItem || this.isResizing) {
-        const hadMoved = this.itemStartProps && (
+        const hadMoved = (this.itemsStartProps && this.itemsStartProps.some(sp => {
+          const it = this.composer.items.find(i => i.id === sp.id);
+          return it && (it.x !== sp.x || it.y !== sp.y);
+        })) || (this.itemStartProps && (
           this.composer.items.some(i => i.id === this.itemStartProps.id && (i.x !== this.itemStartProps.x || i.y !== this.itemStartProps.y || i.width !== this.itemStartProps.width || i.height !== this.itemStartProps.height))
-        );
+        ));
         this.smartGuides.clearGuides();
         this.isDraggingItem = false;
         this.isResizing = false;
         this.itemStartProps = null;
+        this.itemsStartProps = null;
         this.composer.updatePropertiesPanel();
         if (hadMoved) {
           this.composer.pushHistoryState('Mover/Redimensionar');
@@ -493,37 +524,47 @@ export class PrintCanvasEngine {
       const item = this.composer.items.find(i => i.id === selectedId);
       if (!item || item.locked) return;
 
-      // Excluir com Delete ou Backspace
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+      // Atalho rápido '[' ou ']' para recolher/expandir o painel de propriedades
+      if (e.key === '[' || e.key === ']') {
         e.preventDefault();
-        this.composer.deleteItem(selectedId);
+        this.composer.togglePropertiesPanel();
         return;
       }
 
-      // Mover milímetro a milímetro com as setas (5mm com Shift)
-      const step = e.shiftKey ? 5 : 1;
-      let moved = false;
-
-      if (e.key === 'ArrowUp') {
-        item.y = Math.max(0, item.y - step);
-        moved = true;
-      } else if (e.key === 'ArrowDown') {
-        item.y = Math.min(this.composer.paperSize.height - item.height, item.y + step);
-        moved = true;
-      } else if (e.key === 'ArrowLeft') {
-        item.x = Math.max(0, item.x - step);
-        moved = true;
-      } else if (e.key === 'ArrowRight') {
-        item.x = Math.min(this.composer.paperSize.width - item.width, item.x + step);
-        moved = true;
+      // Excluir com Delete ou Backspace
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        const ids = [...(this.composer.selectedItemIds || [selectedId])];
+        if (typeof this.composer.deleteItems === 'function' && ids.length > 1) {
+          this.composer.deleteItems(ids);
+        } else {
+          this.composer.deleteItem(selectedId);
+        }
+        return;
       }
 
-      if (moved) {
+      // Mover milímetro a milímetro com as setas (5mm com Shift) para todos os selecionados
+      const itemsToMove = (typeof this.composer.getSelectedItems === 'function' ? this.composer.getSelectedItems() : [item]).filter(i => !i.locked);
+      if (!itemsToMove.length) return;
+
+      const step = e.shiftKey ? 5 : 1;
+      let dx = 0, dy = 0;
+
+      if (e.key === 'ArrowUp') dy = -step;
+      else if (e.key === 'ArrowDown') dy = step;
+      else if (e.key === 'ArrowLeft') dx = -step;
+      else if (e.key === 'ArrowRight') dx = step;
+
+      if (dx !== 0 || dy !== 0) {
         e.preventDefault();
-        this.composer.updateItemPositionDOM(item);
+        itemsToMove.forEach(it => {
+          it.x = Math.max(0, Math.min(this.composer.paperSize.width - it.width, it.x + dx));
+          it.y = Math.max(0, Math.min(this.composer.paperSize.height - it.height, it.y + dy));
+          this.composer.updateItemPositionDOM(it);
+        });
         this.composer.updatePropertiesPanel();
         // Toques seguidos nas setas viram um único passo de desfazer
-        this.composer.pushHistoryState('Mover com as Setas', { coalesceKey: `nudge:${item.id}` });
+        this.composer.pushHistoryState('Mover com as Setas', { coalesceKey: `nudge:${itemsToMove.map(i => i.id).join(',')}` });
       }
     };
 

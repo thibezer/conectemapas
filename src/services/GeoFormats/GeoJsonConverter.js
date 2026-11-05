@@ -22,49 +22,70 @@ export class GeoJsonConverter {
         type: 'name',
         properties: { name: 'urn:ogc:def:crs:OGC:1.3:CRS84' }
       },
-      features: features.map(f => {
+      features: (features || []).filter(Boolean).map(f => {
         let geometry = null;
-        if (f.type === 'Point') {
+        const coords = f.coordinates;
+        const isValidPoint = (c) => Array.isArray(c) && c.length >= 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]);
+
+        if (f.type === 'Point' || f.type === 'Circle' || f.type === 'Text') {
           // Leaflet usa [lat, lng], GeoJSON usa [lng, lat]
-          geometry = {
-            type: 'Point',
-            coordinates: [f.coordinates[1], f.coordinates[0]]
-          };
+          if (isValidPoint(coords)) {
+            geometry = {
+              type: 'Point',
+              coordinates: [coords[1], coords[0]]
+            };
+          }
         } else if (f.type === 'LineString') {
-          const isMulti = Array.isArray(f.coordinates[0]) && Array.isArray(f.coordinates[0][0]);
-          if (isMulti) {
-            geometry = {
-              type: 'MultiLineString',
-              coordinates: f.coordinates.map(line => line.map(c => [c[1], c[0]]))
-            };
-          } else {
-            geometry = {
-              type: 'LineString',
-              coordinates: f.coordinates.map(c => [c[1], c[0]])
-            };
+          if (Array.isArray(coords) && coords.length > 0) {
+            const isMulti = Array.isArray(coords[0]) && Array.isArray(coords[0][0]);
+            if (isMulti) {
+              const multi = coords
+                .map(line => (Array.isArray(line) ? line.filter(isValidPoint).map(c => [c[1], c[0]]) : []))
+                .filter(line => line.length >= 2);
+              if (multi.length > 0) {
+                geometry = {
+                  type: 'MultiLineString',
+                  coordinates: multi
+                };
+              }
+            } else {
+              const pts = coords.filter(isValidPoint).map(c => [c[1], c[0]]);
+              if (pts.length >= 2) {
+                geometry = {
+                  type: 'LineString',
+                  coordinates: pts
+                };
+              }
+            }
           }
         } else if (f.type === 'Polygon') {
           // Anéis fechados em [lng, lat]. Profundidade 3 = externo + furos (um Polygon);
           // profundidade 4 = vários polígonos (MultiPolygon).
-          const closeRing = (ring) => {
-            const r = ring.map(c => [c[1], c[0]]);
-            if (r.length > 0 && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) {
-              r.push([r[0][0], r[0][1]]);
+          if (Array.isArray(coords) && coords.length > 0) {
+            const closeRing = (ring) => {
+              if (!Array.isArray(ring)) return null;
+              const valid = ring.filter(isValidPoint);
+              if (valid.length < 3) return null;
+              const r = valid.map(c => [c[1], c[0]]);
+              if (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1]) {
+                r.push([r[0][0], r[0][1]]);
+              }
+              return r;
+            };
+            const rawPolys = FeatureGeometryUtils.toPolygonList(coords);
+            const polygons = (rawPolys || [])
+              .map(poly => poly.map(closeRing).filter(Boolean))
+              .filter(poly => poly.length > 0);
+
+            if (polygons.length === 1) {
+              geometry = { type: 'Polygon', coordinates: polygons[0] };
+            } else if (polygons.length > 1) {
+              geometry = { type: 'MultiPolygon', coordinates: polygons };
             }
-            return r;
-          };
-          const polygons = FeatureGeometryUtils.toPolygonList(f.coordinates);
-          if (polygons.length === 1) {
-            geometry = { type: 'Polygon', coordinates: polygons[0].map(closeRing) };
-          } else if (polygons.length > 1) {
-            geometry = { type: 'MultiPolygon', coordinates: polygons.map(poly => poly.map(closeRing)) };
           }
-        } else if (f.type === 'Circle') {
-          geometry = {
-            type: 'Point',
-            coordinates: [f.coordinates[1], f.coordinates[0]]
-          };
         }
+
+        const extraText = f.type === 'Text' ? { text: f.text || f.properties?.text || f.name || '' } : {};
 
         return {
           type: 'Feature',
@@ -78,6 +99,7 @@ export class GeoJsonConverter {
             radius: f.radius || null,
             createdBy: f.createdBy || '',
             createdAt: f.createdAt || '',
+            ...extraText,
             ...(f.properties || {})
           },
           geometry

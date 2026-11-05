@@ -12,8 +12,8 @@ import {
   SYNC_CURSOR_KEY_PREFIX
 } from './StorageConstants.js';
 
-let _offlinePendingIds = null;
-let _syncCursor = null;
+const _offlinePendingIdsByProject = new Map();
+const _syncCursorByProject = new Map();
 const _tombstoneCache = new Map();
 
 export class LocalStore {
@@ -21,8 +21,8 @@ export class LocalStore {
    * Reseta o cache em memória quando o projeto ativo for alterado
    */
   static resetProjectCache() {
-    _syncCursor = null;
-    _offlinePendingIds = null;
+    _syncCursorByProject.clear();
+    _offlinePendingIdsByProject.clear();
   }
 
   // ---- MANIFESTO SÍNCRONO (FRAME ZERO) ----
@@ -227,11 +227,10 @@ export class LocalStore {
   }
 
   static refreshOfflinePendingCache(projectId, currentProjectId, merged) {
-    if (projectId !== currentProjectId) return;
-    _offlinePendingIds = new Set([
+    _offlinePendingIdsByProject.set(projectId, new Set([
       ...merged.dirty.map(f => f.id),
       ...merged.deleted
-    ]);
+    ]));
   }
 
   static persistPendingDeltasWithItems(toUpsert = [], toDelete = [], projectId = 'projeto_padrao', currentProjectId = 'projeto_padrao') {
@@ -258,11 +257,11 @@ export class LocalStore {
   }
 
   static getOfflinePendingIds(currentProjectId = 'projeto_padrao') {
-    if (_offlinePendingIds === null) {
+    if (!_offlinePendingIdsByProject.has(currentProjectId)) {
       const pending = this.readPendingDeltas(currentProjectId);
-      _offlinePendingIds = new Set([...pending.dirty.map(f => f && f.id), ...pending.deleted].filter(Boolean));
+      _offlinePendingIdsByProject.set(currentProjectId, new Set([...pending.dirty.map(f => f && f.id), ...pending.deleted].filter(Boolean)));
     }
-    return _offlinePendingIds;
+    return _offlinePendingIdsByProject.get(currentProjectId);
   }
 
   // ---- CURSOR DE REVISÃO PERSISTIDO ----
@@ -274,28 +273,33 @@ export class LocalStore {
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && Number.isFinite(parsed.rev)) {
-            return { rev: parsed.rev, id: typeof parsed.id === 'string' ? parsed.id : '' };
+            const cursor = { rev: parsed.rev, id: typeof parsed.id === 'string' ? parsed.id : '' };
+            _syncCursorByProject.set(projectId, cursor);
+            return cursor;
           }
         }
       }
     } catch {}
-    return { rev: 0, id: '' };
+    const zero = { rev: 0, id: '' };
+    _syncCursorByProject.set(projectId, zero);
+    return zero;
   }
 
   static saveSyncCursor(projectId, cursor) {
-    _syncCursor = { rev: cursor.rev, id: cursor.id || '' };
+    const clean = { rev: cursor.rev, id: cursor.id || '' };
+    _syncCursorByProject.set(projectId, clean);
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem(SYNC_CURSOR_KEY_PREFIX + projectId, JSON.stringify(_syncCursor));
+        localStorage.setItem(SYNC_CURSOR_KEY_PREFIX + projectId, JSON.stringify(clean));
       }
     } catch {}
-    return _syncCursor;
+    return clean;
   }
 
   static getCachedSyncCursor(projectId = 'projeto_padrao') {
-    if (!_syncCursor) {
-      _syncCursor = this.loadSyncCursor(projectId);
+    if (!_syncCursorByProject.has(projectId)) {
+      return this.loadSyncCursor(projectId);
     }
-    return { ..._syncCursor };
+    return { ..._syncCursorByProject.get(projectId) };
   }
 }

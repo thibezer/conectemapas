@@ -10,7 +10,7 @@ console.log('🧪 Iniciando Execução da Suíte Completa de Testes ConecteMapas
 
 const testDir = __dirname;
 const allFiles = fs.readdirSync(testDir)
-  .filter(f => f.startsWith('test_') && f.endsWith('.js'))
+  .filter(f => (f.startsWith('test_') || f.startsWith('audit_')) && f.endsWith('.js'))
   .sort();
 
 let passed = 0;

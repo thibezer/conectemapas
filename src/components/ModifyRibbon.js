@@ -172,6 +172,7 @@ export function computeModifyState({ features = [], layers = [], history = {}, a
 
   const joinable = u >= 2;
   const canVertices = !!single && single.locked !== true && VERTEX_EDITABLE.has(single.type);
+  const canDuplicate = !!single && single.locked !== true;
   const canSimplify = unlocked.some(f => SIMPLIFIABLE.has(f.type));
   const canCopyGeometry = n > 0 && sel.every(f => GEOMETRY_COPY.has(f.type));
   const hasLayers = layers.length > 0;
@@ -190,7 +191,7 @@ export function computeModifyState({ features = [], layers = [], history = {}, a
     'mod-copy-wkt': { disabled: !single || !canCopyGeometry },
     'mod-copy-coords': { disabled: !single },
 
-    'mod-style': { disabled: none },
+    'mod-style': { disabled: u === 0 },
     'mod-eyedropper': { disabled: false, ativo: activeTool === 'eyedropper' },
     'mod-invert': { disabled: !unlocked.some(f => f.type !== 'Text' && !/LineString/.test(f.type)) },
 
@@ -200,7 +201,7 @@ export function computeModifyState({ features = [], layers = [], history = {}, a
     'mod-simplify': { disabled: !canSimplify },
 
     'mod-vertices': { disabled: !canVertices },
-    'mod-duplicate': { disabled: !single },
+    'mod-duplicate': { disabled: !canDuplicate },
     'mod-buffer': { disabled: u === 0 },
     'mod-delete': { disabled: u === 0 },
 
@@ -217,8 +218,8 @@ export function computeModifyState({ features = [], layers = [], history = {}, a
       ? { disabled: false, rotulo: 'Desbloquear', icone: ICONES.desbloquear }
       : { disabled: none, rotulo: 'Bloquear', icone: ICONES.bloquear },
     'mod-visible': allHidden
-      ? { disabled: false, rotulo: 'Mostrar', icone: ICONES.mostrar }
-      : { disabled: none, rotulo: 'Ocultar', icone: ICONES.ocultar },
+      ? { disabled: u === 0, rotulo: 'Mostrar', icone: ICONES.mostrar }
+      : { disabled: u === 0, rotulo: 'Ocultar', icone: ICONES.ocultar },
 
     'mod-measure': { disabled: false, ativo: activeTool === 'measure' || activeTool === 'measure-line' },
 

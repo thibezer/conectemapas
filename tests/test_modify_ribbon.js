@@ -96,15 +96,20 @@ const state = (features, extra = {}) => computeModifyState({ features, layers, .
   assert.strictEqual(travada['mod-delete'].disabled, true);
   assert.strictEqual(travada['mod-buffer'].disabled, true, 'buffer desabilitado se bloqueada');
   assert.strictEqual(travada['mod-vertices'].disabled, true);
+  assert.strictEqual(travada['mod-duplicate'].disabled, true, 'duplicar desabilitado se bloqueada');
   assert.strictEqual(travada['mod-layer'].disabled, true);
   assert.strictEqual(travada['mod-simplify'].disabled, true);
   assert.strictEqual(travada['mod-lock'].rotulo, 'Desbloquear', 'só bloqueadas: o botão desbloqueia');
   assert.strictEqual(travada['mod-lock'].disabled, false);
   assert.strictEqual(travada['mod-inspect'].disabled, false, 'inspecionar não altera nada');
+  assert.strictEqual(travada['mod-style'].disabled, true, 'estilo desabilitado se bloqueada');
+  assert.strictEqual(travada['mod-visible'].disabled, true, 'visibilidade desabilitada se bloqueada');
 
   const mista = state([poly('a', { locked: true }), poly('b')]);
   assert.strictEqual(mista['mod-lock'].rotulo, 'Bloquear', 'com alguma desbloqueada: bloqueia todas');
   assert.strictEqual(mista['mod-delete'].disabled, false);
+  assert.strictEqual(mista['mod-style'].disabled, false, 'estilo habilitado se houver desbloqueada');
+  assert.strictEqual(mista['mod-visible'].disabled, false, 'visibilidade habilitada se houver desbloqueada');
   assert.strictEqual(mista['mod-join'].disabled, true, 'só uma desbloqueada: nada a unir');
   console.log('✔ Bloqueio passou');
 }

@@ -74,7 +74,15 @@ export class ModifyActionsController {
     }
     if (id.startsWith(MODIFY_LAYER_PREFIX)) {
       const ids = this.getSelection(app).map(f => f.id);
-      app.batchActions?.moveToLayer(ids, id.slice(MODIFY_LAYER_PREFIX.length), {});
+      const res = app.batchActions?.moveToLayer(ids, id.slice(MODIFY_LAYER_PREFIX.length), {});
+      if (res && res.locked > 0 && !res.reported) {
+        UIToast.notificar({
+          tipo: 'alerta',
+          titulo: 'Camada Alterada',
+          mensagem: `${res.changed} feição(ões) movida(s). ${res.locked} feição(ões) bloqueada(s) foram ignoradas.`,
+          duracao: 3500
+        });
+      }
       return;
     }
 
@@ -90,10 +98,24 @@ export class ModifyActionsController {
         if (sel.length) app.mapEngine?.zoomToFeatures(sel);
         break;
       case 'mod-inspect':
-        if (one) app.selectionHUD?.onInspect(one);
+        if (one) {
+          if (app.selectionHUD?.onInspect) {
+            app.selectionHUD.onInspect(one);
+          } else if (app.layerPanel) {
+            app.layerPanel.setSelectedFeature?.(one, true);
+            app.layerPanel.setSidebarCollapsed?.(false);
+          }
+        }
         break;
       case 'mod-table':
-        if (sel.length) app.selectionHUD?.onOpenTable(sel);
+        if (sel.length) {
+          if (app.selectionHUD?.onOpenTable) {
+            app.selectionHUD.onOpenTable(sel);
+          } else if (app.attributeTable) {
+            if (app.attributeTable.isCollapsed) app.attributeTable.toggleCollapse?.();
+            app.attributeTable.selectFeature?.(sel[0].id);
+          }
+        }
         break;
       case 'mod-popup':
         if (one) app.mapEngine?.openFeaturePopup(one.id);
@@ -138,6 +160,7 @@ export class ModifyActionsController {
 
   /** Duplica a feição deslocada 30 m e abre o modal de nova feição (igual ao menu de contexto). */
   static duplicate(app, feat) {
+    if (!feat || feat.locked === true) return;
     const clone = SpatialAlgorithms.duplicateWithOffset(feat, 30);
     if (clone) app.newFeatureModal?.openWithFeature(clone);
   }
@@ -277,7 +300,11 @@ export class ModifyActionsController {
   }
 
   static copy(text, titulo, mensagem) {
-    if (!navigator.clipboard?.writeText) {
+    if (typeof text !== 'string' || text.trim() === '') {
+      UIToast.notificar({ tipo: 'alerta', titulo: 'Geometria vazia', mensagem: 'Nenhuma informação geométrica válida para copiar.' });
+      return;
+    }
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
       UIToast.notificar({ tipo: 'erro', titulo: 'Erro', mensagem: 'Área de transferência indisponível neste navegador.' });
       return;
     }

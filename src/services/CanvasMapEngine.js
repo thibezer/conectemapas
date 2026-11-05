@@ -199,6 +199,10 @@ export class CanvasMapEngine {
 
   _bindKitEvents() {
     this._on('cad-selecao', (e) => {
+      if (this._tool === 'pen-select') {
+        this.host.definirFerramenta(null);
+        this._syncToolState('select');
+      }
       const features = (e.detail.feicoes || []).map(f => this._featureMap.get(f.id)).filter(Boolean);
       this.selectedFeatureIds = new Set(features.map(f => f.id));
       this.selectedFeatureId = features.length === 1 ? features[0].id : null;
@@ -241,11 +245,13 @@ export class CanvasMapEngine {
     this._on('cad-feicao-dividida', (e) => this._handleKitSplit(e.detail));
     this._on('cad-divisao-falhou', (e) => {
       this.host.definirFerramenta(null);
+      this._syncToolState('select');
       if (typeof this.onSplitFailed === 'function') this.onSplitFailed(SPLIT_FAIL_MESSAGE[e.detail.motivo]);
     });
     this._on('cad-conta-gotas', (e) => {
       const feat = e.detail.feicao ? this._featureMap.get(e.detail.feicao.id) : null;
       this.host.definirFerramenta(null);
+      this._syncToolState('select');
       if (feat && typeof this.onEyedropperSampled === 'function') this.onEyedropperSampled(feat, null);
     });
 

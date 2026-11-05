@@ -690,6 +690,7 @@ export class AppComponentsBuilder {
     /** Resume o lote em um toast; quando algo mudou, oferece Desfazer (um passo de histórico). */
     const report = (titulo, res, verb = 'alteradas') => {
       if (!res) return res;
+      res.reported = true;
       if (res.error) { toast('erro', titulo, res.error); return res; }
       if (res.changed === 0) {
         toast('alerta', titulo, `Nada alterado. ${BatchActions.describe(res, verb)}.`);

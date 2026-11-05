@@ -199,8 +199,10 @@ export class SelectionHUD {
     }
 
     // Salvaguarda: Se o editor de vértices ou desenho CAD estiver ativo, mantém o SelectionHUD oculto
-    const vertexHud = document.getElementById('cm-vertex-edit-hud');
-    const cadHud = document.getElementById('cm-cad-hud');
+    const canvasHost = typeof document !== 'undefined' ? document.querySelector('ui-canvas-cad') : null;
+    const shadowRoot = canvasHost?.shadowRoot;
+    const vertexHud = document.getElementById('cm-vertex-edit-hud') || shadowRoot?.getElementById('cm-vertex-edit-hud');
+    const cadHud = document.getElementById('cm-cad-hud') || shadowRoot?.getElementById('cm-draw-hud') || shadowRoot?.getElementById('cm-cad-hud');
     const isVertexActive = vertexHud && vertexHud.style.display !== 'none';
     const isCadActive = cadHud && cadHud.style.display !== 'none';
     if (isVertexActive || isCadActive) {

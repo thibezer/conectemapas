@@ -39,8 +39,8 @@ export class StorageService {
     return CloudSyncEngine.getClientId();
   }
 
-  static getSyncCursor() {
-    return LocalStore.getCachedSyncCursor(_currentProjectId);
+  static getSyncCursor(projectId = null) {
+    return LocalStore.getCachedSyncCursor(projectId || _currentProjectId);
   }
 
   static resetSyncCursor(projectId = null) {
@@ -240,20 +240,20 @@ export class StorageService {
     return DeltaQueue.queueFeaturesBulkUpsert(features, projectId || _currentProjectId);
   }
 
-  static queueFeatureDelete(featureId) {
-    return DeltaQueue.queueFeatureDelete(featureId, _currentProjectId);
+  static queueFeatureDelete(featureId, projectId = null) {
+    return DeltaQueue.queueFeatureDelete(featureId, projectId || _currentProjectId);
   }
 
   static queueFeaturesBulkDelete(featureIds, projectId = null) {
     return DeltaQueue.queueFeaturesBulkDelete(featureIds, projectId || _currentProjectId);
   }
 
-  static commitDeltasDebounced(delayMs) {
-    return DeltaQueue.commitDeltasDebounced(delayMs, _currentProjectId);
+  static commitDeltasDebounced(delayMs, projectId = null) {
+    return DeltaQueue.commitDeltasDebounced(delayMs, projectId || _currentProjectId);
   }
 
-  static commitDeltas() {
-    return DeltaQueue.commitDeltas(_currentProjectId);
+  static commitDeltas(projectId = null) {
+    return DeltaQueue.commitDeltas(projectId || _currentProjectId);
   }
 
   static executeDeltasChunked(db, toDelete, toUpsert, chunkSize = 10000) {
@@ -275,11 +275,11 @@ export class StorageService {
   static async deleteFeature(featureId, projectId = null) {
     if (!featureId) return;
     const projId = projectId || _currentProjectId || 'projeto_padrao';
-    this.queueFeatureDelete(featureId);
+    this.queueFeatureDelete(featureId, projId);
     LocalStore.addLocalTombstone(featureId, projId);
     LocalStore.persistPendingDeltasWithItems([], [featureId], projId, _currentProjectId);
     await IndexedDbStore.deleteFeatureDirect(featureId);
-    this.commitDeltasDebounced(100);
+    this.commitDeltasDebounced(100, projId);
   }
 
   static async saveFeaturesBatch(features, projectId = null) {

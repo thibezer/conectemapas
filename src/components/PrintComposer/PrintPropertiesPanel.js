@@ -12,7 +12,7 @@ export class PrintPropertiesPanel {
     const openAttr = (key) => (composer.panelSections?.[key] === false ? '' : 'open');
 
     // Filtra feições poligonais ou de linha para a tabela de vértices
-    const polygonFeatures = composer.features.filter(f => {
+    const polygonFeatures = (composer.features || []).filter(f => {
       const t = (f.type || '').toLowerCase();
       return (t === 'polygon' || t === 'multipolygon' || t === 'linestring' || t === 'line');
     });
@@ -20,8 +20,11 @@ export class PrintPropertiesPanel {
     return `
       <div class="cm-print-props-panel">
         <div class="cm-pp-header">
-          <span>⚙️ PROPRIEDADES</span>
-          <span class="cm-pp-header-paper">${esc(composer.paperSize.name)}</span>
+          <div class="cm-pp-header-title">
+            <span>⚙️ PROPRIEDADES</span>
+            <span class="cm-pp-header-paper">${esc(composer.paperSize.name)}</span>
+          </div>
+          <button type="button" class="cm-pp-collapse-btn" id="btn-collapse-props-panel" title="Recolher painel (atalho [)" aria-label="Recolher painel">⇥</button>
         </div>
 
         <div class="cm-print-props-scroll">
@@ -35,7 +38,7 @@ export class PrintPropertiesPanel {
               ${composer.items.map((it) => {
                 // Sem `visible` gravado o item aparece (mesma regra da prancha e do exportador)
                 const shown = it.visible !== false;
-                const selected = it.id === composer.selectedItemId;
+                const selected = composer.selectedItemIds ? composer.selectedItemIds.has(it.id) : (it.id === composer.selectedItemId);
                 const name = esc(it.name || 'Item');
                 return `
                 <div class="cm-ai-row cm-pp-item-row ${selected ? 'is-selected' : ''} ${shown ? '' : 'is-hidden'}" data-composer-item-id="${esc(it.id)}">
@@ -54,8 +57,29 @@ export class PrintPropertiesPanel {
             </div>
           </details>
 
-          <!-- 3. Propriedades do Elemento Selecionado -->
-          ${selectedItem ? `
+          <!-- 3. Propriedades do Elemento Selecionado ou Seleção Múltipla -->
+          ${(composer.selectedItemIds && composer.selectedItemIds.size > 1) ? `
+            <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
+              <summary class="cm-pp-summary cm-pp-summary--active">🎯 ${composer.selectedItemIds.size} Itens Selecionados</summary>
+              <fieldset class="cm-print-props-fields">
+                <div class="cm-pp-toolbox">
+                  <div class="cm-pp-toolbox-title">Alinhar itens entre si</div>
+                  <div class="cm-pp-btn-row">
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda">⇤ Esq</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente">⧿ Centro</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita">⇥ Dir</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo">⤒ Topo</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente">⧾ Meio</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base">⤓ Base</ui-botao-primario>
+                  </div>
+                  <div class="cm-pp-btn-row">
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Itens (Ctrl+D)">📋 Duplicar</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-delete-multi" title="Excluir Itens (Delete)">🗑️ Excluir</ui-botao-primario>
+                  </div>
+                </div>
+              </fieldset>
+            </details>
+          ` : selectedItem ? `
             <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
               <summary class="cm-pp-summary cm-pp-summary--active">🎯 ${esc(selectedItem.name)}</summary>
               ${selectedItem.locked ? `
@@ -618,7 +642,19 @@ export class PrintPropertiesPanel {
     }
 
     document.querySelectorAll('[data-composer-item-id]').forEach(el => {
-      el.addEventListener('click', () => composer.selectItem(el.getAttribute('data-composer-item-id')));
+      el.addEventListener('click', (e) => {
+        const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+        composer.selectItem(el.getAttribute('data-composer-item-id'), { additive });
+      });
+    });
+
+    document.getElementById('btn-collapse-props-panel')?.addEventListener('click', () => {
+      composer.togglePropertiesPanel(true);
+    });
+
+    document.getElementById('btn-prop-delete-multi')?.addEventListener('click', () => {
+      const ids = [...(composer.selectedItemIds || [])];
+      if (ids.length > 0) composer.deleteItems(ids);
     });
 
     document.querySelectorAll('[data-composer-lock]').forEach(btn => {
@@ -933,6 +969,26 @@ export class PrintPropertiesPanel {
           const txt = `${data.totalAreaM2.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m² (${data.totalAreaHa.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ha) | P: ${data.totalPerimeter.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m`;
           if (propTbArea) propTbArea.value = txt;
           updateTbProp('areaPerimeter', txt);
+        }
+      });
+    }
+
+    const btnSyncMeta = document.getElementById('btn-sync-project-meta-carimbo');
+    if (btnSyncMeta) {
+      btnSyncMeta.addEventListener('click', () => {
+        const it = composer.items.find(i => i.id === composer.selectedItemId);
+        if (!it || it.type !== 'title_block' || it.locked) return;
+        const updated = PrintItemsManager.syncTitleBlockWithProject(it, composer);
+        if (updated && updated.length > 0) {
+          composer.refreshItemContent(it);
+          composer.updatePropertiesPanel();
+          composer.pushHistoryState('Sincronizar Selo ABNT');
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Selo ABNT Atualizado',
+            mensagem: `Campos sincronizados: ${updated.join(', ')}.`,
+            duracao: 3000
+          });
         }
       });
     }

@@ -125,7 +125,7 @@ export class ShortcutsController {
   }
 
   static undo(app) {
-    if (app.historyUndo.length === 0) {
+    if (!app.historyUndo || app.historyUndo.length === 0) {
       UIToast.notificar({
         tipo: 'informativo',
         titulo: 'Nada para desfazer',
@@ -135,6 +135,7 @@ export class ShortcutsController {
       return;
     }
 
+    if (!app.historyRedo) app.historyRedo = [];
     app.historyRedo.push(ShortcutsController.takeSnapshot(app));
     const previousSnapshot = app.historyUndo.pop();
     const oldFeatures = app.features;
@@ -146,7 +147,7 @@ export class ShortcutsController {
   }
 
   static redo(app) {
-    if (app.historyRedo.length === 0) {
+    if (!app.historyRedo || app.historyRedo.length === 0) {
       UIToast.notificar({
         tipo: 'informativo',
         titulo: 'Nada para refazer',
@@ -156,6 +157,7 @@ export class ShortcutsController {
       return;
     }
 
+    if (!app.historyUndo) app.historyUndo = [];
     app.historyUndo.push(ShortcutsController.takeSnapshot(app));
     const nextSnapshot = app.historyRedo.pop();
     const oldFeatures = app.features;
@@ -217,9 +219,11 @@ export class ShortcutsController {
 
   /** Seleciona todas as feições visíveis (feição e camada não ocultas). Ctrl+A e botão da ribbon. */
   static selectAll(app) {
-    const visibleFeats = app.features.filter(f => {
+    const features = app.features || [];
+    const layers = app.layers || [];
+    const visibleFeats = features.filter(f => {
       if (f.visible === false) return false;
-      const layer = app.layers.find(l => l.id === f.layerId);
+      const layer = layers.find(l => l.id === f.layerId);
       return !layer || layer.visible !== false;
     });
     const ids = visibleFeats.map(f => f.id);

@@ -232,7 +232,8 @@ export class CloudSyncEngine {
           projectId,
           clientId: _clientId,
           toUpsert: chunkDirty.map(packFeatureForCloud),
-          toDelete: chunkDelete
+          toDelete: chunkDelete,
+          allowMassDelete: true
         });
 
         if (res.status === 409) {

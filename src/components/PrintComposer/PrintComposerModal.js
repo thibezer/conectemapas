@@ -64,7 +64,8 @@ export class PrintComposerModal {
     this.history = new PrintHistory();
 
     this.items = PrintItemsManager.createDefaultItems(this.projectName, this.paperSize);
-    this.selectedItemId = 'item-map-main';
+    this.selectedItemIds = new Set(['item-map-main']);
+    this.isPanelCollapsed = false;
     this.leafletMaps = new Map(); // Sub-instâncias do Leaflet nos itens
     this.mapRefreshers = new Map(); // Atualização de grade/escala de cada mapa, sem recriá-lo
     this.mapTimers = new Set(); // Timeouts dos mapas montados, cancelados ao destruí-los
@@ -86,6 +87,36 @@ export class PrintComposerModal {
       });
     }
   }
+
+  get selectedItemId() {
+    for (const id of (this.selectedItemIds || [])) return id;
+    return null;
+  }
+
+  set selectedItemId(val) {
+    if (!this.selectedItemIds) this.selectedItemIds = new Set();
+    this.selectedItemIds.clear();
+    if (val) this.selectedItemIds.add(val);
+  }
+
+  getSelectedItems() {
+    return this.items.filter(i => this.selectedItemIds.has(i.id));
+  }
+
+  togglePropertiesPanel(forceState = null) {
+    const mount = document.getElementById('cm-print-props-panel-mount');
+    const expandBtn = document.getElementById('btn-expand-props-panel');
+    if (!mount) return;
+
+    this.isPanelCollapsed = forceState !== null ? Boolean(forceState) : !this.isPanelCollapsed;
+    mount.classList.toggle('is-collapsed', this.isPanelCollapsed);
+    if (expandBtn) expandBtn.classList.toggle('hidden', !this.isPanelCollapsed);
+
+    requestAnimationFrame(() => {
+      this.canvasEngine.renderRulers();
+    });
+  }
+
 
   /** Salvamento automático da prancha ativa após qualquer edição */
   markDirty() {
@@ -238,6 +269,9 @@ export class PrintComposerModal {
               </div>
             </div>
           </div>
+
+          <!-- Botão para reabrir painel quando colapsado -->
+          <button type="button" id="btn-expand-props-panel" class="cm-pp-expand-tab hidden" title="Expandir painel de propriedades (atalho [)">⚙️ ⇤</button>
 
           <!-- Painel Lateral de Propriedades e Elementos -->
           <div id="cm-print-props-panel-mount">
@@ -477,14 +511,30 @@ export class PrintComposerModal {
   setInteractionMode(mode) {
     this.interactionMode = mode;
     const banner = document.getElementById('cm-print-pan-alert-banner');
+    const mapFrames = document.querySelectorAll('.cm-item-map-frame');
 
     if (mode === 'content_pan') {
       banner?.classList.remove('hidden');
-      document.querySelectorAll('.cm-item-map-frame').forEach(el => el.classList.add('pan-enabled'));
+      mapFrames.forEach(el => {
+        el.classList.add('pan-enabled');
+        if (!el.querySelector('.cm-map-pan-floating-badge')) {
+          const badge = document.createElement('div');
+          badge.className = 'cm-map-pan-floating-badge';
+          badge.innerHTML = '<span>🖐️ Navegação interna (Scroll = Zoom | Arraste = Pan)</span><button type="button" class="cm-map-pan-done-btn" title="Concluir navegação (Esc)">Concluir (Esc)</button>';
+          badge.querySelector('.cm-map-pan-done-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.setInteractionMode('layout');
+          });
+          el.appendChild(badge);
+        }
+      });
       this.enableLeafletMapPan(true);
     } else {
       banner?.classList.add('hidden');
-      document.querySelectorAll('.cm-item-map-frame').forEach(el => el.classList.remove('pan-enabled'));
+      mapFrames.forEach(el => {
+        el.classList.remove('pan-enabled');
+        el.querySelectorAll('.cm-map-pan-floating-badge').forEach(b => b.remove());
+      });
       this.enableLeafletMapPan(false);
     }
   }
@@ -615,7 +665,7 @@ export class PrintComposerModal {
 
     layer.innerHTML = this.items.map((item, index) => {
       if (item.visible === false) return '';
-      const isSel = item.id === this.selectedItemId;
+      const isSel = this.selectedItemIds ? this.selectedItemIds.has(item.id) : (item.id === this.selectedItemId);
       const xPx = item.x * this.canvasEngine.mmToPx;
       const yPx = item.y * this.canvasEngine.mmToPx;
       const wPx = item.width * this.canvasEngine.mmToPx;
@@ -684,27 +734,60 @@ export class PrintComposerModal {
   /**
    * Seleciona um item SEM recriar os mapas Leaflet (preservação de zoom e pan)
    */
-  selectItem(itemId) {
-    this.selectedItemId = itemId;
-
-    // Remove classes selected e alças anteriores
-    document.querySelectorAll('.cm-print-item').forEach(el => {
-      el.classList.remove('selected');
-      el.querySelectorAll('.cm-resize-handle').forEach(h => h.remove());
-    });
-
-    if (itemId) {
-      const targetEl = document.querySelector(`[data-item-id="${itemId}"]`);
-      const item = this.items.find(i => i.id === itemId);
-      if (targetEl && item) {
-        targetEl.classList.add('selected');
-        if (!item.locked) {
-          targetEl.insertAdjacentHTML('beforeend', this.getResizeHandlesHTML());
+  selectItem(itemId, { additive = false } = {}) {
+    if (!itemId) {
+      this.selectedItemIds.clear();
+    } else if (additive) {
+      if (this.selectedItemIds.has(itemId)) {
+        if (this.selectedItemIds.size > 1) {
+          this.selectedItemIds.delete(itemId);
         }
+      } else {
+        this.selectedItemIds.add(itemId);
       }
+    } else {
+      this.selectedItemIds.clear();
+      this.selectedItemIds.add(itemId);
     }
 
+    // Remove classes selected e alças anteriores em todos os itens
+    document.querySelectorAll('.cm-print-item').forEach(el => {
+      const id = el.getAttribute('data-item-id');
+      const isSelected = this.selectedItemIds.has(id);
+      el.classList.toggle('selected', isSelected);
+      el.querySelectorAll('.cm-resize-handle').forEach(h => h.remove());
+
+      // Alças de resize só no item único selecionado
+      if (isSelected && this.selectedItemIds.size === 1) {
+        const item = this.items.find(i => i.id === id);
+        if (item && !item.locked) {
+          el.insertAdjacentHTML('beforeend', this.getResizeHandlesHTML());
+        }
+      }
+    });
+
     this.updatePropertiesPanel();
+  }
+
+  selectItems(itemIds = []) {
+    this.selectedItemIds.clear();
+    itemIds.forEach(id => this.selectedItemIds.add(id));
+    this.selectItem(this.selectedItemId, { additive: false });
+  }
+
+  deleteItems(itemIds = []) {
+    const toDelete = itemIds.filter(id => {
+      const it = this.items.find(i => i.id === id);
+      return it && !it.locked;
+    });
+    if (!toDelete.length) return false;
+
+    this.items = this.items.filter(i => !toDelete.includes(i.id));
+    toDelete.forEach(id => this.selectedItemIds.delete(id));
+    this.renderAllItems();
+    this.updatePropertiesPanel();
+    this.pushHistoryState(toDelete.length > 1 ? `Excluir ${toDelete.length} Itens` : 'Excluir Item');
+    return true;
   }
 
   mountLeafletMaps() {
@@ -1250,5 +1333,7 @@ export class PrintComposerModal {
 
     const btnDismissBanner = document.getElementById('btn-dismiss-pan-banner');
     if (btnDismissBanner) btnDismissBanner.addEventListener('click', () => this.setInteractionMode('layout'));
+
+    document.getElementById('btn-expand-props-panel')?.addEventListener('click', () => this.togglePropertiesPanel(false));
   }
 }
