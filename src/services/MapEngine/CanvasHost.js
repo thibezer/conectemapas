@@ -52,14 +52,32 @@ export class CanvasHost {
       host = fresh;
     }
 
-    // O componente inicializa o mapa num setTimeout(0) do connectedCallback. O app precisa do mapa
-    // de forma síncrona, então inicializa agora e cancela o agendamento para não criar um 2º mapa.
+    // Configuração declarativa e moderna do kit:
+    // - renderizador="canvas": motor de formas headless + Canvas 2D de alta performance
+    // - sem-camadas-padrao: não cria nem requisita camadas de fábrica (satélite interno, SIGEF/INCRA, etc.)
+    // - sem-painel-camadas: o app usa o próprio ui-camadas
+    // - sem-barra-rapida: o app usa sua própria toolbar
+    // - sem-atalho-snap: o app gerencia o atalho 'S'
+    // - aceitar-origem: aceita coordenadas sem restrições
+    host.setAttribute('renderizador', 'canvas');
+    host.setAttribute('sem-camadas-padrao', '');
+    host.setAttribute('sem-painel-camadas', '');
+    host.setAttribute('sem-barra-rapida', '');
+    host.setAttribute('sem-atalho-snap', '');
+    host.setAttribute('aceitar-origem', '');
+
+    // O componente fornece inicializarAgora() para montagem síncrona idempotente.
+    // Fallback gracioso para initCAD() se inicializarAgora não estiver disponível.
     if (!host.getMap()) {
-      if (host.initTimeout) {
-        window.clearTimeout(host.initTimeout);
-        host.initTimeout = undefined;
+      if (typeof host.inicializarAgora === 'function') {
+        host.inicializarAgora();
+      } else {
+        if (host.initTimeout) {
+          window.clearTimeout(host.initTimeout);
+          host.initTimeout = undefined;
+        }
+        host.initCAD();
       }
-      host.initCAD();
     }
 
     const map = host.getMap();
