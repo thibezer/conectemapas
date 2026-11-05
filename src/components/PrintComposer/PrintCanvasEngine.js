@@ -28,6 +28,7 @@ export class PrintCanvasEngine {
 
     // Pan state da folha
     this.isPanning = false;
+    this.autoFit = false;
     this.panStartX = 0;
     this.panStartY = 0;
     this.scrollStartX = 0;
@@ -53,6 +54,7 @@ export class PrintCanvasEngine {
    */
   setZoom(val, anchor = null) {
     const vp = document.getElementById('cm-print-viewport');
+    this.autoFit = false; // zoom manual desliga o reajuste automático (zoomFit religa)
     const next = Math.max(PrintCanvasEngine.MIN_ZOOM, Math.min(PrintCanvasEngine.MAX_ZOOM, val));
     if (next === this.zoom && vp) {
       this.updateZoomBadge();
@@ -101,6 +103,7 @@ export class PrintCanvasEngine {
 
     const fitZoom = Math.min(availW / paperW, availH / paperH, 1.5);
     this.setZoom(fitZoom);
+    this.autoFit = true;
     vp.scrollLeft = 0;
     vp.scrollTop = 0;
     this.renderRulers();
@@ -231,11 +234,16 @@ export class PrintCanvasEngine {
     if (vp && !vp._rulerBound) {
       vp._rulerBound = true;
       vp.addEventListener('scroll', () => requestAnimationFrame(() => this.renderRulers()));
+      // Se o usuário não mexeu no zoom, a folha continua ajustada ao novo tamanho da área
+      const onViewportResize = () => requestAnimationFrame(() => {
+        if (this.autoFit && this.composer.isOpen) this.zoomFit();
+        else this.renderRulers();
+      });
       if (typeof ResizeObserver !== 'undefined') {
-        this.viewportObserver = new ResizeObserver(() => requestAnimationFrame(() => this.renderRulers()));
+        this.viewportObserver = new ResizeObserver(onViewportResize);
         this.viewportObserver.observe(vp);
       } else {
-        window.addEventListener('resize', () => requestAnimationFrame(() => this.renderRulers()));
+        window.addEventListener('resize', onViewportResize);
       }
 
       // Zoom com a roda, ancorado no cursor. Sobre um mapa em modo "conteúdo", a roda é do Leaflet (zoom do mapa);
