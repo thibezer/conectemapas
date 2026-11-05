@@ -102,6 +102,10 @@ export class CanvasMapEngine {
     this.individualPreviewToggles = new Set();
     this.popupEnabled = typeof localStorage !== 'undefined' ? (localStorage.getItem('cm_feature_popup_enabled') === 'true') : false;
 
+    const rawQuality = options.quality || options.qualidade || (typeof localStorage !== 'undefined' ? localStorage.getItem('cm_canvas_qualidade') : null);
+    this.quality = (rawQuality === 'media' || rawQuality === 'baixa') ? rawQuality : 'alta';
+    this.onQualityChange = options.onQualityChange || (() => {});
+
     this._tool = 'select';
     this._features = [];
     this._featureMap = new Map();
@@ -131,7 +135,7 @@ export class CanvasMapEngine {
   // ------------------------------------------------------------------------
 
   _initMap() {
-    const { host, map } = CanvasHost.mount(this.containerId);
+    const { host, map } = CanvasHost.mount(this.containerId, { qualidade: this.quality });
     this.host = host;
     this.map = map;
 
@@ -734,6 +738,39 @@ export class CanvasMapEngine {
 
   isFeaturePopupEnabled() {
     return Boolean(this.popupEnabled);
+  }
+
+  // ------------------------------------------------------------------------
+  // Qualidade e Desempenho do Canvas (<ui-canvas-cad qualidade="alta|media|baixa">)
+  // ------------------------------------------------------------------------
+
+  getQuality() {
+    return this.host?.qualidade || this.quality || 'alta';
+  }
+
+  setQuality(quality) {
+    const q = String(quality || '').toLowerCase().trim();
+    const valid = (q === 'media' || q === 'baixa') ? q : 'alta';
+    this.quality = valid;
+    if (typeof localStorage !== 'undefined') {
+      try { localStorage.setItem('cm_canvas_qualidade', valid); } catch { /* quota/incognito */ }
+    }
+    if (this.host) {
+      this.host.qualidade = valid;
+    }
+    this.onQualityChange(valid);
+    return valid;
+  }
+
+  cycleQuality() {
+    const seq = ['alta', 'media', 'baixa'];
+    const current = this.getQuality();
+    const next = seq[(seq.indexOf(current) + 1) % seq.length];
+    return this.setQuality(next);
+  }
+
+  getQualityProfile() {
+    return this.host?.perfilQualidade || null;
   }
 
   openFeaturePopup(featureId) {

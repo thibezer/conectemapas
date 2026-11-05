@@ -33,9 +33,11 @@ export class CanvasHost {
   /**
    * Substitui o elemento #id por um <ui-canvas-cad> novo e devolve o mapa já inicializado.
    * @param {string} containerId
+   * @param {Object} [options]
+   * @param {'alta'|'media'|'baixa'} [options.qualidade]
    * @returns {{ host: HTMLElement, map: import('leaflet').Map }}
    */
-  static mount(containerId) {
+  static mount(containerId, options = {}) {
     const placeholder = document.getElementById(containerId);
     if (!placeholder) throw new Error(`CanvasHost: elemento #${containerId} não encontrado`);
 
@@ -54,11 +56,14 @@ export class CanvasHost {
 
     // Configuração declarativa e moderna do kit:
     // - renderizador="canvas": motor de formas headless + Canvas 2D de alta performance
+    // - qualidade="alta|media|baixa": perfil de qualidade vs. desempenho
     // - sem-camadas-padrao: não cria nem requisita camadas de fábrica (satélite interno, SIGEF/INCRA, etc.)
     // - sem-painel-camadas: o app usa o próprio ui-camadas
     // - sem-barra-rapida: o app usa sua própria toolbar
     // - sem-atalho-snap: o app gerencia o atalho 'S'
     // - aceitar-origem: aceita coordenadas sem restrições
+    const qualidade = options.qualidade || options.quality || (typeof localStorage !== 'undefined' ? localStorage.getItem('cm_canvas_qualidade') : null) || 'alta';
+    host.setAttribute('qualidade', qualidade);
     host.setAttribute('renderizador', 'canvas');
     host.setAttribute('sem-camadas-padrao', '');
     host.setAttribute('sem-painel-camadas', '');

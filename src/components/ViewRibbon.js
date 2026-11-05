@@ -20,7 +20,8 @@ const ICONES = {
   layout: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>'),
   importExport: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>'),
   conta: svg('<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'),
-  compartilhar: svg('<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>')
+  compartilhar: svg('<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>'),
+  qualidade: svg('<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>')
 };
 
 /** Botões das abas Projeto e Dados cujo estado vem do app (ver computeViewState). */
@@ -58,7 +59,8 @@ export function buildProjectTab({ accountName = '' } = {}) {
           { id: 'btn-fit', rotulo: 'Enquadrar tudo', icone: ICONES.enquadrar, tamanho: 'grande', atalho: 'Z' },
           { id: 'btn-toggle-snap', rotulo: 'Snap', icone: ICONES.snap, tamanho: 'pequeno', tipo: 'toggle', ativo: false, atalho: 'S', rotuloAcessivel: 'Snap magnético a vértices' },
           { id: 'btn-toggle-autozoom', rotulo: 'Zoom auto', icone: ICONES.zoomAuto, tamanho: 'pequeno', tipo: 'toggle', ativo: false, rotuloAcessivel: 'Zoom automático ao importar ou selecionar' },
-          { id: 'btn-toggle-popup', rotulo: 'Popup: Off', icone: ICONES.popup, tamanho: 'pequeno', tipo: 'toggle', ativo: false }
+          { id: 'btn-toggle-popup', rotulo: 'Popup: Off', icone: ICONES.popup, tamanho: 'pequeno', tipo: 'toggle', ativo: false },
+          { id: 'btn-canvas-quality', rotulo: 'Qualidade: Alta', icone: ICONES.qualidade, tamanho: 'pequeno', rotuloAcessivel: 'Alternar qualidade do mapa (Alta, Média ou Baixa)' }
         ]
       },
       {

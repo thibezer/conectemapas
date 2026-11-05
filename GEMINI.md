@@ -124,6 +124,12 @@ Este documento registra as decisões de engenharia, arquitetura e salvaguardas c
 - O `L.map` pertence ao `<ui-canvas-cad>` (`CanvasHost.mount`); o `CanvasMapEngine` só traduz o app para ele. Nunca chamar `map.remove()` no mapa hospedado: o componente o destrói (`CanvasHost.dispose`).
 - O componente usa Shadow DOM: o CSS do documento é espelhado no shadow root (`CanvasHost._mirrorDocumentStyles`). Seletores e consultas ao DOM do mapa devem partir de `map.getContainer()`, não de `document`.
 - Padrões do componente desligados no `CanvasHost`: camadas padrão (satélite Google, WMS SIGEF/INCRA — que consulta o INCRA a cada clique), painel/barra do kit. Pan com a roda, caixa Window/Crossing, snap e menu de contexto do componente ficam ligados.
+- **Qualidade e Performance do Canvas (`qualidade="alta"|"media"|"baixa"`)**:
+  - `alta` (padrão): fidelidade visual máxima, DPR total (retina), suavização e tracejado de linhas, animações/inércia de zoom completas e `zoomSnap: 0.25`.
+  - `media`: equilíbrio ideal, renderizador canvas, marcas LOD a < 6px, simplificação DP a 2px e `zoomSnap: 0.5`.
+  - `baixa`: modo alto desempenho, DPR 1 (4x menos pixels em tela retina), marcas LOD a < 10px, simplificação DP a 3px, linhas contínuas sem tracejado, sem animações/inércia e `zoomSnap: 1`.
+  - Preferência persistida no `LocalStorage` sob `cm_canvas_qualidade`.
+  - Controle na Ribbon (Aba Projeto -> Grupo Mapa -> `btn-canvas-quality`), alternando dinamicamente com feedback via toast e refletindo no elemento `host.qualidade`.
 - O kit instalado é uma build local do repositório do usuário (D:/Programação/UI_Componentes) enquanto não for publicado.
 - **Atualização Rápida do Kit**: Ao receber pedidos como "atualize o kit de ui", execute imediatamente o comando em 1 passo `npm run update:kit` documentado em `docs/ATUALIZAR_UI_KIT.md`.
 - Histórico: o que o motor antigo fazia e o mapa de migração estão em `docs/MAPENGINE_INVENTARIO.md`.

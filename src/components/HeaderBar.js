@@ -19,6 +19,7 @@ export class HeaderBar {
    * @param {Function} options.onOpenPrintComposer - Callback para abrir compositor de impressão
    * @param {Function} options.onOpenAdvancedSearch - Callback para abrir busca avançada
    * @param {Function} options.onToggleFeaturePopup - Callback para alternar balões de popup
+   * @param {Function} options.onCycleCanvasQuality - Callback para alternar qualidade gráfica do canvas
    * @param {Function} options.onOpenAccount - Callback para abrir modal de conta
    * @param {Function} options.onOpenProject - Callback para abrir o modal de projeto (novo / excluir)
    * @param {Function} options.onModifyAction - Callback (id, {anchor}) dos comandos da aba Modificar
@@ -33,6 +34,7 @@ export class HeaderBar {
     this.onOpenPrintComposer = options.onOpenPrintComposer || (() => {});
     this.onOpenAdvancedSearch = options.onOpenAdvancedSearch || (() => {});
     this.onToggleFeaturePopup = options.onToggleFeaturePopup || (() => {});
+    this.onCycleCanvasQuality = options.onCycleCanvasQuality || (() => {});
     this.onOpenAccount = options.onOpenAccount || (() => {});
     this.onOpenProject = options.onOpenProject || (() => {});
     this.onModifyAction = options.onModifyAction || (() => {});
@@ -315,6 +317,7 @@ export class HeaderBar {
       'btn-open-adv-search': () => this.onOpenAdvancedSearch(),
       'btn-open-print-composer': () => this.onOpenPrintComposer(),
       'btn-toggle-popup': () => this.onToggleFeaturePopup(),
+      'btn-canvas-quality': () => this.onCycleCanvasQuality(),
       'btn-open-import-export': () => abrirModal('modal-import-export'),
       'btn-open-share': () => abrirModal('modal-share')
     };
@@ -348,6 +351,24 @@ export class HeaderBar {
     this.ribbon?.atualizarItem?.('btn-toggle-popup', {
       ativo: !!isEnabled,
       rotulo: isEnabled ? 'Popup: On' : 'Popup: Off'
+    });
+  }
+
+  /**
+   * Atualiza o rótulo e tooltip do botão de qualidade gráfica do canvas
+   * @param {'alta'|'media'|'baixa'} quality
+   */
+  updateCanvasQuality(quality = 'alta') {
+    const rotulos = {
+      alta: 'Qualidade: Alta',
+      media: 'Qualidade: Média',
+      baixa: 'Qualidade: Baixa'
+    };
+    const q = String(quality || 'alta').toLowerCase();
+    const rotulo = rotulos[q] || 'Qualidade: Alta';
+    this.ribbon?.atualizarItem?.('btn-canvas-quality', {
+      rotulo,
+      rotuloAcessivel: `Qualidade gráfica do mapa: ${q}. Clique para alternar.`
     });
   }
 }

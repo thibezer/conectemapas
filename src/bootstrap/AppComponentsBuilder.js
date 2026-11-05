@@ -260,6 +260,21 @@ export class AppComponentsBuilder {
           duracao: 2500
         });
       },
+      onCycleCanvasQuality: () => {
+        const nova = app.mapEngine?.cycleQuality();
+        app.headerBar?.updateCanvasQuality(nova);
+        const mensagens = {
+          alta: 'Fidelidade visual máxima: resolução total e animações suaves.',
+          media: 'Equilíbrio ideal: LOD otimizado para maior fluidez com muitas formas.',
+          baixa: 'Modo alto desempenho: DPR 1 (4x menos pixels em retina), sem animações e simplificação ágil.'
+        };
+        UIToast.notificar({
+          tipo: nova === 'baixa' ? 'alerta' : 'sucesso',
+          titulo: `Qualidade do Canvas: ${String(nova || '').toUpperCase()}`,
+          mensagem: mensagens[nova] || `Perfil ${nova} ativado.`,
+          duracao: 2500
+        });
+      },
       onOpenAdvancedSearch: () => app.advancedSearch?.toggle(),
       onModifyAction: (id, ctx) => ModifyActionsController.run(app, id, ctx),
       onViewAction: (id) => RibbonViewController.run(app, id)
@@ -268,6 +283,7 @@ export class AppComponentsBuilder {
     app.syncRibbon?.();
     if (app.mapEngine) {
       app.headerBar.updateFeaturePopupMode(app.mapEngine.isFeaturePopupEnabled());
+      app.headerBar.updateCanvasQuality(app.mapEngine.getQuality());
     }
 
     const initialLayer = app.layers.find(l => l.id === app.activeLayerId) || app.layers[0];
