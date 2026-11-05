@@ -372,8 +372,7 @@
 
 /* Bloqueio e visibilidade no estado comum ficam discretos; o estado que pede atenção fica em cor */
 .cm-pp-item-btn.is-off {
-  opacity: 0.4;
-  filter: grayscale(1);
+  opacity: 0.5;
 }
 
 .cm-pp-item-row:hover .cm-pp-item-btn.is-off,
@@ -665,6 +664,77 @@
 .cm-pp-expand-tab:hover {
   background: #22222a;
   border-color: rgba(0, 224, 138, 0.4);
+}
+
+
+/* Ícones de linha do painel (no lugar de emojis) */
+.cm-pp-ico {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  vertical-align: -2px;
+}
+
+.cm-print-props-panel .cm-pp-summary .cm-pp-ico,
+.cm-pp-title-ico .cm-pp-ico {
+  margin-right: 6px;
+}
+
+.cm-pp-title-ico {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Rótulo de botão com ícone: sempre numa linha só, ícone ao lado do texto */
+.cm-pp-btn-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Alinhar na folha: seis botões só com ícone (o nome está no tooltip), alvo de 28px */
+.cm-pp-align-btn {
+  --ui-botao-altura: 28px;
+  min-width: 28px;
+}
+
+.cm-pp-btn-row > ui-botao-primario:not(.cm-pp-align-btn) {
+  --ui-botao-altura: 26px;
+}
+
+/* Botões da lista de elementos e de recolher: alvo mínimo de 24x24 */
+.cm-print-props-panel .cm-pp-item-btn {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.cm-pp-collapse-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+  color: #e1e1e6;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cm-pp-collapse-btn:hover {
+  background: rgba(0, 224, 138, 0.12);
+  border-color: rgba(0, 224, 138, 0.35);
+}
+
+.cm-pp-expand-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .cm-pp-expand-tab.hidden {

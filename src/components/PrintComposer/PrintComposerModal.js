@@ -26,6 +26,7 @@ import { PrintVisibilityDialog } from './PrintVisibilityDialog.js';
 import { PrintCloudSync } from './PrintCloudSync.js';
 import { PrintViewTemplates } from './PrintViewTemplates.js';
 import { PrintViewEdits } from './PrintViewEdits.js';
+import { ppIcon } from './PrintIcons.js';
 import './PrintVisibilityDialog.css';
 
 export class PrintComposerModal {
@@ -271,7 +272,7 @@ export class PrintComposerModal {
           </div>
 
           <!-- Botão para reabrir painel quando colapsado -->
-          <button type="button" id="btn-expand-props-panel" class="cm-pp-expand-tab hidden" title="Expandir painel de propriedades (atalho [)">⚙️ ⇤</button>
+          <button type="button" id="btn-expand-props-panel" class="cm-pp-expand-tab hidden" title="Expandir painel de propriedades (atalho [)" aria-label="Expandir painel de propriedades">${ppIcon('settings')}${ppIcon('expand')}</button>
 
           <!-- Painel Lateral de Propriedades e Elementos -->
           <div id="cm-print-props-panel-mount">

@@ -45,7 +45,7 @@ export const PrintLegendRenderer = {
     }
 
     if (!entries.length) {
-      PrintMapRenderer.drawText(ctx, 'Nenhuma camada visível', W / 2, top + (H - top) / 2, { sizePt: 6, color: '#777777', halo: false }, pxPerMm);
+      PrintMapRenderer.drawText(ctx, 'Nenhuma camada visível', W / 2, top + (H - top) / 2, { sizePt: 7, color: '#555555', halo: false }, pxPerMm);
     } else {
       const avail = H - top - mm(this.PAD_MM);
       const row = Math.min(mm(this.ROW_MM), avail / entries.length);

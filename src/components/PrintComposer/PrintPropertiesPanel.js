@@ -3,6 +3,7 @@ import { PrintImageUtils } from './PrintImageUtils.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 import { PrintViewResolver } from './PrintViewResolver.js';
+import { ppIcon, itemTypeIcon } from './PrintIcons.js';
 
 export class PrintPropertiesPanel {
   static render(composer) {
@@ -21,10 +22,10 @@ export class PrintPropertiesPanel {
       <div class="cm-print-props-panel">
         <div class="cm-pp-header">
           <div class="cm-pp-header-title">
-            <span>⚙️ PROPRIEDADES</span>
+            <span class="cm-pp-title-ico">${ppIcon('settings')}PROPRIEDADES</span>
             <span class="cm-pp-header-paper">${esc(composer.paperSize.name)}</span>
           </div>
-          <button type="button" class="cm-pp-collapse-btn" id="btn-collapse-props-panel" title="Recolher painel (atalho [)" aria-label="Recolher painel">⇥</button>
+          <button type="button" class="cm-pp-collapse-btn" id="btn-collapse-props-panel" title="Recolher painel (atalho [)" aria-label="Recolher painel">${ppIcon('collapse')}</button>
         </div>
 
         <div class="cm-print-props-scroll">
@@ -33,7 +34,7 @@ export class PrintPropertiesPanel {
 
           <!-- 2. Árvore de Elementos da Composição -->
           <details class="cm-inspector-accordion" data-section="items" ${openAttr('items')}>
-            <summary class="cm-pp-summary">📑 Elementos da Prancha (${composer.items.length})</summary>
+            <summary class="cm-pp-summary">${ppIcon('layers')}Elementos da Prancha (${composer.items.length})</summary>
             <div class="cm-pp-body cm-pp-body--list">
               ${composer.items.map((it) => {
                 // Sem `visible` gravado o item aparece (mesma regra da prancha e do exportador)
@@ -47,9 +48,9 @@ export class PrintPropertiesPanel {
                     <span class="cm-pp-item-name">${name}</span>
                   </button>
                   <div class="cm-pp-item-actions">
-                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn ${it.locked ? '' : 'is-off'}" data-composer-lock="${esc(it.id)}" aria-pressed="${it.locked ? 'true' : 'false'}" aria-label="Bloquear ${name}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${it.locked ? '🔒' : '🔓'}</button>
-                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn ${shown ? '' : 'is-off'}" data-composer-vis="${esc(it.id)}" aria-pressed="${shown ? 'false' : 'true'}" aria-label="Ocultar ${name}" title="${shown ? 'Ocultar' : 'Exibir'}">👁️</button>
-                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn" data-composer-del="${esc(it.id)}" aria-label="Excluir ${name}" title="${it.locked ? 'Desbloqueie para excluir' : 'Excluir (Ctrl+Z desfaz)'}" ${it.locked ? 'disabled' : ''}>🗑️</button>
+                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn ${it.locked ? '' : 'is-off'}" data-composer-lock="${esc(it.id)}" aria-pressed="${it.locked ? 'true' : 'false'}" aria-label="Bloquear ${name}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${ppIcon(it.locked ? 'lock' : 'unlock')}</button>
+                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn ${shown ? '' : 'is-off'}" data-composer-vis="${esc(it.id)}" aria-pressed="${shown ? 'false' : 'true'}" aria-label="Ocultar ${name}" title="${shown ? 'Ocultar' : 'Exibir'}">${ppIcon(shown ? 'eye' : 'eyeOff')}</button>
+                    <button type="button" class="cm-ai-micro-btn cm-pp-item-btn" data-composer-del="${esc(it.id)}" aria-label="Excluir ${name}" title="${it.locked ? 'Desbloqueie para excluir' : 'Excluir (Ctrl+Z desfaz)'}" ${it.locked ? 'disabled' : ''}>${ppIcon('trash')}</button>
                   </div>
                 </div>
               `;
@@ -60,30 +61,30 @@ export class PrintPropertiesPanel {
           <!-- 3. Propriedades do Elemento Selecionado ou Seleção Múltipla -->
           ${(composer.selectedItemIds && composer.selectedItemIds.size > 1) ? `
             <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
-              <summary class="cm-pp-summary cm-pp-summary--active">🎯 ${composer.selectedItemIds.size} Itens Selecionados</summary>
+              <summary class="cm-pp-summary cm-pp-summary--active">${ppIcon('target')}${composer.selectedItemIds.size} Itens Selecionados</summary>
               <fieldset class="cm-print-props-fields">
                 <div class="cm-pp-toolbox">
                   <div class="cm-pp-toolbox-title">Alinhar itens entre si</div>
                   <div class="cm-pp-btn-row">
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda">⇤ Esq</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente">⧿ Centro</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita">⇥ Dir</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo">⤒ Topo</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente">⧾ Meio</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base">⤓ Base</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-left" title="Alinhar à Esquerda" aria-label="Alinhar à Esquerda">${ppIcon('alignLeft')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente" aria-label="Centralizar Horizontalmente">${ppIcon('alignCenterH')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-right" title="Alinhar à Direita" aria-label="Alinhar à Direita">${ppIcon('alignRight')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-top" title="Alinhar ao Topo" aria-label="Alinhar ao Topo">${ppIcon('alignTop')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente" aria-label="Centralizar Verticalmente">${ppIcon('alignCenterV')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-bottom" title="Alinhar à Base" aria-label="Alinhar à Base">${ppIcon('alignBottom')}</ui-botao-primario>
                   </div>
                   <div class="cm-pp-btn-row">
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Itens (Ctrl+D)">📋 Duplicar</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-delete-multi" title="Excluir Itens (Delete)">🗑️ Excluir</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Itens (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}Duplicar</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-delete-multi" title="Excluir Itens (Delete)"><span class="cm-pp-btn-lbl">${ppIcon('trash')}Excluir</span></ui-botao-primario>
                   </div>
                 </div>
               </fieldset>
             </details>
           ` : selectedItem ? `
             <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
-              <summary class="cm-pp-summary cm-pp-summary--active">🎯 ${esc(selectedItem.name)}</summary>
+              <summary class="cm-pp-summary cm-pp-summary--active">${ppIcon('target')}${esc(selectedItem.name)}</summary>
               ${selectedItem.locked ? `
-                <div class="cm-print-props-locked-note">🔒 Item bloqueado: desbloqueie na lista acima para editar.</div>
+                <div class="cm-print-props-locked-note">${ppIcon('lock')}Item bloqueado: desbloqueie na lista acima para editar.</div>
               ` : ''}
               ${selectedItem.visible === false ? `
                 <div class="cm-print-props-hidden-note">Item oculto: não aparece na prancha nem na exportação.</div>
@@ -93,17 +94,17 @@ export class PrintPropertiesPanel {
                 <div class="cm-pp-toolbox">
                   <div class="cm-pp-toolbox-title">Alinhar na folha</div>
                   <div class="cm-pp-btn-row">
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-left" title="Alinhar à Esquerda">⇤ Esq</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente">⧿ Centro</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-right" title="Alinhar à Direita">⇥ Dir</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-top" title="Alinhar ao Topo">⤒ Topo</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente">⧾ Meio</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-align-bottom" title="Alinhar à Base">⤓ Base</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-left" title="Alinhar à Esquerda" aria-label="Alinhar à Esquerda">${ppIcon('alignLeft')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-center-h" title="Centralizar Horizontalmente" aria-label="Centralizar Horizontalmente">${ppIcon('alignCenterH')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-right" title="Alinhar à Direita" aria-label="Alinhar à Direita">${ppIcon('alignRight')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-top" title="Alinhar ao Topo" aria-label="Alinhar ao Topo">${ppIcon('alignTop')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-center-v" title="Centralizar Verticalmente" aria-label="Centralizar Verticalmente">${ppIcon('alignCenterV')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-bottom" title="Alinhar à Base" aria-label="Alinhar à Base">${ppIcon('alignBottom')}</ui-botao-primario>
                   </div>
                   <div class="cm-pp-btn-row">
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)">📋 Duplicar</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente">⬆️ Frente</ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás">⬇️ Trás</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}Duplicar</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente"><span class="cm-pp-btn-lbl">${ppIcon('front')}Frente</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás"><span class="cm-pp-btn-lbl">${ppIcon('back')}Trás</span></ui-botao-primario>
                   </div>
                 </div>
 
@@ -159,7 +160,7 @@ export class PrintPropertiesPanel {
 
     return `
       <details class="cm-inspector-accordion" data-section="paper" ${openAttr('paper')}>
-        <summary class="cm-pp-summary">📄 Folha</summary>
+        <summary class="cm-pp-summary">${ppIcon('sheet')}Folha</summary>
         <div class="cm-pp-body">
           <ui-select id="print-paper-size-select" class="cm-native-select cm-pp-full cm-pp-compact-select" tamanho="sm" value="${esc(paper.id)}" title="Tamanho do papel">
             ${this.PAPER_OPTIONS.map(([id, label]) => {
@@ -192,12 +193,12 @@ export class PrintPropertiesPanel {
               <option value="" ${match ? '' : 'selected'}>${presets.length ? 'Pré-definições…' : 'Nenhuma pré-definição'}</option>
               ${presets.map(p => `<option value="${esc(p.id)}" ${match?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
             </ui-select>
-            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais">💾</ui-botao-primario>
-            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'}>🗑️</ui-botao-primario>
+            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais" aria-label="Salvar pré-definição">${ppIcon('save')}</ui-botao-primario>
+            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'} aria-label=\"Excluir pré-definição\">${ppIcon('trash')}</ui-botao-primario>
           </div>
 
           <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Volta às margens ABNT e ao layout padrão dos elementos (Ctrl+Z desfaz)">
-            📐 Layout padrão
+            ${ppIcon('layout')}Layout padrão
           </ui-botao-primario>
         </div>
       </details>
@@ -285,14 +286,14 @@ export class PrintPropertiesPanel {
           ${item.showGrid ? `
             <div class="cm-param-row">
               <span class="cm-param-label">Tipo de Grade:</span>
-              <ui-select id="prop-map-grid-type" class="cm-native-select cm-pp-w-l" tamanho="sm" value="${item.gridType === 'utm' ? 'utm' : 'dms'}">
+              <ui-select id="prop-map-grid-type" class="cm-native-select cm-pp-w-xl" tamanho="sm" value="${item.gridType === 'utm' ? 'utm' : 'dms'}">
                 <option value="dms" ${sel(item.gridType === 'dms')}>Geográfica (DMS)</option>
-                <option value="utm" ${sel(item.gridType === 'utm')}>Métrica UTM (Metros)</option>
+                <option value="utm" ${sel(item.gridType === 'utm')}>Métrica UTM (m)</option>
               </ui-select>
             </div>
           ` : ''}
           <ui-botao-primario inline id="btn-prop-pan-map" variante="secundario" class="cm-pp-wide-btn">
-            🖐️ Enquadrar Terreno neste Mapa
+            ${ppIcon('hand')}Enquadrar Terreno neste Mapa
           </ui-botao-primario>
           ${item.type === 'map' ? this.renderViewSummary(item, composer) : ''}
         </div>
@@ -456,7 +457,7 @@ export class PrintPropertiesPanel {
           </div>
           ${item.imageUrl ? `
             <ui-botao-primario inline id="btn-remove-image-url" variante="secundario" class="cm-pp-small-btn">
-              🗑️ Limpar Imagem
+              ${ppIcon('trash')}Limpar Imagem
             </ui-botao-primario>
           ` : ''}
         </div>
@@ -550,11 +551,11 @@ export class PrintPropertiesPanel {
       <div class="cm-pp-view-summary">
         <div class="cm-pp-view-line">
           <span class="cm-param-label">Vista:</span>
-          <span class="cm-pp-view-template">${view.template ? `📐 ${esc(view.template.name)}` : 'Sem modelo'}</span>
+          <span class="cm-pp-view-template">${view.template ? `${ppIcon('layout')} ${esc(view.template.name)}` : 'Sem modelo'}</span>
         </div>
         <div class="cm-pp-hint">${esc(parts.join(' · '))}</div>
         <ui-botao-primario inline id="btn-prop-open-vv" variante="secundario" class="cm-pp-wide-btn" title="Visibilidade e gráficos deste mapa (V V)">
-          👁️ Visibilidade/Gráficos (VV)
+          ${ppIcon('eye')}Visibilidade/Gráficos (VV)
         </ui-botao-primario>
         ${this.renderTempControls(item, composer)}
       </div>
@@ -579,7 +580,7 @@ export class PrintPropertiesPanel {
         </div>
         <div class="cm-pp-inline">
           <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn" id="btn-temp-isolate-feature" title="Clique numa feição: só ela aparece">Isolar feição…</ui-botao-primario>
-          <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn ${revealing ? 'is-active' : ''}" id="btn-reveal-hidden" aria-pressed="${revealing}" title="Mostra em magenta o que esta vista esconde; clique para religar">💡 Revelar ocultos</ui-botao-primario>
+          <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn ${revealing ? 'is-active' : ''}" id="btn-reveal-hidden" aria-pressed="${revealing}" title="Mostra em magenta o que esta vista esconde; clique para religar">${ppIcon('bulb')}Revelar ocultos</ui-botao-primario>
           ${temp ? '<ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-text-btn is-active" id="btn-temp-reset" title="Volta a mostrar a vista salva">↺ Restaurar</ui-botao-primario>' : ''}
         </div>
       </div>
@@ -587,18 +588,7 @@ export class PrintPropertiesPanel {
   }
 
   static getItemIcon(type) {
-    if (type === 'map') return '🗺️';
-    if (type === 'inset_map') return '🌎';
-    if (type === 'north_arrow') return '🧭';
-    if (type === 'scale_bar') return '📏';
-    if (type === 'legend') return '📋';
-    if (type === 'title_block') return '🏛️';
-    if (type === 'table_vertices') return '📊';
-    if (type === 'text_block') return '📝';
-    if (type === 'shape') return '🔲';
-    if (type === 'image') return '🖼️';
-    if (type === 'label') return '🏷️';
-    return '📦';
+    return itemTypeIcon(type);
   }
 
   /** Eventos da seção da folha (ligados uma única vez; os controles sobrevivem às reconstruções) */
