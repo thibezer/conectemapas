@@ -193,8 +193,11 @@ export const PrintMapRenderer = {
     if (g.kind === 'polygon') {
       const polys = this.polygonsOf(f.coordinates).map(rings => rings.map(r => r.map(ll => project(ll))));
       if (!polys.length) return null;
-      ctx.beginPath();
-      polys.forEach(rings => rings.forEach(pts => { tracePath(pts); ctx.closePath(); }));
+      const traceOutline = () => {
+        ctx.beginPath();
+        polys.forEach(rings => rings.forEach(pts => { tracePath(pts); ctx.closePath(); }));
+      };
+      traceOutline();
       if (g.fill.color !== 'none' && g.fill.opacity > 0) {
         if (g.fill.pattern === 'solido' || !g.fill.pattern) {
           ctx.globalAlpha = g.fill.opacity;
@@ -203,6 +206,8 @@ export const PrintMapRenderer = {
           ctx.globalAlpha = 1;
         } else if (g.fill.pattern !== 'nenhum') {
           this.drawHatch(ctx, polys, g, pxPerMm);
+          // A hachura deixa as linhas dela como caminho corrente: o contorno volta antes do traço
+          traceOutline();
         }
       }
       if (strokeOn) {

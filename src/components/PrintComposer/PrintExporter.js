@@ -11,6 +11,7 @@ import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintMapRenderer } from './PrintMapRenderer.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
+import { PdfVectorContext } from './PdfVectorContext.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 
 export class PrintExporter {
@@ -90,15 +91,6 @@ export class PrintExporter {
         mensagem: `Processando prancha ${composer.paperSize.name}...`
       });
 
-      let rendered;
-      try {
-        rendered = await this.renderSheetWithFallback(composer, dpi);
-      } finally {
-        progress.done();
-      }
-      const { canvas, usedFallback } = rendered;
-      if (!canvas) return;
-
       const wMm = composer.paperSize.width;
       const hMm = composer.paperSize.height;
       const isLandscape = wMm > hMm;
@@ -109,9 +101,15 @@ export class PrintExporter {
         format: [wMm, hMm],
         compress: true
       });
+      pdf.setProperties({ title: composer.projectName || 'Prancha', creator: 'ConecteMapas' });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
-      pdf.addImage(imgData, 'JPEG', 0, 0, wMm, hMm);
+      // Vetorial: textos, formas, traços e preenchimentos viram operadores de PDF (não pixels)
+      let usedFallback;
+      try {
+        ({ usedFallback } = await this.renderSheetToPdfPage(pdf, composer, dpi));
+      } finally {
+        progress.done();
+      }
 
       const cleanName = (composer.projectName || 'prancha')
         .toLowerCase()
@@ -195,6 +193,33 @@ export class PrintExporter {
     canvas.height = hPx;
     const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 
+    await this.paintSheet(ctx, composer, scaleFactor, wPx, hPx, includeTiles);
+    return canvas;
+  }
+
+  /**
+   * Adiciona a prancha montada à página ATUAL do jsPDF em VETOR: textos, formas, traços,
+   * preenchimentos e feições saem como operadores de PDF (nítidos em qualquer zoom). Só os
+   * tiles do fundo e imagens do usuário seguem raster. Mesmo desenho do PNG (`paintSheet`).
+   * @returns {Promise<{ usedFallback: boolean }>} usedFallback: algum fundo raster foi dispensado por CORS
+   */
+  static async renderSheetToPdfPage(pdf, composer, dpi = 300) {
+    const scaleFactor = dpi / 25.4;
+    const wPx = Math.round(composer.paperSize.width * scaleFactor);
+    const hPx = Math.round(composer.paperSize.height * scaleFactor);
+    const ctx = new PdfVectorContext(pdf, { pxPerMm: scaleFactor });
+    try {
+      await this.paintSheet(ctx, composer, scaleFactor, wPx, hPx, true);
+    } finally {
+      ctx.finish();
+    }
+    return { usedFallback: ctx.rasterBlocked };
+  }
+
+  /**
+   * Desenha papel, moldura e todos os itens da prancha num contexto 2D (canvas ou PdfVectorContext)
+   */
+  static async paintSheet(ctx, composer, scaleFactor, wPx, hPx, includeTiles = true) {
     // Fundo Branco do Papel
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, wPx, hPx);
@@ -235,8 +260,6 @@ export class PrintExporter {
         this.drawLabelItem(ctx, item, x, y, w, h, scaleFactor);
       }
     }
-
-    return canvas;
   }
 
   /**
@@ -292,20 +315,47 @@ export class PrintExporter {
       // 1. Renderiza Tiles de Imagem (se habilitado)
       if (includeTiles && BasemapCatalog.get(basemapId).tiles.length) {
         const tiles = Array.from(domEl.querySelectorAll('.leaflet-tile-pane img'));
+        // No PDF vetorial os tiles são juntados num único raster (sem emendas nem centenas de imagens)
+        const vector = ctx.isVector === true;
+        const k = vector ? Math.min(1, 4096 / Math.max(w, h)) : 1;
+        let tileCanvas = null;
+        let tileCtx = ctx;
+        let ox = x;
+        let oy = y;
+        if (vector) {
+          tileCanvas = document.createElement('canvas');
+          tileCanvas.width = Math.max(1, Math.round(w * k));
+          tileCanvas.height = Math.max(1, Math.round(h * k));
+          tileCanvas._opaque = true;
+          tileCtx = tileCanvas.getContext('2d');
+          tileCtx.fillStyle = BasemapCatalog.backgroundOf(basemapId);
+          tileCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
+          ox = 0;
+          oy = 0;
+        }
         tiles.forEach((img) => {
           if (!img.complete || img.naturalWidth === 0) return;
           const imgRect = img.getBoundingClientRect();
-          const destX = x + (imgRect.left - mapRect.left) * scaleX;
-          const destY = y + (imgRect.top - mapRect.top) * scaleY;
-          const destW = imgRect.width * scaleX;
-          const destH = imgRect.height * scaleY;
+          const destX = ox + (imgRect.left - mapRect.left) * scaleX * k;
+          const destY = oy + (imgRect.top - mapRect.top) * scaleY * k;
+          const destW = imgRect.width * scaleX * k;
+          const destH = imgRect.height * scaleY * k;
 
           try {
-            ctx.drawImage(img, destX, destY, destW, destH);
+            tileCtx.drawImage(img, destX, destY, destW, destH);
           } catch (e) {
             // Ignora falha em tile específico
           }
         });
+        if (vector) {
+          try {
+            ctx.drawImage(tileCanvas, x, y, w, h);
+          } catch (e) {
+            // CORS (canvas "sujo") ou falha ao codificar o fundo: o mapa segue em fundo técnico, com todos os vetores
+            console.warn('[PrintExporter] Fundo raster do mapa dispensado no PDF:', e);
+            ctx.rasterBlocked = true;
+          }
+        }
       }
 
       // Coordenadas de contêiner do Leaflet (latLngToContainerPoint) são em px CSS sem o zoom da prancheta
@@ -783,10 +833,6 @@ export class PrintExporter {
           // Cada prancha é montada de verdade: mapas com o enquadramento, a escala e a vista dela
           await composer.mountSheetForExport(sh);
 
-          const rendered = await this.renderSheetWithFallback(composer, dpi);
-          const { canvas } = rendered;
-          if (!canvas) continue;
-
           const wMm = sh.paperSize.width;
           const hMm = sh.paperSize.height;
           const isLandscape = wMm > hMm;
@@ -802,8 +848,8 @@ export class PrintExporter {
             pdf.addPage([wMm, hMm], isLandscape ? 'landscape' : 'portrait');
           }
 
-          const imgData = canvas.toDataURL('image/jpeg', 0.95);
-          pdf.addImage(imgData, 'JPEG', 0, 0, wMm, hMm);
+          // Mesma página vetorial do PDF de uma prancha
+          await this.renderSheetToPdfPage(pdf, composer, dpi);
         }
       } finally {
         progress.done();
