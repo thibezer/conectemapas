@@ -254,6 +254,7 @@ export class PrintCanvasEngine {
   }
 
   startRulerGuideDrag(axis, startClientPos) {
+    if (this.composer.readOnly) return;
     const sheet = document.getElementById('cm-print-paper-sheet');
     const vp = document.getElementById('cm-print-viewport');
     if (!sheet || !vp) return;
@@ -319,6 +320,7 @@ export class PrintCanvasEngine {
   }
 
   addManualGuide(axis, valMm) {
+    if (this.composer.readOnly) return;
     this.composer.manualGuides = this.composer.manualGuides || { x: [], y: [] };
     const list = this.composer.manualGuides[axis] || [];
     const rounded = Math.round(valMm * 2) / 2;
@@ -338,6 +340,7 @@ export class PrintCanvasEngine {
   }
 
   removeManualGuide(axis, valMm) {
+    if (this.composer.readOnly) return;
     if (!this.composer.manualGuides || !this.composer.manualGuides[axis]) return;
     this.composer.manualGuides[axis] = this.composer.manualGuides[axis].filter(v => Math.abs(v - valMm) > 0.1);
     this.renderManualGuides();
@@ -395,15 +398,15 @@ export class PrintCanvasEngine {
       vp._rulerBound = true;
       vp.addEventListener('scroll', () => requestAnimationFrame(() => this.renderRulers()));
       // Se o usuário não mexeu no zoom, a folha continua ajustada ao novo tamanho da área
-      const onViewportResize = () => requestAnimationFrame(() => {
+      this.onViewportResize = () => requestAnimationFrame(() => {
         if (this.autoFit && this.composer.isOpen) this.zoomFit();
         else this.renderRulers();
       });
       if (typeof ResizeObserver !== 'undefined') {
-        this.viewportObserver = new ResizeObserver(onViewportResize);
+        this.viewportObserver = new ResizeObserver(this.onViewportResize);
         this.viewportObserver.observe(vp);
       } else {
-        window.addEventListener('resize', onViewportResize);
+        window.addEventListener('resize', this.onViewportResize);
       }
 
       // Zoom com a roda, ancorado no cursor. Sobre um mapa em modo "conteúdo", a roda é do Leaflet (zoom do mapa);
@@ -483,6 +486,20 @@ export class PrintCanvasEngine {
       } else {
         if (!isAdditive) {
           this.composer.selectItem(null);
+        }
+      }
+    };
+
+    paperSheet.ondblclick = (e) => {
+      if (this.composer.readOnly) return;
+      const mapFrame = e.target.closest?.('.cm-item-map-frame');
+      if (mapFrame && this.composer.interactionMode === 'layout') {
+        const itemEl = e.target.closest?.('.cm-print-item');
+        const itemId = itemEl?.getAttribute('data-item-id');
+        const item = this.composer.items.find(i => i.id === itemId);
+        if (item && !item.locked) {
+          this.composer.selectItem(item.id);
+          this.composer.setInteractionMode('content_pan');
         }
       }
     };
@@ -653,10 +670,17 @@ export class PrintCanvasEngine {
       // Com a janela Visibilidade/Gráficos aberta, a prancheta não recebe teclas (só desfazer/refazer, acima)
       if (this.composer.visibilityDialog?.isOpen()) return;
 
-      // Só visualizando (outro operador edita a prancha): apenas zoom e Esc
-      if (this.composer.readOnly && !['0', '+', '=', '-', '_', 'Escape'].includes(e.key)) return;
+      // Só visualizando (outro operador edita a prancha): apenas zoom, painel e Esc
+      if (this.composer.readOnly && !['0', '+', '=', '-', '_', 'Escape', '[', ']'].includes(e.key)) return;
 
-      // V V abre Visibilidade/Gráficos do mapa (atalho do Revit)
+      // Atalho rápido '[' ou ']' para recolher/expandir o painel de propriedades (independe de seleção)
+      if (e.key === '[' || e.key === ']') {
+        e.preventDefault();
+        this.composer.togglePropertiesPanel();
+        return;
+      }
+
+      // V alterna para o modo Layout (se estiver em content_pan); V V abre Visibilidade/Gráficos do mapa (atalho do Revit)
       if (e.key === 'v' || e.key === 'V') {
         const now = Date.now();
         if (this.lastVKeyAt && now - this.lastVKeyAt < 600) {
@@ -665,7 +689,18 @@ export class PrintCanvasEngine {
           this.composer.openVisibilityDialog();
         } else {
           this.lastVKeyAt = now;
+          if (this.composer.interactionMode === 'content_pan') {
+            e.preventDefault();
+            this.composer.setInteractionMode('layout');
+          }
         }
+        return;
+      }
+
+      // Atalho 'C' para alternar o Modo Navegação de Conteúdo do Mapa (padrão QGIS)
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        this.composer.setInteractionMode(this.composer.interactionMode === 'content_pan' ? 'layout' : 'content_pan');
         return;
       }
 
@@ -691,13 +726,6 @@ export class PrintCanvasEngine {
 
       const item = this.composer.items.find(i => i.id === selectedId);
       if (!item || item.locked) return;
-
-      // Atalho rápido '[' ou ']' para recolher/expandir o painel de propriedades
-      if (e.key === '[' || e.key === ']') {
-        e.preventDefault();
-        this.composer.togglePropertiesPanel();
-        return;
-      }
 
       // Excluir com Delete ou Backspace
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -743,8 +771,14 @@ export class PrintCanvasEngine {
     if (this.mouseMoveHandler) window.removeEventListener('mousemove', this.mouseMoveHandler);
     if (this.mouseUpHandler) window.removeEventListener('mouseup', this.mouseUpHandler);
     if (this.keyDownHandler) window.removeEventListener('keydown', this.keyDownHandler);
+    if (this.onViewportResize && typeof window !== 'undefined') window.removeEventListener('resize', this.onViewportResize);
+    if (this.viewportObserver) {
+      this.viewportObserver.disconnect();
+      this.viewportObserver = null;
+    }
     this.mouseMoveHandler = null;
     this.mouseUpHandler = null;
     this.keyDownHandler = null;
+    this.onViewportResize = null;
   }
 }

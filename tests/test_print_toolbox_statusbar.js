@@ -47,6 +47,17 @@ assert.ok(statusHtml.includes('id="cm-psb-coord-x"'), 'Coordenada X presente');
 assert.ok(statusHtml.includes('id="cm-psb-coord-y"'), 'Coordenada Y presente');
 assert.ok(statusHtml.includes('125%'), 'Zoom na status bar formatado');
 assert.ok(statusHtml.includes('🟢 Sincronizado'), 'Status de sincronização');
+
+// Verifica blindagem contra XSS no nome da prancha
+const xssComposer = {
+  ...mockComposer,
+  sheetsManager: {
+    getCurrentSheet: () => ({ name: '<img src=x onerror=alert(1)>' })
+  }
+};
+const xssStatusHtml = PrintStatusBar.render(xssComposer);
+assert.ok(!xssStatusHtml.includes('<img src=x'), 'Nome da prancha deve ser escapado contra XSS');
+assert.ok(xssStatusHtml.includes('&lt;img src=x'), 'Entidades HTML escapadas corretamente');
 console.log('✔ PrintStatusBar validada!');
 
 console.log('🎉 Todos os testes de Toolbox e Status Bar passaram!');

@@ -239,6 +239,8 @@ export class PrintComposerModal {
   distributeV() { PrintAlignmentHelper.distributeV(this); }
   bringToFront() { PrintAlignmentHelper.bringToFront(this); }
   sendToBack() { PrintAlignmentHelper.sendToBack(this); }
+  bringForward() { PrintAlignmentHelper.bringForward(this); }
+  sendBackward() { PrintAlignmentHelper.sendBackward(this); }
   duplicateSelectedItem() { PrintAlignmentHelper.duplicateItem(this); }
 
   render(container) {
@@ -327,6 +329,7 @@ export class PrintComposerModal {
       this.paperSize = currentSheet.paperSize;
       this.showAbntMargins = currentSheet.showAbntMargins !== false;
       this.items = JSON.parse(JSON.stringify(currentSheet.items || []));
+      this.manualGuides = currentSheet.manualGuides ? JSON.parse(JSON.stringify(currentSheet.manualGuides)) : { x: [], y: [] };
     }
 
     this.sheetsManager.renderSheetsSelectorDOM();
@@ -335,6 +338,7 @@ export class PrintComposerModal {
     this.resetHistory();
 
     this.updatePaperSheetDOM();
+    this.canvasEngine?.renderManualGuides?.();
     this.renderAllItems();
     this.updatePropertiesPanel();
 
@@ -360,7 +364,9 @@ export class PrintComposerModal {
     this.paperSize = sheet.paperSize;
     this.showAbntMargins = sheet.showAbntMargins !== false;
     this.items = JSON.parse(JSON.stringify(sheet.items || []));
+    this.manualGuides = sheet.manualGuides ? JSON.parse(JSON.stringify(sheet.manualGuides)) : { x: [], y: [] };
     this.updatePaperSheetDOM();
+    this.canvasEngine?.renderManualGuides?.();
     this.renderAllItems();
     await this.waitForMapsReady();
   }
@@ -391,11 +397,13 @@ export class PrintComposerModal {
     this.paperSize = sheet.paperSize;
     this.showAbntMargins = sheet.showAbntMargins !== false;
     this.items = JSON.parse(JSON.stringify(sheet.items || []));
+    this.manualGuides = sheet.manualGuides ? JSON.parse(JSON.stringify(sheet.manualGuides)) : { x: [], y: [] };
     if (!keepSelection || !this.items.some(i => i.id === this.selectedItemId)) {
       this.selectedItemId = (this.items.find(i => i.type === 'map') || this.items[0])?.id || null;
     }
     this.resetHistory();
     this.updatePaperSheetDOM();
+    this.canvasEngine?.renderManualGuides?.();
     this.renderAllItems();
     this.updatePropertiesPanel();
     this.visibilityDialog.refresh();
@@ -424,14 +432,19 @@ export class PrintComposerModal {
     }
     const itemsLayer = document.getElementById('cm-print-items-layer');
     if (itemsLayer) itemsLayer.inert = this.readOnly;
+    const guidesLayer = document.getElementById('cm-print-manual-guides-layer');
+    if (guidesLayer) guidesLayer.inert = this.readOnly;
     const panel = document.getElementById('cm-print-props-panel-mount');
     if (panel) panel.inert = this.readOnly;
-    document.querySelectorAll('#cm-print-composer-modal [data-ptb-action^="insert"], #btn-ptb-insert, #btn-print-undo, #btn-print-redo')
-      .forEach(el => { el.disabled = this.readOnly; });
+    document.querySelectorAll(
+      '#cm-print-composer-modal [data-ptb-action^="insert"], #btn-ptb-insert, #btn-print-undo, #btn-print-redo, ' +
+      '#cm-print-side-toolbox [data-stb-insert], #cm-print-side-toolbox [data-stb-mode="content_pan"], #cm-print-side-toolbox [data-stb-action="toggle-atlas"]'
+    ).forEach(el => { el.disabled = this.readOnly; });
     if (this.readOnly) {
       this.selectItem(null);
       this.setInteractionMode('layout');
     }
+    PrintStatusBar.update(this);
     this.visibilityDialog?.refresh();
   }
 

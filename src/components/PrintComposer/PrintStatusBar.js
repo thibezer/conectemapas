@@ -5,8 +5,11 @@
    nível de zoom e estado de sincronização.
    ========================================================================== */
 
+import { PrintItemsManager } from './PrintItemsManager.js';
+
 export class PrintStatusBar {
   static render(composer) {
+    const esc = PrintItemsManager.escapeHtml;
     const curSheet = composer.sheetsManager?.getCurrentSheet?.() || { name: 'Prancha 01' };
     const paper = composer.paperSize || { name: 'A4 Paisagem', width: 297, height: 210 };
     const zoomPct = Math.round((composer.canvasEngine?.zoom || 1) * 100);
@@ -18,7 +21,7 @@ export class PrintStatusBar {
             <svg class="cm-psb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>
             </svg>
-            <strong>${curSheet.name || 'Prancha'}</strong> · ${paper.name || 'A4'} (${paper.width}×${paper.height} mm)
+            <strong>${esc(curSheet.name || 'Prancha')}</strong> · ${esc(paper.name || 'A4')} (${paper.width}×${paper.height} mm)
           </span>
         </div>
 
@@ -80,13 +83,14 @@ export class PrintStatusBar {
     const cloudStatus = document.getElementById('cm-psb-cloud-status');
 
     if (info) {
+      const esc = PrintItemsManager.escapeHtml;
       const curSheet = composer.sheetsManager?.getCurrentSheet?.() || { name: 'Prancha 01' };
       const paper = composer.paperSize || { name: 'A4 Paisagem', width: 297, height: 210 };
       info.innerHTML = `
         <svg class="cm-psb-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/>
         </svg>
-        <strong>${curSheet.name || 'Prancha'}</strong> · ${paper.name || 'A4'} (${paper.width}×${paper.height} mm)
+        <strong>${esc(curSheet.name || 'Prancha')}</strong> · ${esc(paper.name || 'A4')} (${paper.width}×${paper.height} mm)
       `;
     }
 

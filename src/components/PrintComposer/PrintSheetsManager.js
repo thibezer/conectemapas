@@ -325,9 +325,11 @@ export class PrintSheetsManager {
       this.composer.paperSize = target.paperSize;
       this.composer.showAbntMargins = target.showAbntMargins !== false;
       this.composer.items = JSON.parse(JSON.stringify(target.items || []));
+      this.composer.manualGuides = target.manualGuides ? JSON.parse(JSON.stringify(target.manualGuides)) : { x: [], y: [] };
       this.composer.selectedItemId = this.composer.items[0]?.id || null;
       this.composer.resetHistory?.();
       this.composer.updatePaperSheetDOM();
+      this.composer.canvasEngine?.renderManualGuides?.();
       this.composer.renderAllItems();
       this.composer.updatePropertiesPanel();
       setTimeout(() => this.composer.canvasEngine.zoomFit(), 50);

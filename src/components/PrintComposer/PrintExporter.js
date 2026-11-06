@@ -464,7 +464,7 @@ export class PrintExporter {
       });
       ys.forEach(gy => {
         const py = y + gy.f * h;
-        ctx.moveTo(x, py); ctx.lineTo(x + w);
+        ctx.moveTo(x, py); ctx.lineTo(x + w, py);
       });
     }
 
@@ -524,53 +524,81 @@ export class PrintExporter {
   }
 
   /**
-   * Renderiza a Rosa dos Ventos com precisão vetorial
+   * Renderiza a Rosa dos Ventos com precisão vetorial (suporta 'classic', 'compass' e 'modern')
    */
   static drawNorthArrowItem(ctx, item, x, y, w, h) {
     ctx.save();
     ctx.translate(x + w / 2, y + h / 2);
     ctx.rotate(((item.rotation || 0) * Math.PI) / 180);
     const r = Math.min(w, h) / 2;
+    const style = item.arrowStyle || 'classic';
 
-    // Seta Norte preta e branca com alto relevo
-    ctx.fillStyle = '#000000';
-    ctx.beginPath();
-    ctx.moveTo(0, -r * 0.92);
-    ctx.lineTo(r * 0.28, r * 0.25);
-    ctx.lineTo(0, 0);
-    ctx.closePath();
-    ctx.fill();
+    const drawHalfPoint = (tipX, tipY, sideX, sideY, innerX, innerY, fill, stroke = null, lineW = 1) => {
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(sideX, sideY);
+      ctx.lineTo(innerX, innerY);
+      ctx.closePath();
+      ctx.fill();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lineW;
+        ctx.stroke();
+      }
+    };
 
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(0, -r * 0.92);
-    ctx.lineTo(-r * 0.28, r * 0.25);
-    ctx.lineTo(0, 0);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    if (style === 'compass') {
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = Math.max(1, r * 0.04);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
 
-    // Seta Sul oposta
-    ctx.fillStyle = '#000000';
-    ctx.beginPath();
-    ctx.moveTo(0, r * 0.8);
-    ctx.lineTo(-r * 0.22, 0);
-    ctx.lineTo(0, 0);
-    ctx.closePath();
-    ctx.fill();
+      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([r * 0.04, r * 0.04]);
+      ctx.lineWidth = Math.max(0.75, r * 0.015);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.80, 0, Math.PI * 2);
+      ctx.stroke();
+      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
 
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, r * 0.8);
-    ctx.lineTo(r * 0.22, 0);
-    ctx.lineTo(0, 0);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+      // Norte
+      drawHalfPoint(0, -r * 0.80, r * 0.16, -r * 0.10, 0, -r * 0.20, '#000000');
+      drawHalfPoint(0, -r * 0.80, -r * 0.16, -r * 0.10, 0, -r * 0.20, '#ffffff', '#000000', 0.75);
+      // Sul
+      drawHalfPoint(0, r * 0.80, r * 0.16, r * 0.10, 0, r * 0.20, '#ffffff', '#000000', 0.75);
+      drawHalfPoint(0, r * 0.80, -r * 0.16, r * 0.10, 0, r * 0.20, '#000000');
+      // Leste
+      drawHalfPoint(r * 0.80, 0, r * 0.10, r * 0.16, r * 0.20, 0, '#ffffff', '#000000', 0.75);
+      drawHalfPoint(r * 0.80, 0, r * 0.10, -r * 0.16, r * 0.20, 0, '#000000');
+      // Oeste
+      drawHalfPoint(-r * 0.80, 0, -r * 0.10, r * 0.16, -r * 0.20, 0, '#000000');
+      drawHalfPoint(-r * 0.80, 0, -r * 0.10, -r * 0.16, -r * 0.20, 0, '#ffffff', '#000000', 0.75);
+
+      ctx.fillStyle = '#000000';
+      ctx.font = `bold ${Math.round(r * 0.22)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('N', 0, -r * 0.83);
+      ctx.restore();
+      return;
+    }
+
+    if (style === 'modern') {
+      drawHalfPoint(0, -r * 0.88, r * 0.28, r * 0.76, 0, r * 0.44, '#000000');
+      drawHalfPoint(0, -r * 0.88, -r * 0.28, r * 0.76, 0, r * 0.44, '#777777');
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${Math.round(r * 0.28)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('N', 0, -r * 0.48);
+      ctx.restore();
+      return;
+    }
+
+    // Seta Norte clássica preta e branca com alto relevo
+    drawHalfPoint(0, -r * 0.92, r * 0.28, r * 0.25, 0, 0, '#000000');
+    drawHalfPoint(0, -r * 0.92, -r * 0.28, r * 0.25, 0, 0, '#ffffff', '#000000', 1.5);
+    drawHalfPoint(0, r * 0.8, -r * 0.22, 0, 0, 0, '#000000');
+    drawHalfPoint(0, r * 0.8, r * 0.22, 0, 0, 0, '#ffffff', '#000000', 1);
 
     // Letra N
     ctx.fillStyle = '#000000';
@@ -642,13 +670,16 @@ export class PrintExporter {
     const data = PrintItemsManager.extractVerticesData(composer?.features || [], targetId);
     const headH = h * 0.14;
 
-    // Cabeçalho da tabela
+    // Cabeçalho da tabela (título + sistema de referência UTM, idêntico à tela)
     ctx.fillStyle = '#000000';
     ctx.fillRect(x, y, w, headH);
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(headH * 0.5)}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText('TABELA DE COORDENADAS E CONFRONTAÇÕES', x + w / 2, y + headH * 0.68);
+    ctx.font = `bold ${Math.max(6, Math.round(headH * 0.46))}px Arial, sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText('TABELA DE COORDENADAS E CONFRONTAÇÕES', x + 5, y + headH * 0.68);
+    ctx.font = `normal ${Math.max(5.5, Math.round(headH * 0.38))}px Arial, sans-serif`;
+    ctx.textAlign = 'right';
+    ctx.fillText(`SIRGAS 2000 UTM ${data.utmZone || 23}${data.utmHemisphere || 'S'}`, x + w - 5, y + headH * 0.68);
 
     // Colunas: Vértice (15%), Norte (23%), Leste (23%), Azimute (21%), Distância (18%)
     const cols = [
@@ -679,7 +710,9 @@ export class PrintExporter {
     });
 
     // Linhas de vértices
-    const nRows = Math.min(12, data.vertices.length);
+    const maxVisibleRows = 12;
+    const truncated = data.vertices.length > maxVisibleRows;
+    const nRows = Math.min(maxVisibleRows, data.vertices.length);
     const rowH = (h - headH - subHeadH - (data.vertices.length > 0 ? h * 0.12 : 0)) / Math.max(1, nRows);
     const fontRow = Math.max(6, Math.round(rowH * 0.48));
 
@@ -697,6 +730,16 @@ export class PrintExporter {
       ctx.fillStyle = '#000000';
       ctx.font = `${fontRow}px monospace`;
       ctx.textAlign = 'center';
+
+      if (truncated && i === nRows - 1) {
+        const remaining = data.vertices.length - (nRows - 1);
+        ctx.fillStyle = '#f8f9fa';
+        ctx.fillRect(x + 1, rY + 1, w - 2, rowH - 2);
+        ctx.fillStyle = '#333333';
+        ctx.font = `bold ${fontRow}px Arial, sans-serif`;
+        ctx.fillText(`... +${remaining} vértices (total: ${data.vertices.length} vértices)`, x + w / 2, rY + rowH * 0.68);
+        continue;
+      }
 
       let cx = x;
       ctx.fillText(v.name, cx + cols[0].w / 2, rY + rowH * 0.68);
@@ -729,6 +772,34 @@ export class PrintExporter {
   }
 
   /**
+   * Quebra linhas de um texto para caber dentro de maxWidth usando a métrica da fonte ativa em ctx
+   */
+  static wrapTextLines(ctx, text, maxWidth) {
+    const paragraphs = String(text ?? '').split('\n');
+    if (!(maxWidth > 0) || typeof ctx?.measureText !== 'function') return paragraphs;
+    const out = [];
+    for (const para of paragraphs) {
+      if (!para) {
+        out.push('');
+        continue;
+      }
+      const words = para.split(/\s+/);
+      let line = '';
+      for (const word of words) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(candidate).width > maxWidth) {
+          out.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) out.push(line);
+    }
+    return out.length ? out : [''];
+  }
+
+  /**
    * Renderiza o Bloco de Notas Técnicas / Texto Livre
    */
   static drawTextBlockItem(ctx, item, x, y, w, h, composer, scaleFactor) {
@@ -737,11 +808,18 @@ export class PrintExporter {
       composer = null;
     }
 
+    ctx.save();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x, y, w, h);
+
+    if (typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+    }
 
     const headH = Math.min(22 * (scaleFactor / (300 / 25.4)), h * 0.25);
     ctx.fillStyle = '#1e1e24';
@@ -755,13 +833,13 @@ export class PrintExporter {
 
     const rawText = item.text || '';
     const evaluatedText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawText) : rawText;
-    const lines = evaluatedText.split('\n');
     const fontSize = Math.max(6.5, Math.round((item.fontSize || 7.5) * (scaleFactor / (300 / 25.4))));
     const lineStep = fontSize * 1.4;
 
     ctx.fillStyle = '#000000';
     ctx.font = `${fontSize}px Arial, sans-serif`;
     ctx.textAlign = 'left';
+    const lines = this.wrapTextLines(ctx, evaluatedText, Math.max(10, w - 12));
 
     let curY = y + headH + lineStep;
     for (const line of lines) {
@@ -769,6 +847,7 @@ export class PrintExporter {
       ctx.fillText(line, x + 6, curY);
       curY += lineStep;
     }
+    ctx.restore();
   }
 
   /**
@@ -797,7 +876,7 @@ export class PrintExporter {
   }
 
   /**
-   * Renderiza Imagem / Logotipo em Alta Resolução
+   * Renderiza Imagem / Logotipo em Alta Resolução respeitando objectFit ('contain' ou 'cover')
    */
   static async drawImageItem(ctx, item, x, y, w, h) {
     if (!item.imageUrl) return;
@@ -806,7 +885,25 @@ export class PrintExporter {
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         try {
-          ctx.drawImage(img, x, y, w, h);
+          const iw = img.naturalWidth || img.width || w;
+          const ih = img.naturalHeight || img.height || h;
+          const fit = item.objectFit === 'cover' ? 'cover' : 'contain';
+          let dx = x, dy = y, dw = w, dh = h;
+          if (iw > 0 && ih > 0 && w > 0 && h > 0) {
+            const scale = fit === 'cover' ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih);
+            dw = iw * scale;
+            dh = ih * scale;
+            dx = x + (w - dw) / 2;
+            dy = y + (h - dh) / 2;
+          }
+          ctx.save();
+          if (fit === 'cover' && typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
+            ctx.beginPath();
+            ctx.rect(x, y, w, h);
+            ctx.clip();
+          }
+          ctx.drawImage(img, dx, dy, dw, dh);
+          ctx.restore();
         } catch (e) {}
         resolve();
       };
@@ -816,7 +913,7 @@ export class PrintExporter {
   }
 
   /**
-   * Renderiza Rótulo de Texto Livre / Título Customizado
+   * Renderiza Rótulo de Texto Livre / Título Customizado (com suporte a múltiplas linhas e quebra de linha)
    */
   static drawLabelItem(ctx, item, x, y, w, h, composer, scaleFactor) {
     if (typeof composer === 'number') {
@@ -825,6 +922,11 @@ export class PrintExporter {
     }
 
     ctx.save();
+    if (typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+    }
     const fontSize = Math.max(8, Math.round((item.fontSize || 10) * (scaleFactor / (300 / 25.4))));
     const weight = item.fontWeight || 'bold';
     ctx.font = `${weight} ${fontSize}px Arial, sans-serif`;
@@ -835,7 +937,17 @@ export class PrintExporter {
     const textX = align === 'center' ? x + w / 2 : (align === 'right' ? x + w - 4 : x + 4);
     const rawText = item.text || 'TÍTULO';
     const evaluatedText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawText) : rawText;
-    ctx.fillText(evaluatedText, textX, y + h / 2);
+    const lines = this.wrapTextLines(ctx, evaluatedText, Math.max(10, w - 8));
+    if (lines.length <= 1) {
+      ctx.fillText(lines[0] ?? evaluatedText, textX, y + h / 2);
+    } else {
+      const lineStep = fontSize * 1.25;
+      const totalH = (lines.length - 1) * lineStep;
+      const startY = y + h / 2 - totalH / 2;
+      lines.forEach((line, idx) => {
+        ctx.fillText(line, textX, startY + idx * lineStep);
+      });
+    }
     ctx.restore();
   }
 

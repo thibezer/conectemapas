@@ -6,6 +6,7 @@
    ========================================================================== */
 
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
+import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintExporter } from './PrintExporter.js';
 import { jsPDF } from 'jspdf';
 import { UIToast } from '@thibezer/ui-components-kit';
@@ -170,7 +171,7 @@ export class PrintAtlasEngine {
       center: [center.lat, center.lng],
       zoom: leafletMap.getZoom()
     };
-    mapItem.scale = Math.round(this.composer.canvasEngine.calculateMapScale(leafletMap, mapItem));
+    mapItem.scale = PrintItemsManager.calculateScale(leafletMap.getZoom(), center.lat);
 
     this.refreshComposerVisuals();
   }
@@ -305,15 +306,10 @@ export class PrintAtlasEngine {
         // Aguarda renderização dos tiles do mapa
         await this.composer.waitForMapsReady?.(3000);
 
-        const rendered = await PrintExporter.renderSheetWithFallback(this.composer, dpi);
-        const { canvas } = rendered;
-        if (canvas) {
-          const imgData = canvas.toDataURL('image/jpeg', 0.92);
-          if (i > 0) {
-            pdf.addPage([wMm, hMm], isLandscape ? 'landscape' : 'portrait');
-          }
-          pdf.addImage(imgData, 'JPEG', 0, 0, wMm, hMm);
+        if (i > 0) {
+          pdf.addPage([wMm, hMm], isLandscape ? 'landscape' : 'portrait');
         }
+        await PrintExporter.renderSheetToPdfPage(pdf, this.composer, dpi);
       }
 
       const cleanProject = (this.composer.projectName || 'projeto').toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '_');
@@ -356,10 +352,16 @@ export class PrintAtlasEngine {
       if (totalLbl) totalLbl.textContent = String(features.length);
       if (nameLbl) nameLbl.textContent = feat ? (feat.name || feat.id) : '(Nenhuma feição)';
 
+      const firstBtn = bar.querySelector('[data-atlas-nav="first"]');
       const prevBtn = bar.querySelector('[data-atlas-nav="prev"]');
       const nextBtn = bar.querySelector('[data-atlas-nav="next"]');
-      if (prevBtn) prevBtn.disabled = this.currentIndex <= 0;
-      if (nextBtn) nextBtn.disabled = this.currentIndex >= features.length - 1;
+      const lastBtn = bar.querySelector('[data-atlas-nav="last"]');
+      const atStart = this.currentIndex <= 0;
+      const atEnd = this.currentIndex >= features.length - 1;
+      if (firstBtn) firstBtn.disabled = atStart;
+      if (prevBtn) prevBtn.disabled = atStart;
+      if (nextBtn) nextBtn.disabled = atEnd;
+      if (lastBtn) lastBtn.disabled = atEnd;
     }
 
     const toolboxBtn = document.querySelector('[data-stb-action="toggle-atlas"]');

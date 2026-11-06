@@ -11,6 +11,7 @@ import { PrintAtlasBar } from '../src/components/PrintComposer/PrintAtlasBar.js'
 import { PrintSideToolbox } from '../src/components/PrintComposer/PrintSideToolbox.js';
 import { PrintPropertiesPanel } from '../src/components/PrintComposer/PrintPropertiesPanel.js';
 import { PrintTitleBlockRenderer } from '../src/components/PrintComposer/PrintTitleBlockRenderer.js';
+import { PrintExporter } from '../src/components/PrintComposer/PrintExporter.js';
 
 test('Fase 3: PrintAtlasEngine - Cálculo de Bounding Box', () => {
   const featPoly = {
@@ -209,4 +210,79 @@ test('Fase 3: UI - Renderização da Barra e Controles do Atlas', () => {
   assert.ok(atlasSectionHtml.includes('id="prop-atlas-enable"'), 'Deve conter checkbox de ativação do Atlas');
   assert.ok(atlasSectionHtml.includes('id="prop-atlas-layer"'), 'Deve conter seleção da camada de cobertura');
   assert.ok(atlasSectionHtml.includes('id="prop-atlas-margin"'), 'Deve conter campo de margem percentual');
+});
+
+test('Fase 3: PrintAtlasEngine - Enquadramento real com Leaflet Map (applyCurrentFeature)', () => {
+  let fittedBounds = null;
+  const mockLeafletMap = {
+    fitBounds: (bounds) => { fittedBounds = bounds; },
+    getCenter: () => ({ lat: -15.795, lng: -47.875 }),
+    getZoom: () => 16
+  };
+  const mapItem = { id: 'item-map-main', type: 'map', scale: 10000 };
+  const mockComposer = {
+    projectName: 'Atlas Real',
+    layers: [{ id: 'l1', name: 'Lotes' }],
+    features: [
+      { id: 'f1', layerId: 'l1', type: 'Polygon', name: 'Lote 01', coordinates: [[[-15.79, -47.88], [-15.79, -47.87], [-15.80, -47.87], [-15.80, -47.88]]] }
+    ],
+    items: [mapItem],
+    leafletMaps: new Map([['item-map-main', mockLeafletMap]])
+  };
+
+  const engine = new PrintAtlasEngine(mockComposer);
+  engine.setLayerId('l1');
+  engine.setEnabled(true);
+
+  assert.ok(fittedBounds, 'fitBounds deve ter sido chamado no mapa Leaflet');
+  assert.deepStrictEqual(mapItem.view, { center: [-15.795, -47.875], zoom: 16 });
+  assert.ok(Number.isFinite(mapItem.scale) && mapItem.scale > 0, 'Escala do mapa deve ser calculada via PrintItemsManager.calculateScale');
+});
+
+test('Fase 3: PrintExporter - Consistência Tela vs Exportação (Grade, Rosa dos Ventos e Quebra de Linha)', () => {
+  const lineToCalls = [];
+  const arcCalls = [];
+  const fillTextCalls = [];
+  const ctx = {
+    save: () => {},
+    restore: () => {},
+    translate: () => {},
+    rotate: () => {},
+    beginPath: () => {},
+    closePath: () => {},
+    moveTo: () => {},
+    lineTo: (x, y) => { lineToCalls.push([x, y]); },
+    arc: (x, y, r) => { arcCalls.push(r); },
+    rect: () => {},
+    clip: () => {},
+    fill: () => {},
+    stroke: () => {},
+    fillRect: () => {},
+    strokeRect: () => {},
+    setLineDash: () => {},
+    measureText: (txt) => ({ width: String(txt).length * 6 }),
+    fillText: (txt, x, y) => { fillTextCalls.push({ txt, x, y }); }
+  };
+
+  // 1. Grade com linhas contínuas não deve passar undefined em lineTo(x + w, py)
+  const mockMap = {
+    getBounds: () => ({
+      getNorth: () => -15.78,
+      getSouth: () => -15.80,
+      getWest: () => -47.89,
+      getEast: () => -47.87
+    })
+  };
+  PrintExporter.drawMapGraticule(ctx, { gridType: 'dms', gridFormat: 'lines' }, mockMap, 10, 20, 200, 150, 4);
+  assert.ok(lineToCalls.length > 0, 'Deve desenhar linhas da grade');
+  assert.ok(lineToCalls.every(([lx, ly]) => Number.isFinite(lx) && Number.isFinite(ly)), 'Todas as coordenadas lineTo da grade devem ser finitas');
+
+  // 2. Rosa dos ventos nos estilos compass e modern
+  PrintExporter.drawNorthArrowItem(ctx, { arrowStyle: 'compass', rotation: 15 }, 0, 0, 40, 40);
+  assert.ok(arcCalls.length >= 2, 'Estilo compass deve desenhar círculos concêntricos');
+  PrintExporter.drawNorthArrowItem(ctx, { arrowStyle: 'modern', rotation: 0 }, 0, 0, 40, 40);
+
+  // 3. Quebra de linha em bloco de texto e rótulo
+  const wrapped = PrintExporter.wrapTextLines(ctx, 'Linha muito longa para caber em uma unica linha estreita', 80);
+  assert.ok(wrapped.length >= 3, 'Texto longo deve ser quebrado em múltiplas linhas');
 });

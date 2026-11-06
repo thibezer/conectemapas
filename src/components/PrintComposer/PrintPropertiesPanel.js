@@ -108,9 +108,17 @@ export class PrintPropertiesPanel {
                   </div>
                   <div class="cm-pp-btn-row">
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}Duplicar</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-forward" title="Avançar 1 Nível"><span class="cm-pp-btn-lbl">${ppIcon('forward')}Avançar</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-backward" title="Recuar 1 Nível"><span class="cm-pp-btn-lbl">${ppIcon('backward')}Recuar</span></ui-botao-primario>
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente"><span class="cm-pp-btn-lbl">${ppIcon('front')}Frente</span></ui-botao-primario>
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás"><span class="cm-pp-btn-lbl">${ppIcon('back')}Trás</span></ui-botao-primario>
                   </div>
+                </div>
+
+                <!-- Nome do Elemento -->
+                <div class="cm-pp-stack cm-pp-stack--tight">
+                  <span class="cm-param-label">Nome do Elemento:</span>
+                  <ui-campo-texto type="text" tamanho="sm" id="prop-item-name" class="cm-vertex-input cm-pp-full" value="${esc(selectedItem.name || '')}"></ui-campo-texto>
                 </div>
 
                 <!-- Posição e Dimensão em mm -->
@@ -599,6 +607,9 @@ export class PrintPropertiesPanel {
           </div>
           ${field('prop-tb-loc', 'Localização / Imóvel', 'location')}
           ${field('prop-tb-date', 'Data da Planta', 'date')}
+          <ui-botao-primario inline id="btn-sync-project-meta-carimbo" variante="secundario" class="cm-pp-wide-btn" title="Sincronizar projeto, escala, área e data com os dados atuais">
+            ${ppIcon('sync')}Sincronizar com o Projeto
+          </ui-botao-primario>
         </div>
       `;
     }
@@ -806,6 +817,8 @@ export class PrintPropertiesPanel {
     const btnPropDistH = document.getElementById('btn-prop-distribute-h');
     const btnPropDistV = document.getElementById('btn-prop-distribute-v');
     const btnPropDup = document.getElementById('btn-prop-duplicate');
+    const btnPropForward = document.getElementById('btn-prop-bring-forward');
+    const btnPropBackward = document.getElementById('btn-prop-send-backward');
     const btnPropFront = document.getElementById('btn-prop-bring-front');
     const btnPropBack = document.getElementById('btn-prop-send-back');
 
@@ -818,8 +831,23 @@ export class PrintPropertiesPanel {
     if (btnPropDistH) btnPropDistH.onclick = () => composer.distributeH();
     if (btnPropDistV) btnPropDistV.onclick = () => composer.distributeV();
     if (btnPropDup) btnPropDup.onclick = () => composer.duplicateSelectedItem();
+    if (btnPropForward) btnPropForward.onclick = () => composer.bringForward?.();
+    if (btnPropBackward) btnPropBackward.onclick = () => composer.sendBackward?.();
     if (btnPropFront) btnPropFront.onclick = () => composer.bringToFront();
     if (btnPropBack) btnPropBack.onclick = () => composer.sendToBack();
+
+    const propItemName = document.getElementById('prop-item-name');
+    if (propItemName) {
+      propItemName.addEventListener('change', (e) => {
+        const clean = String(e.target.value || '').trim();
+        if (!clean) {
+          composer.updatePropertiesPanel();
+          return;
+        }
+        updateCurrent(it => { it.name = clean; });
+        composer.updatePropertiesPanel();
+      });
+    }
 
     // Eventos de Shape, Image, Label
     const propShapeFill = document.getElementById('prop-shape-fill');
