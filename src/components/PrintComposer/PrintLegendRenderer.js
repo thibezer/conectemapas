@@ -6,6 +6,7 @@
    ========================================================================== */
 
 import { PrintMapRenderer } from './PrintMapRenderer.js';
+import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
 
 const PT_TO_MM = 0.3528;
 
@@ -56,7 +57,15 @@ export const PrintLegendRenderer = {
         const cy = top + mm(this.PAD_MM) / 2 + row * (i + 0.5);
         const x0 = mm(this.PAD_MM);
         PrintMapRenderer.drawSwatch(ctx, e.graphics, x0, cy - sh / 2, sw, sh, pxPerMm);
-        PrintMapRenderer.drawText(ctx, e.name, x0 + sw + mm(1.5), cy, { sizePt: fontPt, color: '#000000', halo: false, align: 'left', bold: !e.isFilter }, pxPerMm);
+        // Nome que não cabe na caixa é encurtado com "…" (mesmo fonte que drawText usa)
+        const textX = x0 + sw + mm(1.5);
+        const sizePx = Math.max(1, fontPt * PT_TO_MM * pxPerMm);
+        const measure = (t) => {
+          ctx.font = `${e.isFilter ? '' : 'bold '}${sizePx}px Arial, Helvetica, sans-serif`;
+          return ctx.measureText(t).width;
+        };
+        const name = PrintTitleBlockRenderer.fitEllipsis(measure, e.name, W - textX - mm(this.PAD_MM), sizePx);
+        PrintMapRenderer.drawText(ctx, name, textX, cy, { sizePt: fontPt, color: '#000000', halo: false, align: 'left', bold: !e.isFilter }, pxPerMm);
       });
     }
 

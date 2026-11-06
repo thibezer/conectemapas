@@ -400,41 +400,67 @@ export class PrintItemsManager {
   }
 
   /**
+   * Modelo único da seta norte (viewBox 0–100): a tela monta o SVG e o exportador desenha os
+   * mesmos polígonos/círculos/letra no canvas/PDF. Mexer aqui muda os dois.
+   * @returns {{ circles: Array, polys: Array, text: object }}
+   */
+  static northArrowModel(style = 'classic') {
+    const B = '#000000', Wt = '#ffffff';
+    const poly = (pts, fill, stroke = null, w = 1) => ({ pts, fill, stroke, w });
+    if (style === 'compass') {
+      return {
+        circles: [
+          { r: 46, w: 2, dash: null },
+          { r: 40, w: 0.75, dash: [2, 2] }
+        ],
+        polys: [
+          poly([[50, 10], [58, 45], [50, 40]], B),
+          poly([[50, 10], [42, 45], [50, 40]], Wt, B, 0.75),
+          poly([[50, 90], [58, 55], [50, 60]], Wt, B, 0.75),
+          poly([[50, 90], [42, 55], [50, 60]], B),
+          poly([[90, 50], [55, 58], [60, 50]], Wt, B, 0.75),
+          poly([[90, 50], [55, 42], [60, 50]], B),
+          poly([[10, 50], [45, 58], [40, 50]], B),
+          poly([[10, 50], [45, 42], [40, 50]], Wt, B, 0.75)
+        ],
+        text: { x: 50, y: 8, size: 10, fill: B }
+      };
+    }
+    if (style === 'modern') {
+      return {
+        circles: [],
+        polys: [
+          poly([[50, 6], [64, 88], [50, 72]], B),
+          poly([[50, 6], [36, 88], [50, 72]], '#777777')
+        ],
+        text: { x: 50, y: 24, size: 14, fill: Wt }
+      };
+    }
+    return {
+      circles: [],
+      polys: [
+        poly([[50, 8], [60, 50], [50, 44]], B),
+        poly([[50, 8], [40, 50], [50, 44]], Wt, B, 1),
+        poly([[50, 92], [60, 50], [50, 56]], Wt, B, 1),
+        poly([[50, 92], [40, 50], [50, 56]], B)
+      ],
+      text: { x: 50, y: 22, size: 12, fill: B }
+    };
+  }
+
+  /**
    * Renderiza a Rosa dos Ventos / Seta Norte em SVG técnico nítido
    */
   static getNorthArrowSVG(style = 'classic', rotation = 0) {
-    if (style === 'compass') {
-      return `
-        <svg viewBox="0 0 100 100" width="100%" height="100%" style="transform: rotate(${rotation}deg); transition: transform 0.1s ease;">
-          <circle cx="50" cy="50" r="46" fill="none" stroke="#000" stroke-width="2"/>
-          <circle cx="50" cy="50" r="40" fill="none" stroke="#000" stroke-width="0.75" stroke-dasharray="2 2"/>
-          <polygon points="50,10 58,45 50,40" fill="#000"/>
-          <polygon points="50,10 42,45 50,40" fill="#fff" stroke="#000" stroke-width="0.75"/>
-          <polygon points="50,90 58,55 50,60" fill="#fff" stroke="#000" stroke-width="0.75"/>
-          <polygon points="50,90 42,55 50,60" fill="#000"/>
-          <polygon points="90,50 55,58 60,50" fill="#fff" stroke="#000" stroke-width="0.75"/>
-          <polygon points="90,50 55,42 60,50" fill="#000"/>
-          <polygon points="10,50 45,58 40,50" fill="#000"/>
-          <polygon points="10,50 45,42 40,50" fill="#fff" stroke="#000" stroke-width="0.75"/>
-          <text x="50" y="8" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="#000">N</text>
-        </svg>
-      `;
-    } else if (style === 'modern') {
-      return `
-        <svg viewBox="0 0 100 100" width="100%" height="100%" style="transform: rotate(${rotation}deg); transition: transform 0.1s ease;">
-          <polygon points="50,6 64,88 50,72" fill="#000"/>
-          <polygon points="50,6 36,88 50,72" fill="#777"/>
-          <text x="50" y="24" font-family="Arial, sans-serif" font-size="14" font-weight="900" text-anchor="middle" fill="#fff">N</text>
-        </svg>
-      `;
-    }
+    const m = this.northArrowModel(style);
+    const rot = Number(rotation) || 0;
+    const circles = m.circles.map(c => `<circle cx="50" cy="50" r="${c.r}" fill="none" stroke="#000" stroke-width="${c.w}"${c.dash ? ` stroke-dasharray="${c.dash.join(' ')}"` : ''}/>`).join('');
+    const polys = m.polys.map(p => `<polygon points="${p.pts.map(q => q.join(',')).join(' ')}" fill="${p.fill === '#000000' ? '#000' : p.fill === '#ffffff' ? '#fff' : p.fill}"${p.stroke ? ` stroke="#000" stroke-width="${p.w}"` : ''}/>`).join('');
+    const t = m.text;
     return `
-      <svg viewBox="0 0 100 100" width="100%" height="100%" style="transform: rotate(${rotation}deg); transition: transform 0.1s ease;">
-        <polygon points="50,8 60,50 50,44" fill="#000"/>
-        <polygon points="50,8 40,50 50,44" fill="#fff" stroke="#000" stroke-width="1"/>
-        <polygon points="50,92 60,50 50,56" fill="#fff" stroke="#000" stroke-width="1"/>
-        <polygon points="50,92 40,50 50,56" fill="#000"/>
-        <text x="50" y="22" font-family="Arial, sans-serif" font-size="12" font-weight="bold" text-anchor="middle" fill="#000">N</text>
+      <svg viewBox="0 0 100 100" width="100%" height="100%" style="transform: rotate(${rot}deg); transition: transform 0.1s ease;">
+        ${circles}${polys}
+        <text x="${t.x}" y="${t.y}" font-family="Arial, sans-serif" font-size="${t.size}" font-weight="bold" text-anchor="middle" fill="${t.fill}">N</text>
       </svg>
     `;
   }
@@ -559,47 +585,95 @@ export class PrintItemsManager {
     };
   }
 
+  /** Medidas da tabela de vértices em px de tela a 100% (1 mm = 3,78 px): tela e exportação partem delas */
+  static VERT_TABLE = { FONT: 6.5, HEAD: 14, SUB: 12.5, ROW: 12.5, FOOT: 12.5, BORDER: 1.5, MIN_SCALE: 0.55, PX_PER_MM: 3.78,
+    COLS: [
+      { key: 'name', label: 'Vértice', pct: 0.15 },
+      { key: 'northing', label: 'Norte (Y)', pct: 0.23 },
+      { key: 'easting', label: 'Leste (X)', pct: 0.23 },
+      { key: 'azimuth', label: 'Azimute geod.', pct: 0.21 },
+      { key: 'distance', label: 'Dist. geod. (m)', pct: 0.18 }
+    ] };
+
+  /**
+   * Como a tabela de vértices cabe no item: fator de escala da fonte e das linhas (pela altura e pelo
+   * texto mais largo de cada coluna) e quantos vértices aparecem. Se nem na escala mínima cabem todos,
+   * a última linha vira "+N vértices" (nunca some vértice em silêncio).
+   * @returns {{ scale: number, shown: number, hidden: number, rowH: number }} rowH em px de tela a 100%
+   */
+  static verticesTableFit(data, wMm, hMm) {
+    const T = this.VERT_TABLE;
+    const vertices = data?.vertices || [];
+    const n = vertices.length;
+    const wPx = wMm * T.PX_PER_MM;
+    const hPx = hMm * T.PX_PER_MM;
+    const avail = Math.max(0, hPx - T.HEAD - T.SUB - (n ? T.FOOT : 0) - T.BORDER * 2);
+
+    let scale = 1;
+    T.COLS.slice(1).forEach(col => {
+      const longest = Math.max(1, ...vertices.map(v => String(v[col.key] ?? '').length));
+      scale = Math.min(scale, (wPx * col.pct) / (longest * 0.6 * T.FONT + 6)); // monoespaçada ≈ 0,6 em
+    });
+    if (n) scale = Math.min(scale, avail / (n * T.ROW));
+    scale = Math.max(T.MIN_SCALE, Math.min(1, scale));
+
+    const rowH = T.ROW * scale;
+    const slots = Math.floor(avail / rowH);
+    if (slots >= n) return { scale, shown: n, hidden: 0, rowH };
+    const shown = Math.max(0, slots - 1); // a última vaga é o aviso "+N vértices"
+    return { scale, shown, hidden: n - shown, rowH };
+  }
+
+  /** Rodapé da tabela de vértices (o mesmo texto na tela e na exportação) */
+  static verticesFooterParts(data) {
+    return {
+      area: `${data.totalAreaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²`,
+      hectares: `(${data.totalAreaHa.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} ha)`,
+      perimeter: `${data.totalPerimeter.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m`
+    };
+  }
+
+  /** Título do cabeçalho: sistema de referência só quando há vértices (sem fuso inventado) */
+  static verticesTableDatum(data) {
+    return data?.utmZone ? `SIRGAS 2000 UTM ${data.utmZone}${data.utmHemisphere || 'S'}` : '';
+  }
+
   /**
    * Renderiza a Tabela de Vértices Topográfica em HTML para a folha
    */
   static renderVerticesTable(item, features = []) {
     const esc = this.escapeHtml.bind(this);
     const data = this.extractVerticesData(features, item.targetFeatureId);
+    const T = this.VERT_TABLE;
+    const fit = this.verticesTableFit(data, item.width || 80, item.height || 60);
+    const foot = data.vertices.length > 0 ? this.verticesFooterParts(data) : null;
+    const shownRows = data.vertices.slice(0, fit.shown);
 
     return `
-      <div class="cm-item-vertices-table">
+      <div class="cm-item-vertices-table" style="--vt-s: ${fit.scale.toFixed(3)};">
         <div class="cm-tb-vert-header">
-          <span>TABELA DE COORDENADAS E CONFRONTAÇÕES</span>
-          <span style="font-size: 6.5px; opacity: 0.85;">SIRGAS 2000 UTM ${data.utmZone || 23}${data.utmHemisphere || 'S'}</span>
+          <span class="cm-tb-vert-title">TABELA DE COORDENADAS E CONFRONTAÇÕES</span>
+          <span class="cm-tb-vert-datum">${esc(this.verticesTableDatum(data))}</span>
         </div>
         <div class="cm-tb-vert-scroll">
           <table class="cm-vert-native-table">
+            <colgroup>${T.COLS.map(c => `<col style="width: ${c.pct * 100}%">`).join('')}</colgroup>
             <thead>
-              <tr>
-                <th>Vértice</th>
-                <th>Norte (Y)</th>
-                <th>Leste (X)</th>
-                <th>Azimute geod.</th>
-                <th>Dist. geod. (m)</th>
-              </tr>
+              <tr>${T.COLS.map(c => `<th>${esc(c.label)}</th>`).join('')}</tr>
             </thead>
             <tbody>
-              ${data.vertices.length > 0 ? data.vertices.map(v => `
-                <tr>
-                  <td class="vert-name">${esc(v.name)}</td>
-                  <td>${esc(v.northing)}</td>
-                  <td>${esc(v.easting)}</td>
-                  <td>${esc(v.azimuth)}</td>
-                  <td>${esc(v.distance)}</td>
-                </tr>
-              `).join('') : `<tr><td colspan="5" style="text-align: center; color: #888;">Nenhum polígono selecionado</td></tr>`}
+              ${data.vertices.length > 0 ? shownRows.map(v => `
+                <tr>${T.COLS.map(c => `<td${c.key === 'name' ? ' class="vert-name"' : ''}>${esc(v[c.key])}</td>`).join('')}</tr>
+              `).join('') + (fit.hidden > 0 ? `
+                <tr class="vert-more"><td colspan="5">… +${fit.hidden} vértice(s) não cabem: aumente a tabela (total: ${data.vertices.length})</td></tr>
+              ` : '') : `<tr><td colspan="5" class="vert-empty">Nenhum polígono selecionado</td></tr>`}
             </tbody>
           </table>
         </div>
-        ${data.vertices.length > 0 ? `
+        ${foot ? `
           <div class="cm-tb-vert-footer">
-            <span>Área: <strong>${data.totalAreaM2.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</strong> (${data.totalAreaHa.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} ha)</span>
-            <span>Perímetro: <strong>${data.totalPerimeter.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m</strong></span>
+            <span>Área: <strong>${esc(foot.area)}</strong> ${esc(foot.hectares)}</span>
+            <span>Perímetro: <strong>${esc(foot.perimeter)}</strong></span>
           </div>
         ` : ''}
       </div>
@@ -649,7 +723,7 @@ export class PrintItemsManager {
    */
   static renderLabel(item) {
     const esc = this.escapeHtml.bind(this);
-    const text = item.text || 'TÍTULO DO PROJETO';
+    const text = item.text || this.LABEL_DEFAULT_TEXT;
     const fontSize = Number(item.fontSize) || 10;
     const weight = item.fontWeight === 'normal' ? 'normal' : 'bold';
     const color = this.sanitizeColor(item.textColor, '#000000');
@@ -662,9 +736,14 @@ export class PrintItemsManager {
     `;
   }
 
+  /** Textos padrão (item sem texto): o exportador usa os mesmos da tela */
+  static LABEL_DEFAULT_TEXT = 'TÍTULO DO PROJETO';
+  static TEXT_BLOCK_DEFAULT_TEXT = 'NOTAS TÉCNICAS:\n1. Coordenadas UTM referenciadas ao Datum SIRGAS 2000.\n2. Levantamento planialtimétrico executado com receptores GNSS RTK L1/L2.\n3. Limites e confrontações demarcados de acordo com memorial descritivo.';
+  static TEXT_BLOCK_DEFAULT_TITLE = 'NOTAS GERAIS';
+
   static renderTextBlock(item) {
     const esc = this.escapeHtml.bind(this);
-    const text = item.text || 'NOTAS TÉCNICAS:\n1. Coordenadas UTM referenciadas ao Datum SIRGAS 2000.\n2. Levantamento planialtimétrico executado com receptores GNSS RTK L1/L2.\n3. Limites e confrontações demarcados de acordo com memorial descritivo.';
+    const text = item.text || this.TEXT_BLOCK_DEFAULT_TEXT;
     const formatted = esc(text).replace(/\n/g, '<br>');
 
     return `

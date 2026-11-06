@@ -11,6 +11,7 @@ import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintMapRenderer } from './PrintMapRenderer.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
+import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
 import { PdfVectorContext } from './PdfVectorContext.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 
@@ -524,124 +525,97 @@ export class PrintExporter {
   }
 
   /**
-   * Renderiza a Rosa dos Ventos com precisão vetorial (suporta 'classic', 'compass' e 'modern')
+   * Seta norte/rosa dos ventos: desenha o mesmo modelo que a tela monta em SVG
+   * (PrintItemsManager.northArrowModel), centrado e na escala do menor lado do item.
    */
   static drawNorthArrowItem(ctx, item, x, y, w, h) {
+    const model = PrintItemsManager.northArrowModel(item.arrowStyle || 'classic');
+    const u = Math.min(w, h) / 100;
     ctx.save();
     ctx.translate(x + w / 2, y + h / 2);
     ctx.rotate(((item.rotation || 0) * Math.PI) / 180);
-    const r = Math.min(w, h) / 2;
-    const style = item.arrowStyle || 'classic';
+    const px = (v) => (v - 50) * u;
 
-    const drawHalfPoint = (tipX, tipY, sideX, sideY, innerX, innerY, fill, stroke = null, lineW = 1) => {
-      ctx.fillStyle = fill;
+    model.circles.forEach(c => {
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = c.w * u;
+      if (typeof ctx.setLineDash === 'function') ctx.setLineDash(c.dash ? c.dash.map(d => d * u) : []);
       ctx.beginPath();
-      ctx.moveTo(tipX, tipY);
-      ctx.lineTo(sideX, sideY);
-      ctx.lineTo(innerX, innerY);
+      ctx.arc(0, 0, c.r * u, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
+
+    model.polys.forEach(p => {
+      ctx.beginPath();
+      p.pts.forEach(([vx, vy], i) => (i === 0 ? ctx.moveTo(px(vx), px(vy)) : ctx.lineTo(px(vx), px(vy))));
       ctx.closePath();
+      ctx.fillStyle = p.fill;
       ctx.fill();
-      if (stroke) {
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = lineW;
+      if (p.stroke) {
+        ctx.strokeStyle = p.stroke;
+        ctx.lineWidth = p.w * u;
         ctx.stroke();
       }
-    };
+    });
 
-    if (style === 'compass') {
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = Math.max(1, r * 0.04);
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 0.92, 0, Math.PI * 2);
-      ctx.stroke();
-
-      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([r * 0.04, r * 0.04]);
-      ctx.lineWidth = Math.max(0.75, r * 0.015);
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 0.80, 0, Math.PI * 2);
-      ctx.stroke();
-      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
-
-      // Norte
-      drawHalfPoint(0, -r * 0.80, r * 0.16, -r * 0.10, 0, -r * 0.20, '#000000');
-      drawHalfPoint(0, -r * 0.80, -r * 0.16, -r * 0.10, 0, -r * 0.20, '#ffffff', '#000000', 0.75);
-      // Sul
-      drawHalfPoint(0, r * 0.80, r * 0.16, r * 0.10, 0, r * 0.20, '#ffffff', '#000000', 0.75);
-      drawHalfPoint(0, r * 0.80, -r * 0.16, r * 0.10, 0, r * 0.20, '#000000');
-      // Leste
-      drawHalfPoint(r * 0.80, 0, r * 0.10, r * 0.16, r * 0.20, 0, '#ffffff', '#000000', 0.75);
-      drawHalfPoint(r * 0.80, 0, r * 0.10, -r * 0.16, r * 0.20, 0, '#000000');
-      // Oeste
-      drawHalfPoint(-r * 0.80, 0, -r * 0.10, r * 0.16, -r * 0.20, 0, '#000000');
-      drawHalfPoint(-r * 0.80, 0, -r * 0.10, -r * 0.16, -r * 0.20, 0, '#ffffff', '#000000', 0.75);
-
-      ctx.fillStyle = '#000000';
-      ctx.font = `bold ${Math.round(r * 0.22)}px Arial, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText('N', 0, -r * 0.83);
-      ctx.restore();
-      return;
-    }
-
-    if (style === 'modern') {
-      drawHalfPoint(0, -r * 0.88, r * 0.28, r * 0.76, 0, r * 0.44, '#000000');
-      drawHalfPoint(0, -r * 0.88, -r * 0.28, r * 0.76, 0, r * 0.44, '#777777');
-      ctx.fillStyle = '#ffffff';
-      ctx.font = `bold ${Math.round(r * 0.28)}px Arial, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.fillText('N', 0, -r * 0.48);
-      ctx.restore();
-      return;
-    }
-
-    // Seta Norte clássica preta e branca com alto relevo
-    drawHalfPoint(0, -r * 0.92, r * 0.28, r * 0.25, 0, 0, '#000000');
-    drawHalfPoint(0, -r * 0.92, -r * 0.28, r * 0.25, 0, 0, '#ffffff', '#000000', 1.5);
-    drawHalfPoint(0, r * 0.8, -r * 0.22, 0, 0, 0, '#000000');
-    drawHalfPoint(0, r * 0.8, r * 0.22, 0, 0, 0, '#ffffff', '#000000', 1);
-
-    // Letra N
-    ctx.fillStyle = '#000000';
-    ctx.font = `bold ${Math.round(r * 0.38)}px Arial, sans-serif`;
+    const t = model.text;
+    ctx.fillStyle = t.fill;
+    ctx.font = `bold ${t.size * u}px Arial, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('N', 0, -r * 0.45);
-
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('N', px(t.x), px(t.y));
     ctx.restore();
   }
 
   /**
-   * Renderiza a Barra de Escala Gráfica segmentada
+   * Barra de escala gráfica, com as mesmas medidas da tela (.cm-item-scale-bar, em px de tela × k):
+   * caixa com borda de 1 px, título 7,5 px, régua de 6 px e rótulos de 7 px, centrados na vertical.
    */
   static drawScaleBarItem(ctx, item, x, y, w, h, scaleFactor) {
+    const k = scaleFactor / PrintCanvasEngine.BASE_PX_PER_MM;
+    const model = PrintItemsManager.scaleBarModel(item, item.scale || 10000);
+
+    ctx.save();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, w, h);
+    ctx.lineWidth = k;
+    ctx.strokeRect(x + k / 2, y + k / 2, w - k, h - k);
+
+    const titleH = model.showText ? 8.6 * k : 0;
+    const titleGap = model.showText ? 2 * k : 0;
+    const rulerH = 6 * k;
+    const labelsH = 9 * k;
+    const total = titleH + titleGap + 2 * k + rulerH + 2 * k + labelsH;
+    let top = y + (h - total) / 2;
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#000000';
+    if (model.showText) {
+      ctx.font = `bold ${7.5 * k}px Arial, sans-serif`;
+      ctx.fillText(model.scaleText, x + w / 2, top + titleH / 2);
+    }
+    top += titleH + titleGap + 2 * k;
 
     // Mesma régua da prancheta: comprimento = distância rotulada na escala do mapa
-    const model = PrintItemsManager.scaleBarModel(item, item.scale || 10000);
-    const fontSize = Math.max(7, Math.round(h * 0.22));
-    ctx.fillStyle = '#000000';
-    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
-    ctx.textAlign = 'center';
-    if (model.showText) ctx.fillText(model.scaleText, x + w / 2, y + h * 0.28);
-
-    const barY = y + h * (model.showText ? 0.48 : 0.3);
-    const barH = h * 0.22;
     const barW = w * model.ratio;
-    const segW = barW / model.segments;
     const barX = x + (w - barW) / 2;
-
+    const segW = barW / model.segments;
     for (let i = 0; i < model.segments; i++) {
       ctx.fillStyle = i % 2 === 0 ? '#000000' : '#ffffff';
-      ctx.fillRect(barX + i * segW, barY, segW, barH);
-      ctx.strokeRect(barX + i * segW, barY, segW, barH);
+      ctx.fillRect(barX + i * segW, top, segW, rulerH);
     }
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = k;
+    ctx.strokeRect(barX + k / 2, top + k / 2, barW - k, rulerH - k);
 
+    top += rulerH + 2 * k;
     ctx.fillStyle = '#000000';
-    ctx.font = `bold ${Math.round(fontSize * 0.85)}px Arial, sans-serif`;
-    model.labels.forEach(l => ctx.fillText(l.text, barX + barW * l.position, barY + barH + fontSize + 1));
+    ctx.font = `bold ${7 * k}px Arial, sans-serif`;
+    model.labels.forEach(l => ctx.fillText(l.text, barX + barW * l.position, top + 4 * k));
+    ctx.restore();
   }
 
   /**
@@ -657,118 +631,144 @@ export class PrintExporter {
 
 
   /**
-   * Renderiza a Tabela de Vértices Topográfica com precisão milimétrica
+   * Tabela de Vértices Topográfica. As medidas (PrintItemsManager.VERT_TABLE) e o ajuste de escala
+   * (verticesTableFit) são os mesmos da tela: nenhuma linha some nem o texto se sobrepõe.
    */
   static drawVerticesTableItem(ctx, item, x, y, w, h, composer, scaleFactor) {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(x, y, w, h);
-
+    const T = PrintItemsManager.VERT_TABLE;
+    const k = scaleFactor / T.PX_PER_MM;
     const targetId = item.targetFeatureId || (composer?.atlas?.enabled ? composer.atlas.getCurrentFeature()?.id : null);
     const data = PrintItemsManager.extractVerticesData(composer?.features || [], targetId);
-    const headH = h * 0.14;
+    const fit = PrintItemsManager.verticesTableFit(data, item.width, item.height);
+    const fitText = (text, maxW) => PrintTitleBlockRenderer.fit(ctx, text, maxW);
 
-    // Cabeçalho da tabela (título + sistema de referência UTM, idêntico à tela)
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x, y, w, headH);
+    const bw = T.BORDER * k;
+    const ix = x + bw;
+    const iy = y + bw;
+    const iw = w - bw * 2;
+    const ih = h - bw * 2;
+    const headH = T.HEAD * k;
+    const subH = T.SUB * k;
+    const rowH = fit.rowH * k;
+    const footH = T.FOOT * k;
+    const px = T.FONT * fit.scale * k;
+    const pad = 3 * fit.scale * k;
+    const hair = Math.max(0.5, k);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
     ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.max(6, Math.round(headH * 0.46))}px Arial, sans-serif`;
-    ctx.textAlign = 'left';
-    ctx.fillText('TABELA DE COORDENADAS E CONFRONTAÇÕES', x + 5, y + headH * 0.68);
-    ctx.font = `normal ${Math.max(5.5, Math.round(headH * 0.38))}px Arial, sans-serif`;
-    ctx.textAlign = 'right';
-    ctx.fillText(`SIRGAS 2000 UTM ${data.utmZone || 23}${data.utmHemisphere || 'S'}`, x + w - 5, y + headH * 0.68);
+    ctx.fillRect(x, y, w, h);
+    ctx.textBaseline = 'middle';
 
-    // Colunas: Vértice (15%), Norte (23%), Leste (23%), Azimute (21%), Distância (18%)
-    const cols = [
-      { name: 'Vértice', w: w * 0.15 },
-      { name: 'Norte (Y)', w: w * 0.23 },
-      { name: 'Leste (X)', w: w * 0.23 },
-      { name: 'Az. geod.', w: w * 0.21 },
-      { name: 'Dist. geod. (m)', w: w * 0.18 }
-    ];
-
-    const subHeadH = h * 0.10;
-    ctx.fillStyle = '#e8ecef';
-    ctx.fillRect(x, y + headH, w, subHeadH);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y + headH, w, subHeadH);
-
-    let curX = x;
-    const fontSub = Math.max(6.5, Math.round(subHeadH * 0.45));
-    ctx.font = `bold ${fontSub}px Arial, sans-serif`;
+    // Cabeçalho: título à esquerda (encurtado se preciso) e sistema de referência à direita
     ctx.fillStyle = '#000000';
-    ctx.textAlign = 'center';
-
-    cols.forEach(c => {
-      ctx.fillText(c.name, curX + c.w / 2, y + headH + subHeadH * 0.68);
-      curX += c.w;
-      ctx.beginPath(); ctx.moveTo(curX, y + headH); ctx.lineTo(curX, y + h); ctx.stroke();
-    });
-
-    // Linhas de vértices
-    const maxVisibleRows = 12;
-    const truncated = data.vertices.length > maxVisibleRows;
-    const nRows = Math.min(maxVisibleRows, data.vertices.length);
-    const rowH = (h - headH - subHeadH - (data.vertices.length > 0 ? h * 0.12 : 0)) / Math.max(1, nRows);
-    const fontRow = Math.max(6, Math.round(rowH * 0.48));
-
-    for (let i = 0; i < nRows; i++) {
-      const v = data.vertices[i];
-      const rY = y + headH + subHeadH + rowH * i;
-
-      if (i % 2 === 1) {
-        ctx.fillStyle = '#f8f9fa';
-        ctx.fillRect(x, rY, w, rowH);
-      }
-
-      ctx.beginPath(); ctx.moveTo(x, rY + rowH); ctx.lineTo(x + w, rY + rowH); ctx.stroke();
-
-      ctx.fillStyle = '#000000';
-      ctx.font = `${fontRow}px monospace`;
-      ctx.textAlign = 'center';
-
-      if (truncated && i === nRows - 1) {
-        const remaining = data.vertices.length - (nRows - 1);
-        ctx.fillStyle = '#f8f9fa';
-        ctx.fillRect(x + 1, rY + 1, w - 2, rowH - 2);
-        ctx.fillStyle = '#333333';
-        ctx.font = `bold ${fontRow}px Arial, sans-serif`;
-        ctx.fillText(`... +${remaining} vértices (total: ${data.vertices.length} vértices)`, x + w / 2, rY + rowH * 0.68);
-        continue;
-      }
-
-      let cx = x;
-      ctx.fillText(v.name, cx + cols[0].w / 2, rY + rowH * 0.68);
-      cx += cols[0].w;
-      ctx.fillText(v.northing, cx + cols[1].w / 2, rY + rowH * 0.68);
-      cx += cols[1].w;
-      ctx.fillText(v.easting, cx + cols[2].w / 2, rY + rowH * 0.68);
-      cx += cols[2].w;
-      ctx.fillText(v.azimuth, cx + cols[3].w / 2, rY + rowH * 0.68);
-      cx += cols[3].w;
-      ctx.fillText(v.distance, cx + cols[4].w / 2, rY + rowH * 0.68);
-    }
-
-    // Rodapé de Área e Perímetro
-    if (data.vertices.length > 0) {
-      const footH = h * 0.12;
-      const footY = y + h - footH;
-      ctx.fillStyle = '#eef2f5';
-      ctx.fillRect(x, footY, w, footH);
-      ctx.strokeStyle = '#000000';
-      ctx.strokeRect(x, footY, w, footH);
-
-      ctx.fillStyle = '#000000';
-      ctx.font = `bold ${Math.max(6.5, Math.round(footH * 0.42))}px Arial, sans-serif`;
-      ctx.textAlign = 'left';
-      ctx.fillText(`Área: ${data.totalAreaM2.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m² (${data.totalAreaHa.toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ha)`, x + 6, footY + footH * 0.65);
+    ctx.fillRect(ix, iy, iw, headH);
+    const datum = PrintItemsManager.verticesTableDatum(data);
+    let datumW = 0;
+    if (datum) {
+      ctx.font = `${T.FONT * k}px Arial, sans-serif`;
+      datumW = ctx.measureText(datum).width;
+      ctx.fillStyle = '#d9d9d9';
       ctx.textAlign = 'right';
-      ctx.fillText(`Perímetro: ${data.totalPerimeter.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} m`, x + w - 6, footY + footH * 0.65);
+      ctx.fillText(datum, ix + iw - 5 * k, iy + headH / 2);
     }
+    ctx.font = `bold ${7 * k}px Arial, sans-serif`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText(fitText('TABELA DE COORDENADAS E CONFRONTAÇÕES', iw - 10 * k - datumW - (datum ? 6 * k : 0)), ix + 5 * k, iy + headH / 2);
+
+    // Colunas
+    const cols = T.COLS.map((c, i) => ({ ...c, x0: ix + T.COLS.slice(0, i).reduce((s, q) => s + q.pct * iw, 0), w: c.pct * iw }));
+    const subY = iy + headH;
+    ctx.fillStyle = '#e8ecef';
+    ctx.fillRect(ix, subY, iw, subH);
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = hair;
+    ctx.beginPath();
+    ctx.moveTo(ix, subY + subH);
+    ctx.lineTo(ix + iw, subY + subH);
+    cols.slice(0, -1).forEach(c => { ctx.moveTo(c.x0 + c.w, subY); ctx.lineTo(c.x0 + c.w, subY + subH); });
+    ctx.stroke();
+    ctx.fillStyle = '#111111';
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${px}px Arial, sans-serif`;
+    cols.forEach(c => ctx.fillText(fitText(c.label, c.w - pad * 2), c.x0 + c.w / 2, subY + subH / 2));
+
+    // Linhas de vértices (todas as que cabem; o resto vira o aviso "+N")
+    const rowsY = subY + subH;
+    if (!data.vertices.length) {
+      ctx.fillStyle = '#888888';
+      ctx.font = `${px}px Arial, sans-serif`;
+      ctx.fillText(fitText('Nenhum polígono selecionado', iw - pad * 2), ix + iw / 2, rowsY + rowH / 2);
+    }
+    data.vertices.slice(0, fit.shown).forEach((v, i) => {
+      const ry = rowsY + rowH * i;
+      if (i % 2 === 1) { ctx.fillStyle = '#f8f9fa'; ctx.fillRect(ix, ry, iw, rowH); }
+      ctx.strokeStyle = '#e0e0e0';
+      ctx.lineWidth = hair;
+      ctx.beginPath();
+      ctx.moveTo(ix, ry + rowH);
+      ctx.lineTo(ix + iw, ry + rowH);
+      cols.slice(0, -1).forEach(c => { ctx.moveTo(c.x0 + c.w, ry); ctx.lineTo(c.x0 + c.w, ry + rowH); });
+      ctx.stroke();
+      cols.forEach(c => {
+        const isName = c.key === 'name';
+        ctx.font = isName ? `bold ${px}px Arial, sans-serif` : `${px}px monospace`;
+        ctx.fillStyle = '#000000';
+        ctx.fillText(fitText(String(v[c.key] ?? ''), c.w - pad * 2), c.x0 + c.w / 2, ry + rowH / 2);
+      });
+    });
+    if (fit.hidden > 0) {
+      const ry = rowsY + rowH * fit.shown;
+      ctx.fillStyle = '#fff3cd';
+      ctx.fillRect(ix, ry, iw, rowH);
+      ctx.fillStyle = '#333333';
+      ctx.font = `bold ${px}px Arial, sans-serif`;
+      ctx.fillText(fitText(`… +${fit.hidden} vértice(s) não cabem: aumente a tabela (total: ${data.vertices.length})`, iw - pad * 2), ix + iw / 2, ry + rowH / 2);
+    }
+
+    // Rodapé: "Área: valor (ha)" à esquerda e "Perímetro: valor" à direita (rótulo normal, valor em negrito)
+    if (data.vertices.length > 0) {
+      const foot = PrintItemsManager.verticesFooterParts(data);
+      const fy = iy + ih - footH;
+      ctx.fillStyle = '#eef2f5';
+      ctx.fillRect(ix, fy, iw, footH);
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = hair;
+      ctx.beginPath();
+      ctx.moveTo(ix, fy);
+      ctx.lineTo(ix + iw, fy);
+      ctx.stroke();
+
+      const parts = (size) => {
+        const width = (t, bold) => { ctx.font = `${bold ? 'bold ' : ''}${size}px Arial, sans-serif`; return ctx.measureText(t).width; };
+        return {
+          left: [['Área: ', false], [foot.area, true], [` ${foot.hectares}`, false]],
+          right: [['Perímetro: ', false], [foot.perimeter, true]],
+          width
+        };
+      };
+      let size = T.FONT * k;
+      let p = parts(size);
+      const total = (p) => [...p.left, ...p.right].reduce((s, [t, b]) => s + p.width(t, b), 0) + 12 * k + 8 * k;
+      while (total(p) > iw && size > T.FONT * k * 0.5) { size *= 0.94; p = parts(size); }
+      ctx.fillStyle = '#000000';
+      ctx.textAlign = 'left';
+      let cx = ix + 6 * k;
+      p.left.forEach(([t, b]) => { ctx.font = `${b ? 'bold ' : ''}${size}px Arial, sans-serif`; ctx.fillText(t, cx, fy + footH / 2); cx += p.width(t, b); });
+      cx = ix + iw - 6 * k - p.right.reduce((s, [t, b]) => s + p.width(t, b), 0);
+      p.right.forEach(([t, b]) => { ctx.font = `${b ? 'bold ' : ''}${size}px Arial, sans-serif`; ctx.fillText(t, cx, fy + footH / 2); cx += p.width(t, b); });
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = bw;
+    ctx.strokeRect(x + bw / 2, y + bw / 2, w - bw, h - bw);
+    ctx.restore();
   }
 
   /**
@@ -800,53 +800,62 @@ export class PrintExporter {
   }
 
   /**
-   * Renderiza o Bloco de Notas Técnicas / Texto Livre
+   * Bloco de Notas Técnicas / Texto Livre. As medidas seguem o da tela (.cm-item-text-block): o
+   * tamanho do texto é em px de tela a 100% (1 mm = 3,78 px), por isso tudo é multiplicado por k.
    */
   static drawTextBlockItem(ctx, item, x, y, w, h, composer, scaleFactor) {
     if (typeof composer === 'number') {
       scaleFactor = composer;
       composer = null;
     }
+    const k = scaleFactor / PrintCanvasEngine.BASE_PX_PER_MM;
+    const fs = (Number(item.fontSize) || 7.5) * k;
+    const evalAtlas = (t) => (composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(t) : t);
+    const border = 1.5 * k;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(x, y, w, h);
+    ctx.lineWidth = border;
+    ctx.strokeRect(x + border / 2, y + border / 2, w - border, h - border);
 
     if (typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
       ctx.beginPath();
-      ctx.rect(x, y, w, h);
+      ctx.rect(x + border, y + border, w - border * 2, h - border * 2);
       ctx.clip();
     }
 
-    const headH = Math.min(22 * (scaleFactor / (300 / 25.4)), h * 0.25);
-    ctx.fillStyle = '#1e1e24';
-    ctx.fillRect(x, y, w, headH);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `bold ${Math.round(headH * 0.52)}px Arial, sans-serif`;
-    ctx.textAlign = 'left';
-    const rawTitle = item.title || 'NOTAS GERAIS';
-    const titleText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawTitle) : rawTitle;
-    ctx.fillText(titleText, x + 6, y + headH * 0.68);
+    const left = x + border + 6 * k;
+    const textW = Math.max(10, w - (border + 6 * k) * 2);
+    const top = y + border + 4 * k;
+    const bottom = y + h - border - 4 * k;
 
-    const rawText = item.text || '';
-    const evaluatedText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawText) : rawText;
-    const fontSize = Math.max(6.5, Math.round((item.fontSize || 7.5) * (scaleFactor / (300 / 25.4))));
-    const lineStep = fontSize * 1.4;
-
+    // Título com filete embaixo (padding-bottom 2, borda 1, margem 3)
+    const titleH = fs * 1.15;
     ctx.fillStyle = '#000000';
-    ctx.font = `${fontSize}px Arial, sans-serif`;
+    ctx.font = `bold ${fs}px Arial, sans-serif`;
     ctx.textAlign = 'left';
-    const lines = this.wrapTextLines(ctx, evaluatedText, Math.max(10, w - 12));
+    ctx.textBaseline = 'middle';
+    const titleText = evalAtlas(item.title || PrintItemsManager.TEXT_BLOCK_DEFAULT_TITLE);
+    ctx.fillText(PrintTitleBlockRenderer.fit(ctx, titleText, textW), left, top + titleH / 2);
+    const ruleY = top + titleH + 2 * k;
+    ctx.lineWidth = k;
+    ctx.beginPath();
+    ctx.moveTo(left, ruleY + k / 2);
+    ctx.lineTo(left + textW, ruleY + k / 2);
+    ctx.stroke();
 
-    let curY = y + headH + lineStep;
-    for (const line of lines) {
-      if (curY > y + h - 4) break;
-      ctx.fillText(line, x + 6, curY);
-      curY += lineStep;
-    }
+    // Corpo: linha a 1,35 e, se não couber, a última linha visível termina em "…"
+    const lineStep = fs * 1.35;
+    ctx.font = `${fs}px Arial, sans-serif`;
+    const lines = this.wrapTextLines(ctx, evalAtlas(item.text || PrintItemsManager.TEXT_BLOCK_DEFAULT_TEXT), textW);
+    const first = ruleY + k + 3 * k;
+    const capacity = Math.max(1, Math.floor((bottom - first) / lineStep));
+    lines.slice(0, capacity).forEach((line, i) => {
+      const cut = lines.length > capacity && i === capacity - 1;
+      ctx.fillText(cut ? PrintTitleBlockRenderer.fit(ctx, `${line} …`, textW) : line, left, first + i * lineStep + lineStep / 2);
+    });
     ctx.restore();
   }
 
@@ -913,13 +922,15 @@ export class PrintExporter {
   }
 
   /**
-   * Renderiza Rótulo de Texto Livre / Título Customizado (com suporte a múltiplas linhas e quebra de linha)
+   * Rótulo de Texto Livre / Título Customizado. Mesmas regras da tela (.cm-item-label-box): tamanho em
+   * px de tela a 100% (× k), recuo de 2 px, linha a 1,15, bloco centrado na vertical, quebra por palavras.
    */
   static drawLabelItem(ctx, item, x, y, w, h, composer, scaleFactor) {
     if (typeof composer === 'number') {
       scaleFactor = composer;
       composer = null;
     }
+    const k = scaleFactor / PrintCanvasEngine.BASE_PX_PER_MM;
 
     ctx.save();
     if (typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
@@ -927,27 +938,20 @@ export class PrintExporter {
       ctx.rect(x, y, w, h);
       ctx.clip();
     }
-    const fontSize = Math.max(8, Math.round((item.fontSize || 10) * (scaleFactor / (300 / 25.4))));
-    const weight = item.fontWeight || 'bold';
-    ctx.font = `${weight} ${fontSize}px Arial, sans-serif`;
+    const fontSize = (Number(item.fontSize) || 10) * k;
+    ctx.font = `${item.fontWeight === 'normal' ? 'normal' : 'bold'} ${fontSize}px Arial, sans-serif`;
     ctx.fillStyle = PrintItemsManager.sanitizeColor(item.textColor, '#000000');
-    const align = item.textAlign || 'center';
+    const align = ['left', 'right'].includes(item.textAlign) ? item.textAlign : 'center';
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
-    const textX = align === 'center' ? x + w / 2 : (align === 'right' ? x + w - 4 : x + 4);
-    const rawText = item.text || 'TÍTULO';
+    const pad = 2 * k;
+    const textX = align === 'center' ? x + w / 2 : (align === 'right' ? x + w - pad : x + pad);
+    const rawText = item.text || PrintItemsManager.LABEL_DEFAULT_TEXT;
     const evaluatedText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawText) : rawText;
-    const lines = this.wrapTextLines(ctx, evaluatedText, Math.max(10, w - 8));
-    if (lines.length <= 1) {
-      ctx.fillText(lines[0] ?? evaluatedText, textX, y + h / 2);
-    } else {
-      const lineStep = fontSize * 1.25;
-      const totalH = (lines.length - 1) * lineStep;
-      const startY = y + h / 2 - totalH / 2;
-      lines.forEach((line, idx) => {
-        ctx.fillText(line, textX, startY + idx * lineStep);
-      });
-    }
+    const lines = this.wrapTextLines(ctx, evaluatedText, Math.max(10, w - pad * 2));
+    const lineStep = fontSize * 1.15;
+    const startY = y + h / 2 - ((lines.length - 1) * lineStep) / 2;
+    lines.forEach((line, idx) => ctx.fillText(line, textX, startY + idx * lineStep));
     ctx.restore();
   }
 
