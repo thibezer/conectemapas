@@ -26,6 +26,14 @@ function resolveTargets(app, ids) {
   return { targets, locked, missing };
 }
 
+function recordBatchAudit(app, action) {
+  if (!app || !app.collabHub?.logAudit) return;
+  const audit = app.collabHub.logAudit(action, 'Lote');
+  if (Array.isArray(app.auditLog)) app.auditLog.unshift(audit);
+  StorageService.logAudit(audit, app.projectId);
+  app.layerPanel?.updateAuditLog?.(app.auditLog);
+}
+
 /**
  * Aplica `mutate` em cópias das feições alvo e grava o lote.
  * `mutate(draft, original)` devolve false para dispensar a feição (nada a mudar).
@@ -50,6 +58,7 @@ function commitBatch(app, ids, label, mutate) {
     app.collabHub?.notifyFeatureUpdated(draft);
   }
   app.saveFeaturesBulk(drafts);
+  recordBatchAudit(app, `${label} (${drafts.length} feições)`);
   // Re-renderiza de uma vez (a feição precisa trocar de sub-pane ao mudar de camada)
   app.refreshMapAndTable(true);
   return summary;
@@ -105,6 +114,7 @@ export class BatchActions {
       drafts.push(draft);
     }
     app.saveFeaturesBulk(drafts);
+    recordBatchAudit(app, `Desbloquear (${targets.length} feições)`);
     app.refreshMapAndTable(true);
     return { changed: targets.length, locked: 0, missing: 0, unchanged: 0, skipped: 0, ids: targets };
   }
@@ -185,6 +195,7 @@ export class BatchActions {
     app.features = app.features.filter(f => !gone.has(f.id));
     for (const id of gone) app.collabHub?.notifyFeatureDeleted(id);
     app.removeFeaturesBulk(summary.ids);
+    recordBatchAudit(app, `Excluiu ${targets.length} feições em lote`);
     app.refreshMapAndTable(true);
     return summary;
   }

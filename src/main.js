@@ -152,7 +152,9 @@ class ConecteMapasApp {
     const displayName = user ? user.name : GuestIdentity.getName();
     if (this.collabHub) {
       this.collabHub.setAccountName(displayName || null);
-      this.headerBar?.updateCollaborators(this.collabHub.getActiveCollaboratorsList());
+      const list = this.collabHub.getActiveCollaboratorsList();
+      this.headerBar?.updateCollaborators(list);
+      this.layerPanel?.updateTeamMembers?.(list);
     }
   }
 
@@ -188,7 +190,12 @@ class ConecteMapasApp {
     const readOnly = role === 'viewer' || role === 'none';
     document.body.classList.toggle('cm-readonly', readOnly);
     if (readOnly && this.mapEngine) this.mapEngine.setTool('select');
-    if (this.collabHub) this.collabHub.setRole(role);
+    if (this.collabHub) {
+      this.collabHub.setRole(role);
+      const list = this.collabHub.getActiveCollaboratorsList();
+      this.headerBar?.updateCollaborators(list);
+      this.layerPanel?.updateTeamMembers?.(list);
+    }
     if (role === 'viewer') {
       UIToast.notificar({ tipo: 'alerta', titulo: 'Modo leitura', mensagem: 'Você pode visualizar o mapa, mas não editá-lo.', duracao: 5000 });
     } else if (role === 'none') {

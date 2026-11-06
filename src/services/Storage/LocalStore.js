@@ -302,4 +302,28 @@ export class LocalStore {
     }
     return { ..._syncCursorByProject.get(projectId) };
   }
+
+  // ---- HISTÓRICO LOCAL DO CHAT DA EQUIPE ----
+
+  static loadChatMessages(projectId = 'projeto_padrao') {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem(`cm_chat_messages_${projectId}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
+    } catch {}
+    return [];
+  }
+
+  static saveChatMessages(messages = [], projectId = 'projeto_padrao') {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const list = Array.isArray(messages) ? messages.slice(-100) : [];
+        localStorage.setItem(`cm_chat_messages_${projectId}`, JSON.stringify(list));
+      }
+    } catch {}
+  }
 }

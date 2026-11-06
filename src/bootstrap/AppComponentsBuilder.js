@@ -113,6 +113,7 @@ export class AppComponentsBuilder {
     if (app.collabHub) {
       consumedIds.forEach(id => app.collabHub.notifyFeatureDeleted(id));
       created.forEach(feat => app.collabHub.notifyFeatureCreated(feat));
+      FeatureSyncController.recordAudit(app, `Uniu ${consumedIds.length} feições em ${created.length}`, 'União');
     }
     app.refreshMapAndTable();
     app.mapEngine?.selectFeatures(created.map(f => f.id));
@@ -578,6 +579,7 @@ export class AppComponentsBuilder {
         }
         if (app.collabHub) {
           updatedFeatures.forEach(f => app.collabHub.notifyFeatureUpdated(f));
+          FeatureSyncController.recordAudit(app, `Modificação coletiva (${updatedFeatures.length} feições)`, 'Lote');
         }
         UIToast.notificar({ tipo: 'sucesso', titulo: 'Modificação Coletiva', mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`, duracao: 2500 });
       },
@@ -602,6 +604,7 @@ export class AppComponentsBuilder {
         }
         if (app.collabHub) {
           featureIds.forEach(id => app.collabHub.notifyFeatureDeleted(id));
+          FeatureSyncController.recordAudit(app, `Excluiu ${featureIds.length} feições em lote`, 'Lote');
         }
         featureIds.forEach(id => app.layerPanel && app.layerPanel.handleSelectedFeatureRemoved?.(id));
         notifyUndoable(app, { titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas.` });
@@ -622,7 +625,13 @@ export class AppComponentsBuilder {
       onStopVertexEdit: () => app.mapEngine.stopVertexEditing(),
       onSendMessage: (text) => {
         const msg = app.collabHub.sendChatMessage(text);
+        if (!Array.isArray(app.chatMessages)) app.chatMessages = [];
+        if (!app.chatMessages.some(m => m && m.id === msg.id)) {
+          app.chatMessages.push(msg);
+        }
         app.layerPanel.addChatMessage(msg);
+        StorageService.saveChatMessages(app.chatMessages, app.projectId);
+        StorageService.sendChatToCloud(msg, app.projectId);
       }
     });
     app.layerPanel.render(document.getElementById('layer-panel-mount'));

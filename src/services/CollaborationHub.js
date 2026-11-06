@@ -51,10 +51,20 @@ export class CollaborationHub {
       };
 
       // Anuncia entrada na sala
-      this.broadcast('user:join', { user: this.currentUser });
+      this.broadcast('user:join', { user: this.getPublicUser() });
     } catch (e) {
       console.warn('[CollaborationHub] BroadcastChannel não suportado neste ambiente:', e);
     }
+  }
+
+  /** Representação pública do operador (sem o sufixo local "(você)" / "Você (Operador)"). */
+  getPublicUser() {
+    const publicName = this.currentUser.displayName || 'Operador';
+    return {
+      ...this.currentUser,
+      name: publicName,
+      displayName: publicName
+    };
   }
 
   broadcast(type, data) {
@@ -63,7 +73,7 @@ export class CollaborationHub {
       this.channel.postMessage({
         type,
         data,
-        sender: this.currentUser,
+        sender: this.getPublicUser(),
         timestamp: Date.now()
       });
     } catch (e) {
@@ -72,16 +82,33 @@ export class CollaborationHub {
   }
 
   handleIncomingMessage(type, data, sender) {
+    if (type === 'user:leave') {
+      const leftId = data?.userId || sender?.id;
+      if (leftId) {
+        this.activeCollaborators.delete(leftId);
+        this.onEvent('user:left', { userId: leftId, user: sender });
+      }
+      return;
+    }
+
     if (sender) {
+      const prev = this.activeCollaborators.get(sender.id) || {};
+      const cleanName = (sender.displayName || sender.name || 'Operador').replace(/^Você\s*\(Operador\)$/i, 'Operador').replace(/\s*\(você\)$/i, '');
+      const coords = type === 'cursor:move' && Array.isArray(data?.latlng) ? data.latlng : null;
       this.activeCollaborators.set(sender.id, {
+        ...prev,
         ...sender,
+        name: cleanName,
+        displayName: cleanName,
+        lat: coords && Number.isFinite(coords[0]) ? coords[0] : (prev.lat ?? null),
+        lng: coords && Number.isFinite(coords[1]) ? coords[1] : (prev.lng ?? null),
         lastSeen: Date.now()
       });
     }
 
     switch (type) {
       case 'user:join':
-        this.broadcast('user:presence', { user: this.currentUser });
+        this.broadcast('user:presence', { user: this.getPublicUser() });
         this.onEvent('user:joined', { user: sender });
         break;
 
@@ -204,25 +231,30 @@ export class CollaborationHub {
   }
 
   sendChatMessage(text, coordinates = null) {
+    const now = Date.now();
     const message = {
-      id: 'msg_' + Date.now(),
+      id: 'msg_' + now + '_' + Math.random().toString(36).slice(2, 6),
       text,
-      user: this.currentUser,
+      user: this.getPublicUser(),
       coordinates,
-      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      createdAt: now,
+      timestamp: new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     };
     this.broadcast('chat:message', { message });
     return message;
   }
 
   logAudit(action, details) {
+    const now = Date.now();
     const entry = {
-      id: 'aud_' + Date.now(),
+      id: 'aud_' + now + '_' + Math.random().toString(36).slice(2, 6),
       action,
-      details,
-      user: this.currentUser.name,
-      createdAt: Date.now(),
-      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      detail: details || '',
+      details: details || '',
+      user: this.currentUser.displayName || 'Operador',
+      userId: this.currentUser.id,
+      createdAt: now,
+      timestamp: new Date(now).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     };
     this.broadcast('audit:log', { entry });
     return entry;
@@ -230,13 +262,23 @@ export class CollaborationHub {
 
   /**
    * Registra os operadores ativos vistos pela nuvem (outros dispositivos/navegadores)
-   * @param {Array<{id: string, name: string, color: string}>} list
+   * @param {Array<{id: string, name: string, color: string, role?: string, lat?: number, lng?: number}>} list
    */
   setCloudPresence(list) {
     this.cloudPresence = new Map();
     for (const p of list || []) {
       if (p && p.id && p.id !== this.currentUser.id) {
-        this.cloudPresence.set(p.id, { id: p.id, name: p.name, color: p.color, role: CollaborationHub.roleLabel(p.role) || 'Editor', status: 'online' });
+        const cleanName = (p.name || 'Colaborador').replace(/^Você\s*\(Operador\)$/i, 'Colaborador').replace(/\s*\(você\)$/i, '');
+        this.cloudPresence.set(p.id, {
+          id: p.id,
+          name: cleanName,
+          displayName: cleanName,
+          color: p.color || '#00E08A',
+          role: CollaborationHub.roleLabel(p.role) || 'Editor',
+          lat: Number.isFinite(p.lat) ? p.lat : null,
+          lng: Number.isFinite(p.lng) ? p.lng : null,
+          status: 'online'
+        });
       }
     }
   }
@@ -244,12 +286,20 @@ export class CollaborationHub {
   /** Nome da conta logada passa a identificar o operador para os demais (null volta ao nome anônimo). */
   setAccountName(name) {
     this._anonymousDisplayName = this._anonymousDisplayName || this.currentUser.displayName;
+    const prevDisplay = this.currentUser.displayName;
     this.currentUser.displayName = name || this._anonymousDisplayName;
     this.currentUser.name = name ? `${name} (você)` : 'Você (Operador)';
+    if (this.currentUser.displayName !== prevDisplay) {
+      this.broadcast('user:presence', { user: this.getPublicUser() });
+    }
   }
 
   setRole(role) {
-    this.currentUser.role = CollaborationHub.roleLabel(role) || this.currentUser.role;
+    const nextRole = CollaborationHub.roleLabel(role) || this.currentUser.role;
+    if (nextRole !== this.currentUser.role) {
+      this.currentUser.role = nextRole;
+      this.broadcast('user:presence', { user: this.getPublicUser() });
+    }
   }
 
   static roleLabel(role) {
@@ -257,14 +307,38 @@ export class CollaborationHub {
   }
 
   getActiveCollaboratorsList() {
+    const now = Date.now();
+    for (const [id, c] of this.activeCollaborators.entries()) {
+      if (c.lastSeen && now - c.lastSeen > 60000 && !this.cloudPresence.has(id)) {
+        this.activeCollaborators.delete(id);
+      }
+    }
     const merged = new Map(this.cloudPresence);
-    for (const c of this.activeCollaborators.values()) merged.set(c.id, c);
+    for (const c of this.activeCollaborators.values()) {
+      const cloud = merged.get(c.id);
+      merged.set(c.id, {
+        ...(cloud || {}),
+        ...c,
+        lat: Number.isFinite(c.lat) ? c.lat : (cloud?.lat ?? null),
+        lng: Number.isFinite(c.lng) ? c.lng : (cloud?.lng ?? null)
+      });
+    }
     merged.delete(this.currentUser.id);
     return [this.currentUser, ...merged.values()];
   }
 
   destroy() {
     if (this.simulationTimer) clearInterval(this.simulationTimer);
-    if (this.channel) this.channel.close();
+    if (this._cursorThrottleTimer) {
+      clearTimeout(this._cursorThrottleTimer);
+      this._cursorThrottleTimer = null;
+    }
+    if (this.channel) {
+      try {
+        this.broadcast('user:leave', { userId: this.currentUser.id });
+      } catch {}
+      this.channel.close();
+      this.channel = null;
+    }
   }
 }

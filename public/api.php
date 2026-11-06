@@ -114,7 +114,7 @@ function getDatabaseConnection() {
 // 3. Auto-Migração do Esquema Relacional (DDL Idempotente)
 // A versão do esquema fica gravada em disco para que as requisições de alta frequência
 // (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
-define('CM_SCHEMA_VERSION', 8);
+define('CM_SCHEMA_VERSION', 9);
 define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
 
 function columnExists(PDO $pdo, $table, $column) {
@@ -346,6 +346,28 @@ function ensureDatabaseSchema(PDO $pdo) {
             rev BIGINT NOT NULL DEFAULT 0,
             client_id VARCHAR(64) NULL,
             updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+        // v9: Auditoria com revisão monotônica por projeto e Chat da Equipe persistente na nuvem
+        if (!columnExists($pdo, 'cm_audit', 'rev')) {
+            $pdo->exec("ALTER TABLE cm_audit ADD COLUMN rev BIGINT NOT NULL DEFAULT 0, ADD COLUMN client_id VARCHAR(64) NULL, ADD COLUMN created_at_ms BIGINT NULL;");
+            $pdo->exec("ALTER TABLE cm_audit ADD INDEX idx_audit_rev (project_id, rev);");
+        }
+        $pdo->exec("CREATE TABLE IF NOT EXISTS cm_chat (
+            id VARCHAR(64) NOT NULL,
+            project_id VARCHAR(64) NOT NULL,
+            user_id VARCHAR(64) NULL,
+            user_name VARCHAR(128) NOT NULL DEFAULT 'Operador',
+            user_color VARCHAR(32) NOT NULL DEFAULT '#00E08A',
+            text TEXT NOT NULL,
+            coordinates VARCHAR(64) NULL,
+            timestamp VARCHAR(32) NOT NULL DEFAULT '',
+            created_at_ms BIGINT NOT NULL DEFAULT 0,
+            rev BIGINT NOT NULL DEFAULT 0,
+            client_id VARCHAR(64) NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (project_id, id),
+            INDEX idx_chat_rev (project_id, rev)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
     } catch (Exception $e) {
         // Mantém a API operante; a migração será tentada novamente na próxima requisição
@@ -1093,7 +1115,7 @@ switch ($action) {
             // Trava a linha do projeto: escritas concorrentes (nextRevision) esperam e depois veem a exclusão
             $pdo->prepare("SELECT id FROM cm_projects WHERE id = ? FOR UPDATE")->execute([$projectId]);
             $removed = [];
-            foreach (['cm_features', 'cm_layers', 'cm_audit', 'cm_presence', 'cm_invites', 'cm_access', 'cm_members', 'cm_print_sheets', 'cm_print_locks', 'cm_print_library'] as $table) {
+            foreach (['cm_features', 'cm_layers', 'cm_audit', 'cm_chat', 'cm_presence', 'cm_invites', 'cm_access', 'cm_members', 'cm_print_sheets', 'cm_print_locks', 'cm_print_library'] as $table) {
                 $stmt = $pdo->prepare("DELETE FROM `$table` WHERE project_id = ?");
                 $stmt->execute([$projectId]);
                 $removed[$table] = $stmt->rowCount();
@@ -1276,23 +1298,60 @@ switch ($action) {
             ];
         }
 
-        // 4. Carrega log de auditoria (últimos 100)
+        // 4. Carrega log de auditoria (últimos 100) e mensagens do chat da equipe (últimas 100)
         $stmtAudit = $pdo->prepare("
-            SELECT id, action, detail, user_name AS user, timestamp
+            SELECT id, action, detail, user_name AS user, timestamp,
+                   COALESCE(created_at_ms, UNIX_TIMESTAMP(created_at) * 1000) AS createdAt
             FROM cm_audit
             WHERE project_id = ?
-            ORDER BY created_at DESC
+            ORDER BY COALESCE(created_at_ms, UNIX_TIMESTAMP(created_at) * 1000) DESC, created_at DESC
             LIMIT 100
         ");
         $stmtAudit->execute([$projectId]);
         $auditLog = $stmtAudit->fetchAll();
+        foreach ($auditLog as &$a) {
+            $a['createdAt'] = (int)$a['createdAt'];
+        }
+        unset($a);
+
+        $chatMessages = [];
+        try {
+            $stmtChat = $pdo->prepare("
+                SELECT id, user_id, user_name, user_color, text, coordinates, timestamp,
+                       COALESCE(created_at_ms, UNIX_TIMESTAMP(created_at) * 1000) AS createdAt
+                FROM cm_chat
+                WHERE project_id = ?
+                ORDER BY rev DESC, created_at DESC
+                LIMIT 100
+            ");
+            $stmtChat->execute([$projectId]);
+            $chatRows = array_reverse($stmtChat->fetchAll());
+            foreach ($chatRows as $cr) {
+                $coords = $cr['coordinates'] ? json_decode($cr['coordinates'], true) : null;
+                $chatMessages[] = [
+                    'id'          => $cr['id'],
+                    'text'        => $cr['text'],
+                    'timestamp'   => $cr['timestamp'],
+                    'createdAt'   => (int)$cr['createdAt'],
+                    'coordinates' => is_array($coords) ? $coords : null,
+                    'user'        => [
+                        'id'          => $cr['user_id'] ?: $cr['user_name'],
+                        'name'        => $cr['user_name'],
+                        'displayName' => $cr['user_name'],
+                        'color'       => $cr['user_color'] ?: '#00E08A'
+                    ]
+                ];
+            }
+        } catch (Exception $e) {
+            // Ignora caso a tabela ainda não exista em migração concorrente
+        }
         $pdo->commit();
 
         echo json_encode([
-            'exists'     => true,
-            'serverTime' => date('Y-m-d H:i:s'),
-            'rev'        => (int)($project['rev'] ?? 0),
-            'project'    => [
+            'exists'       => true,
+            'serverTime'   => date('Y-m-d H:i:s'),
+            'rev'          => (int)($project['rev'] ?? 0),
+            'project'      => [
                 'id'           => $project['id'],
                 'name'         => $project['name'],
                 'description'  => $project['description'],
@@ -1302,9 +1361,10 @@ switch ($action) {
                 'featureCount' => count($features),
                 'updatedAt'    => $project['updated_at']
             ],
-            'layers'   => $layers,
-            'features' => $features,
-            'auditLog' => $auditLog
+            'layers'       => $layers,
+            'features'     => $features,
+            'auditLog'     => $auditLog,
+            'chatMessages' => $chatMessages
         ]);
         exit;
 
@@ -1738,6 +1798,61 @@ switch ($action) {
             $l['deleted'] = (int)$l['deleted'] === 1;
         }
         unset($l);
+
+        $auditDeltas = [];
+        $chatDeltas = [];
+        try {
+            $sqlAudit = "
+                SELECT id, action, detail, user_name AS user, timestamp,
+                       COALESCE(created_at_ms, UNIX_TIMESTAMP(created_at) * 1000) AS createdAt, rev
+                FROM cm_audit
+                WHERE project_id = ? AND rev > ? AND rev <= ?" . $echoFilter . "
+                ORDER BY rev ASC
+                LIMIT 100";
+            $stmtAuditDelta = $pdo->prepare($sqlAudit);
+            $stmtAuditDelta->execute($paramsLayers);
+            foreach ($stmtAuditDelta->fetchAll() as $ar) {
+                $auditDeltas[] = [
+                    'id'        => $ar['id'],
+                    'action'    => $ar['action'],
+                    'detail'    => $ar['detail'],
+                    'user'      => $ar['user'],
+                    'timestamp' => $ar['timestamp'],
+                    'createdAt' => (int)$ar['createdAt'],
+                    'rev'       => (int)$ar['rev']
+                ];
+            }
+
+            $sqlChat = "
+                SELECT id, user_id, user_name, user_color, text, coordinates, timestamp,
+                       COALESCE(created_at_ms, UNIX_TIMESTAMP(created_at) * 1000) AS createdAt, rev
+                FROM cm_chat
+                WHERE project_id = ? AND rev > ? AND rev <= ?" . $echoFilter . "
+                ORDER BY rev ASC
+                LIMIT 100";
+            $stmtChatDelta = $pdo->prepare($sqlChat);
+            $stmtChatDelta->execute($paramsLayers);
+            foreach ($stmtChatDelta->fetchAll() as $cr) {
+                $coords = $cr['coordinates'] ? json_decode($cr['coordinates'], true) : null;
+                $chatDeltas[] = [
+                    'id'          => $cr['id'],
+                    'text'        => $cr['text'],
+                    'timestamp'   => $cr['timestamp'],
+                    'createdAt'   => (int)$cr['createdAt'],
+                    'coordinates' => is_array($coords) ? $coords : null,
+                    'rev'         => (int)$cr['rev'],
+                    'user'        => [
+                        'id'          => $cr['user_id'] ?: $cr['user_name'],
+                        'name'        => $cr['user_name'],
+                        'displayName' => $cr['user_name'],
+                        'color'       => $cr['user_color'] ?: '#00E08A'
+                    ]
+                ];
+            }
+        } catch (Exception $e) {
+            // Ignora se tabela/coluna de auditoria/chat estiver migrando
+        }
+
         $pdo->commit();
 
         echo json_encode([
@@ -1751,6 +1866,8 @@ switch ($action) {
             'upserted'   => $upserted,
             'deleted'    => $deletedIds,
             'layers'     => $layers,
+            'audit'      => $auditDeltas,
+            'chat'       => $chatDeltas,
             'presence'   => $presence,
             'role'       => $accessRole,
             'project'    => $projectRow ? [
@@ -1991,23 +2108,30 @@ switch ($action) {
 
         $body = getJsonBody();
         $projectId = cleanProjectId($body['projectId'] ?? '');
-        $auditId = !empty($body['id']) ? $body['id'] : ('aud-' . time() . '-' . substr(md5(mt_rand()), 0, 5));
+        $clientId = isset($body['clientId']) ? substr(preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$body['clientId']), 0, 64) : null;
+        $auditId = !empty($body['id']) ? substr((string)$body['id'], 0, 64) : ('aud-' . time() . '-' . substr(md5(mt_rand()), 0, 5));
         requireRole($pdo, $projectId, 'editor');
 
+        $pdo->beginTransaction();
         try {
+            $rev = nextRevision($pdo, $projectId);
             $stmt = $pdo->prepare("
-                INSERT INTO cm_audit (id, project_id, action, detail, user_name, timestamp)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO cm_audit (id, project_id, action, detail, user_name, timestamp, created_at_ms, rev, client_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE
-                    action = ?,
-                    detail = ?,
-                    user_name = ?,
-                    timestamp = ?
+                    action = VALUES(action),
+                    detail = VALUES(detail),
+                    user_name = VALUES(user_name),
+                    timestamp = VALUES(timestamp),
+                    created_at_ms = VALUES(created_at_ms),
+                    rev = VALUES(rev),
+                    client_id = VALUES(client_id)
             ");
-            $actVal  = $body['action'] ?? '';
-            $detVal  = $body['detail'] ?? '';
-            $usrVal  = $body['user'] ?? 'Você';
-            $timeVal = $body['timestamp'] ?? date('c');
+            $actVal  = mb_substr((string)($body['action'] ?? ''), 0, 255);
+            $detVal  = (string)($body['detail'] ?? '');
+            $usrVal  = mb_substr(trim((string)($body['user'] ?? 'Operador')) ?: 'Operador', 0, 128);
+            $timeVal = mb_substr((string)($body['timestamp'] ?? date('H:i:s')), 0, 64);
+            $msVal   = isset($body['createdAt']) && is_numeric($body['createdAt']) ? (int)$body['createdAt'] : (int)(microtime(true) * 1000);
 
             $stmt->execute([
                 $auditId,
@@ -2016,17 +2140,81 @@ switch ($action) {
                 $detVal,
                 $usrVal,
                 $timeVal,
-                // ON DUPLICATE KEY UPDATE
-                $actVal,
-                $detVal,
-                $usrVal,
-                $timeVal
+                $msVal,
+                $rev,
+                $clientId
             ]);
-            echo json_encode(['success' => true]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'rev' => $rev]);
             exit;
         } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
             http_response_code(500);
             echo json_encode(['error' => 'Falha ao registrar auditoria', 'detail' => $e->getMessage()]);
+            exit;
+        }
+
+    // --------------------------------------------------------------------------
+    // ACTION: SEND_CHAT (Enviar Mensagem no Chat da Equipe)
+    // --------------------------------------------------------------------------
+    case 'send_chat':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            http_response_code(405);
+            echo json_encode(['error' => 'Método inválido']);
+            exit;
+        }
+
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        $clientId = isset($body['clientId']) ? substr(preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$body['clientId']), 0, 64) : null;
+        requireRole($pdo, $projectId, 'viewer');
+
+        $text = trim((string)($body['text'] ?? ''));
+        if ($text === '') {
+            http_response_code(400);
+            echo json_encode(['error' => 'Mensagem vazia']);
+            exit;
+        }
+        $text = mb_substr($text, 0, 2000);
+        $msgId = !empty($body['id']) ? substr(preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$body['id']), 0, 64) : ('msg_' . (int)(microtime(true) * 1000) . '_' . substr(md5(mt_rand()), 0, 5));
+        $userArr = isset($body['user']) && is_array($body['user']) ? $body['user'] : [];
+        $userId = isset($userArr['id']) ? mb_substr((string)$userArr['id'], 0, 64) : $clientId;
+        $userName = mb_substr(trim((string)($userArr['displayName'] ?? $userArr['name'] ?? $body['userName'] ?? 'Operador')) ?: 'Operador', 0, 128);
+        $userColor = preg_match('/^#[0-9a-fA-F]{3,8}$/', (string)($userArr['color'] ?? '')) ? $userArr['color'] : '#00E08A';
+        $coordsJson = isset($body['coordinates']) && is_array($body['coordinates']) ? json_encode($body['coordinates']) : null;
+        $timeVal = mb_substr((string)($body['timestamp'] ?? date('H:i')), 0, 32);
+        $msVal = isset($body['createdAt']) && is_numeric($body['createdAt']) ? (int)$body['createdAt'] : (int)(microtime(true) * 1000);
+
+        $pdo->beginTransaction();
+        try {
+            $rev = nextRevision($pdo, $projectId);
+            $stmt = $pdo->prepare("
+                INSERT INTO cm_chat (id, project_id, user_id, user_name, user_color, text, coordinates, timestamp, created_at_ms, rev, client_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    text = VALUES(text),
+                    rev = VALUES(rev)
+            ");
+            $stmt->execute([
+                $msgId,
+                $projectId,
+                $userId,
+                $userName,
+                $userColor,
+                $text,
+                $coordsJson,
+                $timeVal,
+                $msVal,
+                $rev,
+                $clientId
+            ]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'rev' => $rev]);
+            exit;
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            http_response_code(500);
+            echo json_encode(['error' => 'Falha ao enviar mensagem', 'detail' => $e->getMessage()]);
             exit;
         }
 

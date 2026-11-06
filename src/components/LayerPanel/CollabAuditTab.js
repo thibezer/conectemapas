@@ -29,7 +29,11 @@ export class CollabAuditTab {
   }
 
   static renderMessage(panel, msg) {
-    const safeUser = panel.escapeHtml(msg.user?.name || 'Operador');
+    const selfId = panel.app?.collabHub?.currentUser?.id;
+    const isSelf = !!(selfId && msg.user?.id === selfId);
+    const rawName = (msg.user?.displayName || msg.user?.name || 'Operador').replace(/\s*\(você\)$/i, '');
+    const displayUser = isSelf ? `${rawName} (você)` : rawName.replace(/^Você\s*\(Operador\)$/i, 'Operador');
+    const safeUser = panel.escapeHtml(displayUser);
     const safeColor = panel.escapeHtml(msg.user?.color || 'var(--cm-primary)');
     const safeText = panel.escapeHtml(msg.text || '');
     const safeTime = panel.escapeHtml(msg.timestamp || '');
@@ -44,22 +48,69 @@ export class CollabAuditTab {
     `;
   }
 
+  static renderMembers(panel) {
+    const members = (panel.teamMembers && panel.teamMembers.length > 0)
+      ? panel.teamMembers
+      : (panel.app?.collabHub?.getActiveCollaboratorsList?.() || []);
+    const selfId = panel.app?.collabHub?.currentUser?.id;
+
+    if (!members.length) {
+      return '<div class="cm-collab-empty">Nenhum operador conectado.</div>';
+    }
+
+    return members.map(m => {
+      const isSelf = !!(selfId && m.id === selfId);
+      const rawName = (m.displayName || m.name || 'Operador').replace(/\s*\(você\)$/i, '').replace(/^Você\s*\(Operador\)$/i, 'Operador');
+      const label = isSelf ? `${rawName} (você)` : rawName;
+      const initial = (rawName.trim()[0] || 'U').toUpperCase();
+      const color = panel.escapeHtml(m.color || '#00E08A');
+      const role = panel.escapeHtml(m.role || 'Editor');
+      const hasCoords = !isSelf && Number.isFinite(m.lat) && Number.isFinite(m.lng);
+      return `
+        <div class="cm-team-member-row">
+          <span class="cm-team-member-avatar" style="background: ${color}">${panel.escapeHtml(initial)}</span>
+          <span class="cm-team-member-name" title="${panel.escapeHtml(label)}">${panel.escapeHtml(label)}</span>
+          <span class="cm-team-member-role">${role}</span>
+          ${hasCoords ? `<button type="button" class="cm-team-locate-btn" data-lat="${m.lat}" data-lng="${m.lng}" title="Ir até o cursor deste operador no mapa">Localizar</button>` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  static renderAuditItems(panel) {
+    const groups = CollabAuditTab.groupAudit(panel.auditLog || []);
+    if (!groups.length) {
+      return '<div class="cm-collab-empty">Nenhuma alteração registrada.</div>';
+    }
+    return groups.map(({ entry, verb, count }) => {
+      const action = count > 1 ? `${verb} ${count} feições` : entry.action;
+      const cleanUser = (entry.user || 'Operador').replace(/^Você\s*\(Operador\)$/i, 'Operador');
+      return `
+        <div class="cm-audit-item">
+          <span class="cm-audit-user" title="${panel.escapeHtml(cleanUser)}">${panel.escapeHtml(cleanUser)}</span>
+          <span class="cm-audit-action">${panel.escapeHtml(action)}</span>
+          <span class="cm-audit-time">${panel.escapeHtml(CollabAuditTab.formatTime(entry))}</span>
+        </div>`;
+    }).join('');
+  }
+
   static render(panel) {
-    const groups = CollabAuditTab.groupAudit(panel.auditLog);
+    const members = (panel.teamMembers && panel.teamMembers.length > 0)
+      ? panel.teamMembers
+      : (panel.app?.collabHub?.getActiveCollaboratorsList?.() || []);
     return `
       <div class="cm-collab-tab">
+        <div class="cm-collab-members">
+          <span class="cm-sidebar-section-title">Equipe Online (${members.length})</span>
+          <div class="cm-team-members-list" id="cm-team-members-box">
+            ${CollabAuditTab.renderMembers(panel)}
+          </div>
+        </div>
+
         <div class="cm-collab-audit">
           <span class="cm-sidebar-section-title">Trilha de Auditoria</span>
-          <div class="cm-audit-log-list">
-            ${groups.length ? groups.map(({ entry, verb, count }) => {
-              const action = count > 1 ? `${verb} ${count} feições` : entry.action;
-              return `
-              <div class="cm-audit-item">
-                <span class="cm-audit-user" title="${panel.escapeHtml(entry.user)}">${panel.escapeHtml(entry.user)}</span>
-                <span class="cm-audit-action">${panel.escapeHtml(action)}</span>
-                <span class="cm-audit-time">${panel.escapeHtml(CollabAuditTab.formatTime(entry))}</span>
-              </div>`;
-            }).join('') : '<div class="cm-collab-empty">Nenhuma alteração registrada.</div>'}
+          <div class="cm-audit-log-list" id="cm-audit-log-list">
+            ${CollabAuditTab.renderAuditItems(panel)}
           </div>
         </div>
 
@@ -92,6 +143,20 @@ export class CollabAuditTab {
         if (text) {
           panel.onSendMessage(text);
           if (input) input.value = '';
+        }
+      });
+    }
+
+    const membersBox = document.getElementById('cm-team-members-box');
+    if (membersBox && !membersBox._boundLocate) {
+      membersBox._boundLocate = true;
+      membersBox.addEventListener('click', (e) => {
+        const btn = e.target?.closest?.('.cm-team-locate-btn');
+        if (!btn) return;
+        const lat = Number(btn.getAttribute('data-lat'));
+        const lng = Number(btn.getAttribute('data-lng'));
+        if (Number.isFinite(lat) && Number.isFinite(lng) && panel.app?.mapEngine?.map) {
+          panel.app.mapEngine.map.panTo([lat, lng], { animate: true });
         }
       });
     }

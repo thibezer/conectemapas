@@ -56,8 +56,13 @@ export class AppBootstrapSync {
         id: 'aud_init',
         action: 'Projeto inicializado',
         user: 'Sistema',
+        createdAt: Date.now(),
         timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       });
+    }
+    const localChat = StorageService.loadChatMessages(app.projectId);
+    if (localChat.length > 0) {
+      app.chatMessages = localChat;
     }
   }
 
@@ -130,7 +135,7 @@ export class AppBootstrapSync {
           // Fallback se a nuvem estiver indisponível no momento: tenta deltas incrementais
           try {
             const deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
-            if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
+            if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0 || deltaChanges.audit?.length > 0 || deltaChanges.chat?.length > 0)) {
               FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
             }
           } catch (e) {
@@ -151,7 +156,7 @@ export class AppBootstrapSync {
           }
           const deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
           if (deltaChanges) this.applyRemoteProjectName(app, deltaChanges.project);
-          if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0)) {
+          if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0 || deltaChanges.audit?.length > 0 || deltaChanges.chat?.length > 0)) {
             FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
           }
         } catch (e) {
@@ -233,6 +238,33 @@ export class AppBootstrapSync {
         if (app.layerPanel) app.layerPanel.currentBasemap = app.currentBasemap;
         const seletor = typeof document !== 'undefined' ? document.getElementById('cm-seletor-mapa-base') : null;
         if (seletor) seletor.mapaBaseAtivo = app.currentBasemap;
+      }
+
+      if (Array.isArray(cloudData.auditLog) && cloudData.auditLog.length > 0) {
+        const existingIds = new Set((app.auditLog || []).map(a => a && a.id));
+        for (const entry of cloudData.auditLog) {
+          if (entry && entry.id && !existingIds.has(entry.id)) {
+            existingIds.add(entry.id);
+            app.auditLog.push(entry);
+            StorageService.logAudit(entry, app.projectId, { syncCloud: false });
+          }
+        }
+        app.auditLog.sort((a, b) => (Number(b?.createdAt) || 0) - (Number(a?.createdAt) || 0));
+        if (app.auditLog.length > 100) app.auditLog.length = 100;
+        app.layerPanel?.updateAuditLog?.(app.auditLog);
+      }
+
+      if (Array.isArray(cloudData.chatMessages) && cloudData.chatMessages.length > 0) {
+        if (!Array.isArray(app.chatMessages)) app.chatMessages = [];
+        const existingIds = new Set(app.chatMessages.map(m => m && m.id));
+        for (const msg of cloudData.chatMessages) {
+          if (msg && msg.id && !existingIds.has(msg.id)) {
+            existingIds.add(msg.id);
+            app.chatMessages.push(msg);
+          }
+        }
+        StorageService.saveChatMessages(app.chatMessages, app.projectId);
+        app.layerPanel?.updateChatMessages?.(app.chatMessages);
       }
 
       if (updated) {
@@ -346,7 +378,9 @@ export class AppBootstrapSync {
           const hasUpserted = changes.upserted.length > 0;
           const hasDeleted = changes.deleted.length > 0;
           const hasLayers = changes.layers.length > 0;
-          if (hasUpserted || hasDeleted || hasLayers) {
+          const hasAudit = Array.isArray(changes.audit) && changes.audit.length > 0;
+          const hasChat = Array.isArray(changes.chat) && changes.chat.length > 0;
+          if (hasUpserted || hasDeleted || hasLayers || hasAudit || hasChat) {
             const changed = FeatureSyncController.applyRemoteDeltas(app, changes);
             if (changed) {
               this.updateSyncChip(app);

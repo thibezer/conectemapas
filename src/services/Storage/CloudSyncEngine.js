@@ -652,12 +652,16 @@ export class CloudSyncEngine {
       }
 
       const layers = Array.isArray(data.layers) ? data.layers : [];
+      const audit = Array.isArray(data.audit) ? data.audit : [];
+      const chat = Array.isArray(data.chat) ? data.chat : [];
 
       if (!Array.isArray(data.changes)) {
         return {
           upserted: Array.isArray(data.upserted) ? data.upserted.map(unpackFeatureFromCloud) : [],
           deleted: Array.isArray(data.deleted) ? data.deleted : [],
           layers,
+          audit,
+          chat,
           project: data.project || null,
           presence: null,
           hasMore: false
@@ -708,6 +712,8 @@ export class CloudSyncEngine {
         upserted,
         deleted,
         layers,
+        audit,
+        chat,
         project: data.project || null,
         presence: Array.isArray(data.presence) ? data.presence : null,
         hasMore: !!data.hasMore && !heldCursor
@@ -715,5 +721,49 @@ export class CloudSyncEngine {
     } catch {
       return null;
     }
+  }
+
+  static pushAuditToCloud(entry, projectId = 'projeto_padrao') {
+    if (!entry || !entry.action) return Promise.resolve(false);
+    const pid = projectId || 'projeto_padrao';
+    return this._enqueuePush([], async () => {
+      try {
+        const res = await this._postJson('log_audit', {
+          projectId: pid,
+          clientId: _clientId,
+          id: entry.id,
+          action: entry.action,
+          detail: entry.detail || entry.details || '',
+          user: entry.user || 'Operador',
+          timestamp: entry.timestamp || '',
+          createdAt: entry.createdAt || Date.now()
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    });
+  }
+
+  static sendChatToCloud(message, projectId = 'projeto_padrao') {
+    if (!message || !message.text) return Promise.resolve(false);
+    const pid = projectId || 'projeto_padrao';
+    return this._enqueuePush([], async () => {
+      try {
+        const res = await this._postJson('send_chat', {
+          projectId: pid,
+          clientId: _clientId,
+          id: message.id,
+          text: message.text,
+          user: message.user,
+          coordinates: message.coordinates || null,
+          timestamp: message.timestamp || '',
+          createdAt: message.createdAt || Date.now()
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    });
   }
 }

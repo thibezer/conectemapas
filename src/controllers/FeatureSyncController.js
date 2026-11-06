@@ -14,6 +14,19 @@ import { AppGeometryCoordinator } from '../bootstrap/AppGeometryCoordinator.js';
 import { nextFeatureName } from '../utils/featureNaming.js';
 
 export class FeatureSyncController {
+  /** Registra uma entrada na trilha de auditoria (memória, BroadcastChannel, IndexedDB e nuvem). */
+  static recordAudit(app, action, detail = '') {
+    if (!app || !app.collabHub) return null;
+    const audit = app.collabHub.logAudit(action, detail);
+    if (!Array.isArray(app.auditLog)) app.auditLog = [];
+    app.auditLog.unshift(audit);
+    StorageService.logAudit(audit, app.projectId);
+    if (app.layerPanel) {
+      app.layerPanel.updateAuditLog(app.auditLog);
+    }
+    return audit;
+  }
+
   /**
    * FLUXO ÚNICO CENTRALIZADO DE CRIAÇÃO DE FEIÇÃO (Item 12)
    * Elimina duplicidades entre CAD, Modais, Clones e Buffers.
@@ -93,7 +106,7 @@ export class FeatureSyncController {
         ...(rawFeature.style || {})
       },
       properties: initialProps,
-      createdBy: rawFeature.createdBy || 'Você',
+      createdBy: rawFeature.createdBy || app.collabHub?.currentUser?.displayName || 'Operador',
       createdAt: rawFeature.createdAt || new Date().toISOString()
     });
 
@@ -118,12 +131,7 @@ export class FeatureSyncController {
       if (broadcastCollab) {
         app.collabHub.notifyFeatureCreated(newFeature);
       }
-      const audit = app.collabHub.logAudit(`Criou feição "${newFeature.name}"`, newFeature.type);
-      app.auditLog.unshift(audit);
-      StorageService.logAudit(audit);
-      if (app.layerPanel) {
-        app.layerPanel.updateAuditLog(app.auditLog);
-      }
+      FeatureSyncController.recordAudit(app, `Criou feição "${newFeature.name}"`, newFeature.type);
     }
 
     // 7. Atualizações Coordenadas de UI (sem reflows redundantes)
@@ -173,8 +181,11 @@ export class FeatureSyncController {
     app.saveMetadata(false);
 
     // 4. Notificação de Colaboração em lote (se aplicável)
-    if (broadcastCollab && app.collabHub) {
-      normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+    if (app.collabHub) {
+      if (broadcastCollab) {
+        normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+      }
+      FeatureSyncController.recordAudit(app, `${sourceDescription} (${normalized.length} feições)`, 'Lote');
     }
 
     return normalized;
@@ -211,8 +222,11 @@ export class FeatureSyncController {
     app.saveMetadata(false);
 
     // 4. Notificação de Colaboração em lote (se aplicável)
-    if (broadcastCollab && app.collabHub) {
-      normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+    if (app.collabHub) {
+      if (broadcastCollab) {
+        normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+      }
+      FeatureSyncController.recordAudit(app, `${sourceDescription} (${normalized.length} feições)`, 'Lote');
     }
 
     return normalized;
@@ -536,18 +550,33 @@ export class FeatureSyncController {
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
       }
     } else if (type === 'chat:message') {
-      if (app.layerPanel) {
-        app.layerPanel.addChatMessage(data.message);
+      if (data.message) {
+        if (Array.isArray(app.chatMessages) && !app.chatMessages.some(m => m && m.id === data.message.id)) {
+          app.chatMessages.push(data.message);
+        }
+        if (app.layerPanel) {
+          app.layerPanel.addChatMessage(data.message);
+        }
+        StorageService.saveChatMessages(app.chatMessages || app.layerPanel?.chatMessages || [], app.projectId);
       }
     } else if (type === 'audit:log') {
-      app.auditLog.unshift(data.entry);
-      StorageService.logAudit(data.entry, app.projectId);
-      if (app.layerPanel) {
-        app.layerPanel.updateAuditLog(app.auditLog);
+      if (data.entry && !app.auditLog.some(a => a && a.id === data.entry.id)) {
+        app.auditLog.unshift(data.entry);
+        StorageService.logAudit(data.entry, app.projectId, { syncCloud: false });
+        if (app.layerPanel) {
+          app.layerPanel.updateAuditLog(app.auditLog);
+        }
       }
-    } else if (type === 'user:joined' || type === 'user:presence') {
+    } else if (type === 'user:joined' || type === 'user:presence' || type === 'user:left') {
+      if (type === 'user:left' && data?.userId && app.mapEngine?.removeRemoteCursor) {
+        app.mapEngine.removeRemoteCursor(data.userId);
+      }
+      const list = app.collabHub ? app.collabHub.getActiveCollaboratorsList() : [];
       if (app.headerBar) {
-        app.headerBar.updateCollaborators(app.collabHub.getActiveCollaboratorsList());
+        app.headerBar.updateCollaborators(list);
+      }
+      if (app.layerPanel) {
+        app.layerPanel.updateTeamMembers?.(list);
       }
     }
   }
@@ -556,7 +585,7 @@ export class FeatureSyncController {
    * Aplica deltas recebidos da sincronização na nuvem (multi-dispositivo)
    * Atualiza com segurança a memória, o motor de mapa e o IndexedDB local
    */
-  static applyRemoteDeltas(app, { upserted = [], deleted = [], layers = [], project = null } = {}) {
+  static applyRemoteDeltas(app, { upserted = [], deleted = [], layers = [], audit = [], chat = [], project = null } = {}) {
     if (!app) return false;
 
     let stateChanged = false;
@@ -711,6 +740,41 @@ export class FeatureSyncController {
       }, { syncCloud: false });
     }
 
+    // 5. Reconcilia entradas remotas da trilha de auditoria e do chat da equipe
+    if (Array.isArray(audit) && audit.length > 0) {
+      if (!Array.isArray(app.auditLog)) app.auditLog = [];
+      const existingIds = new Set(app.auditLog.map(a => a && a.id));
+      let auditAdded = false;
+      for (const entry of audit) {
+        if (!entry || !entry.id || existingIds.has(entry.id)) continue;
+        existingIds.add(entry.id);
+        app.auditLog.unshift(entry);
+        StorageService.logAudit(entry, app.projectId, { syncCloud: false });
+        auditAdded = true;
+      }
+      if (auditAdded) {
+        app.auditLog.sort((a, b) => (Number(b?.createdAt) || 0) - (Number(a?.createdAt) || 0));
+        if (app.auditLog.length > 100) app.auditLog.length = 100;
+        app.layerPanel?.updateAuditLog?.(app.auditLog);
+      }
+    }
+
+    if (Array.isArray(chat) && chat.length > 0) {
+      if (!Array.isArray(app.chatMessages)) app.chatMessages = [];
+      const existingIds = new Set(app.chatMessages.map(m => m && m.id));
+      let chatAdded = false;
+      for (const msg of chat) {
+        if (!msg || !msg.id || existingIds.has(msg.id)) continue;
+        existingIds.add(msg.id);
+        app.chatMessages.push(msg);
+        app.layerPanel?.addChatMessage?.(msg);
+        chatAdded = true;
+      }
+      if (chatAdded) {
+        StorageService.saveChatMessages(app.chatMessages, app.projectId);
+      }
+    }
+
     return stateChanged;
   }
 
@@ -742,13 +806,17 @@ export class FeatureSyncController {
     }
     app._cloudPresenceIds = seen;
 
-    // Só re-renderiza os avatares quando a lista de participantes muda (o pull roda a cada ~1 s)
-    const presenceKey = presenceList.map(p => `${p.id}:${p.name}:${p.color}:${p.role}`).sort().join('|');
-    if (app.collabHub && presenceKey !== app._cloudPresenceKey) {
-      app._cloudPresenceKey = presenceKey;
+    if (app.collabHub) {
       app.collabHub.setCloudPresence(presenceList);
-      if (app.headerBar) {
-        app.headerBar.updateCollaborators(app.collabHub.getActiveCollaboratorsList());
+      const presenceKey = presenceList.map(p => `${p.id}:${p.name}:${p.color}:${p.role}`).sort().join('|');
+      if (presenceKey !== app._cloudPresenceKey) {
+        app._cloudPresenceKey = presenceKey;
+        if (app.headerBar) {
+          app.headerBar.updateCollaborators(app.collabHub.getActiveCollaboratorsList());
+        }
+      }
+      if (app.layerPanel?.activeTab === 'collab') {
+        app.layerPanel.updateTeamMembers?.(app.collabHub.getActiveCollaboratorsList());
       }
     }
   }

@@ -274,11 +274,21 @@ export class IndexedDbStore {
         ...entry,
         id: entry.id || 'aud-' + Math.random().toString(36).substring(2, 9),
         projectId,
-        timestamp: entry.timestamp || new Date().toISOString()
+        createdAt: Number(entry.createdAt) || Date.now(),
+        timestamp: entry.timestamp || new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
     } catch (e) {
       console.warn('[IndexedDbStore] Erro ao registrar auditoria:', e);
     }
+  }
+
+  static sortAuditEntries(list = []) {
+    return list.sort((a, b) => {
+      const ta = Number(a?.createdAt) || 0;
+      const tb = Number(b?.createdAt) || 0;
+      if (tb !== ta) return tb - ta;
+      return String(b?.id || '').localeCompare(String(a?.id || ''));
+    });
   }
 
   static async getAuditLog(projectId = 'projeto_padrao', limit = 100) {
@@ -292,7 +302,7 @@ export class IndexedDbStore {
         const req = index.getAll(IDBKeyRange.only(projectId));
         req.onsuccess = () => {
           const list = req.result || [];
-          list.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+          this.sortAuditEntries(list);
           resolve(list.slice(0, limit));
         };
         req.onerror = () => resolve([]);
@@ -337,7 +347,7 @@ export class IndexedDbStore {
           projectData.features = Array.isArray(features) ? features : [];
 
           const audit = auditReq.result || [];
-          audit.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+          this.sortAuditEntries(audit);
           projectData.auditLog = audit.slice(0, 100);
 
           resolve(projectData);

@@ -321,18 +321,35 @@ export class StorageService {
     return { toUpsert, toDelete };
   }
 
-  // ---- AUDITORIA ----
+  // ---- AUDITORIA & CHAT DA EQUIPE ----
 
-  static logAudit(entry, projectId = null) {
-    return IndexedDbStore.logAudit(entry, projectId || _currentProjectId);
+  static logAudit(entry, projectId = null, options = {}) {
+    const projId = projectId || _currentProjectId;
+    const { syncCloud = true } = options;
+    if (syncCloud) {
+      CloudSyncEngine.pushAuditToCloud(entry, projId);
+    }
+    return IndexedDbStore.logAudit(entry, projId);
   }
 
-  static appendAudit(entry, projectId = null) {
-    return IndexedDbStore.appendAudit(entry, projectId || _currentProjectId);
+  static appendAudit(entry, projectId = null, options = {}) {
+    return this.logAudit(entry, projectId || _currentProjectId, options);
   }
 
   static getAuditLog(projectId = null, limit = 100) {
     return IndexedDbStore.getAuditLog(projectId || _currentProjectId, limit);
+  }
+
+  static loadChatMessages(projectId = null) {
+    return LocalStore.loadChatMessages(projectId || _currentProjectId);
+  }
+
+  static saveChatMessages(messages, projectId = null) {
+    return LocalStore.saveChatMessages(messages, projectId || _currentProjectId);
+  }
+
+  static sendChatToCloud(message, projectId = null) {
+    return CloudSyncEngine.sendChatToCloud(message, projectId || _currentProjectId);
   }
 
   // ---- CLOUD & SYNC ----

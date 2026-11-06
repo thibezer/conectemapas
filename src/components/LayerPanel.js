@@ -580,7 +580,41 @@ export class LayerPanel {
   updateAuditLog(auditLog = []) {
     this.auditLog = auditLog || [];
     if (this.activeTab === 'collab') {
-      this.updateContent();
+      const box = typeof document !== 'undefined' ? document.getElementById('cm-audit-log-list') : null;
+      if (box) {
+        box.innerHTML = CollabAuditTab.renderAuditItems(this);
+      } else {
+        this.updateContent();
+      }
+    }
+  }
+
+  updateTeamMembers(members = []) {
+    this.teamMembers = Array.isArray(members) ? members : [];
+    if (this.activeTab === 'collab') {
+      const box = typeof document !== 'undefined' ? document.getElementById('cm-team-members-box') : null;
+      if (box) {
+        box.innerHTML = CollabAuditTab.renderMembers(this);
+        const title = box.parentElement?.querySelector('.cm-sidebar-section-title');
+        if (title) title.textContent = `Equipe Online (${this.teamMembers.length})`;
+      } else {
+        this.updateContent();
+      }
+    }
+  }
+
+  updateChatMessages(messages = []) {
+    this.chatMessages = Array.isArray(messages) ? messages : [];
+    if (this.activeTab === 'collab') {
+      const box = typeof document !== 'undefined' ? document.getElementById('cm-chat-messages-box') : null;
+      if (box) {
+        box.innerHTML = this.chatMessages.length
+          ? this.chatMessages.map(msg => CollabAuditTab.renderMessage(this, msg)).join('')
+          : '<div class="cm-collab-empty" id="cm-chat-empty">Nenhuma mensagem na sala.</div>';
+        box.scrollTop = box.scrollHeight;
+      } else {
+        this.updateContent();
+      }
     }
   }
 
@@ -601,9 +635,12 @@ export class LayerPanel {
   }
 
   addChatMessage(msg) {
-    this.chatMessages.push(msg);
+    if (!msg) return;
+    if (!this.chatMessages.some(m => m && m.id === msg.id)) {
+      this.chatMessages.push(msg);
+    }
     if (this.activeTab === 'collab') {
-      const box = document.getElementById('cm-chat-messages-box');
+      const box = typeof document !== 'undefined' ? document.getElementById('cm-chat-messages-box') : null;
       if (!box) {
         this.updateContent();
         return;

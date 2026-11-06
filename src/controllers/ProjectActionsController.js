@@ -186,6 +186,7 @@ export class ProjectActionsController {
     StorageService.saveLayer(newLayer, app.projectId);
     if (app.collabHub) {
       app.collabHub.notifyLayerCreated(newLayer);
+      FeatureSyncController.recordAudit(app, `Criou camada "${newLayer.name}"`, newLayer.id);
     }
     if (app.layerPanel) {
       app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
@@ -244,6 +245,7 @@ export class ProjectActionsController {
     StorageService.deleteLayerInCloud(layerId, app.projectId);
     if (app.collabHub) {
       app.collabHub.notifyLayerDeleted(layerId, remainingLayer.id);
+      FeatureSyncController.recordAudit(app, `Excluiu camada "${layerName}"`, layerId);
     }
     if (movedFeatures.length > 0) {
       StorageService.queueFeaturesBulkUpsert(movedFeatures, app.projectId);
