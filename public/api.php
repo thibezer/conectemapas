@@ -51,6 +51,28 @@ function loadEnvFileIfNeeded() {
     }
 }
 
+/**
+ * Detalhe de erro seguro para o cliente: a mensagem real (SQL, caminhos) vai só para o log do servidor.
+ * Defina CM_DEBUG=1 no ambiente para devolvê-la também na resposta (diagnóstico).
+ */
+function safeDetail($e) {
+    error_log('[ConecteMapas] ' . get_class($e) . ': ' . $e->getMessage());
+    loadEnvFileIfNeeded();
+    return getenv('CM_DEBUG') === '1' ? $e->getMessage() : 'Erro interno. Tente novamente.';
+}
+
+/** IP do cliente. Só confia em cabeçalho de proxy se CM_TRUSTED_IP_HEADER (ex.: HTTP_X_FORWARDED_FOR) estiver definido. */
+function clientIp() {
+    loadEnvFileIfNeeded();
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '0';
+    $header = getenv('CM_TRUSTED_IP_HEADER');
+    if ($header && !empty($_SERVER[$header])) {
+        $candidate = trim(explode(',', $_SERVER[$header])[0]);
+        if (filter_var($candidate, FILTER_VALIDATE_IP)) $ip = $candidate;
+    }
+    return substr($ip, 0, 45);
+}
+
 function getDatabaseConnection() {
     static $pdo = null;
     if ($pdo !== null) {
@@ -105,7 +127,7 @@ function getDatabaseConnection() {
         http_response_code(500);
         echo json_encode([
             'error' => 'Falha ao conectar no MySQL da Hostinger',
-            'detail' => $e->getMessage()
+            'detail' => safeDetail($e)
         ]);
         exit;
     }
@@ -576,7 +598,7 @@ function roleRank($role) {
 }
 
 function cleanProjectId($raw) {
-    $clean = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$raw);
+    $clean = substr(preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$raw), 0, 64); // coluna project_id é VARCHAR(64)
     return $clean !== '' ? $clean : 'projeto_padrao';
 }
 
@@ -662,9 +684,17 @@ function validatePassword($password) {
 }
 
 /** Limita tentativas por IP+assunto (15 min) e por IP (30 em 15 min). Chamar ANTES de verificar. */
-function enforceAttemptLimit(PDO $pdo, $subject) {
-    $ip = substr($_SERVER['REMOTE_ADDR'] ?? '0', 0, 45);
+function enforceAttemptLimit(PDO $pdo, $subject, $perSubjectAllIps = 0) {
+    $ip = clientIp();
     $subjectHash = hash('sha256', $subject);
+    // Limite por conta, somando todos os IPs: barra quem troca de IP para forçar uma senha
+    if ($perSubjectAllIps > 0) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM cm_auth_attempts WHERE subject_hash = ? AND created_at > NOW() - INTERVAL 15 MINUTE");
+        $stmt->execute([$subjectHash]);
+        if ((int)$stmt->fetchColumn() >= $perSubjectAllIps) {
+            denyAccess(429, 'too_many_attempts', 'Muitas tentativas. Aguarde alguns minutos.');
+        }
+    }
     $stmt = $pdo->prepare("SELECT COUNT(*), SUM(subject_hash = ?) FROM cm_auth_attempts WHERE ip = ? AND created_at > NOW() - INTERVAL 15 MINUTE");
     $stmt->execute([$subjectHash, $ip]);
     $row = $stmt->fetch(PDO::FETCH_NUM);
@@ -908,7 +938,7 @@ switch ($action) {
         $body = getJsonBody();
         $email = normalizeEmail($body['email'] ?? '');
         $password = (string)($body['password'] ?? '');
-        $attempt = enforceAttemptLimit($pdo, 'login:' . $email);
+        $attempt = enforceAttemptLimit($pdo, 'login:' . $email, 20);
 
         $stmt = $pdo->prepare("SELECT id, name, email, password_hash, is_blocked FROM cm_users WHERE email = ?");
         $stmt->execute([$email]);
@@ -1087,6 +1117,18 @@ switch ($action) {
         $projectId = cleanProjectId($body['projectId'] ?? '');
         // Nome opcional: só vale para projeto recém-criado (INSERT IGNORE não renomeia um existente)
         $claimName = trim((string)($body['name'] ?? ''));
+        // Sem login: não reivindica o projeto padrão e há teto de reivindicações por IP (evita criar projetos em massa)
+        $anonClaimHash = hash('sha256', 'claim');
+        if (!currentUser($pdo)) {
+            if ($projectId === 'projeto_padrao') {
+                denyAccess(401, 'login_required', 'Entre na sua conta para proteger o projeto padrão.');
+            }
+            $stmtClaims = $pdo->prepare("SELECT COUNT(*) FROM cm_auth_attempts WHERE ip = ? AND subject_hash = ? AND created_at > NOW() - INTERVAL 1 HOUR");
+            $stmtClaims->execute([clientIp(), $anonClaimHash]);
+            if ((int)$stmtClaims->fetchColumn() >= 10) {
+                denyAccess(429, 'too_many_claims', 'Muitos projetos criados deste endereço. Aguarde ou entre na sua conta.');
+            }
+        }
         $pdo->beginTransaction();
         try {
             // Trava a linha do projeto: duas reivindicações simultâneas não geram dois donos
@@ -1109,12 +1151,13 @@ switch ($action) {
                 exit;
             }
             $issued = issueAccessKey($pdo, $projectId, 'owner', $body['label'] ?? 'Dono');
+            $pdo->prepare("INSERT INTO cm_auth_attempts (ip, subject_hash) VALUES (?, ?)")->execute([clientIp(), $anonClaimHash]);
             $pdo->commit();
             echo json_encode(['success' => true, 'role' => 'owner', 'accessId' => $issued['id'], 'key' => $issued['key']]);
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            denyAccess(500, 'claim_failed', 'Falha ao proteger o projeto', ['detail' => $e->getMessage()]);
+            denyAccess(500, 'claim_failed', 'Falha ao proteger o projeto', ['detail' => safeDetail($e)]);
         }
 
     // Exclusão definitiva, só pelo dono. Apaga tudo do projeto numa transação e reserva o id
@@ -1146,7 +1189,7 @@ switch ($action) {
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            denyAccess(500, 'delete_failed', 'Falha ao excluir o projeto', ['detail' => $e->getMessage()]);
+            denyAccess(500, 'delete_failed', 'Falha ao excluir o projeto', ['detail' => safeDetail($e)]);
         }
 
     case 'create_share':
@@ -1410,7 +1453,7 @@ switch ($action) {
         } catch (Exception $e) {
             $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(['error' => 'Falha ao excluir camada', 'detail' => $e->getMessage()]);
+            echo json_encode(['error' => 'Falha ao excluir camada', 'detail' => safeDetail($e)]);
             exit;
         }
 
@@ -1482,7 +1525,7 @@ switch ($action) {
         } catch (Exception $e) {
             $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(['error' => 'Falha ao salvar metadados', 'detail' => $e->getMessage()]);
+            echo json_encode(['error' => 'Falha ao salvar metadados', 'detail' => safeDetail($e)]);
             exit;
         }
 
@@ -1611,7 +1654,7 @@ switch ($action) {
         } catch (Exception $e) {
             $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(['error' => 'Falha ao sincronizar deltas', 'detail' => $e->getMessage()]);
+            echo json_encode(['error' => 'Falha ao sincronizar deltas', 'detail' => safeDetail($e)]);
             exit;
         }
 
@@ -2054,7 +2097,7 @@ switch ($action) {
         } catch (Exception $e) {
             $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(['error' => 'Falha na gravação integral', 'detail' => $e->getMessage()]);
+            echo json_encode(['error' => 'Falha na gravação integral', 'detail' => safeDetail($e)]);
             exit;
         }
 
@@ -2115,7 +2158,7 @@ switch ($action) {
         } catch (Exception $e) {
             $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(['error' => 'Falha ao restaurar', 'detail' => $e->getMessage()]);
+            echo json_encode(['error' => 'Falha ao restaurar', 'detail' => safeDetail($e)]);
             exit;
         }
 
@@ -2173,7 +2216,7 @@ switch ($action) {
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(['error' => 'Falha ao registrar auditoria', 'detail' => $e->getMessage()]);
+            echo json_encode(['error' => 'Falha ao registrar auditoria', 'detail' => safeDetail($e)]);
             exit;
         }
 
@@ -2237,7 +2280,7 @@ switch ($action) {
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             http_response_code(500);
-            echo json_encode(['error' => 'Falha ao enviar mensagem', 'detail' => $e->getMessage()]);
+            echo json_encode(['error' => 'Falha ao enviar mensagem', 'detail' => safeDetail($e)]);
             exit;
         }
 
@@ -2276,7 +2319,7 @@ switch ($action) {
             echo json_encode(['success' => true, 'rev' => $maxRev, 'sheets' => $sheets, 'locks' => $locks, 'library' => $library, 'lockTtl' => CM_PRINT_LOCK_TTL]);
             exit;
         } catch (Exception $e) {
-            denyAccess(500, 'print_changes_failed', 'Falha ao ler as pranchas', ['detail' => $e->getMessage()]);
+            denyAccess(500, 'print_changes_failed', 'Falha ao ler as pranchas', ['detail' => safeDetail($e)]);
         }
 
     case 'print_lock':
@@ -2300,7 +2343,7 @@ switch ($action) {
             $pdo->commit();
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            denyAccess(500, 'print_lock_failed', 'Falha ao travar a prancha', ['detail' => $e->getMessage()]);
+            denyAccess(500, 'print_lock_failed', 'Falha ao travar a prancha', ['detail' => safeDetail($e)]);
         }
         if ($holder !== null) denyAccess(423, 'sheet_locked', 'Prancha em edição por ' . $holder . '.', ['holder' => $holder]);
         echo json_encode(['success' => true, 'ttl' => CM_PRINT_LOCK_TTL]);
@@ -2346,7 +2389,7 @@ switch ($action) {
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            denyAccess(500, 'print_save_failed', 'Falha ao salvar a prancha', ['detail' => $e->getMessage()]);
+            denyAccess(500, 'print_save_failed', 'Falha ao salvar a prancha', ['detail' => safeDetail($e)]);
         }
 
     case 'print_delete_sheet':
@@ -2373,7 +2416,7 @@ switch ($action) {
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            denyAccess(500, 'print_delete_failed', 'Falha ao excluir a prancha', ['detail' => $e->getMessage()]);
+            denyAccess(500, 'print_delete_failed', 'Falha ao excluir a prancha', ['detail' => safeDetail($e)]);
         }
 
     case 'print_save_library':
@@ -2406,7 +2449,7 @@ switch ($action) {
             exit;
         } catch (Exception $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
-            denyAccess(500, 'print_library_failed', 'Falha ao salvar a biblioteca', ['detail' => $e->getMessage()]);
+            denyAccess(500, 'print_library_failed', 'Falha ao salvar a biblioteca', ['detail' => safeDetail($e)]);
         }
 
     // --------------------------------------------------------------------------
