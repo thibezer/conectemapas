@@ -258,6 +258,12 @@ export class PrintSmartGuides {
       refs.push({ val: item.x + item.width, source: 'item', label: `Borda com ${item.name || 'Item'}`, id: item.id });
     });
 
+    // 3. Guias Manuais Puxadas da Régua
+    const manualX = this.canvasEngine?.composer?.manualGuides?.x || [];
+    manualX.forEach(gx => {
+      refs.push({ val: gx, source: 'manual_guide', label: `Guia Manual ${gx} mm` });
+    });
+
     return refs;
   }
 
@@ -284,6 +290,12 @@ export class PrintSmartGuides {
       refs.push({ val: item.y, source: 'item', label: `Alinhado com ${item.name || 'Item'}`, id: item.id });
       refs.push({ val: item.y + item.height / 2, source: 'item_center', label: `Centro com ${item.name || 'Item'}`, id: item.id });
       refs.push({ val: item.y + item.height, source: 'item', label: `Base com ${item.name || 'Item'}`, id: item.id });
+    });
+
+    // 3. Guias Manuais Puxadas da Régua
+    const manualY = this.canvasEngine?.composer?.manualGuides?.y || [];
+    manualY.forEach(gy => {
+      refs.push({ val: gy, source: 'manual_guide', label: `Guia Manual ${gy} mm` });
     });
 
     return refs;

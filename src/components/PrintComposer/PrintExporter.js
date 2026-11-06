@@ -448,10 +448,27 @@ export class PrintExporter {
     const cross = 1.5 * mm;
     const fontSize = Math.max(6, Math.round(1.9 * mm));
 
+    const format = item.gridFormat || 'crosses';
+    const labelRot = item.gridLabelRot || 'vertical';
+
     ctx.save();
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = Math.max(1, 0.25 * mm);
     ctx.beginPath();
+
+    // 1. Linhas contínuas (quando format === 'lines')
+    if (format === 'lines') {
+      xs.forEach(gx => {
+        const px = x + gx.f * w;
+        ctx.moveTo(px, y); ctx.lineTo(px, y + h);
+      });
+      ys.forEach(gy => {
+        const py = y + gy.f * h;
+        ctx.moveTo(x, py); ctx.lineTo(x + w);
+      });
+    }
+
+    // 2. Ticks nas bordas (sempre presentes para precisão cartográfica)
     xs.forEach(gx => {
       const px = x + gx.f * w;
       ctx.moveTo(px, y); ctx.lineTo(px, y + tick);
@@ -462,12 +479,16 @@ export class PrintExporter {
       ctx.moveTo(x, py); ctx.lineTo(x + tick, py);
       ctx.moveTo(x + w, py); ctx.lineTo(x + w - tick, py);
     });
-    xs.forEach(gx => ys.forEach(gy => {
-      const cx = x + gx.f * w;
-      const cy = y + gy.f * h;
-      ctx.moveTo(cx - cross, cy); ctx.lineTo(cx + cross, cy);
-      ctx.moveTo(cx, cy - cross); ctx.lineTo(cx, cy + cross);
-    }));
+
+    // 3. Cruzetas nos cruzamentos (quando format === 'crosses')
+    if (format === 'crosses') {
+      xs.forEach(gx => ys.forEach(gy => {
+        const cx = x + gx.f * w;
+        const cy = y + gy.f * h;
+        ctx.moveTo(cx - cross, cy); ctx.lineTo(cx + cross, cy);
+        ctx.moveTo(cx, cy - cross); ctx.lineTo(cx, cy + cross);
+      }));
+    }
     ctx.stroke();
 
     // Rótulo com fundo branco, centrado em (cx, cy), opcionalmente girado
@@ -494,8 +515,10 @@ export class PrintExporter {
     });
     ys.forEach(gy => {
       const py = y + gy.f * h;
-      label(gy.label, x + gap, py, -Math.PI / 2);
-      label(gy.label, x + w - gap, py, Math.PI / 2);
+      const angleL = labelRot === 'horizontal' ? 0 : -Math.PI / 2;
+      const angleR = labelRot === 'horizontal' ? 0 : Math.PI / 2;
+      label(gy.label, x + gap, py, angleL);
+      label(gy.label, x + w - gap, py, angleR);
     });
     ctx.restore();
   }

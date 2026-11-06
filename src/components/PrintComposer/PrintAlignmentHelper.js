@@ -254,4 +254,64 @@ export class PrintAlignmentHelper {
     }
     composer.pushHistoryState(items.length > 1 ? `Duplicar ${items.length} Itens` : 'Duplicar Item');
   }
+
+  /**
+   * Distribui 3 ou mais itens horizontalmente com espaçamento uniforme
+   */
+  static distributeH(composer) {
+    const items = this.getSelectedItems(composer).filter(i => !i.locked);
+    if (items.length < 3) return;
+
+    const sorted = [...items].sort((a, b) => a.x - b.x);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    const minX = first.x;
+    const maxX = last.x + last.width;
+    const totalItemWidths = sorted.reduce((sum, it) => sum + it.width, 0);
+    const availableGap = maxX - minX - totalItemWidths;
+    const gap = availableGap / (sorted.length - 1);
+
+    let currentX = minX;
+    sorted.forEach((it, idx) => {
+      if (idx > 0 && idx < sorted.length - 1) {
+        it.x = Math.round(currentX * 10) / 10;
+        composer.updateItemPositionDOM(it);
+      }
+      currentX += it.width + gap;
+    });
+
+    composer.updatePropertiesPanel();
+    composer.pushHistoryState('Distribuir Horizontalmente');
+  }
+
+  /**
+   * Distribui 3 ou mais itens verticalmente com espaçamento uniforme
+   */
+  static distributeV(composer) {
+    const items = this.getSelectedItems(composer).filter(i => !i.locked);
+    if (items.length < 3) return;
+
+    const sorted = [...items].sort((a, b) => a.y - b.y);
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+
+    const minY = first.y;
+    const maxY = last.y + last.height;
+    const totalItemHeights = sorted.reduce((sum, it) => sum + it.height, 0);
+    const availableGap = maxY - minY - totalItemHeights;
+    const gap = availableGap / (sorted.length - 1);
+
+    let currentY = minY;
+    sorted.forEach((it, idx) => {
+      if (idx > 0 && idx < sorted.length - 1) {
+        it.y = Math.round(currentY * 10) / 10;
+        composer.updateItemPositionDOM(it);
+      }
+      currentY += it.height + gap;
+    });
+
+    composer.updatePropertiesPanel();
+    composer.pushHistoryState('Distribuir Verticalmente');
+  }
 }

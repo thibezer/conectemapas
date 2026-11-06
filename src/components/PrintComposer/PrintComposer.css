@@ -650,3 +650,149 @@
 .cm-psb-cloud {
   font-size: 10.5px;
 }
+
+
+/* Linhas contínuas da grade cartográfica */
+.cm-grid-full-line {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.4);
+}
+.cm-grid-line-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  transform: translateX(-50%);
+}
+.cm-grid-line-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+/* Rótulos laterais horizontais (opcional) */
+.cm-grid-label-left.is-horizontal {
+  transform: translateY(-50%) !important;
+  writing-mode: horizontal-tb !important;
+  left: 4px !important;
+}
+.cm-grid-label-right.is-horizontal {
+  transform: translateY(-50%) !important;
+  writing-mode: horizontal-tb !important;
+  right: 4px !important;
+}
+
+
+/* ==========================================================================
+   Guias Manuais da Régua (Padrão QGIS / Illustrator Drag-and-Drop)
+   ========================================================================== */
+.cm-print-manual-guides-layer {
+  pointer-events: none;
+}
+
+.cm-manual-guide {
+  position: absolute;
+  z-index: 85;
+  pointer-events: auto;
+}
+
+.cm-manual-guide-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #0284c7;
+  box-shadow: 0 0 3px rgba(2, 132, 199, 0.8);
+}
+
+.cm-manual-guide-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #0284c7;
+  box-shadow: 0 0 3px rgba(2, 132, 199, 0.8);
+}
+
+.cm-manual-guide-tag {
+  position: absolute;
+  background: #0284c7;
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  opacity: 0.85;
+  transition: opacity 0.15s ease;
+  user-select: none;
+}
+
+.cm-manual-guide:hover .cm-manual-guide-tag {
+  opacity: 1;
+  background: #0369a1;
+}
+
+.cm-manual-guide-v .cm-manual-guide-tag {
+  top: 2px;
+  left: 2px;
+}
+
+.cm-manual-guide-h .cm-manual-guide-tag {
+  left: 2px;
+  top: 2px;
+}
+
+.cm-manual-guide-del {
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.cm-manual-guide-del:hover {
+  opacity: 1;
+  color: #fca5a5;
+}
+
+/* Indicador flutuante durante arraste de régua */
+.cm-ruler-drag-ghost {
+  position: absolute;
+  pointer-events: none;
+  z-index: 200;
+}
+
+.cm-ruler-drag-ghost.horizontal {
+  left: 0;
+  right: 0;
+  height: 1px;
+  border-top: 1px dashed #38bdf8;
+}
+
+.cm-ruler-drag-ghost.vertical {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  border-left: 1px dashed #38bdf8;
+}
+
+.cm-ruler-drag-tag {
+  position: absolute;
+  background: #0284c7;
+  color: #fff;
+  font-family: monospace;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  top: 4px;
+  left: 4px;
+}

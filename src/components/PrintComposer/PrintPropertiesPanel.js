@@ -74,6 +74,8 @@ export class PrintPropertiesPanel {
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-bottom" title="Alinhar à Base" aria-label="Alinhar à Base">${ppIcon('alignBottom')}</ui-botao-primario>
                   </div>
                   <div class="cm-pp-btn-row">
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-distribute-h" title="Distribuir Horizontalmente (Espaçamento Uniforme)" aria-label="Distribuir Horizontalmente"><span class="cm-pp-btn-lbl">${ppIcon('distributeH')}Dist. H</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-distribute-v" title="Distribuir Verticalmente (Espaçamento Uniforme)" aria-label="Distribuir Verticalmente"><span class="cm-pp-btn-lbl">${ppIcon('distributeV')}Dist. V</span></ui-botao-primario>
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Itens (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}Duplicar</span></ui-botao-primario>
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-delete-multi" title="Excluir Itens (Delete)"><span class="cm-pp-btn-lbl">${ppIcon('trash')}Excluir</span></ui-botao-primario>
                   </div>
@@ -289,6 +291,21 @@ export class PrintPropertiesPanel {
               <ui-select id="prop-map-grid-type" class="cm-native-select cm-pp-w-xl" tamanho="sm" value="${item.gridType === 'utm' ? 'utm' : 'dms'}">
                 <option value="dms" ${sel(item.gridType === 'dms')}>Geográfica (DMS)</option>
                 <option value="utm" ${sel(item.gridType === 'utm')}>Métrica UTM (m)</option>
+              </ui-select>
+            </div>
+            <div class="cm-param-row">
+              <span class="cm-param-label">Estilo da Grade:</span>
+              <ui-select id="prop-map-grid-format" class="cm-native-select cm-pp-w-xl" tamanho="sm" value="${item.gridFormat || 'crosses'}">
+                <option value="crosses" ${sel(!item.gridFormat || item.gridFormat === 'crosses')}>Cruzetas e Ticks (+)</option>
+                <option value="lines" ${sel(item.gridFormat === 'lines')}>Linhas Contínuas</option>
+                <option value="ticks" ${sel(item.gridFormat === 'ticks')}>Apenas Ticks nas Bordas</option>
+              </ui-select>
+            </div>
+            <div class="cm-param-row">
+              <span class="cm-param-label">Rótulos Laterais:</span>
+              <ui-select id="prop-map-grid-label-rot" class="cm-native-select cm-pp-w-xl" tamanho="sm" value="${item.gridLabelRot || 'vertical'}">
+                <option value="vertical" ${sel(!item.gridLabelRot || item.gridLabelRot === 'vertical')}>Vertical (Padrão ABNT/QGIS)</option>
+                <option value="horizontal" ${sel(item.gridLabelRot === 'horizontal')}>Horizontal</option>
               </ui-select>
             </div>
           ` : ''}
@@ -696,6 +713,8 @@ export class PrintPropertiesPanel {
     const btnPropAlignT = document.getElementById('btn-prop-align-top');
     const btnPropAlignCV = document.getElementById('btn-prop-align-center-v');
     const btnPropAlignB = document.getElementById('btn-prop-align-bottom');
+    const btnPropDistH = document.getElementById('btn-prop-distribute-h');
+    const btnPropDistV = document.getElementById('btn-prop-distribute-v');
     const btnPropDup = document.getElementById('btn-prop-duplicate');
     const btnPropFront = document.getElementById('btn-prop-bring-front');
     const btnPropBack = document.getElementById('btn-prop-send-back');
@@ -706,6 +725,8 @@ export class PrintPropertiesPanel {
     if (btnPropAlignT) btnPropAlignT.onclick = () => composer.alignTop();
     if (btnPropAlignCV) btnPropAlignCV.onclick = () => composer.alignCenterV();
     if (btnPropAlignB) btnPropAlignB.onclick = () => composer.alignBottom();
+    if (btnPropDistH) btnPropDistH.onclick = () => composer.distributeH();
+    if (btnPropDistV) btnPropDistV.onclick = () => composer.distributeV();
     if (btnPropDup) btnPropDup.onclick = () => composer.duplicateSelectedItem();
     if (btnPropFront) btnPropFront.onclick = () => composer.bringToFront();
     if (btnPropBack) btnPropBack.onclick = () => composer.sendToBack();
@@ -800,6 +821,8 @@ export class PrintPropertiesPanel {
     const propMapRot = document.getElementById('prop-map-rot');
     const propGrid = document.getElementById('prop-map-grid');
     const propGridType = document.getElementById('prop-map-grid-type');
+    const propGridFormat = document.getElementById('prop-map-grid-format');
+    const propGridLabelRot = document.getElementById('prop-map-grid-label-rot');
     const btnPanMap = document.getElementById('btn-prop-pan-map');
 
     if (propScale) propScale.addEventListener('change', (e) => updateCurrent(it => it.scale = Math.max(100, parseFloat(e.target.value) || 10000), true));
@@ -811,7 +834,22 @@ export class PrintPropertiesPanel {
       });
     }
     if (propGridType) {
-      propGridType.addEventListener('change', (e) => updateCurrent(it => it.gridType = e.target.value));
+      propGridType.addEventListener('change', (e) => {
+        updateCurrent(it => it.gridType = e.target.value);
+        composer.mapRefreshers?.get(composer.selectedItemId)?.();
+      });
+    }
+    if (propGridFormat) {
+      propGridFormat.addEventListener('change', (e) => {
+        updateCurrent(it => it.gridFormat = e.target.value);
+        composer.mapRefreshers?.get(composer.selectedItemId)?.();
+      });
+    }
+    if (propGridLabelRot) {
+      propGridLabelRot.addEventListener('change', (e) => {
+        updateCurrent(it => it.gridLabelRot = e.target.value);
+        composer.mapRefreshers?.get(composer.selectedItemId)?.();
+      });
     }
     if (btnPanMap) {
       btnPanMap.addEventListener('click', () => composer.setInteractionMode('content_pan'));

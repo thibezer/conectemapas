@@ -76,6 +76,7 @@ export class PrintComposerModal {
     this.vectorLayers = new Map(); // Camada vetorial (canvas) de cada mapa
     this.resolveCache = new Map(); // Filtros casados por mapa, refeitos só quando a vista ou as feições mudam
     this.library = { filters: [], viewTemplates: [] }; // Filtros e modelos de vista do projeto
+    this.manualGuides = { x: [], y: [] }; // Guias manuais puxadas da régua (mm)
     this.tempViews = new Map(); // Isolar/ocultar temporário por mapa (só na tela)
     this.revealHidden = new Set(); // Mapas com "Revelar ocultos" ligado
     this._pick = null; // Escolha de feição no mapa em andamento
@@ -134,6 +135,7 @@ export class PrintComposerModal {
       paperSize: { ...this.paperSize },
       showAbntMargins: this.showAbntMargins,
       items: JSON.parse(JSON.stringify(this.items || [])),
+      manualGuides: JSON.parse(JSON.stringify(this.manualGuides || { x: [], y: [] })),
       action: actionName
     };
   }
@@ -187,6 +189,10 @@ export class PrintComposerModal {
     }
     this.showAbntMargins = state.showAbntMargins !== false;
     this.items = JSON.parse(JSON.stringify(state.items || []));
+    if (state.manualGuides) {
+      this.manualGuides = JSON.parse(JSON.stringify(state.manualGuides));
+      this.canvasEngine?.renderManualGuides();
+    }
     if (this.selectedItemId && !this.items.some(i => i.id === this.selectedItemId)) this.selectedItemId = null;
     this.updatePaperSheetDOM();
     this.renderAllItems();
@@ -226,6 +232,8 @@ export class PrintComposerModal {
   alignTop() { PrintAlignmentHelper.alignTop(this); }
   alignCenterV() { PrintAlignmentHelper.alignCenterV(this); }
   alignBottom() { PrintAlignmentHelper.alignBottom(this); }
+  distributeH() { PrintAlignmentHelper.distributeH(this); }
+  distributeV() { PrintAlignmentHelper.distributeV(this); }
   bringToFront() { PrintAlignmentHelper.bringToFront(this); }
   sendToBack() { PrintAlignmentHelper.sendToBack(this); }
   duplicateSelectedItem() { PrintAlignmentHelper.duplicateItem(this); }
@@ -267,6 +275,8 @@ export class PrintComposerModal {
               <div class="cm-print-paper-sheet" id="cm-print-paper-sheet">
                 <!-- Margens ABNT Normatizadas (Overlay) -->
                 <div class="cm-abnt-margins-frame" id="cm-abnt-margins-frame"></div>
+                <!-- Camada de Guias Manuais da Régua (Padrão QGIS / Illustrator) -->
+                <div id="cm-print-manual-guides-layer" class="cm-print-manual-guides-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 85;"></div>
                 <!-- Container de Itens Cartográficos -->
                 <div id="cm-print-items-layer" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></div>
                 <!-- Canvas de Guias Automáticas Inteligentes (Smart Guides estilo Illustrator) -->
@@ -888,7 +898,7 @@ export class PrintComposerModal {
                 south: b.getSouth(),
                 west: b.getWest(),
                 east: b.getEast()
-              }, item.gridType || 'dms'));
+              }, item.gridType || 'dms', item.gridFormat || 'crosses', item.gridLabelRot || 'vertical'));
             }
           };
 

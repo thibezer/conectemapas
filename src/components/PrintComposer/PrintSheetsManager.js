@@ -60,8 +60,11 @@ export class PrintSheetsManager {
 
     this.updateSheetNumbersInTitleBlocks();
     const cur = this.getCurrentSheet();
-    if (cur && (!this.composer.items || this.composer.items.length === 0)) {
-      this.composer.items = JSON.parse(JSON.stringify(cur.items || []));
+    if (cur) {
+      if (!this.composer.items || this.composer.items.length === 0) {
+        this.composer.items = JSON.parse(JSON.stringify(cur.items || []));
+      }
+      this.composer.manualGuides = cur.manualGuides ? JSON.parse(JSON.stringify(cur.manualGuides)) : { x: [], y: [] };
     }
     return cur;
   }
@@ -87,6 +90,7 @@ export class PrintSheetsManager {
     cur.paperSize = { ...this.composer.paperSize };
     cur.showAbntMargins = this.composer.showAbntMargins;
     cur.items = JSON.parse(JSON.stringify(this.composer.items || []));
+    cur.manualGuides = JSON.parse(JSON.stringify(this.composer.manualGuides || { x: [], y: [] }));
     cur.updatedAt = new Date().toISOString();
     this.updateSheetNumbersInTitleBlocks();
     this.saveToStorage();
@@ -136,6 +140,7 @@ export class PrintSheetsManager {
     this.composer.paperSize = target.paperSize;
     this.composer.showAbntMargins = target.showAbntMargins !== false;
     this.composer.items = JSON.parse(JSON.stringify(target.items || []));
+    this.composer.manualGuides = target.manualGuides ? JSON.parse(JSON.stringify(target.manualGuides)) : { x: [], y: [] };
     this.composer.selectedItemId = (this.composer.items.find(i => i.type === 'map') || this.composer.items[0])?.id || null;
     // O histórico é de cada prancha: desfazer não pode trazer itens da prancha anterior
     this.composer.resetHistory?.();

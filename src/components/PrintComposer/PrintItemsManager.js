@@ -644,15 +644,22 @@ export class PrintItemsManager {
 
   /**
    * Renderiza a Moldura e Rótulos da Grade Cartográfica Real no Mapa
+   * Suporta formatos: 'crosses' (cruzetas e ticks), 'lines' (linhas completas), 'ticks' (somente bordas)
+   * e rotação dos rótulos: 'vertical' (padrão técnico) ou 'horizontal'.
    */
-  static renderMapGridBorder(mapBounds, mode = 'dms') {
+  static renderMapGridBorder(mapBounds, mode = 'dms', format = 'crosses', labelRot = 'vertical') {
     const { xs, ys } = this.graticuleModel(mapBounds, mode);
     const esc = this.escapeHtml.bind(this);
     const pct = (f) => `${(f * 100).toFixed(3)}%`;
 
-    // Marcas nas quatro bordas, cruzes nas interseções e rótulos dentro da moldura
+    const isLines = format === 'lines';
+    const isCrosses = format === 'crosses' || !format;
+    const isHorizLabel = labelRot === 'horizontal';
+
     return `
-      <div class="cm-item-grid-border">
+      <div class="cm-item-grid-border cm-grid-format-${esc(format)} ${isHorizLabel ? 'cm-grid-labels-horizontal' : ''}">
+        ${isLines ? xs.map(x => `<span class="cm-grid-full-line cm-grid-line-v" style="left: ${pct(x.f)};"></span>`).join('') : ''}
+        ${isLines ? ys.map(y => `<span class="cm-grid-full-line cm-grid-line-h" style="top: ${pct(y.f)};"></span>`).join('') : ''}
         ${xs.map(x => `
           <span class="cm-grid-tick cm-grid-tick-top" style="left: ${pct(x.f)};"></span>
           <span class="cm-grid-tick cm-grid-tick-bottom" style="left: ${pct(x.f)};"></span>
@@ -662,10 +669,10 @@ export class PrintItemsManager {
         ${ys.map(y => `
           <span class="cm-grid-tick cm-grid-tick-left" style="top: ${pct(y.f)};"></span>
           <span class="cm-grid-tick cm-grid-tick-right" style="top: ${pct(y.f)};"></span>
-          <span class="cm-grid-label cm-grid-label-left" style="top: ${pct(y.f)};">${esc(y.label)}</span>
-          <span class="cm-grid-label cm-grid-label-right" style="top: ${pct(y.f)};">${esc(y.label)}</span>
+          <span class="cm-grid-label cm-grid-label-left ${isHorizLabel ? 'is-horizontal' : ''}" style="top: ${pct(y.f)};">${esc(y.label)}</span>
+          <span class="cm-grid-label cm-grid-label-right ${isHorizLabel ? 'is-horizontal' : ''}" style="top: ${pct(y.f)};">${esc(y.label)}</span>
         `).join('')}
-        ${xs.map(x => ys.map(y => `<span class="cm-grid-cross" style="left: ${pct(x.f)}; top: ${pct(y.f)};"></span>`).join('')).join('')}
+        ${isCrosses ? xs.map(x => ys.map(y => `<span class="cm-grid-cross" style="left: ${pct(x.f)}; top: ${pct(y.f)};"></span>`).join('')).join('') : ''}
       </div>
     `;
   }

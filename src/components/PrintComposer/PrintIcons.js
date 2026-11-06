@@ -20,6 +20,8 @@ const PATHS = {
   alignTop: '<path d="M3 4h18"/><rect x="6" y="8" width="4" height="12" rx="1"/><rect x="14" y="8" width="4" height="7" rx="1"/>',
   alignCenterV: '<path d="M3 12h18"/><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="8" width="4" height="8" rx="1"/>',
   alignBottom: '<path d="M3 20h18"/><rect x="6" y="4" width="4" height="12" rx="1"/><rect x="14" y="9" width="4" height="7" rx="1"/>',
+  distributeH: '<path d="M4 2v20M20 2v20"/><rect x="7" y="6" width="3" height="12" rx="0.5"/><rect x="14" y="6" width="3" height="12" rx="0.5"/>',
+  distributeV: '<path d="M2 4h20M2 20h20"/><rect x="6" y="7" width="12" height="3" rx="0.5"/><rect x="6" y="14" width="12" height="3" rx="0.5"/>',
   settings: '<path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
   collapse: '<path d="m6 17 5-5-5-5M13 17l5-5-5-5"/>',
   expand: '<path d="m11 17-5-5 5-5M18 17l-5-5 5-5"/>',

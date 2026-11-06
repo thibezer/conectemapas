@@ -224,6 +224,166 @@ export class PrintCanvasEngine {
         ctxV.restore();
       }
     }
+
+    this.bindRulerGuides();
+    this.renderManualGuides();
+  }
+
+  bindRulerGuides() {
+    if (typeof document === 'undefined') return;
+    const rulerH = document.getElementById('ruler-h');
+    const rulerV = document.getElementById('ruler-v');
+    if (!rulerH || !rulerV || rulerH._guideBound) return;
+    rulerH._guideBound = true;
+    rulerH.style.cursor = 'ns-resize';
+    rulerH.title = 'Clique e arraste para baixo para criar uma guia horizontal';
+    rulerV.style.cursor = 'ew-resize';
+    rulerV.title = 'Clique e arraste para a direita para criar uma guia vertical';
+
+    rulerH.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      this.startRulerGuideDrag('y', e.clientY);
+    });
+
+    rulerV.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      this.startRulerGuideDrag('x', e.clientX);
+    });
+  }
+
+  startRulerGuideDrag(axis, startClientPos) {
+    const sheet = document.getElementById('cm-print-paper-sheet');
+    const vp = document.getElementById('cm-print-viewport');
+    if (!sheet || !vp) return;
+
+    const ghost = document.createElement('div');
+    ghost.className = `cm-ruler-drag-ghost ${axis === 'y' ? 'horizontal' : 'vertical'}`;
+    const tag = document.createElement('div');
+    tag.className = 'cm-ruler-drag-tag';
+    ghost.appendChild(tag);
+    vp.appendChild(ghost);
+
+    const onMove = (e) => {
+      const sheetRect = sheet.getBoundingClientRect();
+      const pxPerMm = this.mmToPx;
+      if (pxPerMm <= 0) return;
+
+      const vpRect = vp.getBoundingClientRect();
+      if (axis === 'y') {
+        const yMm = (e.clientY - sheetRect.top) / pxPerMm;
+        const clampedY = Math.round(yMm * 2) / 2;
+        const screenY = e.clientY - vpRect.top + vp.scrollTop;
+        ghost.style.top = `${screenY}px`;
+        ghost.style.left = '0px';
+        ghost.style.right = '0px';
+        tag.textContent = `Y: ${clampedY.toFixed(1)} mm`;
+      } else {
+        const xMm = (e.clientX - sheetRect.left) / pxPerMm;
+        const clampedX = Math.round(xMm * 2) / 2;
+        const screenX = e.clientX - vpRect.left + vp.scrollLeft;
+        ghost.style.left = `${screenX}px`;
+        ghost.style.top = '0px';
+        ghost.style.bottom = '0px';
+        tag.textContent = `X: ${clampedX.toFixed(1)} mm`;
+      }
+    };
+
+    const onUp = (e) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      ghost.remove();
+
+      const sheetRect = sheet.getBoundingClientRect();
+      const pxPerMm = this.mmToPx;
+      if (pxPerMm <= 0) return;
+
+      if (axis === 'y') {
+        const yMm = (e.clientY - sheetRect.top) / pxPerMm;
+        const paperH = this.composer.paperSize?.height || 210;
+        if (yMm >= 0 && yMm <= paperH) {
+          this.addManualGuide('y', yMm);
+        }
+      } else {
+        const xMm = (e.clientX - sheetRect.left) / pxPerMm;
+        const paperW = this.composer.paperSize?.width || 297;
+        if (xMm >= 0 && xMm <= paperW) {
+          this.addManualGuide('x', xMm);
+        }
+      }
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }
+
+  addManualGuide(axis, valMm) {
+    this.composer.manualGuides = this.composer.manualGuides || { x: [], y: [] };
+    const list = this.composer.manualGuides[axis] || [];
+    const rounded = Math.round(valMm * 2) / 2;
+    if (!list.includes(rounded)) {
+      list.push(rounded);
+      list.sort((a, b) => a - b);
+      this.composer.manualGuides[axis] = list;
+      this.renderManualGuides();
+      this.composer.pushHistoryState(`Criar Guia ${axis.toUpperCase()} ${rounded}mm`);
+      UIToast.notificar({
+        tipo: 'sucesso',
+        titulo: 'Guia Criada',
+        mensagem: `Guia em ${rounded} mm adicionada. (Snap magnético ativo)`,
+        duracao: 1500
+      });
+    }
+  }
+
+  removeManualGuide(axis, valMm) {
+    if (!this.composer.manualGuides || !this.composer.manualGuides[axis]) return;
+    this.composer.manualGuides[axis] = this.composer.manualGuides[axis].filter(v => Math.abs(v - valMm) > 0.1);
+    this.renderManualGuides();
+    this.composer.pushHistoryState(`Remover Guia ${axis.toUpperCase()}`);
+  }
+
+  renderManualGuides() {
+    if (typeof document === 'undefined') return;
+    const layer = document.getElementById('cm-print-manual-guides-layer');
+    if (!layer) return;
+
+    const guides = this.composer.manualGuides || { x: [], y: [] };
+    const pxPerMm = this.mmToPx;
+
+    layer.innerHTML = `
+      ${(guides.x || []).map(x => `
+        <div class="cm-manual-guide cm-manual-guide-v" style="left: ${x * pxPerMm}px;" title="Guia vertical ${x} mm (duplo clique para excluir)" data-guide-axis="x" data-guide-val="${x}">
+          <div class="cm-manual-guide-tag" data-guide-axis="x" data-guide-val="${x}">
+            <span>${x} mm</span>
+            <button type="button" class="cm-manual-guide-del" data-del-guide="x" data-guide-val="${x}" title="Excluir guia">✕</button>
+          </div>
+        </div>
+      `).join('')}
+      ${(guides.y || []).map(y => `
+        <div class="cm-manual-guide cm-manual-guide-h" style="top: ${y * pxPerMm}px;" title="Guia horizontal ${y} mm (duplo clique para excluir)" data-guide-axis="y" data-guide-val="${y}">
+          <div class="cm-manual-guide-tag" data-guide-axis="y" data-guide-val="${y}">
+            <span>${y} mm</span>
+            <button type="button" class="cm-manual-guide-del" data-del-guide="y" data-guide-val="${y}" title="Excluir guia">✕</button>
+          </div>
+        </div>
+      `).join('')}
+    `;
+
+    layer.querySelectorAll('[data-del-guide]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        this.removeManualGuide(btn.dataset.delGuide, parseFloat(btn.dataset.guideVal));
+      };
+    });
+
+    layer.querySelectorAll('.cm-manual-guide').forEach(el => {
+      el.ondblclick = (e) => {
+        e.stopPropagation();
+        this.removeManualGuide(el.dataset.guideAxis, parseFloat(el.dataset.guideVal));
+      };
+    });
   }
 
   bindInteractions(paperSheet) {
