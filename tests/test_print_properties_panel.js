@@ -425,7 +425,7 @@ for (const it of [...secItems, shapeItem2, PrintItemsManager.createNewItem('imag
 console.log('✔ Seções e estilos validados');
 
 // Abas: só a ativa fica visível (padrão: Item); aba inválida cai em Item
-const paneHidden = (h, k) => new RegExp(`data-pp-pane="${k}"\s+hidden`).test(h);
+const paneHidden = (h, k) => new RegExp(`data-pp-pane="${k}"\\s+hidden`).test(h);
 html = PrintPropertiesPanel.render(secComposer);
 assert.ok(!paneHidden(html, 'item') && ['items', 'paper', 'atlas'].every(k => paneHidden(html, k)), 'Padrão: só a aba Item visível');
 html = PrintPropertiesPanel.render({ ...secComposer, panelTab: 'paper' });
