@@ -480,9 +480,56 @@ assert.strictEqual(PrintItemsManager.titleBlockDateText({ date: '23/10/2026' }),
 const tbCells = PrintTitleBlockRenderer.cells({ properties: { scaleText: '1:10.000', date: '23/10/2026 (01/01)', sheetNumber: '01/01' } }, 'P', 44396);
 const tbValue = (label) => tbCells.find(c => c.label === label).value;
 assert.strictEqual(tbValue('Escala Numérica'), '1:44.396', 'Carimbo mostra a escala do mapa');
-assert.strictEqual(tbValue('Data / Prancha'), '23/10/2026 (01/01)', 'Número da prancha não se repete');
+assert.strictEqual(tbValue('Data'), '23/10/2026', 'Data sem o número da prancha');
+assert.strictEqual(tbValue('Prancha'), '01/01', 'Número da prancha em célula própria');
 assert.strictEqual(tbValue('Projeto / Obra'), 'P', 'Sem nome próprio, usa o do projeto');
-assert.strictEqual(tbCells.length, 9, 'Mesmas 9 células da tela e do PDF');
+assert.strictEqual(tbCells.length, 10, 'Padrão: 10 células (sem opcionais), as mesmas na tela e no PDF');
+
+// Área e perímetro viram duas células quando o texto segue o formato gerado pelo app
+const areaTxt = '30.307,5 m² (3,031 ha) | P: 662,9 m';
+assert.deepStrictEqual(PrintItemsManager.splitAreaPerimeter(areaTxt), { area: '30.307,5 m² (3,031 ha)', perimeter: '662,9 m' });
+assert.strictEqual(PrintItemsManager.splitAreaPerimeter('Conforme Tabela'), null, 'Texto livre fica numa célula só');
+assert.strictEqual(PrintItemsManager.splitAreaPerimeter('a | b | c'), null);
+const splitCells = PrintTitleBlockRenderer.cells({ properties: { areaPerimeter: areaTxt } }, 'P', 5000);
+assert.strictEqual(splitCells.find(c => c.key === 'perimeter').value, '662,9 m');
+assert.strictEqual(splitCells.length, 11);
+
+// Fuso UTM do datum vem do centro do mapa (Umuarama/PR = 22S); texto que já traz o fuso não muda
+assert.strictEqual(PrintItemsManager.titleBlockDatumText({ datum: 'SIRGAS 2000 / UTM' }, [-23.76, -53.31]), 'SIRGAS 2000 / UTM 22S');
+assert.strictEqual(PrintItemsManager.titleBlockDatumText({ datum: 'SIRGAS 2000 / UTM' }, [-3.1, -61]), 'SIRGAS 2000 / UTM 20S');
+assert.strictEqual(PrintItemsManager.titleBlockDatumText({ datum: 'SIRGAS 2000 / UTM 23S' }, [-23, -53]), 'SIRGAS 2000 / UTM 23S');
+assert.strictEqual(PrintItemsManager.titleBlockDatumText({ datum: 'SIRGAS 2000 / UTM' }, null), 'SIRGAS 2000 / UTM', 'Sem centro: texto como está');
+assert.strictEqual(PrintItemsManager.titleBlockDatumText({ datum: 'SIRGAS 2000 / UTM' }, [200, 0]), 'SIRGAS 2000 / UTM', 'Centro inválido é ignorado');
+
+// Campos opcionais e assinatura só aparecem quando pedidos
+const optCells = PrintTitleBlockRenderer.cells({ properties: { drawnBy: 'Ana', revision: 'B', docNumber: '12', showSignature: true } }, 'P', 5000);
+assert.strictEqual(optCells.find(c => c.key === 'doc').value, 'Nº 12 · Rev. B');
+assert.ok(optCells.some(c => c.kind === 'signature'), 'Assinatura quando showSignature');
+assert.ok(!PrintTitleBlockRenderer.cells({ properties: { drawnBy: '' } }, 'P', 5000).some(c => c.key === 'drawnBy'), 'Sem opcionais, sem a linha');
+
+// Grade: célula "full" ocupa a linha; a que sobra sozinha também
+const rowsOf = (cells) => PrintTitleBlockRenderer.packRows(cells).map(r => r.length);
+assert.deepStrictEqual(rowsOf(tbCells), [1, 2, 2, 2, 1, 2], 'Projeto, 3 pares, área inteira e data/prancha');
+assert.deepStrictEqual(rowsOf(splitCells), [1, 2, 2, 2, 2, 2]);
+const idealA = PrintTitleBlockRenderer.idealHeightMm({ properties: {} });
+const idealB = PrintTitleBlockRenderer.idealHeightMm({ properties: { showSignature: true, drawnBy: 'Ana' } });
+assert.ok(idealB > idealA && idealA > 40 && idealA < 90, `Altura ideal cresce com o conteúdo (${idealA} → ${idealB})`);
+
+// Texto na célula: cabe, quebra em 2 linhas, encolhe ou encurta com "…" (largura = 10 px por letra × tamanho/10)
+const meas = (t, size) => t.length * size;
+const one = PrintTitleBlockRenderer.layoutText(meas, 'Curto', 100, { px: 10 });
+assert.deepStrictEqual(one, { lines: ['Curto'], px: 10 });
+const two = PrintTitleBlockRenderer.layoutText(meas, 'Levantamento Planialtimétrico Brasília', 260, { px: 10, maxLines: 2, availH: 40 });
+assert.strictEqual(two.lines.length, 2, 'Quebra em duas linhas quando há altura');
+assert.ok(two.lines.every(l => meas(l, two.px) <= 260), 'Cada linha cabe');
+const shrink = PrintTitleBlockRenderer.layoutText(meas, 'Texto um pouco comprido', 200, { px: 10, minPx: 7 });
+assert.ok(shrink.lines.length === 1 && shrink.px < 10 && meas(shrink.lines[0], shrink.px) <= 200, 'Encolhe antes de cortar');
+const clipped = PrintTitleBlockRenderer.layoutText(meas, 'Texto absurdamente comprido que nunca cabe', 100, { px: 10, minPx: 7 });
+assert.ok(clipped.lines[0].endsWith('…') && meas(clipped.lines[0], clipped.px) <= 100, 'Último recurso: reticências');
+const clipped2 = PrintTitleBlockRenderer.layoutText(meas, 'Texto absurdamente comprido que nunca cabe em lugar nenhum', 100, { px: 10, minPx: 7, maxLines: 2, availH: 40 });
+assert.ok(clipped2.lines.length === 2 && clipped2.lines[1].endsWith('…') && clipped2.lines.every(l => meas(l, clipped2.px) <= 100), 'Duas linhas, a última com reticências');
+assert.strictEqual(PrintTitleBlockRenderer.contrastColor('#000000'), '#ffffff');
+assert.strictEqual(PrintTitleBlockRenderer.contrastColor('#ffd000'), '#000000');
 // Texto que não cabe na célula é encurtado (antes transbordava no PDF)
 const fakeMeasure = { measureText: (t) => ({ width: t.length * 10 }) };
 assert.strictEqual(PrintTitleBlockRenderer.fit(fakeMeasure, 'Curto', 100), 'Curto');

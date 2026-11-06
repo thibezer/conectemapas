@@ -1,4 +1,5 @@
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
 import { PrintImageUtils } from './PrintImageUtils.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
@@ -607,6 +608,20 @@ export class PrintPropertiesPanel {
           </div>
           ${field('prop-tb-loc', 'Localização / Imóvel', 'location')}
           ${field('prop-tb-date', 'Data da Planta', 'date')}
+          ${field('prop-tb-drawn', 'Desenhista / Projetista (opcional)', 'drawnBy')}
+          ${field('prop-tb-doc', 'Nº do Desenho (opcional)', 'docNumber')}
+          ${field('prop-tb-rev', 'Revisão (opcional)', 'revision')}
+          <div class="cm-param-row">
+            <span class="cm-param-label">Campo de assinatura:</span>
+            <ui-checkbox id="prop-tb-signature" ${p.showSignature === true ? 'checked' : ''}></ui-checkbox>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Cor do Cabeçalho:</span>
+            <input type="color" id="prop-tb-accent" class="cm-pp-color" value="${colorValue(p.accentColor, '#000000')}" />
+          </div>
+          <ui-botao-primario inline id="btn-tb-fit-height" variante="ghost" class="cm-pp-wide-btn" title="Ajusta a altura do carimbo ao número de campos">
+            Ajustar altura ao conteúdo
+          </ui-botao-primario>
           <ui-botao-primario inline id="btn-sync-project-meta-carimbo" variante="secundario" class="cm-pp-wide-btn" title="Sincronizar projeto, escala, área e data com os dados atuais">
             ${ppIcon('sync')}Sincronizar com o Projeto
           </ui-botao-primario>
@@ -1107,6 +1122,32 @@ export class PrintPropertiesPanel {
     if (propTbArea) propTbArea.addEventListener('input', (e) => updateTbProp('areaPerimeter', e.target.value));
     if (propTbLoc) propTbLoc.addEventListener('input', (e) => updateTbProp('location', e.target.value));
     if (propTbDate) propTbDate.addEventListener('input', (e) => updateTbProp('date', e.target.value));
+
+    const propTbDrawn = document.getElementById('prop-tb-drawn');
+    const propTbDoc = document.getElementById('prop-tb-doc');
+    const propTbRev = document.getElementById('prop-tb-rev');
+    const propTbSignature = document.getElementById('prop-tb-signature');
+    const propTbAccent = document.getElementById('prop-tb-accent');
+    const btnTbFitHeight = document.getElementById('btn-tb-fit-height');
+    if (propTbDrawn) propTbDrawn.addEventListener('input', (e) => updateTbProp('drawnBy', e.target.value));
+    if (propTbDoc) propTbDoc.addEventListener('input', (e) => updateTbProp('docNumber', e.target.value));
+    if (propTbRev) propTbRev.addEventListener('input', (e) => updateTbProp('revision', e.target.value));
+    if (propTbSignature) propTbSignature.addEventListener('change', (e) => updateTbProp('showSignature', !!e.target.checked));
+    if (propTbAccent) propTbAccent.addEventListener('input', (e) => updateTbProp('accentColor', e.target.value));
+    if (btnTbFitHeight) {
+      btnTbFitHeight.addEventListener('click', () => {
+        updateCurrent(it => {
+          if (it.type !== 'title_block') return;
+          // Cresce/encolhe ancorado na borda mais próxima (o carimbo costuma ficar embaixo)
+          const anchorBottom = it.y + it.height / 2 > composer.paperSize.height / 2;
+          const bottom = it.y + it.height;
+          it.height = PrintTitleBlockRenderer.idealHeightMm(it, composer.projectName);
+          if (anchorBottom) it.y = bottom - it.height;
+          PrintItemsManager.clampItemToPaper(it, composer.paperSize);
+        }, false, true);
+        composer.updatePropertiesPanel();
+      });
+    }
 
     if (btnCalcArea) {
       btnCalcArea.addEventListener('click', () => {

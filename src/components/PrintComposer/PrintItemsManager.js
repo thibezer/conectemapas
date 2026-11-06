@@ -203,10 +203,43 @@ export class PrintItemsManager {
     return props.scaleText || '1:10.000';
   }
 
-  /** Data e número da prancha do carimbo: "23/10/2026 (02/03)" (ignora números antigos gravados na data) */
+  /** Só a data do carimbo (ignora números de prancha antigos gravados nela: "23/10/2026 (01/01)") */
+  static titleBlockDateOnly(props = {}) {
+    return String(props.date || new Date().toLocaleDateString('pt-BR')).split('(')[0].trim();
+  }
+
+  /** Número da prancha do carimbo: "02/03" */
+  static titleBlockSheetText(props = {}) {
+    return props.sheetNumber || '01/01';
+  }
+
+  /** Data e número da prancha do carimbo: "23/10/2026 (02/03)" */
   static titleBlockDateText(props = {}) {
-    const date = String(props.date || new Date().toLocaleDateString('pt-BR')).split('(')[0].trim();
-    return `${date} (${props.sheetNumber || '01/01'})`;
+    return `${this.titleBlockDateOnly(props)} (${this.titleBlockSheetText(props)})`;
+  }
+
+  /**
+   * Datum do carimbo. "SIRGAS 2000 / UTM" (sem fuso) ganha o fuso e o hemisfério do centro do mapa
+   * principal ("SIRGAS 2000 / UTM 22S"); texto que já traz o fuso ou centro inválido ficam como estão.
+   */
+  static titleBlockDatumText(props = {}, center = null) {
+    const base = String(props.datum || 'SIRGAS 2000 / UTM').trim();
+    const lat = Number(center?.[0]);
+    const lng = Number(center?.[1]);
+    if (!/\bUTM$/i.test(base) || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return base;
+    return `${base} ${this.detectUtmZone(lng)}${lat < 0 ? 'S' : 'N'}`;
+  }
+
+  /**
+   * "30.307,5 m² (3,031 ha) | P: 662,9 m" → { area, perimeter }; null quando o texto não segue
+   * esse formato (texto livre, "Conforme Tabela"): o carimbo mostra uma célula só.
+   */
+  static splitAreaPerimeter(text) {
+    const parts = String(text ?? '').split('|');
+    if (parts.length !== 2) return null;
+    const m = parts[1].trim().match(/^(?:P|Per[ií]metro)\s*[:=]?\s*(.+)$/i);
+    const area = parts[0].trim();
+    return m && area ? { area, perimeter: m[1].trim() } : null;
   }
 
   /**

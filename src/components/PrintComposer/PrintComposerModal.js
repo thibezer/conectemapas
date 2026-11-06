@@ -1271,6 +1271,7 @@ export class PrintComposerModal {
         item,
         projectName: this.projectName,
         mapScale: this.items.find(i => i.type === 'map')?.scale,
+        mapCenter: this.items.find(i => i.type === 'map')?.view?.center,
         wMm: item.width,
         hMm: item.height,
         pxPerMm,
