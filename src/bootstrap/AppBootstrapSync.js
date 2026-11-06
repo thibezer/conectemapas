@@ -40,7 +40,10 @@ export class AppBootstrapSync {
           .map(normalizeFeature));
       }
       if (Array.isArray(saved.auditLog)) app.auditLog = saved.auditLog;
-      if (saved.basemap) app.currentBasemap = saved.basemap;
+      if (saved.basemap) {
+        app.currentBasemap = saved.basemap;
+        app._hasLocalBasemap = true; // o mapa base é escolha de cada operador
+      }
       StorageService.markMetadataSynced({
         id: app.projectId,
         name: app.projectName,
@@ -262,10 +265,14 @@ export class AppBootstrapSync {
         app.features = FeatureVisibility.applyAll(app.projectId, cloudData.features
           .filter(f => !tombstones.has(f.id))
           .map(normalizeFeature));
+        // Substituição completa pela nuvem: o histórico local não vale mais (restauraria feições antigas)
+        app.historyUndo = [];
+        app.historyRedo = [];
         updated = true;
       }
 
-      if (cloudData.project && cloudData.project.basemap) {
+      // Mapa base é preferência do operador: o do projeto na nuvem só vale se ele nunca escolheu um aqui
+      if (cloudData.project && cloudData.project.basemap && !app._hasLocalBasemap) {
         app.currentBasemap = cloudData.project.basemap;
         if (app.mapEngine) app.mapEngine.setBaseLayer?.(app.currentBasemap);
         if (app.layerPanel) app.layerPanel.currentBasemap = app.currentBasemap;

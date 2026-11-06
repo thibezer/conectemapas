@@ -455,9 +455,11 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
         $stmtAll->execute($chunk);
         foreach ($stmtAll->fetchAll() as $row) $existingById[$row['id']] = $row;
     }
+    // visible e opacity são preferências de visualização de cada operador (ficam no navegador dele):
+    // a camada existente nunca tem esses campos sobrescritos; o INSERT grava só o valor inicial.
     $stmtUpdate = $pdo->prepare("
         UPDATE cm_layers
-        SET project_id = ?, name = ?, color = ?, type = ?, visible = ?, opacity = ?, order_idx = ?, rev = ?, client_id = ?, updated_at = NOW()
+        SET project_id = ?, name = ?, color = ?, type = ?, order_idx = ?, rev = ?, client_id = ?, updated_at = NOW()
         WHERE id = ?
     ");
     $stmtInsert = $pdo->prepare("
@@ -485,12 +487,10 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
                 && $existing['name'] === $lname
                 && $existing['color'] === $lcolor
                 && $existing['type'] === $ltype
-                && (int)$existing['visible'] === $lvis
-                && abs((float)$existing['opacity'] - $lopac) < 0.0001
                 && (int)$existing['order_idx'] === $lord;
             if ($unchanged) continue;
             if ($rev === null) $rev = nextRevision($pdo, $projectId);
-            $stmtUpdate->execute([$projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $rev, $clientId, $lid]);
+            $stmtUpdate->execute([$projectId, $lname, $lcolor, $ltype, $lord, $rev, $clientId, $lid]);
         } else {
             if ($rev === null) $rev = nextRevision($pdo, $projectId);
             $stmtInsert->execute([$lid, $projectId, $lname, $lcolor, $ltype, $lvis, $lopac, $lord, $rev, $clientId]);
@@ -1442,7 +1442,6 @@ switch ($action) {
                 ON DUPLICATE KEY UPDATE
                     name = ?,
                     description = ?,
-                    basemap = ?,
                     center_lat = ?,
                     center_lng = ?,
                     zoom = ?,
@@ -1460,10 +1459,9 @@ switch ($action) {
                 $lngVal,
                 $zoom,
                 $featureCount,
-                // ON DUPLICATE KEY UPDATE (compatibilidade MariaDB 11.8)
+                // ON DUPLICATE KEY UPDATE (compatibilidade MariaDB 11.8; o mapa base só vale no INSERT)
                 $name,
                 $description,
-                $basemap,
                 $latVal,
                 $lngVal,
                 $zoom,
@@ -1937,7 +1935,6 @@ switch ($action) {
                 ON DUPLICATE KEY UPDATE
                     name = ?,
                     description = ?,
-                    basemap = ?,
                     center_lat = ?,
                     center_lng = ?,
                     zoom = ?,
@@ -1962,10 +1959,9 @@ switch ($action) {
                 $projLng,
                 $projZoom,
                 $projCount,
-                // ON DUPLICATE KEY UPDATE
+                // ON DUPLICATE KEY UPDATE (o mapa base é preferência do operador: só o INSERT o grava)
                 $projName,
                 $projDesc,
-                $projBase,
                 $projLat,
                 $projLng,
                 $projZoom,

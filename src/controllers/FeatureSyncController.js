@@ -8,6 +8,7 @@ import { normalizeFeature } from '../services/MockData.js';
 import { StorageService } from '../services/StorageService.js';
 import { mergeLocalVisibility, keepLocalVisibility } from '../services/Storage/LayerVisibility.js';
 import { FeatureVisibility } from '../services/Storage/FeatureVisibility.js';
+import { ShortcutsController } from './ShortcutsController.js';
 import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyUndoable } from '../utils/toastHelpers.js';
@@ -449,6 +450,7 @@ export class FeatureSyncController {
       if (!data.feature || app.features.some(f => f.id === data.feature.id)) return; // eco/reenvio da mesma feição
       if (StorageService.hasLocalTombstone(data.feature.id, app.projectId)) return;
       if (StorageService.hasPendingLocalChange(data.feature.id)) return;
+      ShortcutsController.markRemoteTouched(app, [data.feature.id]);
       const incoming = FeatureVisibility.apply(app.projectId, data.feature);
       app.features.push(incoming);
       app.mapEngine.updateFeature(incoming, app.layers);
@@ -471,6 +473,7 @@ export class FeatureSyncController {
       if (StorageService.hasPendingLocalChange(data.feature.id)) return;
       const idx = app.features.findIndex(f => f.id === data.feature.id);
       if (idx >= 0) {
+        ShortcutsController.markRemoteTouched(app, [data.feature.id]);
         const incoming = FeatureVisibility.apply(app.projectId, data.feature);
         app.features[idx] = incoming;
         app.mapEngine.updateFeature(incoming, app.layers);
@@ -479,6 +482,7 @@ export class FeatureSyncController {
         StorageService.applyRemoteChangesLocally([incoming], [], app.projectId);
       }
     } else if (type === 'feature:deleted') {
+      ShortcutsController.markRemoteTouched(app, [data.featureId]);
       app.features = app.features.filter(f => f.id !== data.featureId);
       app.mapEngine.removeFeature(data.featureId);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
@@ -533,9 +537,7 @@ export class FeatureSyncController {
           }, { syncCloud: false });
           if (app.mapEngine) {
             app.mapEngine.setLayerColor?.(data.layer.id, data.layer.color);
-            if (data.layer.opacity !== undefined) {
-              app.mapEngine.setLayerOpacity?.(data.layer.id, data.layer.opacity);
-            }
+            // visible e opacity são preferências locais (keepLocalVisibility já os preservou)
           }
           if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
           if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
@@ -546,9 +548,11 @@ export class FeatureSyncController {
         const fallback = (data.fallbackLayerId && app.layers.find(l => l.id === data.fallbackLayerId && l.id !== data.layerId))
           || app.layers.find(l => l.id !== data.layerId);
         if (fallback) {
+          const moved = [];
           app.features.forEach(f => {
-            if (f && f.layerId === data.layerId) f.layerId = fallback.id;
+            if (f && f.layerId === data.layerId) { f.layerId = fallback.id; moved.push(f.id); }
           });
+          ShortcutsController.markRemoteTouched(app, moved);
         }
         app.layers = app.layers.filter(l => l.id !== data.layerId);
         StorageService.deleteLayer(data.layerId, fallback ? fallback.id : null, app.projectId);
@@ -622,6 +626,7 @@ export class FeatureSyncController {
 
     let stateChanged = false;
     const deletedSet = new Set(deleted);
+    ShortcutsController.markRemoteTouched(app, [...deletedSet, ...(Array.isArray(upserted) ? upserted.map(f => f && f.id) : [])]);
 
     // 1. Processa reconciliação de camadas remotas
     if (Array.isArray(layers) && layers.length > 0) {
@@ -638,7 +643,9 @@ export class FeatureSyncController {
           // Camada excluída por outro operador (as feições chegam já movidas, via upsert)
           if (localLayer && app.layers.length > 1) {
             const fallback = app.layers.find(l => l.id !== remLayer.id);
-            app.features.forEach(f => { if (f.layerId === remLayer.id) f.layerId = fallback.id; });
+            const moved = [];
+            app.features.forEach(f => { if (f.layerId === remLayer.id) { f.layerId = fallback.id; moved.push(f.id); } });
+            ShortcutsController.markRemoteTouched(app, moved);
             app.layers = app.layers.filter(l => l.id !== remLayer.id);
             StorageService.deleteLayer(remLayer.id, fallback.id, app.projectId);
             layersChanged = true;
@@ -662,11 +669,7 @@ export class FeatureSyncController {
             layersChanged = true;
           }
           // `visible` (olhinho) é preferência local: nunca vem de outro operador
-          if (remLayer.opacity !== undefined && Math.abs((localLayer.opacity ?? 1) - Number(remLayer.opacity)) > 0.001) {
-            localLayer.opacity = Number(remLayer.opacity);
-            app.mapEngine?.setLayerOpacity?.(localLayer.id, localLayer.opacity);
-            layersChanged = true;
-          }
+          // `opacity` também é preferência local: só a opacidade inicial de camada nova vem da nuvem
           if (remLayer.order !== undefined && Number(localLayer.order ?? -1) !== Number(remLayer.order)) {
             localLayer.order = Number(remLayer.order);
             layersChanged = true;

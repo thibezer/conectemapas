@@ -168,12 +168,13 @@ console.log('🧪 Testando Fase 1: Sincronização e Concorrência...');
   assert.equal(appC.layers[1].color, '#f59e0b');
   // O olhinho é preferência local: o `visible: false` do outro operador é ignorado
   assert.equal(appC.layers[1].visible, true);
-  assert.equal(appC.layers[1].opacity, 0.4);
+  // A opacidade também é preferência local (o 0.4 do outro operador é ignorado)
+  assert.equal(appC.layers[1].opacity, 1);
   assert.deepEqual(engineCalls.colors, [['l-a', '#f59e0b']]);
   assert.deepEqual(engineCalls.visibilities, []);
-  assert.deepEqual(engineCalls.opacities, [['l-a', 0.4]]);
+  assert.deepEqual(engineCalls.opacities, []);
   assert.equal(engineCalls.reorders, 1);
-  console.log('  ✔ 3. Cor, opacidade e ordem sincronizadas; visibilidade (olhinho) permanece local.');
+  console.log('  ✔ 3. Cor e ordem sincronizadas; olhinho e opacidade das camadas permanecem locais.');
 }
 
 // 4. Undo e Redo notificam o CollaborationHub

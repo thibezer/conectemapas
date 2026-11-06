@@ -12,7 +12,7 @@ import { CLOUD_API_URL, cloudFetch } from './StorageConstants.js';
 import { LocalStore } from './LocalStore.js';
 import { DeltaQueue } from './DeltaQueue.js';
 import { AccessManager } from './AccessManager.js';
-import { layersForCloud } from './LayerVisibility.js';
+import { layersForCloud, layersForSignature, changedLayers, baselineFrom } from './LayerVisibility.js';
 import { FeatureVisibility } from './FeatureVisibility.js';
 
 const _clientId = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
@@ -78,6 +78,9 @@ let _offlineFlushPromise = null;
 // Último metadado confirmado pela nuvem (por projeto): editar uma feição não muda
 // nome/camadas, então reenviar o mesmo save_metadata só gasta rede e consultas no servidor.
 const _lastMetaSig = new Map();
+// Camadas como a nuvem as conhece (projeto -> id -> assinatura dos campos compartilhados):
+// só o que o operador mudou é enviado, para uma cópia defasada não sobrescrever o colega.
+const _layerBaseline = new Map();
 
 // Versão do deploy e época de recarregamento forçado: detecta novo build ou comando remoto
 const _clientAppVersion = typeof __APP_VERSION__ !== 'undefined' ? String(__APP_VERSION__) : 'dev';
@@ -136,9 +139,9 @@ function checkRemoteVersionSignals(data) {
 
 function metadataSignature(data) {
   return JSON.stringify([
-    data.name || '', data.description || '', data.basemap || '',
-    // o olhinho (visible) é local: alterná-lo não é mudança do projeto
-    layersForCloud(data.layers)
+    // Olhinho (visible), opacidade e mapa base são preferências do operador: não são mudança do projeto
+    data.name || '', data.description || '',
+    layersForSignature(data.layers)
   ]);
 }
 
@@ -413,6 +416,7 @@ export class CloudSyncEngine {
     const projId = projectData.id || 'projeto_padrao';
     if (this.hasPendingLayerSync(projId)) return;
     _lastMetaSig.set(projId, metadataSignature(projectData));
+    _layerBaseline.set(projId, baselineFrom(projectData.layers));
   }
 
   static syncMetadataToCloudDebounced(projectData, delayMs = 400) {
@@ -515,6 +519,9 @@ export class CloudSyncEngine {
       this._notifyCloudStatus();
 
       const projId = projectData.id || 'projeto_padrao';
+      // Só as camadas que ESTE operador mudou (a posição na lista vira `order` se a camada não tiver)
+      const allLayers = Array.isArray(projectData.layers) ? projectData.layers : [];
+      const sentLayers = changedLayers(allLayers, _layerBaseline.get(projId));
       const payload = {
         id: projId,
         clientId: _clientId,
@@ -526,7 +533,7 @@ export class CloudSyncEngine {
         featureCount: projectData.featureCount !== undefined
           ? projectData.featureCount
           : (Array.isArray(projectData.features) ? projectData.features.length : 0),
-        layers: layersForCloud(projectData.layers)
+        layers: layersForCloud(sentLayers.map(l => (l && l.order === undefined ? { ...l, order: allLayers.indexOf(l) } : l)))
       };
 
       const sentSig = metadataSignature(projectData);
@@ -540,6 +547,7 @@ export class CloudSyncEngine {
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
         _lastMetaSig.set(projId, sentSig);
+        _layerBaseline.set(projId, baselineFrom(sentLayers, _layerBaseline.get(projId)));
         // Só limpa se nenhuma edição mais nova ficou na fila durante o envio
         if (!_cloudMetaDebounceTimer) this._setLayerDirty(dirtyProjectId, false);
       }
@@ -642,6 +650,7 @@ export class CloudSyncEngine {
         data.features = data.features.map(unpackFeatureFromCloud);
       }
       if (!this.hasPendingLayerSync(projectId) && data.project) {
+        _layerBaseline.set(projectId, baselineFrom(data.layers));
         _lastMetaSig.set(projectId, metadataSignature({
           id: projectId,
           name: data.project.name,

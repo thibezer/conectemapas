@@ -88,6 +88,8 @@ export class ShortcutsController {
       cache.set(id, { shadow: shadowOf(feat), json });
       snapshot[i] = json;
     }
+    // Marca em que ponto das mudanças remotas esta foto foi tirada (ver reconcileSnapshot)
+    snapshot.seq = app._remoteSeq || 0;
     // Feições excluídas deixam o cache (os snapshots antigos mantêm as próprias strings)
     if (cache.size > features.length * 2 + 100) {
       const alive = new Set();
@@ -125,6 +127,62 @@ export class ShortcutsController {
     return restored;
   }
 
+  /**
+   * Registra que colegas (nuvem ou outra aba) alteraram/criaram/excluíram estas feições agora.
+   * Desfazer/Refazer não pode desfazer o que veio de outros operadores depois da foto do histórico.
+   */
+  static markRemoteTouched(app, ids) {
+    if (!app || !ids) return;
+    const list = Array.isArray(ids) ? ids : [...ids];
+    if (list.length === 0) return;
+    const seq = (app._remoteSeq || 0) + 1;
+    app._remoteSeq = seq;
+    const map = app._remoteSeqById || (app._remoteSeqById = new Map());
+    for (const id of list) if (id !== undefined && id !== null) map.set(id, seq);
+  }
+
+  /**
+   * Converte a foto do histórico em feições, mas só desfaz o que é do próprio operador:
+   * feição que um colega criou, alterou ou excluiu DEPOIS da foto continua como está
+   * (não é apagada, revertida nem ressuscitada). Sem mudança remota desde a foto, restaura tudo.
+   * Devolve { features, kept } com `kept` = quantas feições de colegas foram preservadas.
+   */
+  static reconcileSnapshot(app, snapshot, current) {
+    const restored = ShortcutsController.restoreSnapshot(snapshot, current);
+    const mark = snapshot && Number.isFinite(snapshot.seq) ? snapshot.seq : 0;
+    if (!((app._remoteSeq || 0) > mark)) return { features: restored, kept: 0 };
+
+    const seqs = app._remoteSeqById || new Map();
+    const remote = (id) => (seqs.get(id) || 0) > mark;
+    const currentById = new Map();
+    for (let i = 0; i < current.length; i++) currentById.set(current[i].id, current[i]);
+
+    const features = [];
+    const seen = new Set();
+    let kept = 0;
+    for (const feat of restored) {
+      seen.add(feat.id);
+      if (!remote(feat.id)) { features.push(feat); continue; }
+      const cur = currentById.get(feat.id);
+      if (cur) features.push(cur);
+      if (!cur || cur !== feat) kept++;
+    }
+    for (const cur of current) {
+      if (!seen.has(cur.id) && remote(cur.id)) { features.push(cur); kept++; }
+    }
+    return { features, kept };
+  }
+
+  static _notifyKept(kept) {
+    if (!(kept > 0)) return;
+    UIToast.notificar({
+      tipo: 'informativo',
+      titulo: 'Alterações de colegas preservadas',
+      mensagem: `${kept} feição(ões) alterada(s) por outro operador depois da sua ação foram mantidas.`,
+      duracao: 4000
+    });
+  }
+
   static _notifyDiffToCollab(app, oldFeatures, diff) {
     if (!app || !app.collabHub || !diff) return;
     const oldIds = new Set((oldFeatures || []).map(f => f && f.id));
@@ -154,7 +212,9 @@ export class ShortcutsController {
     app.historyRedo.push(ShortcutsController.takeSnapshot(app));
     const previousSnapshot = app.historyUndo.pop();
     const oldFeatures = app.features;
-    app.features = ShortcutsController.restoreSnapshot(previousSnapshot, oldFeatures);
+    const undone = ShortcutsController.reconcileSnapshot(app, previousSnapshot, oldFeatures);
+    app.features = undone.features;
+    ShortcutsController._notifyKept(undone.kept);
     FeatureVisibility.syncFromFeatures(app.projectId, app.features);
     const diff = StorageService.applyDiff(oldFeatures, app.features);
     ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
@@ -178,7 +238,9 @@ export class ShortcutsController {
     app.historyUndo.push(ShortcutsController.takeSnapshot(app));
     const nextSnapshot = app.historyRedo.pop();
     const oldFeatures = app.features;
-    app.features = ShortcutsController.restoreSnapshot(nextSnapshot, oldFeatures);
+    const redone = ShortcutsController.reconcileSnapshot(app, nextSnapshot, oldFeatures);
+    app.features = redone.features;
+    ShortcutsController._notifyKept(redone.kept);
     FeatureVisibility.syncFromFeatures(app.projectId, app.features);
     const diff = StorageService.applyDiff(oldFeatures, app.features);
     ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
