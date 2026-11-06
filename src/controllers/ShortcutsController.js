@@ -124,6 +124,20 @@ export class ShortcutsController {
     return restored;
   }
 
+  static _notifyDiffToCollab(app, oldFeatures, diff) {
+    if (!app || !app.collabHub || !diff) return;
+    const oldIds = new Set((oldFeatures || []).map(f => f && f.id));
+    if (Array.isArray(diff.toDelete)) {
+      diff.toDelete.forEach(id => app.collabHub.notifyFeatureDeleted(id));
+    }
+    if (Array.isArray(diff.toUpsert)) {
+      diff.toUpsert.forEach(feat => {
+        if (oldIds.has(feat.id)) app.collabHub.notifyFeatureUpdated(feat);
+        else app.collabHub.notifyFeatureCreated(feat);
+      });
+    }
+  }
+
   static undo(app) {
     if (!app.historyUndo || app.historyUndo.length === 0) {
       UIToast.notificar({
@@ -140,7 +154,8 @@ export class ShortcutsController {
     const previousSnapshot = app.historyUndo.pop();
     const oldFeatures = app.features;
     app.features = ShortcutsController.restoreSnapshot(previousSnapshot, oldFeatures);
-    StorageService.applyDiff(oldFeatures, app.features);
+    const diff = StorageService.applyDiff(oldFeatures, app.features);
+    ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
     app.refreshMapAndTable();
     app.saveMetadata(false);
 
@@ -162,7 +177,8 @@ export class ShortcutsController {
     const nextSnapshot = app.historyRedo.pop();
     const oldFeatures = app.features;
     app.features = ShortcutsController.restoreSnapshot(nextSnapshot, oldFeatures);
-    StorageService.applyDiff(oldFeatures, app.features);
+    const diff = StorageService.applyDiff(oldFeatures, app.features);
+    ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
     app.refreshMapAndTable();
     app.saveMetadata(false);
 

@@ -114,7 +114,11 @@ export class CollaborationHub {
         break;
 
       case 'layer:delete':
-        this.onEvent('layer:deleted', { layerId: data.layerId, user: sender });
+        this.onEvent('layer:deleted', { layerId: data.layerId, fallbackLayerId: data.fallbackLayerId || null, user: sender });
+        break;
+
+      case 'layers:reorder':
+        this.onEvent('layers:reordered', { layers: data.layers, user: sender });
         break;
 
       case 'feature:lock':
@@ -181,8 +185,12 @@ export class CollaborationHub {
     this.broadcast('layer:update', { layer });
   }
 
-  notifyLayerDeleted(layerId) {
-    this.broadcast('layer:delete', { layerId });
+  notifyLayerDeleted(layerId, fallbackLayerId = null) {
+    this.broadcast('layer:delete', { layerId, fallbackLayerId });
+  }
+
+  notifyLayersReordered(layers) {
+    this.broadcast('layers:reorder', { layers });
   }
 
   lockFeature(featureId) {

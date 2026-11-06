@@ -34,6 +34,12 @@ export class AppBootstrapSync {
       }
       if (Array.isArray(saved.auditLog)) app.auditLog = saved.auditLog;
       if (saved.basemap) app.currentBasemap = saved.basemap;
+      StorageService.markMetadataSynced({
+        id: app.projectId,
+        name: app.projectName,
+        basemap: app.currentBasemap,
+        layers: app.layers
+      });
     } else {
       // Projeto recém-criado pelo app: nome, camadas e enquadramento vêm da semente
       const seed = ProjectLifecycle.takeSeed(app.projectId);
@@ -101,6 +107,12 @@ export class AppBootstrapSync {
           if (app.textPromptModal) app.textPromptModal.updateLayers(app.layers);
           if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
         }
+        StorageService.markMetadataSynced({
+          id: app.projectId,
+          name: app.projectName,
+          basemap: app.currentBasemap,
+          layers: app.layers
+        });
       }
 
       const hasLocalFeatures = Array.isArray(app.features) && app.features.length > 0;
@@ -182,7 +194,7 @@ export class AppBootstrapSync {
       basemap: app.currentBasemap,
       layers: app.layers,
       featureCount: app.features.length
-    });
+    }, { syncCloud: false });
     return true;
   }
 
@@ -198,7 +210,7 @@ export class AppBootstrapSync {
 
       if (cloudData.project && cloudData.project.name) {
         app.projectName = cloudData.project.name;
-        const titleInput = document.getElementById('cm-project-name-input');
+        const titleInput = typeof document !== 'undefined' ? document.getElementById('cm-project-name-input') : null;
         if (titleInput) titleInput.value = app.projectName;
         updated = true;
       }
@@ -217,9 +229,9 @@ export class AppBootstrapSync {
 
       if (cloudData.project && cloudData.project.basemap) {
         app.currentBasemap = cloudData.project.basemap;
-        if (app.mapEngine) app.mapEngine.setBaseLayer(app.currentBasemap);
+        if (app.mapEngine) app.mapEngine.setBaseLayer?.(app.currentBasemap);
         if (app.layerPanel) app.layerPanel.currentBasemap = app.currentBasemap;
-        const seletor = document.getElementById('cm-seletor-mapa-base');
+        const seletor = typeof document !== 'undefined' ? document.getElementById('cm-seletor-mapa-base') : null;
         if (seletor) seletor.mapaBaseAtivo = app.currentBasemap;
       }
 
@@ -242,7 +254,7 @@ export class AppBootstrapSync {
           basemap: app.currentBasemap,
           layers: app.layers,
           featureCount: app.features.length
-        });
+        }, { syncCloud: false });
         await StorageService.applyRemoteChangesLocally(app.features, [], app.projectId);
       }
       return true;
@@ -282,7 +294,19 @@ export class AppBootstrapSync {
         return;
       }
 
+      const user = app.collabHub ? app.collabHub.currentUser : null;
+      const presence = user ? {
+        name: user.displayName || user.name,
+        color: user.color,
+        lat: app._lastCursorLatLng ? app._lastCursorLatLng.lat : undefined,
+        lng: app._lastCursorLatLng ? app._lastCursorLatLng.lng : undefined
+      } : null;
+
       if (app.mapEngine && app.mapEngine.isDrawing) {
+        // Mantém o heartbeat de presença ativo durante desenhos longos (>12s) sem puxar deltas de feições
+        StorageService.pingPresence(app.projectId, presence).then((remPresence) => {
+          if (remPresence) FeatureSyncController.applyRemotePresence(app, remPresence);
+        }).catch(() => {});
         schedule(ACTIVE_INTERVAL_MS);
         return;
       }
@@ -303,14 +327,6 @@ export class AppBootstrapSync {
             featureCount: app.features.length
           });
         }
-
-        const user = app.collabHub ? app.collabHub.currentUser : null;
-        const presence = user ? {
-          name: user.displayName || user.name,
-          color: user.color,
-          lat: app._lastCursorLatLng ? app._lastCursorLatLng.lat : undefined,
-          lng: app._lastCursorLatLng ? app._lastCursorLatLng.lng : undefined
-        } : null;
 
         const changes = await StorageService.pullChangesFromCloud(app.projectId, presence);
         if (!changes) {

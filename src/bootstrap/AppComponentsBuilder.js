@@ -9,6 +9,7 @@ import { notifyProgress, copyToClipboardWithToast, notifyUndoable } from '../uti
 import { CanvasMapEngine } from '../services/CanvasMapEngine.js';
 import { StorageService } from '../services/StorageService.js';
 import { SpatialAlgorithms } from '../services/SpatialAlgorithms.js';
+import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils.js';
 import { BatchActions } from '../services/BatchActions.js';
 import { AdvancedSearchPanel } from '../components/AdvancedSearch/AdvancedSearchPanel.js';
 
@@ -83,7 +84,7 @@ export class AppComponentsBuilder {
         baseStyle.fillColor = baseStyle.fillColor || fill;
         baseStyle.fillOpacity = baseStyle.fillOpacity ?? 0.35;
       }
-      return {
+      const joined = {
         ...JSON.parse(JSON.stringify(base)),
         id: `feat_${Date.now()}_${n}_joined`,
         name: `${base.name || 'Forma Unida'} (União)`,
@@ -91,14 +92,29 @@ export class AppComponentsBuilder {
         coordinates: res.coordinates,
         style: baseStyle
       };
+      joined.properties = { ...(joined.properties || {}), ...FeatureGeometryUtils.computeMetricProperties(joined) };
+      return joined;
     });
 
-    StorageService.queueFeaturesBulkDelete([...consumed], app.projectId);
+    const consumedIds = [...consumed];
     app.features = app.features.filter(f => !consumed.has(f.id));
     created.forEach((feat) => app.features.push(feat));
-    StorageService.queueFeaturesBulkUpsert(created, app.projectId);
+    if (typeof app.removeFeaturesBulk === 'function') {
+      app.removeFeaturesBulk(consumedIds);
+    } else {
+      StorageService.queueFeaturesBulkDelete(consumedIds, app.projectId);
+    }
+    if (typeof app.saveFeaturesBulk === 'function') {
+      app.saveFeaturesBulk(created);
+    } else {
+      StorageService.queueFeaturesBulkUpsert(created, app.projectId);
+      app.saveMetadata(true);
+    }
+    if (app.collabHub) {
+      consumedIds.forEach(id => app.collabHub.notifyFeatureDeleted(id));
+      created.forEach(feat => app.collabHub.notifyFeatureCreated(feat));
+    }
     app.refreshMapAndTable();
-    app.saveMetadata(true);
     app.mapEngine?.selectFeatures(created.map(f => f.id));
 
     const bridgeInfo = joinRes.bridges > 0
@@ -469,9 +485,10 @@ export class AppComponentsBuilder {
         }
       },
       onLayerReorder: (newLayers) => {
-        app.layers = [...newLayers];
+        app.layers = newLayers.map((l, idx) => ({ ...l, order: idx }));
         app.mapEngine.reorderLayers(app.layers);
         StorageService.saveLayersBatch(app.layers, app.projectId);
+        if (app.collabHub) app.collabHub.notifyLayersReordered?.(app.layers);
         app.saveMetadata(true);
       },
       onLayerOpacityChange: (layerId, opacity) => {
@@ -507,11 +524,13 @@ export class AppComponentsBuilder {
       onLayerFit: (layerId) => app.mapEngine.fitLayer(layerId),
       onAddLayer: () => ProjectActionsController.openNewLayerModal(app),
       onFeatureToggle: (featureId, isVisible) => {
-        const feat = app.features.find(f => f.id === featureId);
-        if (feat) {
-          feat.visible = isVisible;
-          app.mapEngine.updateFeature(feat, app.layers);
-          app.saveFeature(feat);
+        const idx = app.features.findIndex(f => f.id === featureId);
+        if (idx >= 0) {
+          const updated = { ...app.features[idx], visible: isVisible };
+          app.features[idx] = updated;
+          app.mapEngine.updateFeature(updated, app.layers);
+          if (app.collabHub) app.collabHub.notifyFeatureUpdated(updated);
+          app.saveFeature(updated);
         }
       },
       onFeatureSelect: (feature) => {
@@ -536,10 +555,14 @@ export class AppComponentsBuilder {
         app.saveMetadata(false);
       },
       onFeatureLockToggle: (featureId, isLocked) => {
-        const feat = app.features.find(f => f.id === featureId);
-        if (feat) {
-          feat.locked = isLocked;
-          app.saveFeature(feat);
+        const idx = app.features.findIndex(f => f.id === featureId);
+        if (idx >= 0) {
+          app.pushHistory?.(`${isLocked ? 'Bloquear' : 'Desbloquear'} "${app.features[idx].name || featureId}"`);
+          const updated = { ...app.features[idx], locked: isLocked };
+          app.features[idx] = updated;
+          if (app.collabHub) app.collabHub.notifyFeatureUpdated(updated);
+          app.saveFeature(updated);
+          app.updateHUD?.();
         }
       },
       onBulkUpdate: (updatedFeatures) => {
@@ -547,8 +570,15 @@ export class AppComponentsBuilder {
         const updateMap = new Map(updatedFeatures.map(f => [f.id, f]));
         app.features = app.features.map(f => updateMap.get(f.id) || f);
         app.refreshMapAndTable();
-        StorageService.queueFeaturesBulkUpsert(updatedFeatures);
-        app.saveMetadata(false);
+        if (typeof app.saveFeaturesBulk === 'function') {
+          app.saveFeaturesBulk(updatedFeatures);
+        } else {
+          StorageService.queueFeaturesBulkUpsert(updatedFeatures);
+          app.saveMetadata(false);
+        }
+        if (app.collabHub) {
+          updatedFeatures.forEach(f => app.collabHub.notifyFeatureUpdated(f));
+        }
         UIToast.notificar({ tipo: 'sucesso', titulo: 'Modificação Coletiva', mensagem: `${updatedFeatures.length} feições atualizadas com sucesso.`, duracao: 2500 });
       },
       onBulkDelete: (requestedIds) => {
@@ -564,9 +594,16 @@ export class AppComponentsBuilder {
         app.pushHistory(`Exclusão coletiva (${featureIds.length} itens)`);
         app.features = app.features.filter(f => !idSet.has(f.id));
         app.refreshMapAndTable();
-        StorageService.queueFeaturesBulkDelete(featureIds);
+        if (typeof app.removeFeaturesBulk === 'function') {
+          app.removeFeaturesBulk(featureIds);
+        } else {
+          StorageService.queueFeaturesBulkDelete(featureIds);
+          app.saveMetadata(false);
+        }
+        if (app.collabHub) {
+          featureIds.forEach(id => app.collabHub.notifyFeatureDeleted(id));
+        }
         featureIds.forEach(id => app.layerPanel && app.layerPanel.handleSelectedFeatureRemoved?.(id));
-        app.saveMetadata(false);
         notifyUndoable(app, { titulo: 'Exclusão Coletiva', mensagem: `${featureIds.length} feições removidas.` });
       },
       onBasemapChange: (basemapName) => {

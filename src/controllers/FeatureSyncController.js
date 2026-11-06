@@ -420,7 +420,7 @@ export class FeatureSyncController {
         basemap: app.currentBasemap,
         layers: app.layers,
         featureCount: app.features.length
-      });
+      }, { syncCloud: false });
 
     } else if (type === 'feature:updated') {
       if (!data.feature || StorageService.hasLocalTombstone(data.feature.id, app.projectId)) return;
@@ -451,14 +451,24 @@ export class FeatureSyncController {
         basemap: app.currentBasemap,
         layers: app.layers,
         featureCount: app.features.length
-      });
+      }, { syncCloud: false });
 
     } else if (type === 'layer:created') {
       if (data.layer && !app.layers.some(l => l.id === data.layer.id)) {
         app.layers.push(data.layer);
         StorageService.saveLayer(data.layer, app.projectId);
+        StorageService.saveMetadata({
+          id: app.projectId,
+          name: app.projectName,
+          basemap: app.currentBasemap,
+          layers: app.layers,
+          featureCount: app.features.length
+        }, { syncCloud: false });
+        app.mapEngine?.renderFeatures?.(app.features, app.layers);
         if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
+        if (app.bufferModal) app.bufferModal.updateLayers?.(app.layers);
+        if (app.textPromptModal) app.textPromptModal.updateLayers?.(app.layers);
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       }
     } else if (type === 'layer:updated') {
@@ -467,20 +477,63 @@ export class FeatureSyncController {
         if (lIdx >= 0) {
           app.layers[lIdx] = data.layer;
           StorageService.saveLayer(data.layer, app.projectId);
+          StorageService.saveMetadata({
+            id: app.projectId,
+            name: app.projectName,
+            basemap: app.currentBasemap,
+            layers: app.layers,
+            featureCount: app.features.length
+          }, { syncCloud: false });
           if (app.mapEngine) {
-            app.mapEngine.setLayerColor(data.layer.id, data.layer.color);
-            app.mapEngine.setLayerVisibility(data.layer.id, data.layer.visible !== false);
+            app.mapEngine.setLayerColor?.(data.layer.id, data.layer.color);
+            app.mapEngine.setLayerVisibility?.(data.layer.id, data.layer.visible !== false);
+            if (data.layer.opacity !== undefined) {
+              app.mapEngine.setLayerOpacity?.(data.layer.id, data.layer.opacity);
+            }
           }
           if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+          if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
         }
       }
     } else if (type === 'layer:deleted') {
-      if (data.layerId) {
+      if (data.layerId && app.layers.length > 1) {
+        const fallback = (data.fallbackLayerId && app.layers.find(l => l.id === data.fallbackLayerId && l.id !== data.layerId))
+          || app.layers.find(l => l.id !== data.layerId);
+        if (fallback) {
+          app.features.forEach(f => {
+            if (f && f.layerId === data.layerId) f.layerId = fallback.id;
+          });
+        }
         app.layers = app.layers.filter(l => l.id !== data.layerId);
-        StorageService.deleteLayer(data.layerId, null, app.projectId);
+        StorageService.deleteLayer(data.layerId, fallback ? fallback.id : null, app.projectId);
+        if (app.activeLayerId === data.layerId && fallback && typeof app.setActiveLayer === 'function') {
+          app.setActiveLayer(fallback.id, false);
+        }
+        StorageService.saveMetadata({
+          id: app.projectId,
+          name: app.projectName,
+          basemap: app.currentBasemap,
+          layers: app.layers,
+          featureCount: app.features.length
+        }, { syncCloud: false });
         if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
-        app.refreshMapAndTable();
+        app.refreshMapAndTable?.(true);
+      }
+    } else if (type === 'layers:reordered') {
+      if (Array.isArray(data.layers) && data.layers.length > 0 && !StorageService.hasPendingLayerSync()) {
+        app.layers = data.layers.map((l, idx) => ({ ...l, order: idx }));
+        app.mapEngine?.reorderLayers?.(app.layers);
+        StorageService.saveLayersBatch(app.layers, app.projectId);
+        StorageService.saveMetadata({
+          id: app.projectId,
+          name: app.projectName,
+          basemap: app.currentBasemap,
+          layers: app.layers,
+          featureCount: app.features.length
+        }, { syncCloud: false });
+        if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
+        if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
       }
     } else if (type === 'chat:message') {
       if (app.layerPanel) {
@@ -513,7 +566,9 @@ export class FeatureSyncController {
     if (Array.isArray(layers) && layers.length > 0) {
       let layersChanged = false;
       let layersRemoved = false;
-      // Edição local de camadas ainda não confirmada na nuvem vence: não reverte nome/cor
+      let layersAdded = false;
+      let layersReordered = false;
+      // Edição local de camadas ainda não confirmada na nuvem vence: não reverte nome/cor/ordem
       const localLayersPending = StorageService.hasPendingLayerSync();
       for (const remLayer of layers) {
         if (!remLayer || !remLayer.id) continue;
@@ -533,23 +588,54 @@ export class FeatureSyncController {
         if (!localLayer) {
           app.layers.push(remLayer);
           layersChanged = true;
+          layersAdded = true;
+          if (remLayer.order !== undefined) layersReordered = true;
         } else if (!localLayersPending) {
-          if (localLayer.name !== remLayer.name || localLayer.color !== remLayer.color) {
+          if (remLayer.name !== undefined && localLayer.name !== remLayer.name) {
             localLayer.name = remLayer.name;
-            localLayer.color = remLayer.color;
             layersChanged = true;
+          }
+          if (remLayer.color !== undefined && localLayer.color !== remLayer.color) {
+            localLayer.color = remLayer.color;
+            app.mapEngine?.setLayerColor?.(localLayer.id, remLayer.color);
+            layersChanged = true;
+          }
+          if (remLayer.visible !== undefined && (localLayer.visible !== false) !== (remLayer.visible !== false)) {
+            localLayer.visible = remLayer.visible !== false;
+            app.mapEngine?.setLayerVisibility?.(localLayer.id, localLayer.visible);
+            layersChanged = true;
+          }
+          if (remLayer.opacity !== undefined && Math.abs((localLayer.opacity ?? 1) - Number(remLayer.opacity)) > 0.001) {
+            localLayer.opacity = Number(remLayer.opacity);
+            app.mapEngine?.setLayerOpacity?.(localLayer.id, localLayer.opacity);
+            layersChanged = true;
+          }
+          if (remLayer.order !== undefined && Number(localLayer.order ?? -1) !== Number(remLayer.order)) {
+            localLayer.order = Number(remLayer.order);
+            layersChanged = true;
+            layersReordered = true;
           }
         }
       }
       if (layersChanged) {
         stateChanged = true;
+        if (layersReordered) {
+          app.layers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          app.mapEngine?.reorderLayers?.(app.layers);
+        }
         if (typeof app.setActiveLayer === 'function' && !app.layers.some(l => l.id === app.activeLayerId) && app.layers.length > 0) {
           app.setActiveLayer(app.layers[0].id, false);
         }
         StorageService.saveLayersBatch(app.layers, app.projectId);
         if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
-        if (layersRemoved && typeof app.refreshMapAndTable === 'function') app.refreshMapAndTable();
+        if (app.bufferModal) app.bufferModal.updateLayers?.(app.layers);
+        if (app.textPromptModal) app.textPromptModal.updateLayers?.(app.layers);
+        if (layersRemoved && typeof app.refreshMapAndTable === 'function') {
+          app.refreshMapAndTable();
+        } else if (layersAdded) {
+          app.mapEngine?.renderFeatures?.(app.features, app.layers);
+        }
       }
     }
 
@@ -622,7 +708,7 @@ export class FeatureSyncController {
         basemap: app.currentBasemap,
         layers: app.layers,
         featureCount: app.features.length
-      });
+      }, { syncCloud: false });
     }
 
     return stateChanged;

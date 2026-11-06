@@ -65,8 +65,9 @@ export class StorageService {
 
   // ---- PERSISTÊNCIA DE METADADOS & PROJETO ----
 
-  static saveMetadata(projectData) {
+  static saveMetadata(projectData, options = {}) {
     if (!projectData) return false;
+    const { syncCloud = true } = options;
     try {
       const projId = projectData.id || _currentProjectId || 'projeto_padrao';
       const manifest = {
@@ -108,12 +109,20 @@ export class StorageService {
         }
       }
 
-      this.syncMetadataToCloudDebounced(projectData);
+      if (syncCloud) {
+        this.syncMetadataToCloudDebounced(projectData);
+      } else {
+        CloudSyncEngine.markMetadataSynced(projectData);
+      }
       return true;
     } catch (e) {
       console.error('[StorageService] Erro ao salvar metadados:', e);
       return false;
     }
+  }
+
+  static markMetadataSynced(projectData) {
+    return CloudSyncEngine.markMetadataSynced(projectData);
   }
 
   static saveMetadataDebounced(projectData, delayMs = 300) {
@@ -309,6 +318,7 @@ export class StorageService {
 
     if (toDelete.length > 0) this.queueFeaturesBulkDelete(toDelete, projId);
     if (toUpsert.length > 0) this.queueFeaturesBulkUpsert(toUpsert, projId);
+    return { toUpsert, toDelete };
   }
 
   // ---- AUDITORIA ----
@@ -373,6 +383,10 @@ export class StorageService {
 
   static pullChangesFromCloud(projectId = null, presence = null) {
     return CloudSyncEngine.pullChangesFromCloud(projectId || _currentProjectId, presence);
+  }
+
+  static pingPresence(projectId = null, presence = null) {
+    return CloudSyncEngine.pingPresence(projectId || _currentProjectId, presence);
   }
 
   static applyRemoteChangesLocally(upserted = [], deletedIds = [], projectId = null) {

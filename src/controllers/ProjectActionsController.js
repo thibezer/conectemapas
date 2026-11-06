@@ -196,7 +196,15 @@ export class ProjectActionsController {
     if (app.attributeTable) {
       app.attributeTable.updateData(app.features, app.layers);
     }
-    app.saveMetadata();
+    app.saveMetadata(true);
+    // Enfileira imediatamente na nuvem para que a camada exista no MySQL antes de qualquer feição criada nela
+    StorageService.syncMetadataToCloud({
+      id: app.projectId,
+      name: app.projectName,
+      basemap: app.currentBasemap,
+      layers: app.layers,
+      featureCount: app.features.length
+    });
 
     if (typeof app.setActiveLayer === 'function') {
       app.setActiveLayer(newLayer.id);
@@ -235,7 +243,7 @@ export class ProjectActionsController {
     StorageService.deleteLayer(layerId, remainingLayer.id, app.projectId);
     StorageService.deleteLayerInCloud(layerId, app.projectId);
     if (app.collabHub) {
-      app.collabHub.notifyLayerDeleted(layerId);
+      app.collabHub.notifyLayerDeleted(layerId, remainingLayer.id);
     }
     if (movedFeatures.length > 0) {
       StorageService.queueFeaturesBulkUpsert(movedFeatures, app.projectId);

@@ -317,15 +317,27 @@ export class CloudSyncEngine {
     } catch {}
   }
 
+  /**
+   * Registra a assinatura atual dos metadados como já confirmada pela nuvem
+   * (usado ao hidratar/aplicar dados remotos para não disparar eco de save_metadata).
+   */
+  static markMetadataSynced(projectData) {
+    if (!projectData) return;
+    const projId = projectData.id || 'projeto_padrao';
+    if (this.hasPendingLayerSync(projId)) return;
+    _lastMetaSig.set(projId, metadataSignature(projectData));
+  }
+
   static syncMetadataToCloudDebounced(projectData, delayMs = 400) {
     if (!projectData) return;
+    const projId = projectData.id || 'projeto_padrao';
     // Nada mudou desde o último envio confirmado e não há envio em curso/agendado: não reenvia
     if (!_cloudMetaDebounceTimer && _layerSyncInFlight === 0
-        && _lastMetaSig.get(projectData.id || 'projeto_padrao') === metadataSignature(projectData)) {
+        && _lastMetaSig.get(projId) === metadataSignature(projectData)) {
       return;
     }
     _pendingMetaForCloud = projectData;
-    this._setLayerDirty(projectData.id, true);
+    this._setLayerDirty(projId, true);
     if (_cloudMetaDebounceTimer) clearTimeout(_cloudMetaDebounceTimer);
     _cloudMetaDebounceTimer = setTimeout(() => {
       _cloudMetaDebounceTimer = null;
@@ -542,6 +554,15 @@ export class CloudSyncEngine {
       if (Array.isArray(data.features)) {
         data.features = data.features.map(unpackFeatureFromCloud);
       }
+      if (!this.hasPendingLayerSync(projectId) && data.project) {
+        _lastMetaSig.set(projectId, metadataSignature({
+          id: projectId,
+          name: data.project.name,
+          description: data.project.description,
+          basemap: data.project.basemap,
+          layers: data.layers
+        }));
+      }
 
       _cloudStatus.connected = true;
       _cloudStatus.lastCheck = new Date().toISOString();
@@ -549,6 +570,41 @@ export class CloudSyncEngine {
       return data;
     } catch (err) {
       console.warn('[CloudSyncEngine] Nuvem indisponível para carregamento:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Envia o heartbeat de presença e retorna a lista de operadores online sem
+   * avançar o cursor de feições (usado enquanto o operador está desenhando).
+   */
+  static async pingPresence(projectId = 'projeto_padrao', presence = null) {
+    try {
+      const params = new URLSearchParams({
+        action: 'pull_changes',
+        projectId,
+        presenceOnly: '1',
+        clientId: _clientId
+      });
+      if (presence) {
+        if (presence.name) params.set('userName', presence.name);
+        if (presence.color) params.set('userColor', presence.color);
+        if (Number.isFinite(presence.lat) && Number.isFinite(presence.lng)) {
+          params.set('lat', presence.lat.toFixed(6));
+          params.set('lng', presence.lng.toFixed(6));
+        }
+      }
+      const res = await cloudFetch(`${CLOUD_API_URL}?${params.toString()}`, {
+        method: 'GET',
+        headers: AccessManager.headers(projectId, { 'Accept': 'application/json' }),
+        cache: 'no-cache'
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || !data.success) return null;
+      if (data.role) AccessManager.setRole(projectId, data.role);
+      return Array.isArray(data.presence) ? data.presence : null;
+    } catch {
       return null;
     }
   }

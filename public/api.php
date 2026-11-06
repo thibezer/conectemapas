@@ -1208,6 +1208,7 @@ switch ($action) {
         foreach ($layers as &$l) {
             $l['visible'] = (bool)$l['visible'];
             $l['opacity'] = (float)$l['opacity'];
+            $l['order'] = (int)$l['order'];
         }
         unset($l);
 
@@ -1234,6 +1235,7 @@ switch ($action) {
                 foreach ($layers as &$l) {
                     $l['visible'] = (bool)$l['visible'];
                     $l['opacity'] = (float)$l['opacity'];
+                    $l['order'] = (int)$l['order'];
                 }
                 unset($l);
             }
@@ -1655,6 +1657,15 @@ switch ($action) {
             }
         }
 
+        if (!empty($_GET['presenceOnly'])) {
+            echo json_encode([
+                'success'  => true,
+                'presence' => $presence,
+                'role'     => $accessRole
+            ]);
+            exit;
+        }
+
         // 2. Leitura em snapshot consistente: tudo com rev <= projRev já está commitado
         $pdo->beginTransaction();
         $stmtRev = $pdo->prepare("SELECT rev, name, basemap, feature_count, updated_at FROM cm_projects WHERE id = ?");
@@ -1722,6 +1733,7 @@ switch ($action) {
         foreach ($layers as &$l) {
             $l['visible'] = (bool)$l['visible'];
             $l['opacity'] = (float)$l['opacity'];
+            $l['order'] = (int)$l['order'];
             $l['rev'] = (int)$l['rev'];
             $l['deleted'] = (int)$l['deleted'] === 1;
         }
