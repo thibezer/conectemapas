@@ -12,6 +12,7 @@ import { CLOUD_API_URL, cloudFetch } from './StorageConstants.js';
 import { LocalStore } from './LocalStore.js';
 import { DeltaQueue } from './DeltaQueue.js';
 import { AccessManager } from './AccessManager.js';
+import { layersForCloud } from './LayerVisibility.js';
 
 const _clientId = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
   ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
@@ -134,7 +135,8 @@ function checkRemoteVersionSignals(data) {
 function metadataSignature(data) {
   return JSON.stringify([
     data.name || '', data.description || '', data.basemap || '',
-    Array.isArray(data.layers) ? data.layers : []
+    // o olhinho (visible) é local: alterná-lo não é mudança do projeto
+    layersForCloud(data.layers)
   ]);
 }
 
@@ -522,7 +524,7 @@ export class CloudSyncEngine {
         featureCount: projectData.featureCount !== undefined
           ? projectData.featureCount
           : (Array.isArray(projectData.features) ? projectData.features.length : 0),
-        layers: Array.isArray(projectData.layers) ? projectData.layers : []
+        layers: layersForCloud(projectData.layers)
       };
 
       const sentSig = metadataSignature(projectData);
@@ -573,7 +575,7 @@ export class CloudSyncEngine {
         basemap: projectData.basemap || 'google_satelite_puro',
         center: projectData.center || [-23.7661, -53.3206],
         zoom: projectData.zoom || 14,
-        layers: Array.isArray(projectData.layers) ? projectData.layers : [],
+        layers: layersForCloud(projectData.layers),
         features: Array.isArray(projectData.features) ? projectData.features.map(packFeatureForCloud) : []
       };
 

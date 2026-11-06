@@ -6,6 +6,7 @@
 
 import { normalizeFeature } from '../services/MockData.js';
 import { StorageService } from '../services/StorageService.js';
+import { mergeLocalVisibility, keepLocalVisibility } from '../services/Storage/LayerVisibility.js';
 import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyUndoable } from '../utils/toastHelpers.js';
@@ -496,8 +497,9 @@ export class FeatureSyncController {
 
     } else if (type === 'layer:created') {
       if (data.layer && !app.layers.some(l => l.id === data.layer.id)) {
-        app.layers.push(data.layer);
-        StorageService.saveLayer(data.layer, app.projectId);
+        const created = keepLocalVisibility(data.layer, null);
+        app.layers.push(created);
+        StorageService.saveLayer(created, app.projectId);
         StorageService.saveMetadata({
           id: app.projectId,
           name: app.projectName,
@@ -516,8 +518,9 @@ export class FeatureSyncController {
       if (data.layer && !StorageService.hasPendingLayerSync()) {
         const lIdx = app.layers.findIndex(l => l.id === data.layer.id);
         if (lIdx >= 0) {
-          app.layers[lIdx] = data.layer;
-          StorageService.saveLayer(data.layer, app.projectId);
+          const merged = keepLocalVisibility(data.layer, app.layers[lIdx]);
+          app.layers[lIdx] = merged;
+          StorageService.saveLayer(merged, app.projectId);
           StorageService.saveMetadata({
             id: app.projectId,
             name: app.projectName,
@@ -527,7 +530,6 @@ export class FeatureSyncController {
           }, { syncCloud: false });
           if (app.mapEngine) {
             app.mapEngine.setLayerColor?.(data.layer.id, data.layer.color);
-            app.mapEngine.setLayerVisibility?.(data.layer.id, data.layer.visible !== false);
             if (data.layer.opacity !== undefined) {
               app.mapEngine.setLayerOpacity?.(data.layer.id, data.layer.opacity);
             }
@@ -563,7 +565,7 @@ export class FeatureSyncController {
       }
     } else if (type === 'layers:reordered') {
       if (Array.isArray(data.layers) && data.layers.length > 0 && !StorageService.hasPendingLayerSync()) {
-        app.layers = data.layers.map((l, idx) => ({ ...l, order: idx }));
+        app.layers = mergeLocalVisibility(data.layers, app.layers).map((l, idx) => ({ ...l, order: idx }));
         app.mapEngine?.reorderLayers?.(app.layers);
         StorageService.saveLayersBatch(app.layers, app.projectId);
         StorageService.saveMetadata({
@@ -642,7 +644,7 @@ export class FeatureSyncController {
           continue;
         }
         if (!localLayer) {
-          app.layers.push(remLayer);
+          app.layers.push(keepLocalVisibility(remLayer, null));
           layersChanged = true;
           layersAdded = true;
           if (remLayer.order !== undefined) layersReordered = true;
@@ -656,11 +658,7 @@ export class FeatureSyncController {
             app.mapEngine?.setLayerColor?.(localLayer.id, remLayer.color);
             layersChanged = true;
           }
-          if (remLayer.visible !== undefined && (localLayer.visible !== false) !== (remLayer.visible !== false)) {
-            localLayer.visible = remLayer.visible !== false;
-            app.mapEngine?.setLayerVisibility?.(localLayer.id, localLayer.visible);
-            layersChanged = true;
-          }
+          // `visible` (olhinho) é preferência local: nunca vem de outro operador
           if (remLayer.opacity !== undefined && Math.abs((localLayer.opacity ?? 1) - Number(remLayer.opacity)) > 0.001) {
             localLayer.opacity = Number(remLayer.opacity);
             app.mapEngine?.setLayerOpacity?.(localLayer.id, localLayer.opacity);

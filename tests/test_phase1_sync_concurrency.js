@@ -166,13 +166,14 @@ console.log('🧪 Testando Fase 1: Sincronização e Concorrência...');
   assert.equal(appC.layers[0].id, 'l-b', 'Camada B deve passar para a posição 0 após reordenação remota');
   assert.equal(appC.layers[1].id, 'l-a', 'Camada A deve passar para a posição 1');
   assert.equal(appC.layers[1].color, '#f59e0b');
-  assert.equal(appC.layers[1].visible, false);
+  // O olhinho é preferência local: o `visible: false` do outro operador é ignorado
+  assert.equal(appC.layers[1].visible, true);
   assert.equal(appC.layers[1].opacity, 0.4);
   assert.deepEqual(engineCalls.colors, [['l-a', '#f59e0b']]);
-  assert.deepEqual(engineCalls.visibilities, [['l-a', false]]);
+  assert.deepEqual(engineCalls.visibilities, []);
   assert.deepEqual(engineCalls.opacities, [['l-a', 0.4]]);
   assert.equal(engineCalls.reorders, 1);
-  console.log('  ✔ 3. Cor, opacidade, visibilidade e ordem das camadas sincronizadas no mapa.');
+  console.log('  ✔ 3. Cor, opacidade e ordem sincronizadas; visibilidade (olhinho) permanece local.');
 }
 
 // 4. Undo e Redo notificam o CollaborationHub

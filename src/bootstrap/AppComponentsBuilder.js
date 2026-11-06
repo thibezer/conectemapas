@@ -483,8 +483,8 @@ export class AppComponentsBuilder {
         if (layer) {
           layer.visible = isVisible;
           app.mapEngine.setLayerVisibility(layerId, isVisible);
+          // O olhinho é só deste operador: grava local, sem avisar outros nem enviar à nuvem
           StorageService.saveLayer(layer, app.projectId);
-          if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
           app.saveMetadata();
         }
       },

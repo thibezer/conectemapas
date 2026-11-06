@@ -11,6 +11,7 @@ import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { normalizeFeature } from '../services/MockData.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { LoadingOverlay } from './LoadingOverlay.js';
+import { mergeLocalVisibility } from '../services/Storage/LayerVisibility.js';
 
 export class AppBootstrapSync {
   /**
@@ -249,7 +250,7 @@ export class AppBootstrapSync {
       }
 
       if (Array.isArray(cloudData.layers) && cloudData.layers.length > 0) {
-        app.layers = cloudData.layers;
+        app.layers = mergeLocalVisibility(cloudData.layers, app.layers);
         updated = true;
       }
 
