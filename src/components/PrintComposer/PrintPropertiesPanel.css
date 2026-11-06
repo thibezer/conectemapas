@@ -749,3 +749,42 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
+
+/* Seção do Gerador de Atlas Cartográfico */
+.cm-pp-atlas-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.cm-pp-atlas-label {
+  margin: 0;
+  cursor: pointer;
+}
+
+.cm-pp-atlas-check {
+  cursor: pointer;
+}
+
+.cm-pp-atlas-field {
+  margin-bottom: 6px;
+}
+
+.cm-pp-atlas-help {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 8.5px;
+  color: #a0aec0;
+  line-height: 1.4;
+}
+
+.cm-pp-atlas-help-title {
+  color: #63b3ed;
+}
+
+.cm-pp-atlas-action {
+  margin-top: 8px;
+}

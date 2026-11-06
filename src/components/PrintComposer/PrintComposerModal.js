@@ -29,6 +29,8 @@ import { PrintViewEdits } from './PrintViewEdits.js';
 import { ppIcon } from './PrintIcons.js';
 import { PrintSideToolbox } from './PrintSideToolbox.js';
 import { PrintStatusBar } from './PrintStatusBar.js';
+import { PrintAtlasEngine } from './PrintAtlasEngine.js';
+import { PrintAtlasBar } from './PrintAtlasBar.js';
 import './PrintVisibilityDialog.css';
 
 export class PrintComposerModal {
@@ -82,6 +84,7 @@ export class PrintComposerModal {
     this._pick = null; // Escolha de feição no mapa em andamento
     this.canvasEngine = new PrintCanvasEngine(this);
     this.visibilityDialog = new PrintVisibilityDialog(this);
+    this.atlas = new PrintAtlasEngine(this);
 
     // Ao recarregar/sair da página com o compositor aberto, grava a edição que ainda aguarda o salvamento automático
     if (typeof window !== 'undefined') {
@@ -261,6 +264,9 @@ export class PrintComposerModal {
           <span>🖐️ <strong>Modo Navegação de Mapa Ativo:</strong> Arraste o mapa com o botão esquerdo para enquadrar a feição | Use o scroll para ajustar o zoom. Quando terminar, clique em <strong>Layout</strong>.</span>
           <button id="btn-dismiss-pan-banner" class="cm-pan-banner-btn">Voltar ao Layout</button>
         </div>
+
+        <!-- Barra de Navegação do Atlas (Padrão QGIS Atlas Toolbar) -->
+        ${PrintAtlasBar.render(this)}
 
         <!-- Área de Trabalho Principal: Toolbox Lateral + Prancheta com Réguas + Painel Lateral -->
         <div class="cm-print-main-workspace">
@@ -725,15 +731,19 @@ export class PrintComposerModal {
     } else if (item.type === 'title_block') {
       return PrintItemsManager.renderItemCanvas(item);
     } else if (item.type === 'table_vertices') {
-      return PrintItemsManager.renderVerticesTable(item, this.features);
+      const targetId = item.targetFeatureId || (this.atlas?.enabled ? this.atlas.getCurrentFeature()?.id : null);
+      return PrintItemsManager.renderVerticesTable({ ...item, targetFeatureId: targetId }, this.features);
     } else if (item.type === 'text_block') {
-      return PrintItemsManager.renderTextBlock(item);
+      const evalText = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.text) : item.text;
+      const evalTitle = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.title) : item.title;
+      return PrintItemsManager.renderTextBlock({ ...item, text: evalText, title: evalTitle });
     } else if (item.type === 'shape') {
       return PrintItemsManager.renderShape(item);
     } else if (item.type === 'image') {
       return PrintItemsManager.renderImage(item);
     } else if (item.type === 'label') {
-      return PrintItemsManager.renderLabel(item);
+      const evalText = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.text) : item.text;
+      return PrintItemsManager.renderLabel({ ...item, text: evalText });
     }
     return '';
   }
@@ -1250,7 +1260,8 @@ export class PrintComposerModal {
         mapScale: this.items.find(i => i.type === 'map')?.scale,
         wMm: item.width,
         hMm: item.height,
-        pxPerMm
+        pxPerMm,
+        evaluator: (txt) => (this.atlas?.enabled ? this.atlas.evaluateExpressions(txt) : txt)
       });
     }
   }
@@ -1349,6 +1360,7 @@ export class PrintComposerModal {
     PrintToolbar.bind(this);
     PrintSideToolbox.bind(this);
     PrintStatusBar.bind(this);
+    PrintAtlasBar.bind(this);
 
     document.querySelector('#cm-print-lock-banner [data-lock-edit]')?.addEventListener('click', () => this.cloud?.tryEdit());
     document.querySelector('#cm-print-pick-banner [data-pick-cancel]')?.addEventListener('click', () => this.cancelPick());

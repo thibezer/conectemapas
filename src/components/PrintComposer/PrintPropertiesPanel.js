@@ -58,7 +58,10 @@ export class PrintPropertiesPanel {
             </div>
           </details>
 
-          <!-- 3. Propriedades do Elemento Selecionado ou Seleção Múltipla -->
+          <!-- 3. Gerador de Atlas Cartográfico (Automação em Lote estilo QGIS) -->
+          ${this.renderAtlasSection(composer, openAttr)}
+
+          <!-- 4. Propriedades do Elemento Selecionado ou Seleção Múltipla -->
           ${(composer.selectedItemIds && composer.selectedItemIds.size > 1) ? `
             <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
               <summary class="cm-pp-summary cm-pp-summary--active">${ppIcon('target')}${composer.selectedItemIds.size} Itens Selecionados</summary>
@@ -253,6 +256,62 @@ export class PrintPropertiesPanel {
     if (!attr) return null;
     const id = String(active.getAttribute(attr)).replace(/["\\]/g, '\\$&');
     return `[${attr}="${id}"]`;
+  }
+
+  /** Seção do Gerador de Atlas Cartográfico (Automação em Lote) */
+  static renderAtlasSection(composer, openAttr) {
+    const atlas = composer.atlas;
+    const isEnabled = atlas?.enabled || false;
+    const curLayerId = atlas?.layerId || '';
+    const margin = atlas?.marginPct ?? 15;
+    const layers = composer.layers || [];
+    const esc = PrintItemsManager.escapeHtml;
+    const count = atlas?.getCoverageFeatures?.()?.length || 0;
+
+    return `
+      <details class="cm-inspector-accordion" data-section="atlas" ${openAttr('atlas')}>
+        <summary class="cm-pp-summary">${ppIcon('book')}Gerador de Atlas Cartográfico</summary>
+        <fieldset class="cm-print-props-fields">
+          <div class="cm-pp-field-row cm-pp-atlas-toggle-row">
+            <span class="cm-param-label cm-pp-atlas-label">Ativar Atlas de Pranchas:</span>
+            <ui-checkbox id="prop-atlas-enable" ${isEnabled ? 'checked' : ''}></ui-checkbox>
+          </div>
+
+          <div class="cm-pp-field-col cm-pp-atlas-field">
+            <span class="cm-param-label">Camada de Cobertura (Polígonos/Lotes):</span>
+            <ui-select id="prop-atlas-layer" class="cm-native-select cm-pp-full" tamanho="sm" value="${esc(curLayerId)}" ${!isEnabled ? 'disabled' : ''}>
+              <option value="">(Selecione uma camada)</option>
+              ${layers.map(l => `
+                <option value="${esc(l.id)}" ${l.id === curLayerId ? 'selected' : ''}>${esc(l.name || l.id)}</option>
+              `).join('')}
+            </ui-select>
+          </div>
+
+          <div class="cm-pp-field-col cm-pp-atlas-field">
+            <span class="cm-param-label">Margem de Respiro (% da geometria):</span>
+            <ui-campo-texto type="number" tamanho="sm" id="prop-atlas-margin" class="cm-vertex-input cm-pp-full" min="0" max="100" value="${margin}" ${!isEnabled ? 'disabled' : ''}></ui-campo-texto>
+          </div>
+
+          <div class="cm-pp-help-box cm-pp-atlas-help">
+            <strong class="cm-pp-atlas-help-title">Expressões Dinâmicas Suportadas:</strong><br>
+            <code>[% feature.name %]</code> ou <code>{nome}</code> - Nome da feição<br>
+            <code>[% area_ha %]</code> - Área calculada em hectares<br>
+            <code>[% area_m2 %]</code> - Área em m²<br>
+            <code>[% scale %]</code> - Escala numérica atual<br>
+            <code>[% date %]</code> - Data da prancha<br>
+            <code>[% atlas.index %]</code> / <code>[% atlas.total %]</code> - Pág. atual e total
+          </div>
+
+          ${isEnabled ? `
+            <div class="cm-pp-atlas-action">
+              <ui-botao-primario inline tamanho="sm" id="btn-prop-export-atlas" class="cm-pp-full">
+                ${ppIcon('sheet')}Exportar Caderno PDF (${count} pranchas)
+              </ui-botao-primario>
+            </div>
+          ` : ''}
+        </fieldset>
+      </details>
+    `;
   }
 
   /** Campos específicos do tipo do elemento selecionado */
@@ -658,6 +717,37 @@ export class PrintPropertiesPanel {
     document.getElementById('btn-collapse-props-panel')?.addEventListener('click', () => {
       composer.togglePropertiesPanel(true);
     });
+
+    // Eventos do Gerador de Atlas Cartográfico
+    const propAtlasEnable = document.getElementById('prop-atlas-enable');
+    if (propAtlasEnable) {
+      propAtlasEnable.addEventListener('change', (e) => {
+        composer.atlas?.setEnabled(e.target.checked);
+        composer.updatePropertiesPanel?.();
+      });
+    }
+
+    const propAtlasLayer = document.getElementById('prop-atlas-layer');
+    if (propAtlasLayer) {
+      propAtlasLayer.addEventListener('change', (e) => {
+        composer.atlas?.setLayerId(e.target.value);
+        composer.updatePropertiesPanel?.();
+      });
+    }
+
+    const propAtlasMargin = document.getElementById('prop-atlas-margin');
+    if (propAtlasMargin) {
+      propAtlasMargin.addEventListener('change', (e) => {
+        composer.atlas?.setMarginPct(Number(e.target.value));
+      });
+    }
+
+    const btnPropExportAtlas = document.getElementById('btn-prop-export-atlas');
+    if (btnPropExportAtlas) {
+      btnPropExportAtlas.addEventListener('click', () => {
+        composer.atlas?.exportAtlasPDF(composer.exportDpi || 300);
+      });
+    }
 
     document.getElementById('btn-prop-delete-multi')?.addEventListener('click', () => {
       const ids = [...(composer.selectedItemIds || [])];

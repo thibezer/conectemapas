@@ -19,23 +19,25 @@ export const PrintTitleBlockRenderer = {
   PAD_MM: 0.9,
 
   /** Células do carimbo, na ordem da tela: [{ label, value, full }] */
-  cells(item, projectName = 'Levantamento Cartográfico', mapScale = null) {
+  cells(item, projectName = 'Levantamento Cartográfico', mapScale = null, evaluator = null) {
     const p = item?.properties || {};
+    const evalText = (val) => (evaluator && typeof evaluator === 'function' ? evaluator(val) : val);
     return [
-      { label: 'Projeto / Obra', value: p.projectName || projectName, full: true },
-      { label: 'Proprietário / Cliente', value: p.client || 'Particular' },
-      { label: 'Imóvel / Endereço', value: p.location || 'Distrito Federal - Brasil' },
-      { label: 'Responsável Técnico', value: p.author || 'Eng. Cartógrafo / Agrimensor' },
-      { label: 'Registro / ART', value: p.art || 'CREA-BR 2026/0012' },
-      { label: 'Sistema Geodésico / Datum', value: p.datum || 'SIRGAS 2000 / UTM' },
-      { label: 'Escala Numérica', value: PrintItemsManager.titleBlockScaleText(p, mapScale) },
-      { label: 'Área / Perímetro', value: p.areaPerimeter || 'Conforme Tabela' },
-      { label: 'Data / Prancha', value: PrintItemsManager.titleBlockDateText(p) }
+      { label: 'Projeto / Obra', value: evalText(p.projectName || projectName), full: true },
+      { label: 'Proprietário / Cliente', value: evalText(p.client || 'Particular') },
+      { label: 'Imóvel / Endereço', value: evalText(p.location || 'Distrito Federal - Brasil') },
+      { label: 'Responsável Técnico', value: evalText(p.author || 'Eng. Cartógrafo / Agrimensor') },
+      { label: 'Registro / ART', value: evalText(p.art || 'CREA-BR 2026/0012') },
+      { label: 'Sistema Geodésico / Datum', value: evalText(p.datum || 'SIRGAS 2000 / UTM') },
+      { label: 'Escala Numérica', value: evalText(PrintItemsManager.titleBlockScaleText(p, mapScale)) },
+      { label: 'Área / Perímetro', value: evalText(p.areaPerimeter || 'Conforme Tabela') },
+      { label: 'Data / Prancha', value: evalText(PrintItemsManager.titleBlockDateText(p)) }
     ];
   },
 
-  headerText(item) {
-    return item?.properties?.headerTitle || 'PLANTA TOPOGRÁFICA / CARTOGRÁFICA';
+  headerText(item, evaluator = null) {
+    const raw = item?.properties?.headerTitle || 'PLANTA TOPOGRÁFICA / CARTOGRÁFICA';
+    return evaluator && typeof evaluator === 'function' ? evaluator(raw) : raw;
   },
 
   /** Texto que cabe em `maxW` px (encurta com "…") */
@@ -56,8 +58,9 @@ export const PrintTitleBlockRenderer = {
    * @param ctx      contexto posicionado no canto do item (0, 0)
    * @param wMm,hMm  tamanho do item na folha
    * @param pxPerMm  px do contexto por mm de papel
+   * @param evaluator Função opcional de interpolação de expressões dinâmicas (Atlas)
    */
-  draw(ctx, { item, projectName, mapScale, wMm, hMm, pxPerMm }) {
+  draw(ctx, { item, projectName, mapScale, wMm, hMm, pxPerMm, evaluator = null }) {
     const mm = (v) => v * pxPerMm;
     const pt = (v) => v * PT_TO_MM * pxPerMm;
     const W = mm(wMm);
@@ -80,10 +83,10 @@ export const PrintTitleBlockRenderer = {
     ctx.font = `bold ${pt(this.HEADER_PT)}px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(this.fit(ctx, this.headerText(item).toUpperCase(), W - pad * 2), W / 2, headH / 2);
+    ctx.fillText(this.fit(ctx, this.headerText(item, evaluator).toUpperCase(), W - pad * 2), W / 2, headH / 2);
 
     // Grade: 1 linha inteira (projeto) + 4 linhas de 2 células
-    const cells = this.cells(item, projectName, mapScale);
+    const cells = this.cells(item, projectName, mapScale, evaluator);
     const rows = 5;
     const rowH = (H - headH) / rows;
     const colW = W / 2;

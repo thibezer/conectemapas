@@ -249,7 +249,7 @@ export class PrintExporter {
       } else if (item.type === 'table_vertices') {
         this.drawVerticesTableItem(ctx, item, x, y, w, h, composer, scaleFactor);
       } else if (item.type === 'text_block') {
-        this.drawTextBlockItem(ctx, item, x, y, w, h, scaleFactor);
+        this.drawTextBlockItem(ctx, item, x, y, w, h, composer, scaleFactor);
       } else if (item.type === 'legend') {
         this.drawLegendItem(ctx, item, x, y, w, h, composer, scaleFactor);
       } else if (item.type === 'shape') {
@@ -257,7 +257,7 @@ export class PrintExporter {
       } else if (item.type === 'image') {
         await this.drawImageItem(ctx, item, x, y, w, h);
       } else if (item.type === 'label') {
-        this.drawLabelItem(ctx, item, x, y, w, h, scaleFactor);
+        this.drawLabelItem(ctx, item, x, y, w, h, composer, scaleFactor);
       }
     }
   }
@@ -638,7 +638,8 @@ export class PrintExporter {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x, y, w, h);
 
-    const data = PrintItemsManager.extractVerticesData(composer.features, item.targetFeatureId);
+    const targetId = item.targetFeatureId || (composer?.atlas?.enabled ? composer.atlas.getCurrentFeature()?.id : null);
+    const data = PrintItemsManager.extractVerticesData(composer?.features || [], targetId);
     const headH = h * 0.14;
 
     // Cabeçalho da tabela
@@ -730,7 +731,12 @@ export class PrintExporter {
   /**
    * Renderiza o Bloco de Notas Técnicas / Texto Livre
    */
-  static drawTextBlockItem(ctx, item, x, y, w, h, scaleFactor) {
+  static drawTextBlockItem(ctx, item, x, y, w, h, composer, scaleFactor) {
+    if (typeof composer === 'number') {
+      scaleFactor = composer;
+      composer = null;
+    }
+
     ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = '#000000';
@@ -743,9 +749,13 @@ export class PrintExporter {
     ctx.fillStyle = '#ffffff';
     ctx.font = `bold ${Math.round(headH * 0.52)}px Arial, sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(item.title || 'NOTAS GERAIS', x + 6, y + headH * 0.68);
+    const rawTitle = item.title || 'NOTAS GERAIS';
+    const titleText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawTitle) : rawTitle;
+    ctx.fillText(titleText, x + 6, y + headH * 0.68);
 
-    const lines = (item.text || '').split('\n');
+    const rawText = item.text || '';
+    const evaluatedText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawText) : rawText;
+    const lines = evaluatedText.split('\n');
     const fontSize = Math.max(6.5, Math.round((item.fontSize || 7.5) * (scaleFactor / (300 / 25.4))));
     const lineStep = fontSize * 1.4;
 
@@ -808,7 +818,12 @@ export class PrintExporter {
   /**
    * Renderiza Rótulo de Texto Livre / Título Customizado
    */
-  static drawLabelItem(ctx, item, x, y, w, h, scaleFactor) {
+  static drawLabelItem(ctx, item, x, y, w, h, composer, scaleFactor) {
+    if (typeof composer === 'number') {
+      scaleFactor = composer;
+      composer = null;
+    }
+
     ctx.save();
     const fontSize = Math.max(8, Math.round((item.fontSize || 10) * (scaleFactor / (300 / 25.4))));
     const weight = item.fontWeight || 'bold';
@@ -818,7 +833,9 @@ export class PrintExporter {
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
     const textX = align === 'center' ? x + w / 2 : (align === 'right' ? x + w - 4 : x + 4);
-    ctx.fillText(item.text || 'TÍTULO', textX, y + h / 2);
+    const rawText = item.text || 'TÍTULO';
+    const evaluatedText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawText) : rawText;
+    ctx.fillText(evaluatedText, textX, y + h / 2);
     ctx.restore();
   }
 

@@ -56,6 +56,25 @@ export class PrintSideToolbox {
             </button>
           `).join('')}
         </div>
+
+        <div class="cm-stb-divider"></div>
+
+        <!-- Gerador de Atlas (Automação de Mapas estilo QGIS) -->
+        <div class="cm-stb-group">
+          <button type="button"
+            class="cm-stb-btn ${composer.atlas?.enabled ? 'is-active' : ''}"
+            data-stb-action="toggle-atlas"
+            title="Gerador de Atlas Cartográfico (Automação em Lote)"
+            aria-label="Gerador de Atlas Cartográfico"
+            aria-pressed="${composer.atlas?.enabled ? 'true' : 'false'}">
+            <svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              <line x1="9" y1="7" x2="15" y2="7"/>
+              <line x1="9" y1="11" x2="13" y2="11"/>
+            </svg>
+          </button>
+        </div>
       </aside>
     `;
   }
@@ -65,8 +84,13 @@ export class PrintSideToolbox {
     if (!toolbox) return;
 
     toolbox.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-stb-mode], button[data-stb-insert]');
+      const btn = e.target.closest('button[data-stb-mode], button[data-stb-insert], button[data-stb-action]');
       if (!btn) return;
+
+      if (btn.dataset.stbAction === 'toggle-atlas') {
+        composer.atlas?.setEnabled(!composer.atlas.enabled);
+        return;
+      }
 
       const mode = btn.dataset.stbMode;
       if (mode) {
