@@ -740,3 +740,12 @@
 .cm-pp-expand-tab.hidden {
   display: none;
 }
+
+
+/* Melhoria ergonômica: lista de elementos com rolagem dedicada quando longa */
+.cm-pp-body--list {
+  max-height: 230px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}

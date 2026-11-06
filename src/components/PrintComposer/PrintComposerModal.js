@@ -27,6 +27,8 @@ import { PrintCloudSync } from './PrintCloudSync.js';
 import { PrintViewTemplates } from './PrintViewTemplates.js';
 import { PrintViewEdits } from './PrintViewEdits.js';
 import { ppIcon } from './PrintIcons.js';
+import { PrintSideToolbox } from './PrintSideToolbox.js';
+import { PrintStatusBar } from './PrintStatusBar.js';
 import './PrintVisibilityDialog.css';
 
 export class PrintComposerModal {
@@ -252,8 +254,10 @@ export class PrintComposerModal {
           <button id="btn-dismiss-pan-banner" class="cm-pan-banner-btn">Voltar ao Layout</button>
         </div>
 
-        <!-- Área de Trabalho Principal: Prancheta com Réguas + Painel Lateral -->
+        <!-- Área de Trabalho Principal: Toolbox Lateral + Prancheta com Réguas + Painel Lateral -->
         <div class="cm-print-main-workspace">
+          ${PrintSideToolbox.render(this)}
+
           <div class="cm-print-rulers-wrapper" id="cm-print-rulers-mount">
             <div class="cm-print-ruler-corner">mm</div>
             <div class="cm-print-ruler-h"><canvas id="ruler-h" class="cm-print-ruler-canvas"></canvas></div>
@@ -279,6 +283,9 @@ export class PrintComposerModal {
             ${PrintPropertiesPanel.render(this)}
           </div>
         </div>
+
+        <!-- Barra de Status do Layout (Padrão QGIS / Workstation Cartográfica) -->
+        ${PrintStatusBar.render(this)}
       </div>
     `;
 
@@ -511,6 +518,7 @@ export class PrintComposerModal {
 
   setInteractionMode(mode) {
     this.interactionMode = mode;
+    PrintSideToolbox.updateActiveMode(this);
     const banner = document.getElementById('cm-print-pan-alert-banner');
     const mapFrames = document.querySelectorAll('.cm-item-map-frame');
 
@@ -653,6 +661,7 @@ export class PrintComposerModal {
 
     this.layoutItemsDOM();
     this.canvasEngine.renderRulers();
+    PrintStatusBar.update(this);
   }
 
   /**
@@ -1328,6 +1337,8 @@ export class PrintComposerModal {
 
   bindEvents() {
     PrintToolbar.bind(this);
+    PrintSideToolbox.bind(this);
+    PrintStatusBar.bind(this);
 
     document.querySelector('#cm-print-lock-banner [data-lock-edit]')?.addEventListener('click', () => this.cloud?.tryEdit());
     document.querySelector('#cm-print-pick-banner [data-pick-cancel]')?.addEventListener('click', () => this.cancelPick());

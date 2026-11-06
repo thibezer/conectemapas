@@ -488,3 +488,165 @@
 .cm-item-map-frame.cm-picking * {
   cursor: crosshair !important;
 }
+
+
+/* ==========================================================================
+   Toolbox Vertical Lateral (Padrão QGIS Print Layout / Figma / CAD)
+   ========================================================================== */
+.cm-print-side-toolbox {
+  width: 44px;
+  background: #18181c;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  z-index: 25;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.cm-stb-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  align-items: center;
+}
+
+.cm-stb-insert-list {
+  overflow-y: auto;
+  max-height: calc(100vh - 180px);
+  padding: 2px 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.cm-stb-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #a0a0b0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.cm-stb-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.cm-stb-btn.is-active,
+.cm-stb-btn:active {
+  background: rgba(0, 224, 138, 0.15);
+  border-color: rgba(0, 224, 138, 0.45);
+  color: var(--cm-primary, #00E08A);
+}
+
+.cm-stb-btn .cm-ptb-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.cm-stb-shortcut {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  color: #64748b;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.cm-stb-btn.is-active .cm-stb-shortcut {
+  color: #00E08A;
+}
+
+.cm-stb-divider {
+  width: 24px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 4px 0;
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   Barra de Status Inferior (Status Bar do Layout)
+   ========================================================================== */
+.cm-print-statusbar {
+  height: 26px;
+  min-height: 26px;
+  background: #141417;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  font-size: 11px;
+  color: #9090a0;
+  user-select: none;
+  z-index: 25;
+  box-sizing: border-box;
+}
+
+.cm-psb-left,
+.cm-psb-center,
+.cm-psb-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-psb-item strong {
+  color: #f1f5f9;
+  font-weight: 600;
+}
+
+.cm-psb-coords {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cm-psb-coord-lbl {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.cm-psb-sep-dot {
+  color: #475569;
+  margin: 0 4px;
+}
+
+.cm-psb-sep {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cm-psb-ico {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 4px;
+  stroke: var(--cm-primary, #00E08A);
+}
+
+.cm-psb-cloud {
+  font-size: 10.5px;
+}
