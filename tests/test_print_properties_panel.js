@@ -434,6 +434,22 @@ html = PrintPropertiesPanel.render({ ...secComposer, panelTab: 'xyz' });
 assert.ok(!paneHidden(html, 'item'), 'Aba inválida cai em Item');
 console.log('✔ Abas validadas');
 
+// Multisseleção: valor comum aparece, valores diferentes viram "Misto"
+const mA = { ...PrintItemsManager.createNewItem('shape', 'P', 0), id: 'm-a', x: 10, y: 20, width: 50, height: 30 };
+const mB = { ...PrintItemsManager.createNewItem('shape', 'P', 1), id: 'm-b', x: 10, y: 40, width: 50, height: 30 };
+html = PrintPropertiesPanel.render({ items: [mA, mB], selectedItemIds: new Set(['m-a', 'm-b']), selectedItemId: null, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
+assert.ok(/data-multi-key="x"[^>]*value="10"/.test(html), 'X igual mostra o valor comum');
+assert.ok(/data-multi-key="y"[^>]*value=""[^>]*placeholder="Misto"/.test(html), 'Y diferente mostra "Misto"');
+assert.ok(/data-multi-key="width"[^>]*value="50"/.test(html), 'Largura comum');
+
+// Aparência agrupada e ajuda do Atlas recolhida por padrão
+html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
+assert.ok(html.includes('>Aparência<') && html.includes('>Posição e tamanho<'), 'Subtítulos Posição e Aparência');
+assert.ok(/id="pp-atlas-help"\s+hidden/.test(html), 'Ajuda do Atlas começa oculta');
+html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', helpOpen: { 'atlas-help': true }, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
+assert.ok(!/id="pp-atlas-help"\s+hidden/.test(html), 'Ajuda do Atlas aberta quando lembrada');
+console.log('✔ Misto, Aparência e ajuda validados');
+
 // ============================================================================
 // 14. Mapa de localização: área pequena vira ponto
 // ============================================================================

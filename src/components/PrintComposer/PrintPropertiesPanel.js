@@ -12,6 +12,20 @@ export class PrintPropertiesPanel {
     const esc = PrintItemsManager.escapeHtml;
     // Seção aberta ou fechada pelo usuário, lembrada pelo nome (não pela posição)
     const tab = this.TABS.some(t => t[0] === composer.panelTab) ? composer.panelTab : 'item';
+    // Valor comum arredondado de uma medida entre os itens selecionados ('' = misto)
+    const multiItems = composer.selectedItemIds && composer.selectedItemIds.size > 1
+      ? composer.items.filter(it => composer.selectedItemIds.has(it.id)) : [];
+    const common = (key) => {
+      const vals = multiItems.map(it => Math.round(it[key]));
+      return vals.every(v => v === vals[0]) ? String(vals[0]) : '';
+    };
+    const multiField = (key, label, max, min = 0) => {
+      const v = common(key);
+      return `<div>
+                    <span class="cm-param-label">${label}</span>
+                    <ui-campo-texto type="number" tamanho="sm" id="prop-multi-${key}" data-multi-key="${key}" class="cm-vertex-input cm-pp-full" min="${min}" max="${max}" value="${v}" placeholder="${v === '' ? 'Misto' : ''}"></ui-campo-texto>
+                  </div>`;
+    };
     const openAttr = (key) => (composer.panelSections?.[key] === false ? '' : 'open');
 
     // Filtra feições poligonais ou de linha para a tabela de vértices
@@ -98,6 +112,13 @@ export class PrintPropertiesPanel {
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-delete-multi" title="Excluir Itens (Delete)"><span class="cm-pp-btn-lbl">${ppIcon('trash')}Excluir</span></ui-botao-primario>
                   </div>
                 </div>
+                <div class="cm-pp-subtitle">Posição e tamanho</div>
+                <div class="cm-pp-grid2">
+                  ${multiField('x', 'X (mm)', composer.paperSize.width)}
+                  ${multiField('y', 'Y (mm)', composer.paperSize.height)}
+                  ${multiField('width', 'Largura (mm)', composer.paperSize.width, PrintItemsManager.MIN_ITEM_MM)}
+                  ${multiField('height', 'Altura (mm)', composer.paperSize.height, PrintItemsManager.MIN_ITEM_MM)}
+                </div>
               </fieldset>
             </details>
           ` : selectedItem ? `
@@ -137,6 +158,7 @@ export class PrintPropertiesPanel {
                 </div>
 
                 <!-- Posição e Dimensão em mm -->
+                <div class="cm-pp-subtitle">Posição e tamanho</div>
                 <div class="cm-pp-grid2">
                   <div>
                     <span class="cm-param-label">Posição X (mm):</span>
@@ -319,7 +341,11 @@ export class PrintPropertiesPanel {
             <ui-campo-texto type="number" tamanho="sm" id="prop-atlas-margin" class="cm-vertex-input cm-pp-full" min="0" max="100" value="${margin}" ${!isEnabled ? 'disabled' : ''}></ui-campo-texto>
           </div>
 
-          <div class="cm-pp-help-box cm-pp-atlas-help">
+          <div class="cm-pp-field-row">
+            <span class="cm-param-label">Expressões dinâmicas nos textos</span>
+            <button type="button" class="cm-pp-help-btn" data-pp-help="atlas-help" aria-expanded="${composer.helpOpen?.['atlas-help'] ? 'true' : 'false'}" aria-controls="pp-atlas-help" title="Ver expressões suportadas" aria-label="Ver expressões suportadas">?</button>
+          </div>
+          <div class="cm-pp-help-box cm-pp-atlas-help" id="pp-atlas-help" ${composer.helpOpen?.['atlas-help'] ? '' : 'hidden'}>
             <strong class="cm-pp-atlas-help-title">Expressões Dinâmicas Suportadas:</strong><br>
             <code>[% feature.name %]</code> ou <code>{nome}</code> - Nome da feição<br>
             <code>[% area_ha %]</code> - Área calculada em hectares<br>
@@ -507,10 +533,12 @@ export class PrintPropertiesPanel {
     if (item.type === 'text_block') {
       return `
         <div class="cm-pp-stack">
+<div class="cm-pp-subtitle">Conteúdo</div>
           <span class="cm-param-label">Título do Bloco:</span>
           <ui-campo-texto type="text" tamanho="sm" id="prop-text-title" class="cm-vertex-input" value="${esc(item.title || '')}"></ui-campo-texto>
           <span class="cm-param-label">Texto das Notas:</span>
           <ui-area-texto id="prop-text-body" class="cm-vertex-input cm-pp-textarea" linhas="5" value="${esc(item.text || '')}">${esc(item.text || '')}</ui-area-texto>
+          <div class="cm-pp-subtitle">Aparência</div>
           <div class="cm-param-row">
             <span class="cm-param-label">Tamanho da Fonte (pt):</span>
             <ui-campo-texto type="number" tamanho="sm" id="prop-text-size" class="cm-vertex-input cm-pp-w-s" min="5" max="18" step="0.5" value="${Number(item.fontSize) || 7.5}"></ui-campo-texto>
@@ -523,6 +551,7 @@ export class PrintPropertiesPanel {
       const fill = PrintItemsManager.parseColor(item.fillColor) || { hex: '#ffffff', alpha: 0.4 };
       return `
         <div class="cm-pp-stack">
+          <div class="cm-pp-subtitle">Aparência</div>
           <div class="cm-param-row">
             <span class="cm-param-label">Cor de Preenchimento:</span>
             <input type="color" id="prop-shape-fill" class="cm-pp-color" value="${fill.hex}" />
@@ -570,8 +599,10 @@ export class PrintPropertiesPanel {
     if (item.type === 'label') {
       return `
         <div class="cm-pp-stack">
+          <div class="cm-pp-subtitle">Conteúdo</div>
           <span class="cm-param-label">Texto do Título:</span>
           <ui-campo-texto type="text" tamanho="sm" id="prop-label-text" class="cm-vertex-input" value="${esc(item.text || '')}"></ui-campo-texto>
+          <div class="cm-pp-subtitle">Aparência</div>
           <div class="cm-param-row">
             <span class="cm-param-label">Tamanho da Fonte (pt):</span>
             <ui-campo-texto type="number" tamanho="sm" id="prop-label-size" class="cm-vertex-input cm-pp-w-s" min="6" max="36" value="${Number(item.fontSize) || 10}"></ui-campo-texto>
@@ -633,6 +664,7 @@ export class PrintPropertiesPanel {
             <span class="cm-param-label">Campo de assinatura:</span>
             <ui-checkbox id="prop-tb-signature" ${p.showSignature === true ? 'checked' : ''}></ui-checkbox>
           </div>
+          <div class="cm-pp-subtitle">Aparência</div>
           <div class="cm-param-row">
             <span class="cm-param-label">Cor do Cabeçalho:</span>
             <input type="color" id="prop-tb-accent" class="cm-pp-color" value="${colorValue(p.accentColor, '#000000')}" />
@@ -762,6 +794,37 @@ export class PrintPropertiesPanel {
           b.setAttribute('aria-selected', on ? 'true' : 'false');
         });
         document.querySelectorAll('#cm-print-props-panel-mount [data-pp-pane]').forEach(p => { p.hidden = p.dataset.ppPane !== composer.panelTab; });
+      });
+    });
+
+    // "?" do Atlas: mostra/oculta a ajuda e lembra o estado
+    document.querySelectorAll('#cm-print-props-panel-mount [data-pp-help]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.ppHelp;
+        const box = document.getElementById(`pp-${key}`);
+        if (!box) return;
+        box.hidden = !box.hidden;
+        btn.setAttribute('aria-expanded', box.hidden ? 'false' : 'true');
+        composer.helpOpen = { ...(composer.helpOpen || {}), [key]: !box.hidden };
+      });
+    });
+
+    // Seleção múltipla: o valor digitado vale para todos os itens desbloqueados
+    document.querySelectorAll('#cm-print-props-panel-mount [data-multi-key]').forEach(input => {
+      input.addEventListener('change', () => {
+        const v = parseFloat(input.value);
+        const key = input.dataset.multiKey;
+        const targets = composer.items.filter(it => composer.selectedItemIds?.has(it.id) && !it.locked);
+        if (!Number.isFinite(v) || !targets.length) { composer.updatePropertiesPanel(); return; }
+        targets.forEach(it => {
+          it[key] = v;
+          PrintItemsManager.clampItemToPaper(it, composer.paperSize);
+          composer.updateItemPositionDOM(it);
+          if (it.type === 'map' || it.type === 'inset_map') composer.applyMapScaleAndRotation(it);
+          else composer.refreshItemContent(it);
+        });
+        composer.pushHistoryState('Editar Itens', { coalesceKey: `prop:multi:${key}` });
+        composer.updatePropertiesPanel();
       });
     });
 

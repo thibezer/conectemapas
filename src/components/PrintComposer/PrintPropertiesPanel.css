@@ -834,3 +834,39 @@
 .cm-pp-atlas-action {
   margin-top: 8px;
 }
+
+/* Subtítulo de grupo dentro do painel do item (Posição, Conteúdo, Aparência) */
+.cm-pp-subtitle {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a8a9a;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cm-pp-subtitle:first-child { border-top: 0; padding-top: 0; }
+
+/* Botão "?" que abre a ajuda */
+.cm-pp-help-btn {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: #a0a0b0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cm-pp-help-btn:hover,
+.cm-pp-help-btn[aria-expanded="true"] {
+  color: var(--cm-primary, #00E08A);
+  border-color: var(--cm-primary, #00E08A);
+}
+
+.cm-pp-help-box[hidden] { display: none; }
