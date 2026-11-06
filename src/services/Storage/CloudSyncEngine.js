@@ -339,7 +339,13 @@ export class CloudSyncEngine {
       _cloudStatus.connected = true;
       _cloudStatus.lastSyncedAt = new Date().toISOString();
       _cloudStatus.error = null;
-      LocalStore.clearPendingDeltas(projectId, projectId);
+      LocalStore.removeConfirmedDeltas(
+        merged.dirty,
+        merged.deleted,
+        projectId,
+        projectId,
+        (id) => DeltaQueue.hasPendingLocalChange(id)
+      );
       return true;
     } catch (err) {
       console.warn('[CloudSyncEngine] Falha ao sincronizar deltas com nuvem (armazenado offline):', err);

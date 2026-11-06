@@ -13,27 +13,33 @@ import { AppGeometryCoordinator } from '../bootstrap/AppGeometryCoordinator.js';
 const PICKER_PROPS = { preenchimento: 'fillColor', traco: 'strokeColor', opacidade: 'fillOpacity', espessuraTraco: 'strokeWidth' };
 
 export class SelectionStyleController {
-  /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
+  /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única), sempre resolvidas contra app.features. */
   static getSelectedFeatures(app) {
+    const byId = new Map((app.features || []).filter(Boolean).map(f => [f.id, f]));
+    const resolve = (f) => (f && f.id && byId.has(f.id) ? byId.get(f.id) : f);
     const hudFeats = app.selectionHUD?.selectedFeatures || [];
-    if (hudFeats.length > 0) return hudFeats;
+    if (hudFeats.length > 0) return hudFeats.map(resolve).filter(Boolean);
     const idSet = app.layerPanel?.selectedFeatureIds;
     if (idSet && idSet.size > 0) {
       const fromIds = (app.features || []).filter(f => idSet.has(f.id));
       if (fromIds.length > 0) return fromIds;
     }
-    return app.layerPanel?.selectedFeature ? [app.layerPanel.selectedFeature] : [];
+    return app.layerPanel?.selectedFeature ? [resolve(app.layerPanel.selectedFeature)] : [];
   }
 
   /**
    * Grava cores nas feições selecionadas.
    * Só altera as propriedades indicadas em `changed`; linhas usam apenas o traço e textos a cor do texto.
-   * @param {{fillColor?: string, strokeColor?: string, fillOpacity?: number}} colors
-   * @param {Array<'fillColor'|'strokeColor'|'fillOpacity'>} [changed]
+   * @param {{fillColor?: string, strokeColor?: string, fillOpacity?: number, strokeWidth?: number}} colors
+   * @param {Array<'fillColor'|'strokeColor'|'fillOpacity'|'strokeWidth'>} [changed]
+   * @param {Array<Object>|null} [explicitTargets] alvos explícitos (ex.: feições para as quais o seletor foi aberto, mesmo se o clique fora limpou a seleção do mapa)
    */
-  static applyColorsToSelection(app, colors, changed = ['fillColor', 'strokeColor', 'strokeWidth']) {
-    const targets = this.getSelectedFeatures(app)
-      .filter(f => !FeatureSyncController.isFeatureLocked(app, f.id));
+  static applyColorsToSelection(app, colors, changed = ['fillColor', 'strokeColor', 'strokeWidth'], explicitTargets = null) {
+    const byId = new Map((app.features || []).filter(Boolean).map(f => [f.id, f]));
+    const rawTargets = Array.isArray(explicitTargets) && explicitTargets.length > 0
+      ? explicitTargets.map(f => byId.get(f.id) || f).filter(Boolean)
+      : this.getSelectedFeatures(app);
+    const targets = rawTargets.filter(f => !FeatureSyncController.isFeatureLocked(app, f.id));
     // Só o que mudou: numa seleção com cores diferentes, as demais propriedades ficam como estão
     const props = (changed || []).filter(k => colors[k] !== undefined);
     if (targets.length === 0 || props.length === 0) return;
@@ -47,7 +53,29 @@ export class SelectionStyleController {
       const only = Object.fromEntries(props.map(k => [k, colors[k]]));
       BatchActions.applyColors(app, targets.map(t => t.id), only);
     }
+    AppGeometryCoordinator.updateHUD(app);
     AppGeometryCoordinator.resyncToolbarWithSelection(app);
+  }
+
+  /** Pré-visualiza ao vivo (sem gravar nem gerar histórico) alterações de estilo nas feições selecionadas. */
+  static previewColorsOnSelection(app, colors, changed = ['fillColor', 'strokeColor', 'strokeWidth'], explicitTargets = null) {
+    const byId = new Map((app.features || []).filter(Boolean).map(f => [f.id, f]));
+    const rawTargets = Array.isArray(explicitTargets) && explicitTargets.length > 0
+      ? explicitTargets.map(f => byId.get(f.id) || f).filter(Boolean)
+      : this.getSelectedFeatures(app);
+    const props = (changed || []).filter(k => colors[k] !== undefined);
+    if (rawTargets.length === 0 || props.length === 0) return;
+
+    const ids = [];
+    for (const feat of rawTargets) {
+      if (FeatureSyncController.isFeatureLocked(app, feat.id)) continue;
+      const original = byId.get(feat.id) || feat;
+      const draft = JSON.parse(JSON.stringify(original));
+      BatchActions._paint(draft, colors, props);
+      app.mapEngine?.updateFeature?.(draft, app.layers);
+      ids.push(feat.id);
+    }
+    app._stylePreviewIds = ids;
   }
 
   /** Desfaz a prévia do seletor aberto: devolve ao mapa as feições como estão em app.features. */
@@ -79,7 +107,9 @@ export class SelectionStyleController {
     const features = hudFeatures.map(f => byId.get(f.id) || f);
     const isSingle = features.length === 1;
     const first = features[0];
+    const allLines = features.every(f => /LineString/.test(f.type));
     const fillOf = (f) => f.style?.fillColor || f.style?.textColor || f.color || '#00E08A';
+    const strokeOf = (f) => f.style?.strokeColor || (f.type === 'LineString' ? f.color : undefined) || '#ffffff';
 
     let initial = null;
 
@@ -113,19 +143,26 @@ export class SelectionStyleController {
       if (!initial) return;
       const props = changedProps(res);
       this.revertStylePreview(app);
-      if (props.length) this.applyColorsToSelection(app, toColors(res), props);
+      // Passa `features` explicitamente: mesmo se o clique fora do seletor limpou a seleção no mapa,
+      // a cor escolhida é gravada nas feições que estavam sendo editadas!
+      if (props.length) this.applyColorsToSelection(app, toColors(res), props, features);
     };
+
+    const defaultAlvo = allLines ? 'traco' : 'preenchimento';
+    const isMixed = defaultAlvo === 'traco'
+      ? new Set(features.map(f => String(strokeOf(f)).toLowerCase())).size > 1
+      : new Set(features.map(f => String(fillOf(f)).toLowerCase())).size > 1;
 
     const handle = open({
       ancora: anchorEl || document.body,
       titulo: isSingle ? `Estilo de "${first.name || 'Feição'}"` : `Estilo em Lote (${features.length})`,
       modo: 'duplo',
-      alvo: 'preenchimento',
+      alvo: defaultAlvo,
       preenchimento: fillOf(first),
-      traco: first.style?.strokeColor || '#ffffff',
+      traco: strokeOf(first),
       opacidade: first.style?.fillOpacity !== undefined ? Number(first.style.fillOpacity) : 0.35,
       espessuraTraco: first.style?.strokeWidth !== undefined ? Number(first.style.strokeWidth) : 2.5,
-      misto: new Set(features.map(f => String(fillOf(f)).toLowerCase())).size > 1,
+      misto: isMixed,
       coresProjeto: (app.layers || []).map(l => l.color),
       aoAlterar: preview,
       aoConfirmar: confirm,

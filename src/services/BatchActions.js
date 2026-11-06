@@ -61,6 +61,7 @@ function commitBatch(app, ids, label, mutate) {
   recordBatchAudit(app, `${label} (${drafts.length} feições)`);
   // Re-renderiza de uma vez (a feição precisa trocar de sub-pane ao mudar de camada)
   app.refreshMapAndTable(true);
+  app.updateHUD?.();
   return summary;
 }
 

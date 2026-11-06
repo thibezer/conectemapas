@@ -256,6 +256,48 @@ export class LocalStore {
     } catch {}
   }
 
+  /**
+   * Remove da fila de deltas pendentes apenas o que foi efetivamente confirmado pela nuvem,
+   * preservando qualquer nova edição ou exclusão enfileirada enquanto o envio estava em trânsito.
+   */
+  static removeConfirmedDeltas(confirmedUpsert = [], confirmedDelete = [], projectId = 'projeto_padrao', currentProjectId = 'projeto_padrao', isStillDirtyFn = null) {
+    if (typeof localStorage === 'undefined') return;
+    try {
+      const key = PENDING_DELTAS_KEY_PREFIX + projectId;
+      const current = this.readPendingDeltas(projectId);
+      if (current.dirty.length === 0 && current.deleted.length === 0) {
+        this.refreshOfflinePendingCache(projectId, currentProjectId, { dirty: [], deleted: [] });
+        return;
+      }
+
+      const confirmedUpsertById = new Map((confirmedUpsert || []).filter(f => f && f.id).map(f => [f.id, f]));
+      const confirmedDeleteSet = new Set((confirmedDelete || []).filter(Boolean));
+
+      const remainingDirty = current.dirty.filter((f) => {
+        if (!f || !f.id) return false;
+        if (typeof isStillDirtyFn === 'function' && isStillDirtyFn(f.id)) return true;
+        if (!confirmedUpsertById.has(f.id)) return true;
+        const sent = confirmedUpsertById.get(f.id);
+        // Se o objeto mudou enquanto o request estava em voo, mantém na fila
+        return JSON.stringify(f) !== JSON.stringify(sent);
+      });
+
+      const remainingDeleted = current.deleted.filter((id) => {
+        if (!id) return false;
+        if (typeof isStillDirtyFn === 'function' && isStillDirtyFn(id)) return true;
+        return !confirmedDeleteSet.has(id);
+      });
+
+      const next = { dirty: remainingDirty, deleted: remainingDeleted };
+      if (next.dirty.length === 0 && next.deleted.length === 0) {
+        localStorage.removeItem(key);
+      } else {
+        localStorage.setItem(key, JSON.stringify(next));
+      }
+      this.refreshOfflinePendingCache(projectId, currentProjectId, next);
+    } catch {}
+  }
+
   static getOfflinePendingIds(currentProjectId = 'projeto_padrao') {
     if (!_offlinePendingIdsByProject.has(currentProjectId)) {
       const pending = this.readPendingDeltas(currentProjectId);

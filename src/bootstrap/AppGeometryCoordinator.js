@@ -111,6 +111,9 @@ export class AppGeometryCoordinator {
       const style = feat.style || {};
 
       toolbar.setStrokeOnly(isLine);
+      if (isLine) {
+        toolbar.setActiveColorTarget?.('stroke');
+      }
       if (style.fillOpacity !== undefined) {
         toolbar.fillOpacity = Number(style.fillOpacity);
       }
@@ -151,6 +154,9 @@ export class AppGeometryCoordinator {
     }
 
     toolbar.setStrokeOnly(allLines);
+    if (allLines) {
+      toolbar.setActiveColorTarget?.('stroke');
+    }
 
     const isMixedFill = fillColors.size > 1;
     const isMixedStroke = strokeColors.size > 1;
@@ -171,6 +177,19 @@ export class AppGeometryCoordinator {
   }
 
   static updateHUD(app) {
+    // Atualiza referências de feições no SelectionHUD para nunca reter objetos defasados após mudanças de cor/estilo/exclusão
+    if (app.selectionHUD && Array.isArray(app.selectionHUD.selectedFeatures) && app.selectionHUD.selectedFeatures.length > 0 && Array.isArray(app.features)) {
+      const byId = new Map(app.features.filter(Boolean).map(f => [f.id, f]));
+      const fresh = app.selectionHUD.selectedFeatures.map(f => f && byId.get(f.id)).filter(Boolean);
+      app.selectionHUD.selectedFeatures = fresh;
+      const isVertexEditing = Boolean(app.mapEngine?.vertexEditor?.isEditing?.());
+      const isDrawing = Boolean(app.mapEngine?.activeTool && app.mapEngine.activeTool !== 'select');
+      if (fresh.length === 0 || isVertexEditing || isDrawing) {
+        app.selectionHUD.hide?.();
+      } else if (app.selectionHUD.isVisible) {
+        app.selectionHUD.update?.(fresh, app.layers);
+      }
+    }
     // Seleção, recarga do mapa e desfazer/refazer passam por aqui: a aba Modificar acompanha
     app.syncRibbon?.();
   }

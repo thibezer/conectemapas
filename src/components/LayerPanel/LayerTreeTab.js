@@ -5,12 +5,14 @@
    ========================================================================== */
 
 import '@thibezer/ui-components-kit/camadas';
+import { BatchActions } from '../../services/BatchActions.js';
 
 export class LayerTreeTab {
   static render(panel) {
     return `
       <ui-camadas 
         id="cm-ui-camadas" 
+        persistir="false"
         style="width: 100%; height: 100%; display: flex; flex-direction: column;"
         mapa-base-ativo="${panel.currentBasemap || 'satelite'}"
         camada-ativa="${panel.activeLayerId || (panel.layers[0]?.id || '')}"
@@ -22,6 +24,15 @@ export class LayerTreeTab {
   static bindEvents(panel) {
     const el = document.getElementById('cm-ui-camadas');
     if (!el) return;
+
+    // Desativa e limpa qualquer cache interno antigo do <ui-camadas> no localStorage
+    // que sobrescrevia cores de camadas de volta para valores anteriores (reidratar).
+    el.persistir = false;
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.removeItem('ui-camadas:cm-ui-camadas');
+      } catch {}
+    }
 
     // 1. Injeta dados do ConecteMapas no Web Component <ui-camadas>
     if (typeof el.definirCamadas === 'function') {
@@ -103,8 +114,9 @@ export class LayerTreeTab {
       const { camadaId, cor } = e.detail || {};
       const layer = panel.layers.find(l => l.id === camadaId);
       if (layer) {
+        const previousColor = layer.color;
         layer.color = cor;
-        panel.onLayerColorChange(camadaId, cor);
+        panel.onLayerColorChange(camadaId, cor, previousColor);
       }
     });
 
@@ -137,7 +149,7 @@ export class LayerTreeTab {
     // Seleção de Feições (individual ou coletiva)
     el.addEventListener('ui-feicoes-selecionadas', (e) => {
       if (_isSyncing) return;
-      const { feicoesIds, feicoes } = e.detail || {};
+      const { feicoesIds } = e.detail || {};
       const newIds = feicoesIds || [];
       const currentIds = Array.from(panel.selectedFeatureIds);
 
@@ -177,7 +189,6 @@ export class LayerTreeTab {
       const { feicaoId, visivel } = e.detail || {};
       const feat = panel.features.find(f => f.id === feicaoId);
       if (feat) {
-        feat.visible = visivel;
         panel.onFeatureToggle(feicaoId, visivel);
       }
     });
@@ -187,7 +198,6 @@ export class LayerTreeTab {
       const { feicaoId, bloqueado } = e.detail || {};
       const feat = panel.features.find(f => f.id === feicaoId);
       if (feat) {
-        feat.locked = bloqueado;
         panel.onFeatureLockToggle(feicaoId, bloqueado);
       }
     });
@@ -203,19 +213,17 @@ export class LayerTreeTab {
       const { feicaoId, camadaDestinoId } = e.detail || {};
       const feat = panel.features.find(f => f.id === feicaoId);
       if (feat && camadaDestinoId) {
-        feat.layerId = camadaDestinoId;
-        panel.onFeatureUpdate(feat);
+        panel.onFeatureUpdate({ ...feat, layerId: camadaDestinoId });
       }
     });
 
-    // Renomeação inline de Feição (o componente só altera o objeto em memória)
+    // Renomeação inline de Feição (cria cópia para que o pushHistory capture o nome anterior)
     el.addEventListener('ui-feicao-renomeada', (e) => {
       const { feicaoId, novoNome } = e.detail || {};
       const name = String(novoNome ?? '').trim();
       const feat = panel.features.find(f => f.id === feicaoId);
       if (feat && name) {
-        feat.name = name;
-        panel.onFeatureUpdate(feat);
+        panel.onFeatureUpdate({ ...feat, name });
       }
     });
 
@@ -232,7 +240,7 @@ export class LayerTreeTab {
 
     // Reordenação de Feições dentro da Camada
     el.addEventListener('ui-feicoes-reordenadas', (e) => {
-      const { camadaId, feicoes } = e.detail || {};
+      const { feicoes } = e.detail || {};
       if (typeof panel.onFeaturesReorder !== 'function' || !Array.isArray(feicoes)) return;
       // O callback espera a lista completa: mantém as demais camadas e aplica a nova ordem desta
       const byId = new Map(panel.features.map(f => [f.id, f]));
@@ -263,37 +271,47 @@ export class LayerTreeTab {
       if (acao === 'excluir') {
         panel.onBulkDelete(feicoesIds);
       } else if (acao === 'visibilidade') {
-        (feicoesIds || []).forEach(id => {
-          const f = panel.features.find(feat => feat.id === id);
-          if (f) {
-            f.visible = valor;
-            panel.onFeatureToggle(id, valor);
-          }
-        });
+        if (panel.app?.batchActions?.setVisible) {
+          panel.app.batchActions.setVisible(feicoesIds || [], valor);
+        } else {
+          (feicoesIds || []).forEach(id => panel.onFeatureToggle(id, valor));
+        }
       } else if (acao === 'bloqueio') {
-        (feicoesIds || []).forEach(id => {
-          const f = panel.features.find(feat => feat.id === id);
-          if (f) {
-            f.locked = valor;
-            panel.onFeatureLockToggle(id, valor);
-          }
-        });
+        if (panel.app?.batchActions?.setLocked) {
+          panel.app.batchActions.setLocked(feicoesIds || [], valor);
+        } else {
+          (feicoesIds || []).forEach(id => panel.onFeatureLockToggle(id, valor));
+        }
       } else if (acao === 'cor') {
-        (feicoesIds || []).forEach(id => {
-          const f = panel.features.find(feat => feat.id === id);
-          if (f) {
-            f.color = valor;
-            panel.onFeatureUpdate(f);
-          }
-        });
+        if (panel.app && Array.isArray(panel.app.features)) {
+          BatchActions.applyColors(panel.app, feicoesIds || [], { fillColor: valor, strokeColor: valor });
+        } else {
+          (feicoesIds || []).forEach(id => {
+            const f = panel.features.find(feat => feat.id === id);
+            if (f) {
+              const isLine = /LineString/.test(f.type);
+              panel.onFeatureUpdate({
+                ...f,
+                color: valor,
+                style: {
+                  ...(f.style || {}),
+                  ...(isLine ? { strokeColor: valor } : { fillColor: valor })
+                }
+              });
+            }
+          });
+        }
       } else if (acao === 'mover') {
-        (feicoesIds || []).forEach(id => {
-          const f = panel.features.find(feat => feat.id === id);
-          if (f) {
-            f.layerId = valor;
-            panel.onFeatureUpdate(f);
-          }
-        });
+        if (panel.app?.batchActions?.moveToLayer) {
+          panel.app.batchActions.moveToLayer(feicoesIds || [], valor);
+        } else {
+          (feicoesIds || []).forEach(id => {
+            const f = panel.features.find(feat => feat.id === id);
+            if (f) {
+              panel.onFeatureUpdate({ ...f, layerId: valor });
+            }
+          });
+        }
       }
     });
   }

@@ -751,6 +751,9 @@ export class FeaturePropertiesAdapter {
       }
       case 'textColor':
         draft.style.textColor = novoValor;
+        if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
+          draft.color = novoValor;
+        }
         return;
 
       // Estilo Visual
@@ -770,6 +773,9 @@ export class FeaturePropertiesAdapter {
         draft.style.fillColor = novoValor;
         if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
           draft.style._lastFillColor = novoValor;
+          if (!/LineString/.test(draft.type)) {
+            draft.color = novoValor;
+          }
         }
         return;
       }
@@ -798,6 +804,9 @@ export class FeaturePropertiesAdapter {
         draft.style.strokeColor = novoValor;
         if (novoValor && novoValor !== 'none' && novoValor !== 'transparent') {
           draft.style._lastStrokeColor = novoValor;
+          if (/LineString/.test(draft.type)) {
+            draft.color = novoValor;
+          }
         }
         return;
       }

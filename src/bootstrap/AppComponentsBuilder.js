@@ -320,12 +320,15 @@ export class AppComponentsBuilder {
         app.mapEngine.setTool(tool);
       },
       onColorChange: (colors, { commit = true, changed } = {}) => {
-        // Sempre atualiza o estilo dos próximos desenhos; só grava na seleção ao confirmar a cor
+        // Sempre atualiza o estilo dos próximos desenhos; pré-visualiza no arraste e grava ao confirmar a cor
         if (app.mapEngine) {
           app.mapEngine.setActiveDrawingStyles(colors);
         }
         if (commit) {
+          SelectionStyleController.revertStylePreview(app);
           AppComponentsBuilder.applyColorsToSelection(app, colors, changed);
+        } else {
+          SelectionStyleController.previewColorsOnSelection(app, colors, changed);
         }
       },
       onAction: (action) => {
@@ -511,11 +514,62 @@ export class AppComponentsBuilder {
           app.saveMetadata(true);
         }
       },
-      onLayerColorChange: (layerId, newColor) => {
+      onLayerColorChange: (layerId, newColor, previousColor = null) => {
         const layer = app.layers.find(l => l.id === layerId);
         if (layer) {
+          const oldColor = previousColor || layer.color;
           layer.color = newColor;
           app.mapEngine.setLayerColor(layerId, newColor);
+          if (app.activeLayerId === layerId) {
+            app.mapEngine.setActiveDrawingLayer?.(layer);
+            if (app.drawingToolbar) {
+              app.drawingToolbar.setActiveLayer(layer);
+              const selected = AppComponentsBuilder.getSelectedFeatures(app);
+              if (selected.length === 0) {
+                app.drawingToolbar.setColors({ fillColor: newColor });
+                app.mapEngine.setActiveDrawingStyles(app.drawingToolbar.getColors());
+              }
+            }
+          }
+          // Atualiza feições da camada que ainda usavam a cor antiga herdada da camada
+          if (oldColor && String(oldColor).toLowerCase() !== String(newColor).toLowerCase() && Array.isArray(app.features)) {
+            const oldNorm = String(oldColor).toLowerCase();
+            const updatedFeats = [];
+            app.features = app.features.map((f) => {
+              if (!f || f.layerId !== layerId || f.locked === true) return f;
+              const s = f.style || {};
+              const fillMatches = !s.fillColor || String(s.fillColor).toLowerCase() === oldNorm;
+              const strokeMatches = /LineString/.test(f.type) && (!s.strokeColor || String(s.strokeColor).toLowerCase() === oldNorm);
+              const colorMatches = !f.color || String(f.color).toLowerCase() === oldNorm;
+              if (!fillMatches && !strokeMatches && !colorMatches) return f;
+              const nextStyle = { ...s };
+              if (!/LineString/.test(f.type) && fillMatches && s.fillColor !== 'none' && s.fillColor !== 'transparent') {
+                nextStyle.fillColor = newColor;
+              }
+              if (strokeMatches && s.strokeColor !== 'none' && s.strokeColor !== 'transparent') {
+                nextStyle.strokeColor = newColor;
+              }
+              const nextFeat = {
+                ...f,
+                color: colorMatches ? newColor : f.color,
+                style: nextStyle
+              };
+              updatedFeats.push(nextFeat);
+              return nextFeat;
+            });
+            if (updatedFeats.length > 0) {
+              app.mapEngine.renderFeatures(app.features, app.layers);
+              if (typeof app.saveFeaturesBulk === 'function') {
+                app.saveFeaturesBulk(updatedFeats);
+              } else {
+                StorageService.queueFeaturesBulkUpsert(updatedFeats, app.projectId);
+              }
+              if (app.collabHub) {
+                updatedFeats.forEach(uf => app.collabHub.notifyFeatureUpdated(uf));
+              }
+              app.updateHUD?.();
+            }
+          }
           StorageService.saveLayer(layer, app.projectId);
           if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
           app.saveMetadata(true);

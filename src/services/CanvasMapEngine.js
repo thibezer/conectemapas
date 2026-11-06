@@ -912,9 +912,13 @@ export class CanvasMapEngine {
     const layerId = camadaId;
     let raw = null;
 
+    const primaryFillColor = (shape.fillColor && shape.fillColor !== 'none' && shape.fillColor !== 'transparent')
+      ? shape.fillColor
+      : shape.strokeColor;
+
     if (g.tipo === 'Point') {
       raw = {
-        type: 'Point', coordinates: g.coordenada, layerId, color: shape.strokeColor,
+        type: 'Point', coordinates: g.coordenada, layerId, color: primaryFillColor,
         style: { fillColor: shape.fillColor, strokeColor: shape.strokeColor, fillOpacity: 1, markerSize: 24 }
       };
     } else if (g.tipo === 'LineString') {
@@ -923,9 +927,9 @@ export class CanvasMapEngine {
         style: { strokeColor: shape.strokeColor, strokeWidth: shape.strokeWidth }
       };
     } else if (g.tipo === 'Polygon') {
-      raw = { type: 'Polygon', coordinates: g.aneis[0], layerId, color: shape.strokeColor, style: { ...shape } };
+      raw = { type: 'Polygon', coordinates: g.aneis[0], layerId, color: primaryFillColor, style: { ...shape } };
     } else if (g.tipo === 'Circle') {
-      raw = { type: 'Circle', coordinates: g.centro, radius: Math.round(g.raioMetros), layerId, color: shape.strokeColor, style: { ...shape } };
+      raw = { type: 'Circle', coordinates: g.centro, radius: Math.round(g.raioMetros), layerId, color: primaryFillColor, style: { ...shape } };
     } else if (g.tipo === 'Text') {
       raw = {
         type: 'Text', coordinates: g.coordenada, layerId, name: g.texto, properties: { text: g.texto },

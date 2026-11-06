@@ -186,7 +186,7 @@ export class StorageService {
     _projectDebounceTimer = null;
     _pendingMetaPayload = null;
     _pendingProjectPayload = null;
-    DeltaQueue.discardPending();
+    DeltaQueue.discardPending(_currentProjectId);
     _layersSigByProject.clear();
     CloudSyncEngine.cancelPendingMetadata();
   }

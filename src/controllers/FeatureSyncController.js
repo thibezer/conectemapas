@@ -244,19 +244,43 @@ export class FeatureSyncController {
   /**
    * Corrige métricas gravadas por versões anteriores (a fórmula antiga de área
    * superestimava ~2,2× e ignorava o lado de fechamento no perímetro).
-   * Só regrava feições que já possuem atributos métricos e cujo valor diverge.
+   * Só regrava feições que já possuem atributos métricos e cujo valor diverge
+   * significativamente (ignora ruído de quantização de 6 casas decimais do GeoCompressor,
+   * evitando reenfileirar feições como dirty e ressuscitar exclusões ou sobrescrever cores na nuvem).
    * @returns {number} quantidade de feições corrigidas
    */
   static refreshStoredMetrics(app) {
     if (!app || !Array.isArray(app.features)) return 0;
+    const parseMetricNum = (str) => {
+      if (typeof str !== 'string') return NaN;
+      // Ex: "1.250,45 m²" ou "12,50 m" -> extrai o primeiro número formatado em pt-BR ou ponto
+      const m = str.match(/-?[\d.]+(?:,\d+)?/);
+      if (!m) return NaN;
+      const raw = m[0].includes(',') ? m[0].replace(/\./g, '').replace(',', '.') : m[0];
+      return parseFloat(raw);
+    };
+    const isLegacyMetricDiff = (oldStr, newStr) => {
+      if (oldStr === newStr) return false;
+      if (typeof oldStr !== 'string' || typeof newStr !== 'string') return true;
+      const a = parseMetricNum(oldStr);
+      const b = parseMetricNum(newStr);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
+      const absDiff = Math.abs(a - b);
+      const relDiff = Math.abs(b) > 1e-6 ? absDiff / Math.abs(b) : absDiff;
+      // Quantização de 6 casas decimais (~11 cm) gera variação < 0.2% ou poucos décimos;
+      // a fórmula legada divergia em ~2.2× (120%) na área ou um lado inteiro no perímetro.
+      return relDiff > 0.005 && absDiff > 0.5;
+    };
+
     const changed = [];
     for (let i = 0; i < app.features.length; i++) {
       const feat = app.features[i];
-      if (!feat || !feat.properties || typeof feat.properties !== 'object') continue;
+      if (!feat || !feat.id || !feat.properties || typeof feat.properties !== 'object') continue;
+      if (StorageService.hasLocalTombstone(feat.id, app.projectId)) continue;
       const metrics = FeatureGeometryUtils.computeMetricProperties(feat);
       const keys = Object.keys(metrics);
       if (keys.length === 0 || !keys.some(k => k in feat.properties)) continue;
-      if (keys.every(k => feat.properties[k] === metrics[k])) continue;
+      if (keys.every(k => !(k in feat.properties) || !isLegacyMetricDiff(feat.properties[k], metrics[k]))) continue;
       const fixed = { ...feat, properties: { ...feat.properties, ...metrics } };
       app.features[i] = fixed;
       changed.push(fixed);
@@ -298,6 +322,8 @@ export class FeatureSyncController {
       StorageService.logAudit(audit);
       if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
       app.saveFeature(updatedFeature);
+      // Mantém o HUD de seleção sincronizado com a referência mais recente (evita reverter cor ao editar vértices/inspecionar)
+      AppGeometryCoordinator.updateHUD(app);
       // Edição numa feição selecionada (ex.: cores no inspetor) aparece também na barra de cores
       AppGeometryCoordinator.resyncToolbarWithSelection(app, [updatedFeature.id]);
     }
@@ -683,6 +709,7 @@ export class FeatureSyncController {
     }
 
     // 3. Processa feições criadas ou atualizadas remotamente
+    const validUpserted = [];
     if (Array.isArray(upserted) && upserted.length > 0) {
       // Índice id -> posição: evita varrer app.features inteiro a cada feição recebida
       const indexById = new Map();
@@ -707,11 +734,12 @@ export class FeatureSyncController {
         if (app.mapEngine) {
           app.mapEngine.updateFeature(normalized, app.layers);
         }
+        validUpserted.push(normalized);
         stateChanged = true;
       }
     }
 
-    // 4. Atualiza UI se houve qualquer modificação
+    // 4. Atualiza UI se houve qualquer modificação em memória
     if (stateChanged) {
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       if (app.layerPanel) {
@@ -728,9 +756,12 @@ export class FeatureSyncController {
         }
       }
       if (app.updateHUD) app.updateHUD();
+      AppGeometryCoordinator.resyncToolbarWithSelection(app);
+    }
 
-      // Persiste no IndexedDB local de forma assíncrona sem disparar eco para a nuvem
-      StorageService.applyRemoteChangesLocally(upserted, deleted, app.projectId);
+    // Persiste no IndexedDB local sempre que houver deltas remotos válidos (mesmo se a memória já havia removido via BroadcastChannel)
+    if (stateChanged || validUpserted.length > 0 || deletedSet.size > 0) {
+      StorageService.applyRemoteChangesLocally(validUpserted, deleted, app.projectId);
       StorageService.saveMetadata({
         id: app.projectId,
         name: app.projectName,

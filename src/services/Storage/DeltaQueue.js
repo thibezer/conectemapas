@@ -31,26 +31,34 @@ export class DeltaQueue {
   static queueFeatureUpsert(feature, projectId = 'projeto_padrao') {
     if (!feature || !feature.id) return;
     const compacted = GeoCompressor.compactFeatureForStorage(feature);
+    const item = { ...compacted, projectId };
     _deletedFeatureIds.delete(feature.id);
-    _dirtyFeatures.set(feature.id, { ...compacted, projectId });
+    _dirtyFeatures.set(feature.id, item);
     // Regravar uma feição excluída antes (ex.: desfazer a exclusão) tira a tombstone local
     LocalStore.removeLocalTombstone(feature.id, projectId);
+    LocalStore.persistPendingDeltasWithItems([item], [], projectId, projectId);
     this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
   }
 
   static queueFeaturesBulkUpsert(features, projectId = 'projeto_padrao') {
     if (!Array.isArray(features) || features.length === 0) return;
     const ids = [];
+    const items = [];
     for (let i = 0; i < features.length; i++) {
       const feat = features[i];
       if (feat && feat.id) {
         const compacted = GeoCompressor.compactFeatureForStorage(feat);
+        const item = { ...compacted, projectId };
         _deletedFeatureIds.delete(feat.id);
-        _dirtyFeatures.set(feat.id, { ...compacted, projectId });
+        _dirtyFeatures.set(feat.id, item);
         ids.push(feat.id);
+        items.push(item);
       }
     }
     LocalStore.removeLocalTombstones(ids, projectId);
+    if (items.length > 0) {
+      LocalStore.persistPendingDeltasWithItems(items, [], projectId, projectId);
+    }
     this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
   }
 
@@ -58,6 +66,8 @@ export class DeltaQueue {
     if (!featureId) return;
     _dirtyFeatures.delete(featureId);
     _deletedFeatureIds.add(featureId);
+    LocalStore.addLocalTombstone(featureId, projectId);
+    LocalStore.persistPendingDeltasWithItems([], [featureId], projectId, projectId);
     this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
   }
 
@@ -76,11 +86,16 @@ export class DeltaQueue {
     try {
       const db = await IndexedDbStore.getDB();
       if (db) {
-        const tx = db.transaction('features', 'readwrite');
-        const store = tx.objectStore('features');
-        for (const id of featureIds) {
-          store.delete(id);
-        }
+        await new Promise((resolve) => {
+          const tx = db.transaction('features', 'readwrite');
+          const store = tx.objectStore('features');
+          for (const id of featureIds) {
+            store.delete(id);
+          }
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        });
       }
     } catch (e) {
       console.warn('[DeltaQueue] Erro ao deletar lote do IndexedDB:', e);
@@ -125,10 +140,11 @@ export class DeltaQueue {
   }
 
   /** Esquece o que está na fila sem gravar (projeto excluído). */
-  static discardPending() {
+  static discardPending(projectId = 'projeto_padrao') {
     this.cancelTimers();
     _dirtyFeatures.clear();
     _deletedFeatureIds.clear();
+    LocalStore.clearPendingDeltas(projectId, projectId);
   }
 
   static cancelTimers() {

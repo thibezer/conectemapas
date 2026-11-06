@@ -127,8 +127,13 @@ export class IndexedDbStore {
     try {
       const db = await this.getDB();
       if (db) {
-        const tx = db.transaction(STORE_FEATURES, 'readwrite');
-        tx.objectStore(STORE_FEATURES).delete(featureId);
+        await new Promise((resolve) => {
+          const tx = db.transaction(STORE_FEATURES, 'readwrite');
+          tx.objectStore(STORE_FEATURES).delete(featureId);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        });
       }
     } catch (e) {
       console.warn('[IndexedDbStore] Erro ao deletar feição no IndexedDB:', e);
@@ -343,8 +348,28 @@ export class IndexedDbStore {
             projectData.layers = (syncProject && Array.isArray(syncProject.layers)) ? syncProject.layers : [];
           }
 
-          let features = featuresReq.result || [];
-          projectData.features = Array.isArray(features) ? features : [];
+          let features = Array.isArray(featuresReq.result) ? featuresReq.result : [];
+          // Filtra tombstones locais e mescla deltas pendentes síncronos (protege contra F5 antes do commit no IndexedDB)
+          const tombstones = LocalStore.getLocalTombstones(projectId);
+          const pending = LocalStore.readPendingDeltas(projectId);
+          const pendingDelSet = new Set(pending.deleted || []);
+          const pendingDirtyMap = new Map((pending.dirty || []).filter(f => f && f.id).map(f => [f.id, f]));
+
+          const reconciled = [];
+          const seenIds = new Set();
+          for (let i = 0; i < features.length; i++) {
+            const f = features[i];
+            if (!f || !f.id) continue;
+            if (tombstones.has(f.id) || pendingDelSet.has(f.id)) continue;
+            seenIds.add(f.id);
+            reconciled.push(pendingDirtyMap.has(f.id) ? pendingDirtyMap.get(f.id) : f);
+          }
+          for (const [id, dirtyFeat] of pendingDirtyMap) {
+            if (!seenIds.has(id) && !tombstones.has(id) && !pendingDelSet.has(id)) {
+              reconciled.push(dirtyFeat);
+            }
+          }
+          projectData.features = reconciled;
 
           const audit = auditReq.result || [];
           this.sortAuditEntries(audit);

@@ -30,7 +30,9 @@ export class AppBootstrapSync {
         }
       }
       if (Array.isArray(saved.features)) {
-        app.features = saved.features.map(normalizeFeature);
+        app.features = saved.features
+          .filter(f => f && f.id && !StorageService.hasLocalTombstone(f.id, app.projectId))
+          .map(normalizeFeature);
       }
       if (Array.isArray(saved.auditLog)) app.auditLog = saved.auditLog;
       if (saved.basemap) app.currentBasemap = saved.basemap;
@@ -96,8 +98,12 @@ export class AppBootstrapSync {
         if (Array.isArray(saved.features)) {
           const TEST_MOCK_IDS = new Set(['feat-m01', 'feat-m02', 'feat-app-01', 'feat-quadra-a', 'feat-rota-01', 'feat-buffer-01']);
           const cleanedFeatures = saved.features.filter(f => {
+            if (!f || !f.id) return false;
             if (TEST_MOCK_IDS.has(f.id)) {
               StorageService.deleteFeature(f.id);
+              return false;
+            }
+            if (StorageService.hasLocalTombstone(f.id, app.projectId)) {
               return false;
             }
             return true;
@@ -124,6 +130,9 @@ export class AppBootstrapSync {
 
       try {
         await StorageService.commitDeltas();
+        if (StorageService.hasPendingOfflineDeltas()) {
+          await StorageService.flushPendingOfflineDeltas(app.projectId);
+        }
       } catch (e) {
         console.warn('[AppBootstrapSync] Commit de deltas pendentes no boot:', e);
       }
@@ -154,10 +163,16 @@ export class AppBootstrapSync {
               featureCount: app.features.length
             });
           }
-          const deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
-          if (deltaChanges) this.applyRemoteProjectName(app, deltaChanges.project);
-          if (deltaChanges && (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0 || deltaChanges.audit?.length > 0 || deltaChanges.chat?.length > 0)) {
-            FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
+          let pages = 0;
+          let deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
+          while (deltaChanges && pages < 50) {
+            pages++;
+            this.applyRemoteProjectName(app, deltaChanges.project);
+            if (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0 || deltaChanges.audit?.length > 0 || deltaChanges.chat?.length > 0) {
+              FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
+            }
+            if (!deltaChanges.hasMore) break;
+            deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
           }
         } catch (e) {
           console.warn('[AppBootstrapSync] Falha no pull de deltas inicial:', e);
