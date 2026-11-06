@@ -311,12 +311,13 @@ export class PrintSheetsManager {
     if (index === -1) return;
     if (this.blockedWhileReadOnly(sheetId)) return;
 
+    const wasActive = (this.activeSheetId === sheetId);
     const [deleted] = this.sheets.splice(index, 1);
-    this.composer.cloud?.onSheetDeleted(sheetId);
+    const delPromise = this.composer.cloud?.onSheetDeleted(sheetId);
     this.saveToStorage();
 
     // Se a excluída for a ativa, vai para a anterior ou primeira
-    if (this.activeSheetId === sheetId) {
+    if (wasActive) {
       const nextIndex = Math.max(0, index - 1);
       this.activeSheetId = this.sheets[nextIndex].id;
       this.saveToStorage();
@@ -335,6 +336,21 @@ export class PrintSheetsManager {
 
     this.updateSheetNumbersInTitleBlocks();
     this.renderSheetsSelectorDOM();
+
+    if (delPromise && typeof delPromise.then === 'function') {
+      delPromise.then((allowed) => {
+        if (allowed === false) {
+          // Prancha estava travada por outro operador na nuvem: restaura localmente
+          if (!this.sheets.some(s => s.id === deleted.id)) {
+            const restoreIdx = Math.min(index, this.sheets.length);
+            this.sheets.splice(restoreIdx, 0, deleted);
+            this.updateSheetNumbersInTitleBlocks();
+            this.saveToStorage({ skipCloud: true });
+            this.renderSheetsSelectorDOM();
+          }
+        }
+      }).catch(() => {});
+    }
 
     UIToast.notificar({
       tipo: 'sucesso',

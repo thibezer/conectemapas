@@ -162,4 +162,57 @@ const sheet = (id, name = id) => ({ id, name, items: [{ id: 'm', type: 'map' }] 
   console.log('✔ Sem nuvem');
 }
 
+// 7. Troca de prancha (onActiveSheetChanged): envia alterações da prancha anterior e libera a trava só após enviar
+{
+  const composer = makeComposer([sheet('a', 'A original'), sheet('b', 'B original')], 'a');
+  const st = fakeStore({
+    async changes() {
+      return {
+        rev: 2,
+        sheets: [
+          { id: 'a', order: 0, rev: 1, sheet: sheet('a', 'A original') },
+          { id: 'b', order: 1, rev: 2, sheet: sheet('b', 'B original') }
+        ],
+        locks: [],
+        library: null
+      };
+    }
+  });
+  const sync = new PrintCloudSync(composer, st, { clientId: 'me' });
+  await sync.start();
+
+  // Edita a prancha 'a' e imediatamente troca para 'b' (activeSheetId já mudou para 'b' antes de onActiveSheetChanged('a'))
+  composer.sheetsManager.sheets[0].name = 'A editada antes de trocar';
+  composer.sheetsManager.activeSheetId = 'b';
+  await sync.onActiveSheetChanged('a');
+
+  const saves = st.log.filter(l => l[0] === 'save');
+  assert.strictEqual(saves.length, 1, 'Deve enviar a prancha anterior que tinha alterações pendentes');
+  assert.strictEqual(saves[0][1], 'a', 'Deve salvar a prancha anterior (a), não a nova (b)');
+
+  const saveIdx = st.log.findIndex(l => l[0] === 'save' && l[1] === 'a');
+  const releaseIdx = st.log.findIndex(l => l[0] === 'release' && l[1] === 'a');
+  assert.ok(saveIdx !== -1 && releaseIdx > saveIdx, 'Deve liberar a trava de "a" somente após salvar');
+  assert.strictEqual(sync.lock.sheetId, 'b', 'Deve ter adquirido a trava da nova prancha ativa (b)');
+  sync.stop({ keepalive: false });
+  console.log('✔ Troca de prancha envia alterações da prancha anterior');
+}
+
+// 8. Exclusão de prancha travada por outro operador na nuvem retorna false
+{
+  const composer = makeComposer([sheet('a', 'Prancha A'), sheet('b', 'Prancha B')], 'a');
+  const st = fakeStore({
+    async deleteSheet(id) {
+      st.log.push(['delete', id]);
+      return { ok: false, locked: 'Carlos' };
+    }
+  });
+  const sync = new PrintCloudSync(composer, st, { clientId: 'me' });
+  await sync.start();
+  const allowed = await sync.onSheetDeleted('b');
+  assert.strictEqual(allowed, false, 'onSheetDeleted deve retornar false quando a prancha está travada na nuvem');
+  sync.stop({ keepalive: false });
+  console.log('✔ Exclusão recusada na nuvem quando prancha está travada por outro operador');
+}
+
 console.log('\n🎉 TESTES DO PRINTCLOUDSYNC PASSARAM!');

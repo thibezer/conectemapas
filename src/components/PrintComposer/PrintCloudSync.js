@@ -197,15 +197,29 @@ export class PrintCloudSync {
     }
   }
 
-  /** Troca de prancha: solta a anterior e tenta pegar a nova */
+  /** Troca de prancha: envia a anterior, solta a trava dela e tenta pegar a nova */
   async onActiveSheetChanged(previousId) {
     if (!this.enabled || !this.active) return;
-    this.pushNow();
-    if (previousId && this.lock.mine && this.lock.sheetId === previousId) {
+    if (this._pushTimer) { clearTimeout(this._pushTimer); this._pushTimer = null; }
+    if (previousId && this.lock.mine !== false && this.canWrite()) {
+      const prevSheet = this.sheetsManager?.sheets?.find(s => s.id === previousId);
+      const shouldRelease = Boolean(this.lock.mine && this.lock.sheetId === previousId);
+      if (prevSheet && this.pushed.get(prevSheet.id) !== JSON.stringify(prevSheet)) {
+        this._pushing = this.pushSheet(prevSheet, { releaseAfter: shouldRelease });
+        await this._pushing;
+      } else if (shouldRelease) {
+        this.store.release(previousId).catch(() => {});
+      }
+    } else if (previousId && this.lock.mine && this.lock.sheetId === previousId) {
       this.store.release(previousId).catch(() => {});
     }
     this.lock = { sheetId: null, mine: null, holder: null };
     await this.acquireActive();
+    // Se a nova prancha ativa tiver alterações locais ainda não enviadas (ex.: recém-criada ou duplicada), envia
+    const cur = this.sheetsManager?.getCurrentSheet?.();
+    if (cur && this.lock.mine !== false && !this.composer.readOnly && this.pushed.get(cur.id) !== JSON.stringify(cur)) {
+      this.pushNow(cur.id);
+    }
   }
 
   // ------------------------------------------------------------------ envio
@@ -219,9 +233,10 @@ export class PrintCloudSync {
     }, PrintCloudSync.PUSH_DELAY_MS);
   }
 
-  pushNow() {
+  pushNow(sheetId = null) {
+    if (this._pushTimer) { clearTimeout(this._pushTimer); this._pushTimer = null; }
     const sm = this.sheetsManager;
-    const sheet = sm.getCurrentSheet();
+    const sheet = sheetId ? sm.sheets.find(s => s.id === sheetId) : sm.getCurrentSheet();
     if (!sheet || this.lock.mine === false || this.composer.readOnly || !this.canWrite()) return null;
     if (this.pushed.get(sheet.id) === JSON.stringify(sheet)) return null;
     this._pushing = this.pushSheet(sheet);
