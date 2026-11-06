@@ -847,9 +847,20 @@ export class PrintItemsManager {
     return ['top', 'right', 'bottom', 'left'].every(k => m[k] === a[k]) ? base : { ...base, margins: m };
   }
 
+  /** Itens de tamanho físico fixo: não esticam com a folha (o texto interno tem tamanho fixo em pt) */
+  static FIXED_SIZE_TYPES = new Set(['north_arrow', 'scale_bar', 'title_block', 'label']);
+
+  /** Itens que mantêm a proporção ao serem reescalados */
+  static KEEP_ASPECT_TYPES = new Set(['north_arrow', 'image']);
+
   /**
-   * Reajusta os itens de uma folha para outra, proporcionalmente à área útil (dentro das margens).
-   * Seta norte e imagem mantêm a proporção; tudo fica dentro da nova folha. Retorna cópias.
+   * Reajusta os itens de uma folha para outra. Retorna cópias.
+   * - Mudou a orientação (paisagem x retrato): os itens do layout padrão (mesmos ids) assumem a
+   *   posição e o tamanho do layout padrão da nova folha, mantendo todo o conteúdo e a vista;
+   *   os demais são reescalados.
+   * - Mesma orientação: mapa, localização, legenda etc. acompanham a área útil; carimbo, barra de
+   *   escala, seta norte e rótulos mantêm o tamanho e ficam presos à borda mais próxima da área
+   *   útil (a ida e volta devolve o item ao lugar original).
    */
   static fitItemsToPaper(items = [], fromPaper, toPaper) {
     const usable = (p) => {
@@ -861,19 +872,57 @@ export class PrintItemsManager {
     const sx = to.w / from.w;
     const sy = to.h / from.h;
     const round = (v) => Math.round(v * 10) / 10;
-    const keepAspect = new Set(['north_arrow', 'image']);
+    const clampPos = (it) => {
+      it.x = round(Math.max(0, Math.min(toPaper.width - it.width, it.x)));
+      it.y = round(Math.max(0, Math.min(toPaper.height - it.height, it.y)));
+    };
+
+    const orientationChanged = (fromPaper.width >= fromPaper.height) !== (toPaper.width >= toPaper.height);
+    // Layout ainda intacto (nada movido ou redimensionado)? Então segue o layout padrão da nova folha
+    const near = (a, b) => Math.abs(a - b) <= 0.5;
+    const origDefaults = new Map(this.createDefaultItems('Projeto', fromPaper).map(d => [d.id, d]));
+    const pristine = items.every(i => {
+      const d = origDefaults.get(i.id);
+      return !d || (near(i.x, d.x) && near(i.y, d.y) && near(i.width, d.width) && near(i.height, d.height));
+    });
+    const defaults = (orientationChanged || pristine)
+      ? new Map(this.createDefaultItems('Projeto', toPaper).map(d => [d.id, d]))
+      : null;
 
     return items.map(src => {
       const it = JSON.parse(JSON.stringify(src));
-      const ux = keepAspect.has(it.type) ? Math.min(sx, sy) : sx;
-      const uy = keepAspect.has(it.type) ? Math.min(sx, sy) : sy;
+
+      const def = defaults && defaults.get(src.id);
+      if (def) {
+        it.x = def.x; it.y = def.y; it.width = def.width; it.height = def.height;
+        return it;
+      }
+
+      if (this.FIXED_SIZE_TYPES.has(src.type)) {
+        // Mantém o tamanho e a distância até a borda (esquerda/direita, topo/base) mais próxima
+        const cx = src.x + src.width / 2;
+        const cy = src.y + src.height / 2;
+        const midX = from.x + from.w / 2;
+        const midY = from.y + from.h / 2;
+        it.width = src.width;
+        it.height = src.height;
+        it.x = cx <= midX ? to.x + (src.x - from.x) : to.x + to.w - (from.x + from.w - (src.x + src.width)) - src.width;
+        it.y = cy <= midY ? to.y + (src.y - from.y) : to.y + to.h - (from.y + from.h - (src.y + src.height)) - src.height;
+        clampPos(it);
+        return it;
+      }
+
+      const keep = this.KEEP_ASPECT_TYPES.has(it.type);
+      const ux = keep ? Math.min(sx, sy) : sx;
+      const uy = keep ? Math.min(sx, sy) : sy;
       it.width = round(Math.min(toPaper.width, Math.max(10, src.width * ux)));
       it.height = round(Math.min(toPaper.height, Math.max(10, src.height * uy)));
       // Posiciona pelo centro do item, para que itens que mantêm a proporção não saiam do lugar
       const cx = to.x + (src.x + src.width / 2 - from.x) * sx;
       const cy = to.y + (src.y + src.height / 2 - from.y) * sy;
-      it.x = round(Math.max(0, Math.min(toPaper.width - it.width, cx - it.width / 2)));
-      it.y = round(Math.max(0, Math.min(toPaper.height - it.height, cy - it.height / 2)));
+      it.x = cx - it.width / 2;
+      it.y = cy - it.height / 2;
+      clampPos(it);
       return it;
     });
   }
