@@ -11,6 +11,7 @@ import { PrintCloudStore } from '../services/Storage/PrintCloudStore.js';
 import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { ShareModal } from '../components/Modals/ShareModal.js';
 import { AuthModal } from '../components/Modals/AuthModal.js';
+import { ProjectsScreen } from '../components/Modals/ProjectsScreen.js';
 import { GuestNameModal } from '../components/Modals/GuestNameModal.js';
 import { ImportExportModal } from '../components/Modals/ImportExportModal.js';
 import { ProjectModal } from '../components/Modals/ProjectModal.js';
@@ -50,6 +51,13 @@ export class AppModalsBuilder {
       onInviteAccepted: ({ projectId }) => app.openProjectAfterInvite(projectId)
     });
     app.authModal.render(document.getElementById('auth-modal-mount'));
+
+    app.projectsScreen = new ProjectsScreen({
+      getCurrentProjectId: () => app.projectId,
+      onCreate: (data) => ProjectActionsController.createProject(app, data),
+      onOpenAccount: () => app.authModal.open('account')
+    });
+    app.projectsScreen.render(document.getElementById('projects-screen-mount'));
 
     app.guestNameModal = new GuestNameModal({
       onNameSet: () => app.applyAccount(null),

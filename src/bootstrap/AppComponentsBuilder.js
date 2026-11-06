@@ -222,7 +222,10 @@ export class AppComponentsBuilder {
       projectName: app.projectName,
       collaborators: app.collabHub.getActiveCollaboratorsList(),
       accountName: AuthService.getUser()?.name || '',
-      onOpenAccount: () => app.authModal && app.authModal.open(),
+      onOpenAccount: () => {
+        if (AuthService.isLoggedIn() && app.projectsScreen) app.projectsScreen.open();
+        else if (app.authModal) app.authModal.open();
+      },
       onOpenProject: () => app.projectModal && app.projectModal.open(),
       onProjectNameChange: (newName) => {
         app.projectName = newName;
