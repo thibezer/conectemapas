@@ -34,6 +34,7 @@ export class ProjectsScreen {
     this.query = '';
     this.busy = false;
     this._loadSeq = 0;
+    this._headerObserver = null;
     this._returnFocus = null;
   }
 
@@ -73,6 +74,7 @@ export class ProjectsScreen {
   async open() {
     if (!this.root) return;
     this._returnFocus = document.activeElement;
+    this._trackHeader();
     this._draw();
     this.root.hidden = false;
     document.body.style.overflow = 'hidden';
@@ -83,9 +85,22 @@ export class ProjectsScreen {
   close() {
     if (!this.root || this.root.hidden) return;
     this.root.hidden = true;
+    this._headerObserver?.disconnect();
     document.body.style.overflow = '';
     this._returnFocus?.focus?.();
     this._returnFocus = null;
+  }
+
+  /** A tela começa logo abaixo do cabeçalho/ribbon do app (que fica sempre visível); acompanha o recolher do ribbon. */
+  _trackHeader() {
+    const header = document.getElementById('header-mount');
+    const sync = () => { this.root.style.top = `${header ? Math.round(header.getBoundingClientRect().bottom) : 0}px`; };
+    sync();
+    this._headerObserver?.disconnect();
+    if (header && typeof ResizeObserver !== 'undefined') {
+      this._headerObserver = new ResizeObserver(sync);
+      this._headerObserver.observe(header);
+    }
   }
 
   _draw() {

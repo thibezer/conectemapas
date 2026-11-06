@@ -3,6 +3,7 @@
 .cm-ps {
   position: fixed;
   inset: 0;
+  top: 0; /* ajustado por JS para ficar abaixo do cabeçalho do app */
   /* abaixo de modais e toasts do kit, para o modal de conta abrir por cima */
   z-index: calc(var(--ui-z-modal, 1000) - 2);
   display: flex;
@@ -46,6 +47,7 @@
   background: linear-gradient(135deg, rgba(0, 224, 138, 0.18), rgba(56, 189, 248, 0.14));
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
+.cm-ps-hero ui-botao-primario { width: min(260px, 100%); }
 .cm-ps-hero h1 { margin: 0; font-size: 26px; font-weight: 700; text-align: center; }
 
 .cm-ps-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
