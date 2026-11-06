@@ -70,7 +70,8 @@ function passwordOrGenerate($given) {
         }
         return [$given, false];
     }
-    return [substr(bin2hex(random_bytes(8)), 0, 6) . 'Ab' . random_int(10, 99) . substr(bin2hex(random_bytes(4)), 0, 4), true];
+    // 16 hex aleatórios (64 bits) + 'Ab' + 2 dígitos: cumpre a política (letras e números) com folga de entropia
+    return [bin2hex(random_bytes(8)) . 'Ab' . random_int(10, 99), true];
 }
 
 function hashPassword($plain) {

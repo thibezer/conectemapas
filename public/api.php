@@ -644,13 +644,19 @@ function currentUser(PDO $pdo) {
     $token = requestAuthToken();
     if ($token !== '') {
         $stmt = $pdo->prepare("
-            SELECT u.id, u.name, u.email FROM cm_sessions s
+            SELECT u.id, u.name, u.email, (s.expires_at < NOW() + INTERVAL 25 DAY) AS needs_renewal FROM cm_sessions s
             JOIN cm_users u ON u.id = s.user_id
             WHERE s.token_hash = ? AND s.expires_at > NOW() AND u.is_blocked = 0
         ");
         $stmt->execute([hash('sha256', $token)]);
         $row = $stmt->fetch();
-        if ($row) $cache = ['id' => (int)$row['id'], 'name' => $row['name'], 'email' => $row['email']];
+        if ($row) {
+            $cache = ['id' => (int)$row['id'], 'name' => $row['name'], 'email' => $row['email']];
+            // Sessão deslizante: quem usa o app não é deslogado; renova no máximo a cada ~5 dias (1 escrita rara)
+            if ((int)$row['needs_renewal'] === 1) {
+                $pdo->prepare("UPDATE cm_sessions SET expires_at = NOW() + INTERVAL 30 DAY WHERE token_hash = ?")->execute([hash('sha256', $token)]);
+            }
+        }
     }
     return $cache;
 }
@@ -729,6 +735,15 @@ function resolveRole(PDO $pdo, $projectId) {
         if ($keyRole !== false && roleRank($keyRole) > roleRank($best)) $best = $keyRole;
     }
     return $best;
+}
+
+/** Donos ativos: contas membros com papel owner + chaves de dono não revogadas. */
+function cmCountOwners(PDO $pdo, $projectId) {
+    $stmt = $pdo->prepare("SELECT
+        (SELECT COUNT(*) FROM cm_members WHERE project_id = ? AND role = 'owner') +
+        (SELECT COUNT(*) FROM cm_access WHERE project_id = ? AND role = 'owner' AND revoked_at IS NULL)");
+    $stmt->execute([$projectId, $projectId]);
+    return (int)$stmt->fetchColumn();
 }
 
 function denyAccess($status, $code, $message, array $extra = []) {
@@ -983,8 +998,15 @@ switch ($action) {
                 $pdo->rollBack();
                 denyAccess(409, 'email_taken', 'Este e-mail já tem conta: entre e aceite o convite logado.');
             }
-            $pdo->prepare("INSERT INTO cm_users (name, email, password_hash, last_login_at) VALUES (?, ?, ?, NOW())")
-                ->execute([$name, $email, password_hash($password, PASSWORD_BCRYPT, ['cost' => 12])]);
+            try {
+                $pdo->prepare("INSERT INTO cm_users (name, email, password_hash, last_login_at) VALUES (?, ?, ?, NOW())")
+                    ->execute([$name, $email, password_hash($password, PASSWORD_BCRYPT, ['cost' => 12])]);
+            } catch (PDOException $dup) {
+                if ((int)($dup->errorInfo[1] ?? 0) !== 1062) throw $dup; // só duplicidade vira 409
+                // Cadastro simultâneo do mesmo e-mail: o índice único venceu a verificação acima
+                $pdo->rollBack();
+                denyAccess(409, 'email_taken', 'Este e-mail já tem conta: entre e aceite o convite logado.');
+            }
             $userId = (int)$pdo->lastInsertId();
             $pdo->prepare("INSERT INTO cm_members (project_id, user_id, role) VALUES (?, ?, ?)")->execute([$invite['project_id'], $userId, $invite['role']]);
             $pdo->prepare("UPDATE cm_invites SET used_at = NOW() WHERE id = ?")->execute([$invite['id']]);
@@ -1004,6 +1026,15 @@ switch ($action) {
             $pdo->prepare("DELETE FROM cm_sessions WHERE token_hash = ?")->execute([hash('sha256', requestAuthToken())]);
         }
         echo json_encode(['success' => true]);
+        exit;
+
+    // Encerra TODAS as sessões da conta, inclusive esta (ex.: perdeu um aparelho)
+    case 'auth_logout_all':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $user = requireUser($pdo);
+        $stmt = $pdo->prepare("DELETE FROM cm_sessions WHERE user_id = ?");
+        $stmt->execute([$user['id']]);
+        echo json_encode(['success' => true, 'ended' => $stmt->rowCount()]);
         exit;
 
     case 'auth_me':
@@ -1100,6 +1131,67 @@ switch ($action) {
         $stmt->execute([$projectId, (int)($body['userId'] ?? 0)]);
         echo json_encode(['success' => true, 'revoked' => $stmt->rowCount()]);
         exit;
+
+    // Dono altera o papel de um membro (inclui promover a dono ou rebaixar outro dono). Nunca deixa o projeto sem dono.
+    case 'set_member_role':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        requireRole($pdo, $projectId, 'owner');
+        $newRole = $body['role'] ?? '';
+        if (!in_array($newRole, ['owner', 'editor', 'viewer'], true)) denyAccess(400, 'bad_role', 'Papel deve ser owner, editor ou viewer.');
+        $targetId = (int)($body['userId'] ?? 0);
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("SELECT id FROM cm_projects WHERE id = ? FOR UPDATE")->execute([$projectId]);
+            $stmt = $pdo->prepare("SELECT role FROM cm_members WHERE project_id = ? AND user_id = ? FOR UPDATE");
+            $stmt->execute([$projectId, $targetId]);
+            $currentRole = $stmt->fetchColumn();
+            if ($currentRole === false) {
+                $pdo->rollBack();
+                denyAccess(404, 'not_a_member', 'Esta conta não é membro do projeto.');
+            }
+            if ($currentRole === 'owner' && $newRole !== 'owner' && cmCountOwners($pdo, $projectId) <= 1) {
+                $pdo->rollBack();
+                denyAccess(409, 'last_owner', 'O projeto precisa de pelo menos um dono. Promova outro dono antes.');
+            }
+            $pdo->prepare("UPDATE cm_members SET role = ? WHERE project_id = ? AND user_id = ?")->execute([$newRole, $projectId, $targetId]);
+            $pdo->commit();
+            echo json_encode(['success' => true, 'role' => $newRole]);
+            exit;
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'role_failed', 'Falha ao alterar o papel', ['detail' => safeDetail($e)]);
+        }
+
+    // O próprio membro sai do projeto (o último dono não pode sair)
+    case 'leave_project':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $user = requireUser($pdo);
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? '');
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("SELECT id FROM cm_projects WHERE id = ? FOR UPDATE")->execute([$projectId]);
+            $stmt = $pdo->prepare("SELECT role FROM cm_members WHERE project_id = ? AND user_id = ? FOR UPDATE");
+            $stmt->execute([$projectId, $user['id']]);
+            $myRole = $stmt->fetchColumn();
+            if ($myRole === false) {
+                $pdo->rollBack();
+                denyAccess(404, 'not_a_member', 'Você não é membro deste projeto.');
+            }
+            if ($myRole === 'owner' && cmCountOwners($pdo, $projectId) <= 1) {
+                $pdo->rollBack();
+                denyAccess(409, 'last_owner', 'Você é o único dono: promova outro dono ou exclua o projeto.');
+            }
+            $pdo->prepare("DELETE FROM cm_members WHERE project_id = ? AND user_id = ?")->execute([$projectId, $user['id']]);
+            $pdo->commit();
+            echo json_encode(['success' => true]);
+            exit;
+        } catch (PDOException $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            denyAccess(500, 'leave_failed', 'Falha ao sair do projeto', ['detail' => safeDetail($e)]);
+        }
 
     case 'revoke_invite':
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
@@ -2473,7 +2565,7 @@ switch ($action) {
         http_response_code(400);
         echo json_encode([
             'error'           => 'Ação não informada ou desconhecida.',
-            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite', 'my_projects', 'delete_project', 'print_changes', 'print_lock', 'print_save_sheet', 'print_delete_sheet', 'print_save_library', 'force_reload']
+            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_logout_all', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'set_member_role', 'leave_project', 'revoke_invite', 'my_projects', 'delete_project', 'print_changes', 'print_lock', 'print_save_sheet', 'print_delete_sheet', 'print_save_library', 'force_reload']
         ]);
         exit;
 }
