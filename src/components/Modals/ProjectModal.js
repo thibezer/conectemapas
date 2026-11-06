@@ -52,6 +52,13 @@ export class ProjectModal {
   openCreate() {
     this.show('create');
     this.modal?.abrir();
+    ProjectLifecycle.suggestName().then((suggested) => {
+      const field = this.container?.querySelector('#cm-project-form [name="name"]');
+      if (!field || field.value) return;
+      field.value = suggested;
+      field.focus?.();
+      field.select?.();
+    });
     setTimeout(() => this.container?.querySelector('[name="name"]')?.focus?.(), 150);
   }
 
@@ -102,7 +109,7 @@ export class ProjectModal {
     }[claimMode] || '';
     return `
       <form id="cm-project-form" class="cm-project-form" novalidate>
-        <ui-campo-texto name="name" label="Nome do projeto" maxlength="120" obrigatorio></ui-campo-texto>
+        <ui-campo-texto name="name" label="Nome do projeto" maxlength="120" placeholder="Novo Projeto"></ui-campo-texto>
         ${claimBlock}
         <div id="cm-project-error" class="cm-project-error" role="alert"></div>
         <ui-botao-primario type="submit" variante="primary">Criar e abrir</ui-botao-primario>
@@ -153,8 +160,7 @@ export class ProjectModal {
       errorBox.textContent = '';
       try {
         if (this.view === 'create') {
-          const name = ProjectLifecycle.normalizeName(field('name')?.value);
-          if (!name) throw new Error('Informe o nome do projeto.');
+          const name = ProjectLifecycle.normalizeName(field('name')?.value) || await ProjectLifecycle.suggestName();
           const claimBox = field('claim');
           const claim = !!(claimBox && (claimBox.marcado ?? claimBox.checked));
           this._setBusy(submit, true);

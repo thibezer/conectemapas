@@ -506,7 +506,7 @@ export class CloudSyncEngine {
   }
 
   static syncMetadataToCloud(projectData) {
-    if (!projectData) return Promise.resolve();
+    if (!projectData || !projectData.name) return Promise.resolve();
     const dirtyProjectId = projectData.id || 'projeto_padrao';
     this.flushLayerDeletes(dirtyProjectId);
     return this._enqueuePush([], () => this._syncMetadataToCloudNow(projectData, dirtyProjectId));
@@ -525,7 +525,7 @@ export class CloudSyncEngine {
       const payload = {
         id: projId,
         clientId: _clientId,
-        name: projectData.name || 'Levantamento Topográfico - Umuarama',
+        name: projectData.name,
         description: projectData.description || '',
         basemap: projectData.basemap || 'google_satelite_puro',
         center: projectData.center || [-23.7661, -53.3206],
@@ -562,7 +562,7 @@ export class CloudSyncEngine {
   }
 
   static saveProjectToCloud(projectData) {
-    if (!projectData) return Promise.resolve({ success: false, error: 'Sem dados para salvar' });
+    if (!projectData || !projectData.name) return Promise.resolve({ success: false, error: 'Sem dados para salvar' });
     const ids = Array.isArray(projectData.features)
       ? projectData.features.map(f => f && f.id).filter(Boolean)
       : [];
@@ -580,7 +580,7 @@ export class CloudSyncEngine {
         id: projId,
         clientId: _clientId,
         baseRev: cursor.rev || 0,
-        name: projectData.name || 'Levantamento Topográfico - Umuarama',
+        name: projectData.name,
         description: projectData.description || '',
         basemap: projectData.basemap || 'google_satelite_puro',
         center: projectData.center || [-23.7661, -53.3206],
@@ -641,6 +641,7 @@ export class CloudSyncEngine {
         return null;
       }
       const data = await res.json();
+      if (data && data.exists === false) return { exists: false }; // a nuvem respondeu: o projeto não existe lá
       if (!data || !data.exists) return null;
 
       if (Number.isFinite(data.rev)) {

@@ -21,11 +21,7 @@ export class AppBootstrapSync {
   static loadState(app) {
     const saved = StorageService.loadCurrentProject();
     if (saved && (!saved.id || saved.id === app.projectId)) {
-      if (saved.name) {
-        app.projectName = (saved.name === 'Levantamento Planialtimétrico - Brasília')
-          ? 'Levantamento Topográfico - Umuarama'
-          : saved.name;
-      }
+      if (saved.name) app.projectName = saved.name;
       if (Array.isArray(saved.layers) && saved.layers.length > 0) {
         app.layers = saved.layers;
         if (!app.layers.some(l => l.id === app.activeLayerId)) {
@@ -84,7 +80,7 @@ export class AppBootstrapSync {
       LoadingOverlay.update('Carregando o projeto…', 'Lendo os dados salvos neste dispositivo.');
       const saved = await StorageService.loadCurrentProjectAsync(app.projectId);
       if (saved) {
-        if (saved.name) app.projectName = saved.name;
+        if (saved.name) this.showProjectName(app, saved.name);
         if (Array.isArray(saved.layers) && saved.layers.length > 0) {
           app.layers = saved.layers;
           if (!app.layers.some(l => l.id === app.activeLayerId)) {
@@ -201,6 +197,7 @@ export class AppBootstrapSync {
       console.warn('[AppBootstrapSync] Erro na hidratação do projeto:', err);
     } finally {
       app._isStorageHydrated = true;
+      try { await this.settleProjectName(app); } catch (e) { console.warn('[AppBootstrapSync] Nome do projeto:', e); }
       try {
         const fixed = FeatureSyncController.refreshStoredMetrics(app);
         if (fixed > 0) console.info(`[AppBootstrapSync] Métricas de ${fixed} feição(ões) recalculadas (área/perímetro).`);
@@ -211,6 +208,30 @@ export class AppBootstrapSync {
       this.startCloudSyncLoop(app);
       LoadingOverlay.hideAfterPaint();
     }
+  }
+
+  /** Define o nome do projeto no app e no título do cabeçalho (o nome ao lado do logo). */
+  static showProjectName(app, name) {
+    app.projectName = name;
+    if (app.headerBar) app.headerBar.projectName = name;
+    const titleInput = typeof document !== 'undefined' ? document.getElementById('cm-project-name-input') : null;
+    if (titleInput) {
+      if (document.activeElement !== titleInput) titleInput.value = name;
+      titleInput.readOnly = false;
+    }
+  }
+
+  /** Fim da carga sem nome conhecido: projeto novo de verdade (ganha “Novo Projeto N”) ou nome indisponível (offline). */
+  static async settleProjectName(app) {
+    if (app.projectName) return;
+    if (app._cloudProjectMissing || !CLOUD_ENABLED) {
+      const name = await ProjectLifecycle.suggestName();
+      this.showProjectName(app, name);
+      app.saveMetadata(true);
+      return;
+    }
+    const titleInput = typeof document !== 'undefined' ? document.getElementById('cm-project-name-input') : null;
+    if (titleInput) titleInput.placeholder = 'Nome indisponível (sem conexão)';
   }
 
   /**
@@ -244,14 +265,13 @@ export class AppBootstrapSync {
   static async hydrateFromCloud(app, providedCloudData = null) {
     try {
       const cloudData = providedCloudData || await StorageService.loadProjectFromCloud(app.projectId);
+      if (cloudData && cloudData.exists === false) app._cloudProjectMissing = true;
       if (!cloudData || !cloudData.exists) return false;
 
       let updated = false;
 
       if (cloudData.project && cloudData.project.name) {
-        app.projectName = cloudData.project.name;
-        const titleInput = typeof document !== 'undefined' ? document.getElementById('cm-project-name-input') : null;
-        if (titleInput) titleInput.value = app.projectName;
+        this.showProjectName(app, cloudData.project.name);
         updated = true;
       }
 

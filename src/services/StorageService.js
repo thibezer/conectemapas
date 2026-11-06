@@ -66,13 +66,13 @@ export class StorageService {
   // ---- PERSISTÊNCIA DE METADADOS & PROJETO ----
 
   static saveMetadata(projectData, options = {}) {
-    if (!projectData) return false;
+    if (!projectData || !projectData.name) return false;
     const { syncCloud = true } = options;
     try {
       const projId = projectData.id || _currentProjectId || 'projeto_padrao';
       const manifest = {
         id: projId,
-        name: projectData.name || 'Levantamento Topográfico - Umuarama',
+        name: projectData.name,
         description: projectData.description || '',
         updatedAt: new Date().toISOString(),
         basemap: projectData.basemap || 'google_satelite_puro',

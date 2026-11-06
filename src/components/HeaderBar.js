@@ -27,7 +27,7 @@ export class HeaderBar {
    * @param {string} options.accountName - Nome do operador logado
    */
   constructor(options = {}) {
-    this.projectName = options.projectName || 'Levantamento Planialtimétrico';
+    this.projectName = typeof options.projectName === 'string' ? options.projectName : '';
     this.collaborators = options.collaborators || [];
     this.onProjectNameChange = options.onProjectNameChange || (() => {});
     this.onSaveProject = options.onSaveProject || (() => {});
@@ -85,7 +85,8 @@ export class HeaderBar {
             class="cm-project-title-input"
             id="cm-project-name-input"
             value="${safeProjectName}"
-            placeholder="Nome do Projeto..."
+            placeholder="Carregando…"
+            ${this.projectName ? '' : 'readonly'}
             title="Clique para editar o nome do projeto (Enter para salvar)"
             aria-label="Nome do projeto"
             spellcheck="false"

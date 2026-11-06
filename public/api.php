@@ -152,7 +152,7 @@ function ensureDatabaseSchema(PDO $pdo) {
         // Tabela de Projetos
         "CREATE TABLE IF NOT EXISTS cm_projects (
             id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(255) NOT NULL DEFAULT 'Levantamento Topográfico - Umuarama',
+            name VARCHAR(255) NOT NULL DEFAULT 'Novo Projeto',
             description TEXT,
             basemap VARCHAR(64) DEFAULT 'google_satelite_puro',
             center_lat DOUBLE DEFAULT -23.7661,
@@ -1214,7 +1214,7 @@ switch ($action) {
             if ($featCount > 0 || $projectId === 'projeto_padrao') {
                 $stmtInsert = $pdo->prepare("
                     INSERT IGNORE INTO cm_projects (id, name, description, basemap, center_lat, center_lng, zoom, feature_count, updated_at)
-                    VALUES (?, 'Levantamento Topográfico - Umuarama', '', 'google_satelite_puro', -23.7661, -53.3206, 14, ?, NOW())
+                    VALUES (?, 'Novo Projeto', '', 'google_satelite_puro', -23.7661, -53.3206, 14, ?, NOW())
                 ");
                 $stmtInsert->execute([$projectId, $featCount]);
                 $stmtProj->execute([$projectId]);
@@ -1426,7 +1426,7 @@ switch ($action) {
 
         $body = getJsonBody();
         $projectId = cleanProjectId($body['id'] ?? '');
-        $name = !empty($body['name']) ? $body['name'] : 'Levantamento Topográfico - Umuarama';
+        $name = !empty($body['name']) ? $body['name'] : 'Novo Projeto';
         $description = isset($body['description']) ? $body['description'] : '';
         $basemap = !empty($body['basemap']) ? $body['basemap'] : 'google_satelite_puro';
         $center = isset($body['center']) && is_array($body['center']) ? $body['center'] : [-23.7661, -53.3206];
@@ -1942,7 +1942,7 @@ switch ($action) {
                     updated_at = NOW()
             ");
             $center = $body['center'] ?? [-23.7661, -53.3206];
-            $projName = $body['name'] ?? 'Levantamento Topográfico - Umuarama';
+            $projName = $body['name'] ?? 'Novo Projeto';
             $projDesc = $body['description'] ?? '';
             $projBase = $body['basemap'] ?? 'google_satelite_puro';
             $projLat  = $center[0] ?? -23.7661;

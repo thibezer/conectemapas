@@ -38,7 +38,7 @@ class ConecteMapasApp {
       } catch {}
     }
 
-    this.projectName = 'Levantamento Topográfico - Umuarama';
+    this.projectName = ''; // só o nome real do projeto; vazio enquanto carrega (o cabeçalho mostra “Carregando…”)
     this.layers = [...DEFAULT_LAYERS];
     this.activeLayerId = this.layers[0]?.id || 'layer-topografia';
     this.features = [];
@@ -232,7 +232,7 @@ class ConecteMapasApp {
   }
 
   saveMetadata(isImmediate = false) {
-    if (this._projectClosed) return;
+    if (this._projectClosed || !this.projectName) return; // sem nome real ainda: nada a gravar
     const payload = {
       id: this.projectId,
       name: this.projectName,

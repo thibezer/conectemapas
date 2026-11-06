@@ -69,7 +69,9 @@ assert.ok(created.id.startsWith('fazenda-boa-vista_'));
 assert.strictEqual(created.claimed, false);
 assert.strictEqual(calls.length, 0);
 assert.strictEqual(ProjectLifecycle.takeSeed(created.id).name, 'Fazenda Boa Vista');
-await assert.rejects(ProjectLifecycle.createProject({ name: '   ' }), /nome/);
+// Nome em branco: o projeto ganha o nome padrão ("Novo Projeto", numerado se já existir)
+const unnamed = await ProjectLifecycle.createProject({ name: '   ' }, { cloudEnabled: false });
+assert.ok(/^Novo Projeto( \d+)?$/.test(ProjectLifecycle.takeSeed(unnamed.id).name));
 
 // ---- Criar com dono (logado): claim_project leva token e nome; sem login não reivindica ----
 AuthService._setSession('cms_' + 'a'.repeat(64), { id: 7, name: 'Ana', email: 'ana@example.invalid' });

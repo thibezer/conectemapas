@@ -35,7 +35,30 @@ function storage() {
   try { return typeof localStorage !== 'undefined' ? localStorage : null; } catch { return null; }
 }
 
+export const DEFAULT_NEW_PROJECT_NAME = 'Novo Projeto';
+
 export class ProjectLifecycle {
+  /** "Novo Projeto", depois "Novo Projeto 1", "Novo Projeto 2"... (primeiro nome ainda livre; ignora maiúsculas). */
+  static nextDefaultName(existingNames = []) {
+    const used = new Set((Array.isArray(existingNames) ? existingNames : []).map(n => this.normalizeName(n).toLowerCase()));
+    if (!used.has(DEFAULT_NEW_PROJECT_NAME.toLowerCase())) return DEFAULT_NEW_PROJECT_NAME;
+    let n = 1;
+    while (used.has(`${DEFAULT_NEW_PROJECT_NAME} ${n}`.toLowerCase())) n++;
+    return `${DEFAULT_NEW_PROJECT_NAME} ${n}`;
+  }
+
+  /** Nome sugerido para um projeto novo, olhando os projetos do operador (nuvem; local se offline). */
+  static async suggestName() {
+    let names = [];
+    try {
+      const list = await AuthService.listMyProjects();
+      names = (Array.isArray(list) ? list : []).map(p => p && p.name);
+    } catch {
+      try { names = LocalStore.listProjects().map(p => p && p.name); } catch {}
+    }
+    return this.nextDefaultName(names);
+  }
+
   static isValidProjectId(id) {
     return typeof id === 'string' && PROJECT_ID_PATTERN.test(id);
   }
@@ -99,8 +122,7 @@ export class ProjectLifecycle {
    * @returns {Promise<{id: string, claimed: boolean}>}
    */
   static async createProject({ name, layers = [], center = null, zoom = null, claim = false }, { cloudEnabled = CLOUD_ENABLED } = {}) {
-    const cleanName = this.normalizeName(name);
-    if (!cleanName) throw new Error('Informe o nome do projeto.');
+    const cleanName = this.normalizeName(name) || await this.suggestName();
     const id = this.generateProjectId(cleanName);
     this.stageSeed(id, this.buildSeed({ name: cleanName, layers, center, zoom }));
 
