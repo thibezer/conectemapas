@@ -328,6 +328,15 @@ export class ShortcutsController {
       this.clearSelectionOnEscape(app);
     }, true);
 
+    // Espaço finaliza a forma em andamento: repassa como Enter, que o componente já trata
+    window.addEventListener('keydown', (e) => {
+      if (e.code !== 'Space' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (this.isTypingTarget(e) || !app.mapEngine?.isDrawing) return;
+      e.preventDefault();
+      e.stopPropagation();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true }));
+    }, true);
+
     window.addEventListener('keydown', (e) => {
       if (this.isTypingTarget(e)) return;
 

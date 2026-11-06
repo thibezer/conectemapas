@@ -65,6 +65,8 @@ console.log('\n--- 1. Auditoria do Ciclo de Ferramentas CAD ---');
       hostCalls.push({ name: 'definirFerramenta', tool });
       return { ok: true };
     },
+    definirCamadaDesenho: noop,
+    definirEstiloDesenho: noop,
     limparMedicao: () => hostCalls.push({ name: 'limparMedicao' }),
     removerFeicao: (camadaId, id) => hostCalls.push({ name: 'removerFeicao', camadaId, id }),
     definirAtalhoSnap: noop,
@@ -149,6 +151,7 @@ console.log('\n--- 1. Auditoria do Ciclo de Ferramentas CAD ---');
     feicao: { id: 'f-new', geometria: { tipo: 'Polygon', aneis: [[[-15, -47], [-15, -46.9], [-14.9, -46.9]]] } }
   });
   assert.strictEqual(toolDuringCreated, 'select', 'Criação deve voltar ferramenta para "select" ANTES de onFeatureCreated');
+  assert.strictEqual(engine.activeTool, 'polygon', 'Ferramenta de forma deve ser rearmada após concluir a figura');
 
   console.log('✔ Ciclo de ferramentas CAD verificado com conformidade total!');
 }

@@ -38,7 +38,9 @@ const TOOL_TO_KIT = {
   measure: 'medir-distancia',
   eyedropper: 'conta-gotas'
 };
-const KIT_TO_TOOL = Object.fromEntries(Object.entries(TOOL_TO_KIT).map(([app, kit]) => [kit, app]));
+/** Ferramentas de desenho que ficam ativas após concluir uma figura. */
+const REARM_TOOLS = new Set(['point', 'line', 'polygon', 'rectangle', 'ellipse', 'regular-polygon', 'star', 'circle', 'pen']);
+const KIT_TO_TOOL =Object.fromEntries(Object.entries(TOOL_TO_KIT).map(([app, kit]) => [kit, app]));
 KIT_TO_TOOL['medir-area'] = 'measure';
 
 /** Ação do popup do componente -> ação que o app já entende. */
@@ -942,9 +944,12 @@ export class CanvasMapEngine {
     }
 
     // Regra do GEMINI.md: limpar o desenho, voltar para `select` e só então avisar o app
+    const previousTool = this._tool;
     this.host.definirFerramenta(null);
     this._syncToolState('select');
     this.onFeatureCreated(raw);
+    // Ferramentas de forma continuam armadas para a próxima figura (texto abre modal: não rearma)
+    if (REARM_TOOLS.has(previousTool) && this._tool === 'select') this.setTool(previousTool);
   }
 
   _handleKitMeasure(info) {
