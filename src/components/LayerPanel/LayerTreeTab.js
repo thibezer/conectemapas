@@ -6,26 +6,41 @@
 
 import '@thibezer/ui-components-kit/camadas';
 import { BatchActions } from '../../services/BatchActions.js';
+import { loadCollapsedLayers, saveCollapsedLayers } from '../../services/Storage/LayerExpansion.js';
 
 export class LayerTreeTab {
   /**
-   * Injeta camadas/feições no <ui-camadas> preservando as camadas que o usuário colapsou.
+   * Injeta camadas/feições no <ui-camadas> preservando as camadas que o usuário colapsou:
+   * as já conhecidas mantêm o estado atual; as demais seguem o registro local (sobrevive ao F5).
    * Com `persistir="false"` o componente reexpande todas as camadas a cada definirCamadas().
    */
   static syncData(el, layers, features) {
     if (!el || typeof el.definirCamadas !== 'function') return;
     const hadState = el.expandedLayers instanceof Set && Array.isArray(el.camadas) && el.camadas.length > 0;
-    const known = hadState ? new Set(el.camadas.map(c => c.id)) : null;
-    const expanded = hadState ? new Set(el.expandedLayers) : null;
+    const known = hadState ? new Set(el.camadas.map(c => c.id)) : new Set();
+    const expanded = hadState ? new Set(el.expandedLayers) : new Set();
+    const stored = loadCollapsedLayers();
     const apply = () => {
       el.definirCamadas(layers, features);
-      if (!hadState) return;
+      let changed = false;
       for (const l of layers || []) {
-        if (l && known.has(l.id) && !expanded.has(l.id)) el.expandedLayers.delete(l.id);
+        if (!l) continue;
+        const collapsed = known.has(l.id) ? !expanded.has(l.id) : stored.has(l.id);
+        if (collapsed && el.expandedLayers.delete(l.id)) changed = true;
       }
+      return changed;
     };
     if (typeof el.emLote === 'function') el.emLote(apply);
-    else apply();
+    else if (apply() && typeof el.solicitarRenderizacao === 'function') el.solicitarRenderizacao();
+  }
+
+  /** Grava no registro local o estado de expansão atual (só se mudou desde a última gravação). */
+  static persistExpansion(el) {
+    if (!el || !(el.expandedLayers instanceof Set) || !Array.isArray(el.camadas) || el.camadas.length === 0) return;
+    const sig = el.camadas.map(c => (el.expandedLayers.has(c.id) ? '1' : '0') + c.id).join('|');
+    if (el._cmExpansionSig === sig) return;
+    el._cmExpansionSig = sig;
+    saveCollapsedLayers(el.camadas.map(c => c.id), el.expandedLayers);
   }
 
   static render(panel) {
@@ -56,7 +71,7 @@ export class LayerTreeTab {
 
     // 1. Injeta dados do ConecteMapas no Web Component <ui-camadas>
     if (typeof el.definirCamadas === 'function') {
-      el.definirCamadas(panel.layers || [], panel.features || []);
+      LayerTreeTab.syncData(el, panel.layers || [], panel.features || []);
     } else {
       el.camadas = panel.layers || [];
       el.feicoes = panel.features || [];
@@ -71,6 +86,12 @@ export class LayerTreeTab {
       }
       el.lastClickedFeatureId = Array.from(panel.selectedFeatureIds)[0];
     }
+
+    // Lembra (localmente) quais camadas o operador recolheu. O componente usa Shadow DOM e interrompe
+    // a propagação do clique no chevron, então escuta-se na captura e lê-se o estado após ele tratar o clique.
+    el.addEventListener('click', () => {
+      queueMicrotask(() => LayerTreeTab.persistExpansion(el));
+    }, true);
 
     // Garante âncora para seleção com Shift mesmo se o clique anterior ocorreu fora do componente
     el.addEventListener('click', (e) => {
