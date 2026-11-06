@@ -777,7 +777,9 @@ export class PrintComposerModal {
   /**
    * Seleciona um item SEM recriar os mapas Leaflet (preservação de zoom e pan)
    */
-  selectItem(itemId, { additive = false } = {}) {
+  selectItem(itemId, { additive = false, fromPanel = false } = {}) {
+    // Selecionar no desenho leva o painel à aba do item; pela lista, ele fica onde está
+    if (itemId && !fromPanel) this.panelTab = 'item';
     if (!itemId) {
       this.selectedItemIds.clear();
     } else if (additive) {

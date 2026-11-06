@@ -11,6 +11,7 @@ export class PrintPropertiesPanel {
     const selectedItem = composer.items.find(it => it.id === composer.selectedItemId);
     const esc = PrintItemsManager.escapeHtml;
     // Seção aberta ou fechada pelo usuário, lembrada pelo nome (não pela posição)
+    const tab = this.TABS.some(t => t[0] === composer.panelTab) ? composer.panelTab : 'item';
     const openAttr = (key) => (composer.panelSections?.[key] === false ? '' : 'open');
 
     // Filtra feições poligonais ou de linha para a tabela de vértices
@@ -29,11 +30,20 @@ export class PrintPropertiesPanel {
           <button type="button" class="cm-pp-collapse-btn" id="btn-collapse-props-panel" title="Recolher painel (atalho [)" aria-label="Recolher painel">${ppIcon('collapse')}</button>
         </div>
 
-        <div class="cm-print-props-scroll">
-          <!-- 1. Folha: papel, margens, moldura e pré-definições do projeto -->
-          ${this.renderPaperSection(composer, openAttr)}
+        <div class="cm-pp-tabs" role="tablist" aria-label="Seções do painel">
+          ${this.TABS.map(([id, label, icon]) => `
+            <button type="button" role="tab" class="cm-pp-tab ${tab === id ? 'is-active' : ''}" data-pp-tab="${id}" aria-selected="${tab === id ? 'true' : 'false'}" title="${label}">${ppIcon(icon)}<span>${label}</span></button>
+          `).join('')}
+        </div>
 
-          <!-- 2. Árvore de Elementos da Composição -->
+        <div class="cm-print-props-scroll">
+          <!-- Aba Folha: papel, margens, moldura e pré-definições do projeto -->
+          <div class="cm-pp-pane" data-pp-pane="paper" ${tab === 'paper' ? '' : 'hidden'}>
+          ${this.renderPaperSection(composer, openAttr)}
+          </div>
+
+          <!-- Aba Elementos: árvore da composição -->
+          <div class="cm-pp-pane" data-pp-pane="items" ${tab === 'items' ? '' : 'hidden'}>
           <details class="cm-inspector-accordion" data-section="items" ${openAttr('items')}>
             <summary class="cm-pp-summary">${ppIcon('layers')}Elementos da Prancha (${composer.items.length})</summary>
             <div class="cm-pp-body cm-pp-body--list">
@@ -58,11 +68,15 @@ export class PrintPropertiesPanel {
               }).join('')}
             </div>
           </details>
+          </div>
 
-          <!-- 3. Gerador de Atlas Cartográfico (Automação em Lote estilo QGIS) -->
+          <!-- Aba Atlas (automação em lote estilo QGIS) -->
+          <div class="cm-pp-pane" data-pp-pane="atlas" ${tab === 'atlas' ? '' : 'hidden'}>
           ${this.renderAtlasSection(composer, openAttr)}
+          </div>
 
-          <!-- 4. Propriedades do Elemento Selecionado ou Seleção Múltipla -->
+          <!-- Aba Item: elemento selecionado ou seleção múltipla -->
+          <div class="cm-pp-pane" data-pp-pane="item" ${tab === 'item' ? '' : 'hidden'}>
           ${(composer.selectedItemIds && composer.selectedItemIds.size > 1) ? `
             <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
               <summary class="cm-pp-summary cm-pp-summary--active">${ppIcon('target')}${composer.selectedItemIds.size} Itens Selecionados</summary>
@@ -109,16 +123,16 @@ export class PrintPropertiesPanel {
                   </div>
                   <div class="cm-pp-btn-row">
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}Duplicar</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-forward" title="Avançar 1 Nível"><span class="cm-pp-btn-lbl">${ppIcon('forward')}Avançar</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-backward" title="Recuar 1 Nível"><span class="cm-pp-btn-lbl">${ppIcon('backward')}Recuar</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente"><span class="cm-pp-btn-lbl">${ppIcon('front')}Frente</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás"><span class="cm-pp-btn-lbl">${ppIcon('back')}Trás</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-forward" title="Avançar 1 Nível" aria-label="Avançar 1 Nível">${ppIcon('forward')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-backward" title="Recuar 1 Nível" aria-label="Recuar 1 Nível">${ppIcon('backward')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-bring-front" title="Trazer para Frente" aria-label="Trazer para Frente">${ppIcon('front')}</ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-send-back" title="Enviar para Trás" aria-label="Enviar para Trás">${ppIcon('back')}</ui-botao-primario>
                   </div>
                 </div>
 
                 <!-- Nome do Elemento -->
                 <div class="cm-pp-stack cm-pp-stack--tight">
-                  <span class="cm-param-label">Nome do Elemento:</span>
+                  <span class="cm-param-label">Nome:</span>
                   <ui-campo-texto type="text" tamanho="sm" id="prop-item-name" class="cm-vertex-input cm-pp-full" value="${esc(selectedItem.name || '')}"></ui-campo-texto>
                 </div>
 
@@ -146,10 +160,14 @@ export class PrintPropertiesPanel {
               </fieldset>
             </details>
           ` : '<div class="cm-pp-empty">Selecione um elemento para editar.</div>'}
+          </div>
         </div>
       </div>
     `;
   }
+
+  /** Abas do painel: [id, rótulo, ícone] */
+  static TABS = [['item', 'Item', 'target'], ['items', 'Elementos', 'layers'], ['paper', 'Folha', 'sheet'], ['atlas', 'Atlas', 'book']];
 
   static PAPER_OPTIONS = [
     ['A4_L', 'A4 Paisagem'], ['A4_P', 'A4 Retrato'], ['A3_L', 'A3 Paisagem'],
@@ -287,7 +305,7 @@ export class PrintPropertiesPanel {
           </div>
 
           <div class="cm-pp-field-col cm-pp-atlas-field">
-            <span class="cm-param-label">Camada de Cobertura (Polígonos/Lotes):</span>
+            <span class="cm-param-label">Camada de cobertura:</span>
             <ui-select id="prop-atlas-layer" class="cm-native-select cm-pp-full" tamanho="sm" value="${esc(curLayerId)}" ${!isEnabled ? 'disabled' : ''}>
               <option value="">(Selecione uma camada)</option>
               ${layers.map(l => `
@@ -297,7 +315,7 @@ export class PrintPropertiesPanel {
           </div>
 
           <div class="cm-pp-field-col cm-pp-atlas-field">
-            <span class="cm-param-label">Margem de Respiro (% da geometria):</span>
+            <span class="cm-param-label">Margem de respiro (%):</span>
             <ui-campo-texto type="number" tamanho="sm" id="prop-atlas-margin" class="cm-vertex-input cm-pp-full" min="0" max="100" value="${margin}" ${!isEnabled ? 'disabled' : ''}></ui-campo-texto>
           </div>
 
@@ -733,10 +751,24 @@ export class PrintPropertiesPanel {
       this.bindPaperEvents(composer);
     }
 
+    // Abas: só alterna a visibilidade, sem reconstruir o painel
+    const tabsMount = document.querySelectorAll('#cm-print-props-panel-mount [data-pp-tab]');
+    tabsMount.forEach(btn => {
+      btn.addEventListener('click', () => {
+        composer.panelTab = btn.dataset.ppTab;
+        tabsMount.forEach(b => {
+          const on = b === btn;
+          b.classList.toggle('is-active', on);
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        document.querySelectorAll('#cm-print-props-panel-mount [data-pp-pane]').forEach(p => { p.hidden = p.dataset.ppPane !== composer.panelTab; });
+      });
+    });
+
     document.querySelectorAll('[data-composer-item-id]').forEach(el => {
       el.addEventListener('click', (e) => {
         const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-        composer.selectItem(el.getAttribute('data-composer-item-id'), { additive });
+        composer.selectItem(el.getAttribute('data-composer-item-id'), { additive, fromPanel: true });
       });
     });
 

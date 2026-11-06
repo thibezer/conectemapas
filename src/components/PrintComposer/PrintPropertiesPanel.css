@@ -173,6 +173,52 @@
   flex-shrink: 0;
 }
 
+/* Abas do painel */
+.cm-pp-tabs {
+  flex-shrink: 0;
+  display: flex;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.cm-pp-tab {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a0a0b0;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+
+.cm-pp-tab span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-pp-tab:hover { color: #fff; }
+
+.cm-pp-tab.is-active {
+  color: var(--cm-primary, #00E08A);
+  border-bottom-color: var(--cm-primary, #00E08A);
+}
+
+.cm-pp-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.cm-pp-pane[hidden] { display: none; }
+
 /* Seções (acordeões) */
 .cm-print-props-panel .cm-pp-summary {
   font-size: 11px;
