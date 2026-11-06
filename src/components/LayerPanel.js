@@ -183,9 +183,7 @@ export class LayerPanel {
       const existingUiCamadas = body.querySelector('#cm-ui-camadas');
       if (this.activeTab === 'layers' && existingUiCamadas) {
         // Se o Web Component já está montado, sincroniza dados sem destruição do DOM
-        if (typeof existingUiCamadas.definirCamadas === 'function') {
-          existingUiCamadas.definirCamadas(this.layers, this.features);
-        }
+        LayerTreeTab.syncData(existingUiCamadas, this.layers, this.features);
       } else {
         body.innerHTML = this.renderTabContent();
         this.bindTabEvents();
@@ -562,7 +560,7 @@ export class LayerPanel {
 
     const uiCamadas = this.container?.querySelector('#cm-ui-camadas');
     if (uiCamadas && typeof uiCamadas.definirCamadas === 'function') {
-      uiCamadas.definirCamadas(this.layers, this.features);
+      LayerTreeTab.syncData(uiCamadas, this.layers, this.features);
       if (this.activeLayerId && uiCamadas.camadaAtivaId !== this.activeLayerId) {
         uiCamadas.camadaAtivaId = this.activeLayerId;
       }

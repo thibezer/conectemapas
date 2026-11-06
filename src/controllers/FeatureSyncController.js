@@ -273,10 +273,11 @@ export class FeatureSyncController {
     };
 
     const changed = [];
+    const tombstones = StorageService.getLocalTombstones(app.projectId);
     for (let i = 0; i < app.features.length; i++) {
       const feat = app.features[i];
       if (!feat || !feat.id || !feat.properties || typeof feat.properties !== 'object') continue;
-      if (StorageService.hasLocalTombstone(feat.id, app.projectId)) continue;
+      if (tombstones.has(feat.id)) continue;
       const metrics = FeatureGeometryUtils.computeMetricProperties(feat);
       const keys = Object.keys(metrics);
       if (keys.length === 0 || !keys.some(k => k in feat.properties)) continue;

@@ -30,8 +30,9 @@ export class AppBootstrapSync {
         }
       }
       if (Array.isArray(saved.features)) {
+        const tombstones = StorageService.getLocalTombstones(app.projectId);
         app.features = saved.features
-          .filter(f => f && f.id && !StorageService.hasLocalTombstone(f.id, app.projectId))
+          .filter(f => f && f.id && !tombstones.has(f.id))
           .map(normalizeFeature);
       }
       if (Array.isArray(saved.auditLog)) app.auditLog = saved.auditLog;
@@ -97,13 +98,14 @@ export class AppBootstrapSync {
 
         if (Array.isArray(saved.features)) {
           const TEST_MOCK_IDS = new Set(['feat-m01', 'feat-m02', 'feat-app-01', 'feat-quadra-a', 'feat-rota-01', 'feat-buffer-01']);
+          const tombstones = StorageService.getLocalTombstones(app.projectId);
           const cleanedFeatures = saved.features.filter(f => {
             if (!f || !f.id) return false;
             if (TEST_MOCK_IDS.has(f.id)) {
               StorageService.deleteFeature(f.id);
               return false;
             }
-            if (StorageService.hasLocalTombstone(f.id, app.projectId)) {
+            if (tombstones.has(f.id)) {
               return false;
             }
             return true;
@@ -241,8 +243,9 @@ export class AppBootstrapSync {
       }
 
       if (Array.isArray(cloudData.features)) {
+        const tombstones = StorageService.getLocalTombstones(app.projectId);
         app.features = cloudData.features
-          .filter(f => !StorageService.hasLocalTombstone(f.id, app.projectId))
+          .filter(f => !tombstones.has(f.id))
           .map(normalizeFeature);
         updated = true;
       }

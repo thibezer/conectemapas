@@ -16,6 +16,17 @@ const _offlinePendingIdsByProject = new Map();
 const _syncCursorByProject = new Map();
 const _tombstoneCache = new Map();
 
+// Fila em memória de deltas pendentes ainda não gravados no localStorage
+const PENDING_WRITE_DELAY_MS = 250;
+const _queuedPendingWrites = new Map();
+let _queuedPendingTimer = null;
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  const flushOnLeave = () => LocalStore.flushQueuedPendingWrites();
+  window.addEventListener('pagehide', flushOnLeave);
+  window.addEventListener('beforeunload', flushOnLeave);
+}
+
 export class LocalStore {
   /**
    * Reseta o cache em memória quando o projeto ativo for alterado
@@ -195,6 +206,8 @@ export class LocalStore {
 
   static readPendingDeltas(projectId = 'projeto_padrao') {
     if (typeof localStorage === 'undefined') return { dirty: [], deleted: [] };
+    // Grava antes o que ainda está só na fila em memória (leitura sempre consistente)
+    this.flushQueuedPendingWrites();
     try {
       const raw = localStorage.getItem(PENDING_DELTAS_KEY_PREFIX + projectId);
       if (!raw) return { dirty: [], deleted: [] };
@@ -233,23 +246,68 @@ export class LocalStore {
     ]));
   }
 
+  /**
+   * Enfileira deltas para o localStorage. A gravação é agrupada (uma só por ~250 ms e no
+   * fechamento da aba): reler/regravar todo o JSON pendente a cada edição travava o canvas
+   * em projetos com muitas feições.
+   */
   static persistPendingDeltasWithItems(toUpsert = [], toDelete = [], projectId = 'projeto_padrao', currentProjectId = 'projeto_padrao') {
     if (typeof localStorage === 'undefined') return;
     try {
-      const key = PENDING_DELTAS_KEY_PREFIX + projectId;
-      const merged = this.mergeDeltas(this.readPendingDeltas(projectId), toUpsert, toDelete);
-
-      if (merged.dirty.length === 0 && merged.deleted.length === 0) {
-        localStorage.removeItem(key);
-      } else {
-        localStorage.setItem(key, JSON.stringify(merged));
+      let q = _queuedPendingWrites.get(projectId);
+      if (!q) {
+        q = { upsert: new Map(), del: new Set() };
+        _queuedPendingWrites.set(projectId, q);
       }
-      this.refreshOfflinePendingCache(projectId, currentProjectId, merged);
+      for (const id of toDelete || []) {
+        if (!id) continue;
+        q.upsert.delete(id);
+        q.del.add(id);
+      }
+      for (const f of toUpsert || []) {
+        if (f && f.id) {
+          q.del.delete(f.id);
+          q.upsert.set(f.id, f);
+        }
+      }
+      // Mantém o cache de ids pendentes atualizado sem reler o localStorage
+      const ids = _offlinePendingIdsByProject.get(projectId);
+      if (ids) {
+        for (const f of toUpsert || []) if (f && f.id) ids.add(f.id);
+        for (const id of toDelete || []) if (id) ids.add(id);
+      }
+      if (!_queuedPendingTimer) {
+        _queuedPendingTimer = setTimeout(() => this.flushQueuedPendingWrites(), PENDING_WRITE_DELAY_MS);
+      }
     } catch {}
+  }
+
+  /** Grava de uma vez tudo que está na fila em memória. */
+  static flushQueuedPendingWrites() {
+    if (_queuedPendingTimer) {
+      clearTimeout(_queuedPendingTimer);
+      _queuedPendingTimer = null;
+    }
+    if (_queuedPendingWrites.size === 0 || typeof localStorage === 'undefined') return;
+    const batches = Array.from(_queuedPendingWrites.entries());
+    _queuedPendingWrites.clear();
+    for (const [projectId, q] of batches) {
+      try {
+        const key = PENDING_DELTAS_KEY_PREFIX + projectId;
+        const merged = this.mergeDeltas(this.readPendingDeltas(projectId), Array.from(q.upsert.values()), Array.from(q.del));
+        if (merged.dirty.length === 0 && merged.deleted.length === 0) {
+          localStorage.removeItem(key);
+        } else {
+          localStorage.setItem(key, JSON.stringify(merged));
+        }
+        this.refreshOfflinePendingCache(projectId, projectId, merged);
+      } catch {}
+    }
   }
 
   static clearPendingDeltas(projectId = 'projeto_padrao', currentProjectId = 'projeto_padrao') {
     if (typeof localStorage === 'undefined') return;
+    _queuedPendingWrites.delete(projectId);
     try {
       localStorage.removeItem(PENDING_DELTAS_KEY_PREFIX + projectId);
       this.refreshOfflinePendingCache(projectId, currentProjectId, { dirty: [], deleted: [] });

@@ -8,6 +8,26 @@ import '@thibezer/ui-components-kit/camadas';
 import { BatchActions } from '../../services/BatchActions.js';
 
 export class LayerTreeTab {
+  /**
+   * Injeta camadas/feições no <ui-camadas> preservando as camadas que o usuário colapsou.
+   * Com `persistir="false"` o componente reexpande todas as camadas a cada definirCamadas().
+   */
+  static syncData(el, layers, features) {
+    if (!el || typeof el.definirCamadas !== 'function') return;
+    const hadState = el.expandedLayers instanceof Set && Array.isArray(el.camadas) && el.camadas.length > 0;
+    const known = hadState ? new Set(el.camadas.map(c => c.id)) : null;
+    const expanded = hadState ? new Set(el.expandedLayers) : null;
+    const apply = () => {
+      el.definirCamadas(layers, features);
+      if (!hadState) return;
+      for (const l of layers || []) {
+        if (l && known.has(l.id) && !expanded.has(l.id)) el.expandedLayers.delete(l.id);
+      }
+    };
+    if (typeof el.emLote === 'function') el.emLote(apply);
+    else apply();
+  }
+
   static render(panel) {
     return `
       <ui-camadas 

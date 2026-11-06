@@ -269,6 +269,11 @@ export class StorageService {
     return IndexedDbStore.executeDeltasChunked(db, toDelete, toUpsert, chunkSize);
   }
 
+  /** Conjunto de tombstones (uma leitura) para laços sobre muitas feições. */
+  static getLocalTombstones(projectId = null) {
+    return LocalStore.getLocalTombstones(projectId || _currentProjectId);
+  }
+
   static hasLocalTombstone(featureId, projectId = null) {
     return LocalStore.hasLocalTombstone(featureId, projectId || _currentProjectId);
   }
