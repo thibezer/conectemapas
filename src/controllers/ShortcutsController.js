@@ -6,6 +6,7 @@
 
 import { UIToast } from '@thibezer/ui-components-kit';
 import { StorageService } from '../services/StorageService.js';
+import { FeatureVisibility } from '../services/Storage/FeatureVisibility.js';
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && Object.getPrototypeOf(v) === Object.prototype;
 
@@ -154,6 +155,7 @@ export class ShortcutsController {
     const previousSnapshot = app.historyUndo.pop();
     const oldFeatures = app.features;
     app.features = ShortcutsController.restoreSnapshot(previousSnapshot, oldFeatures);
+    FeatureVisibility.syncFromFeatures(app.projectId, app.features);
     const diff = StorageService.applyDiff(oldFeatures, app.features);
     ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
     app.refreshMapAndTable();
@@ -177,6 +179,7 @@ export class ShortcutsController {
     const nextSnapshot = app.historyRedo.pop();
     const oldFeatures = app.features;
     app.features = ShortcutsController.restoreSnapshot(nextSnapshot, oldFeatures);
+    FeatureVisibility.syncFromFeatures(app.projectId, app.features);
     const diff = StorageService.applyDiff(oldFeatures, app.features);
     ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
     app.refreshMapAndTable();

@@ -21,6 +21,7 @@ import { RibbonViewController } from './controllers/RibbonViewController.js';
 import { AppBootstrapSync } from './bootstrap/AppBootstrapSync.js';
 import { AppComponentsBuilder } from './bootstrap/AppComponentsBuilder.js';
 import { AppGeometryCoordinator } from './bootstrap/AppGeometryCoordinator.js';
+import { FeatureVisibility } from './services/Storage/FeatureVisibility.js';
 
 class ConecteMapasApp {
   constructor() {
@@ -251,6 +252,7 @@ class ConecteMapasApp {
 
   saveFeature(feature) {
     if (feature && !this._projectClosed) {
+      FeatureVisibility.record(this.projectId, feature); // olhinho alterado por qualquer caminho (inspetor, tabela...)
       StorageService.saveFeature(feature, this.projectId);
       this.saveMetadata(false);
     }
@@ -258,6 +260,7 @@ class ConecteMapasApp {
 
   saveFeaturesBulk(features) {
     if (this._projectClosed || !Array.isArray(features) || features.length === 0) return;
+    FeatureVisibility.record(this.projectId, features);
     StorageService.queueFeaturesBulkUpsert(features, this.projectId);
     this.saveMetadata(false);
   }

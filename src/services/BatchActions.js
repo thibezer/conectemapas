@@ -8,6 +8,7 @@
 import { StorageService } from './StorageService.js';
 import { SpatialAlgorithms } from './SpatialAlgorithms.js';
 import { FeatureGeometryUtils } from './MapEngine/FeatureGeometryUtils.js';
+import { FeatureVisibility } from './Storage/FeatureVisibility.js';
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
@@ -38,7 +39,7 @@ function recordBatchAudit(app, action) {
  * Aplica `mutate` em cópias das feições alvo e grava o lote.
  * `mutate(draft, original)` devolve false para dispensar a feição (nada a mudar).
  */
-function commitBatch(app, ids, label, mutate) {
+function commitBatch(app, ids, label, mutate, { localOnly = false } = {}) {
   const { targets, locked, missing } = resolveTargets(app, ids);
   const drafts = [];
   let unchanged = 0;
@@ -55,10 +56,15 @@ function commitBatch(app, ids, label, mutate) {
   const index = new Map(app.features.map((f, i) => [f.id, i]));
   for (const draft of drafts) {
     app.features[index.get(draft.id)] = draft;
-    app.collabHub?.notifyFeatureUpdated(draft);
+    if (!localOnly) app.collabHub?.notifyFeatureUpdated(draft);
   }
-  app.saveFeaturesBulk(drafts);
-  recordBatchAudit(app, `${label} (${drafts.length} feições)`);
+  if (localOnly) {
+    // Preferência individual (ex.: olhinho): grava só neste aparelho, sem nuvem, colaboração nem auditoria
+    FeatureVisibility.record(app.projectId, drafts);
+  } else {
+    app.saveFeaturesBulk(drafts);
+    recordBatchAudit(app, `${label} (${drafts.length} feições)`);
+  }
   // Re-renderiza de uma vez (a feição precisa trocar de sub-pane ao mudar de camada)
   app.refreshMapAndTable(true);
   app.updateHUD?.();
@@ -125,7 +131,7 @@ export class BatchActions {
       if ((d.visible !== false) === visible) return false;
       d.visible = visible;
       return true;
-    });
+    }, { localOnly: true });
   }
 
   /** Define (ou cria) um atributo em feature.properties para todas as feições. */

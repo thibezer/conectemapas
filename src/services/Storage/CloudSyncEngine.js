@@ -13,6 +13,7 @@ import { LocalStore } from './LocalStore.js';
 import { DeltaQueue } from './DeltaQueue.js';
 import { AccessManager } from './AccessManager.js';
 import { layersForCloud } from './LayerVisibility.js';
+import { FeatureVisibility } from './FeatureVisibility.js';
 
 const _clientId = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
   ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
@@ -37,7 +38,8 @@ function packFeatureForCloud(feat) {
     : {};
   delete props[CLOUD_META_KEY];
   if (Object.keys(meta).length > 0) props[CLOUD_META_KEY] = meta;
-  return { ...feat, properties: props };
+  // `visible` (olhinho) é preferência local de cada operador: não viaja
+  return FeatureVisibility.stripForCloud({ ...feat, properties: props });
 }
 
 function unpackFeatureFromCloud(feat) {

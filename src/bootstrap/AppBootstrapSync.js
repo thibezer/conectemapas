@@ -12,6 +12,7 @@ import { normalizeFeature } from '../services/MockData.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { LoadingOverlay } from './LoadingOverlay.js';
 import { mergeLocalVisibility } from '../services/Storage/LayerVisibility.js';
+import { FeatureVisibility } from '../services/Storage/FeatureVisibility.js';
 
 export class AppBootstrapSync {
   /**
@@ -33,9 +34,10 @@ export class AppBootstrapSync {
       }
       if (Array.isArray(saved.features)) {
         const tombstones = StorageService.getLocalTombstones(app.projectId);
-        app.features = saved.features
+        FeatureVisibility.seedIfMissing(app.projectId, saved.features);
+        app.features = FeatureVisibility.applyAll(app.projectId, saved.features
           .filter(f => f && f.id && !tombstones.has(f.id))
-          .map(normalizeFeature);
+          .map(normalizeFeature));
       }
       if (Array.isArray(saved.auditLog)) app.auditLog = saved.auditLog;
       if (saved.basemap) app.currentBasemap = saved.basemap;
@@ -115,7 +117,8 @@ export class AppBootstrapSync {
           });
 
           // Respeita Regra 1 do GEMINI.md: array vazio [] se o projeto estiver limpo
-          app.features = cleanedFeatures.map(normalizeFeature);
+          FeatureVisibility.seedIfMissing(app.projectId, saved.features);
+          app.features = FeatureVisibility.applyAll(app.projectId, cleanedFeatures.map(normalizeFeature));
           // O desenho é síncrono e pesado: deixa o aviso pintar antes de travar a thread
           if (LoadingOverlay.announceDrawing(app.features.length)) await LoadingOverlay.nextPaint();
           app.refreshMapAndTable(true);
@@ -256,9 +259,9 @@ export class AppBootstrapSync {
 
       if (Array.isArray(cloudData.features)) {
         const tombstones = StorageService.getLocalTombstones(app.projectId);
-        app.features = cloudData.features
+        app.features = FeatureVisibility.applyAll(app.projectId, cloudData.features
           .filter(f => !tombstones.has(f.id))
-          .map(normalizeFeature);
+          .map(normalizeFeature));
         updated = true;
       }
 

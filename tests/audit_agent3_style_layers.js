@@ -57,6 +57,7 @@ const {
   buildModifyTab,
   computeModifyState
 } = await import('../src/components/ModifyRibbon.js');
+const { FeatureVisibility } = await import('../src/services/Storage/FeatureVisibility.js');
 
 const { ModifyActionsController } = await import('../src/controllers/ModifyActionsController.js');
 const { SelectionStyleController } = await import('../src/controllers/SelectionStyleController.js');
@@ -491,7 +492,9 @@ console.log('\n▶ [SEÇÃO 7] Regra de Ocultar vs Excluir (Regra 2 do GEMINI.md
 
   // Verificações vitais de conformidade com GEMINI.md:
   assert.strictEqual(app.log.deletedBulk.length, 0, 'removeFeaturesBulk NUNCA deve ser chamado ao ocultar');
-  assert.strictEqual(app.log.savedBulk.length, 1, 'saveFeaturesBulk chamado para salvar visible:false');
+  // O olhinho é preferência local: não grava em lote (nuvem) — vai só para FeatureVisibility
+  assert.strictEqual(app.log.savedBulk.length, 0, 'ocultar não envia nada à nuvem (saveFeaturesBulk não é chamado)');
+  assert.strictEqual(FeatureVisibility.isHidden(app.projectId, 'p1'), true, 'ocultação registrada localmente');
   assert.strictEqual(app.features.length, 2, 'feição oculta CONTINUA existindo no array de features do app');
 
   const p1Draft = app.features.find(f => f.id === 'p1');

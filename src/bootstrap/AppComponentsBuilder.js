@@ -27,6 +27,7 @@ import { AppModalsBuilder } from './AppModalsBuilder.js';
 import { SelectionStyleController } from '../controllers/SelectionStyleController.js';
 import { ModifyActionsController } from '../controllers/ModifyActionsController.js';
 import { RibbonViewController } from '../controllers/RibbonViewController.js';
+import { FeatureVisibility } from '../services/Storage/FeatureVisibility.js';
 
 export class AppComponentsBuilder {
   /** Feições atualmente selecionadas (HUD, painel de camadas ou seleção única). */
@@ -584,8 +585,8 @@ export class AppComponentsBuilder {
           const updated = { ...app.features[idx], visible: isVisible };
           app.features[idx] = updated;
           app.mapEngine.updateFeature(updated, app.layers);
-          if (app.collabHub) app.collabHub.notifyFeatureUpdated(updated);
-          app.saveFeature(updated);
+          // O olhinho é só deste operador: grava local, sem nuvem nem aviso aos outros
+          FeatureVisibility.record(app.projectId, updated);
         }
       },
       onFeatureSelect: (feature) => {

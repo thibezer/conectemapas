@@ -7,6 +7,7 @@
 import { normalizeFeature } from '../services/MockData.js';
 import { StorageService } from '../services/StorageService.js';
 import { mergeLocalVisibility, keepLocalVisibility } from '../services/Storage/LayerVisibility.js';
+import { FeatureVisibility } from '../services/Storage/FeatureVisibility.js';
 import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyUndoable } from '../utils/toastHelpers.js';
@@ -448,14 +449,15 @@ export class FeatureSyncController {
       if (!data.feature || app.features.some(f => f.id === data.feature.id)) return; // eco/reenvio da mesma feição
       if (StorageService.hasLocalTombstone(data.feature.id, app.projectId)) return;
       if (StorageService.hasPendingLocalChange(data.feature.id)) return;
-      app.features.push(data.feature);
-      app.mapEngine.updateFeature(data.feature, app.layers);
+      const incoming = FeatureVisibility.apply(app.projectId, data.feature);
+      app.features.push(incoming);
+      app.mapEngine.updateFeature(incoming, app.layers);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
       FeatureSyncController.scheduleLayerPanelRefresh(app);
       app.updateHUD();
 
       // Persistência local imediata para que a feição criada pelo colega não desapareça ao recarregar a aba
-      StorageService.applyRemoteChangesLocally([data.feature], [], app.projectId);
+      StorageService.applyRemoteChangesLocally([incoming], [], app.projectId);
       StorageService.saveMetadata({
         id: app.projectId,
         name: app.projectName,
@@ -469,11 +471,12 @@ export class FeatureSyncController {
       if (StorageService.hasPendingLocalChange(data.feature.id)) return;
       const idx = app.features.findIndex(f => f.id === data.feature.id);
       if (idx >= 0) {
-        app.features[idx] = data.feature;
-        app.mapEngine.updateFeature(data.feature, app.layers);
+        const incoming = FeatureVisibility.apply(app.projectId, data.feature);
+        app.features[idx] = incoming;
+        app.mapEngine.updateFeature(incoming, app.layers);
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-        if (app.layerPanel) app.layerPanel.refreshSelectedFeature?.(data.feature);
-        StorageService.applyRemoteChangesLocally([data.feature], [], app.projectId);
+        if (app.layerPanel) app.layerPanel.refreshSelectedFeature?.(incoming);
+        StorageService.applyRemoteChangesLocally([incoming], [], app.projectId);
       }
     } else if (type === 'feature:deleted') {
       app.features = app.features.filter(f => f.id !== data.featureId);
@@ -720,7 +723,7 @@ export class FeatureSyncController {
         // (Edições locais não confirmadas já são filtradas em StorageService.pullChangesFromCloud,
         // e o loop de sync não consulta a nuvem durante um desenho ativo.)
 
-        const normalized = normalizeFeature(rawFeat);
+        const normalized = FeatureVisibility.apply(app.projectId, normalizeFeature(rawFeat));
         const existingIdx = indexById.get(normalized.id);
 
         if (existingIdx !== undefined) {
