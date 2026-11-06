@@ -1,8 +1,25 @@
 import { defineConfig } from 'vite';
+import fs from 'fs';
+import path from 'path';
+
+const buildVersion = `v_${Date.now()}`;
 
 export default defineConfig({
   base: './',
-  plugins: [],
+  define: {
+    __APP_VERSION__: JSON.stringify(buildVersion)
+  },
+  plugins: [
+    {
+      name: 'cm-build-version-manifest',
+      writeBundle(options) {
+        try {
+          const outDir = options?.dir || 'dist';
+          fs.writeFileSync(path.join(outDir, '.cm_app_version'), buildVersion, 'utf8');
+        } catch {}
+      }
+    }
+  ],
   server: {
     port: 3000,
     open: false,

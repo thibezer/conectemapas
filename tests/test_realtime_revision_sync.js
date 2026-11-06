@@ -138,6 +138,38 @@ fetchHandler = () => jsonRes({ success: true, serverTime: '2026-10-03 10:00:00',
 r = await StorageService.pullChangesFromCloud(PROJ);
 assert(r.upserted.length === 1 && r.upserted[0].id === 'z', 'resposta legada repassada');
 
+console.log('--- Auto-reload em novo deploy ou comando force_reload ---');
+const reloadSignals = [];
+const unsubReload = StorageService.onRemoteReloadRequired((sig) => reloadSignals.push(sig));
+fetchHandler = (url) => {
+  const params = new URL(url, 'http://x').searchParams;
+  assert(params.get('v') !== null, 'pull_changes envia versão v do cliente');
+  return jsonRes({
+    success: true, rev: 14, cursor: { rev: 14, id: '' }, hasMore: false,
+    appVersion: 'v_100', forceReloadEpoch: 1000,
+    changes: [], layers: []
+  });
+};
+await StorageService.pullChangesFromCloud(PROJ);
+assert(reloadSignals.length === 0, 'primeira leitura da versão/época apenas memoriza o estado base');
+
+fetchHandler = () => jsonRes({
+  success: true, rev: 14, cursor: { rev: 14, id: '' }, hasMore: false,
+  appVersion: 'v_200', forceReloadEpoch: 1000,
+  changes: [], layers: []
+});
+await StorageService.pullChangesFromCloud(PROJ);
+assert(reloadSignals.length === 1 && reloadSignals[0].reason === 'deploy', 'mudança de appVersion dispara sinal de reload por deploy');
+
+fetchHandler = () => jsonRes({
+  success: true, rev: 14, cursor: { rev: 14, id: '' }, hasMore: false,
+  appVersion: 'v_200', forceReloadEpoch: 2500,
+  changes: [], layers: []
+});
+await StorageService.pullChangesFromCloud(PROJ);
+assert(reloadSignals.length === 2 && reloadSignals[1].reason === 'command', 'avanço de forceReloadEpoch dispara sinal de reload por comando');
+unsubReload();
+
 if (failures > 0) {
   console.error(`\n${failures} verificação(ões) falharam`);
   process.exit(1);

@@ -413,7 +413,54 @@ export class AppBootstrapSync {
       if (typeof window !== 'undefined') window.addEventListener('online', wake);
     }
 
+    if (!app._remoteReloadBound) {
+      app._remoteReloadBound = true;
+      StorageService.onRemoteReloadRequired(({ reason }) => {
+        this.scheduleSafeReload(app, reason);
+      });
+    }
+
     schedule(0);
+  }
+
+  /**
+   * Executa o recarregamento forçado da página com segurança:
+   * aguarda término de desenho ativo no canvas e descarrega deltas pendentes.
+   */
+  static scheduleSafeReload(app, reason = 'deploy') {
+    if (app._reloadScheduled) return;
+    app._reloadScheduled = true;
+
+    const msg = reason === 'command'
+      ? 'O administrador solicitou a atualização da página. Recarregando...'
+      : 'Nova atualização do ConecteMapas publicada. Recarregando automaticamente...';
+
+    try {
+      UIToast.notificar({
+        tipo: 'informativo',
+        titulo: 'Atualizando Aplicação',
+        mensagem: msg,
+        duracao: 4000
+      });
+    } catch {}
+
+    const attemptReload = async () => {
+      if (app.mapEngine && app.mapEngine.isDrawing) {
+        setTimeout(attemptReload, 1000);
+        return;
+      }
+      try {
+        StorageService.flushSync();
+        await StorageService.commitDeltas(app.projectId);
+      } catch {}
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && window.location && typeof window.location.reload === 'function') {
+          window.location.reload();
+        }
+      }, 600);
+    };
+
+    attemptReload();
   }
 
   static updateSyncChip(app) {

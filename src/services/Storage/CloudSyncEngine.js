@@ -76,6 +76,61 @@ let _offlineFlushPromise = null;
 // nome/camadas, então reenviar o mesmo save_metadata só gasta rede e consultas no servidor.
 const _lastMetaSig = new Map();
 
+// Versão do deploy e época de recarregamento forçado: detecta novo build ou comando remoto
+const _clientAppVersion = typeof __APP_VERSION__ !== 'undefined' ? String(__APP_VERSION__) : 'dev';
+let _knownServerVersion = null;
+let _knownReloadEpoch = null;
+const _reloadListeners = new Set();
+
+function checkRemoteVersionSignals(data) {
+  if (!data || typeof data !== 'object') return false;
+  let shouldReload = false;
+  let reason = '';
+
+  if (typeof data.appVersion === 'string' && data.appVersion) {
+    if (_knownServerVersion === null) {
+      _knownServerVersion = data.appVersion;
+      if (_clientAppVersion !== 'dev' && data.appVersion !== _clientAppVersion) {
+        try {
+          const guardKey = 'cm_reloaded_for_ver';
+          if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(guardKey) !== data.appVersion) {
+            sessionStorage.setItem(guardKey, data.appVersion);
+            shouldReload = true;
+            reason = 'deploy';
+          }
+        } catch {}
+      }
+    } else if (data.appVersion !== _knownServerVersion) {
+      _knownServerVersion = data.appVersion;
+      try {
+        if (typeof sessionStorage !== 'undefined') {
+          sessionStorage.setItem('cm_reloaded_for_ver', data.appVersion);
+        }
+      } catch {}
+      shouldReload = true;
+      reason = 'deploy';
+    }
+  }
+
+  if (Number.isFinite(data.forceReloadEpoch)) {
+    const epoch = Number(data.forceReloadEpoch);
+    if (_knownReloadEpoch === null) {
+      _knownReloadEpoch = epoch;
+    } else if (epoch > _knownReloadEpoch) {
+      _knownReloadEpoch = epoch;
+      shouldReload = true;
+      reason = reason || 'command';
+    }
+  }
+
+  if (shouldReload) {
+    for (const listener of _reloadListeners) {
+      try { listener({ reason, appVersion: _knownServerVersion, epoch: _knownReloadEpoch }); } catch {}
+    }
+  }
+  return shouldReload;
+}
+
 function metadataSignature(data) {
   return JSON.stringify([
     data.name || '', data.description || '', data.basemap || '',
@@ -120,6 +175,28 @@ export class CloudSyncEngine {
     _localWriteRev.clear();
     _appliedRevs.clear();
     _lastMetaSig.clear();
+  }
+
+  static getAppVersion() {
+    return _clientAppVersion;
+  }
+
+  static onRemoteReloadRequired(listener) {
+    if (typeof listener === 'function') _reloadListeners.add(listener);
+    return () => _reloadListeners.delete(listener);
+  }
+
+  static async triggerForceReloadAll(projectId = 'projeto_padrao') {
+    const res = await this._postJson('force_reload', { projectId, clientId: _clientId });
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.error || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (data && Number.isFinite(data.forceReloadEpoch)) {
+      _knownReloadEpoch = Number(data.forceReloadEpoch);
+    }
+    return data;
   }
 
   static hasPendingLocalChange(featureId, currentProjectId = 'projeto_padrao') {
@@ -584,7 +661,8 @@ export class CloudSyncEngine {
         action: 'pull_changes',
         projectId,
         presenceOnly: '1',
-        clientId: _clientId
+        clientId: _clientId,
+        v: _clientAppVersion
       });
       if (presence) {
         if (presence.name) params.set('userName', presence.name);
@@ -603,6 +681,7 @@ export class CloudSyncEngine {
       const data = await res.json();
       if (!data || !data.success) return null;
       if (data.role) AccessManager.setRole(projectId, data.role);
+      checkRemoteVersionSignals(data);
       return Array.isArray(data.presence) ? data.presence : null;
     } catch {
       return null;
@@ -617,7 +696,8 @@ export class CloudSyncEngine {
         projectId,
         sinceRev: String(cursor.rev),
         sinceId: cursor.id || '',
-        clientId: _clientId
+        clientId: _clientId,
+        v: _clientAppVersion
       });
       if (presence) {
         if (presence.name) params.set('userName', presence.name);
@@ -641,6 +721,7 @@ export class CloudSyncEngine {
       const data = await res.json();
       if (!data || !data.success) return null;
       if (data.role) AccessManager.setRole(projectId, data.role);
+      checkRemoteVersionSignals(data);
 
       const wasConnected = _cloudStatus.connected;
       const hadError = _cloudStatus.error !== null;

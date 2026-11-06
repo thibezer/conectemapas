@@ -14,7 +14,7 @@ Options -Indexes +FollowSymLinks
 </IfModule>
 
 # 2. Proteção de Arquivos Sensíveis de Configuração (Apache 2.4 & LiteSpeed)
-<FilesMatch "^(db_config\.php|\.env|\.sql|\.git|\.cm_schema_version)">
+<FilesMatch "^(db_config\.php|\.env|\.sql|\.git|\.cm_schema_version|\.cm_app_version|\.cm_force_reload)">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>

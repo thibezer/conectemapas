@@ -116,6 +116,22 @@ function getDatabaseConnection() {
 // (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
 define('CM_SCHEMA_VERSION', 9);
 define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
+define('CM_APP_VERSION_FILE', __DIR__ . '/.cm_app_version');
+define('CM_FORCE_RELOAD_FILE', __DIR__ . '/.cm_force_reload');
+
+function getAppVersion() {
+    $ver = @file_get_contents(CM_APP_VERSION_FILE);
+    $ver = $ver !== false ? trim($ver) : '';
+    if ($ver === '') {
+        $ver = 'v_' . (int)@filemtime(__FILE__);
+    }
+    return $ver;
+}
+
+function getForceReloadEpoch() {
+    $raw = @file_get_contents(CM_FORCE_RELOAD_FILE);
+    return $raw !== false ? (int)trim($raw) : 0;
+}
 
 function columnExists(PDO $pdo, $table, $column) {
     $stmt = $pdo->query("SHOW COLUMNS FROM `$table` LIKE " . $pdo->quote($column));
@@ -1669,6 +1685,13 @@ switch ($action) {
         $clientId = sanitizeClientId($_GET['clientId'] ?? '');
         $pageLimit = 500;
 
+        // Clientes de navegador em versão antiga (sem protocolo de auto-reload v=)
+        // recebem 403 forbidden para travar a aba obsoleta e induzir o F5 imediato.
+        // Chamadas de testes automatizados (sem v e sem userName/presenceOnly) continuam aceitas.
+        if (!isset($_GET['v']) && (isset($_GET['userName']) || isset($_GET['presenceOnly']))) {
+            denyAccess(403, 'forbidden', 'Nova versão disponível. Por favor, recarregue a página (F5).');
+        }
+
         // 1. Presença: heartbeat + posição do cursor deste operador, e lista dos demais ativos
         $presence = [];
         if ($clientId) {
@@ -1719,9 +1742,11 @@ switch ($action) {
 
         if (!empty($_GET['presenceOnly'])) {
             echo json_encode([
-                'success'  => true,
-                'presence' => $presence,
-                'role'     => $accessRole
+                'success'          => true,
+                'presence'         => $presence,
+                'role'             => $accessRole,
+                'appVersion'       => getAppVersion(),
+                'forceReloadEpoch' => getForceReloadEpoch()
             ]);
             exit;
         }
@@ -1856,9 +1881,11 @@ switch ($action) {
         $pdo->commit();
 
         echo json_encode([
-            'success'    => true,
-            'serverTime' => date('Y-m-d H:i:s'),
-            'rev'        => $projRev,
+            'success'          => true,
+            'serverTime'       => date('Y-m-d H:i:s'),
+            'appVersion'       => getAppVersion(),
+            'forceReloadEpoch' => getForceReloadEpoch(),
+            'rev'              => $projRev,
             'cursor'     => $cursor,
             'hasMore'    => $hasMore,
             'reset'      => $reset,
@@ -2386,11 +2413,28 @@ switch ($action) {
             denyAccess(500, 'print_library_failed', 'Falha ao salvar a biblioteca', ['detail' => $e->getMessage()]);
         }
 
+    // --------------------------------------------------------------------------
+    // ACTION: FORCE_RELOAD (Dispara recarregamento remoto em todos os clientes ativos)
+    // --------------------------------------------------------------------------
+    case 'force_reload':
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
+        $body = getJsonBody();
+        $projectId = cleanProjectId($body['projectId'] ?? 'projeto_padrao');
+        requireRole($pdo, $projectId, 'editor');
+        $epoch = (int)round(microtime(true) * 1000);
+        @file_put_contents(CM_FORCE_RELOAD_FILE, (string)$epoch);
+        echo json_encode([
+            'success'          => true,
+            'forceReloadEpoch' => $epoch,
+            'appVersion'       => getAppVersion()
+        ]);
+        exit;
+
     default:
         http_response_code(400);
         echo json_encode([
             'error'           => 'Ação não informada ou desconhecida.',
-            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite', 'my_projects', 'delete_project', 'print_changes', 'print_lock', 'print_save_sheet', 'print_delete_sheet', 'print_save_library']
+            'supported_actions' => ['status', 'list_projects', 'load', 'save_metadata', 'sync_deltas', 'pull_changes', 'save_all', 'restore_features', 'log_audit', 'access_info', 'claim_project', 'create_share', 'list_access', 'revoke_access', 'auth_login', 'auth_register', 'auth_logout', 'auth_me', 'auth_change_password', 'create_invite', 'accept_invite', 'revoke_member', 'revoke_invite', 'my_projects', 'delete_project', 'print_changes', 'print_lock', 'print_save_sheet', 'print_delete_sheet', 'print_save_library', 'force_reload']
         ]);
         exit;
 }

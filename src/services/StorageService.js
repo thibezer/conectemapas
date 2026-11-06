@@ -413,6 +413,14 @@ export class StorageService {
   static flushPendingOfflineDeltas(projectId = null) {
     return CloudSyncEngine.flushPendingOfflineDeltas(projectId || _currentProjectId);
   }
+
+  static onRemoteReloadRequired(listener) {
+    return CloudSyncEngine.onRemoteReloadRequired(listener);
+  }
+
+  static triggerForceReloadAll(projectId = null) {
+    return CloudSyncEngine.triggerForceReloadAll(projectId || _currentProjectId);
+  }
 }
 
 // Listener de conectividade de rede

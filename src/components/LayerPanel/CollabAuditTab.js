@@ -4,6 +4,9 @@
    trilha de auditoria cronológica das ações do projeto).
    ========================================================================== */
 
+import { StorageService } from '../../services/StorageService.js';
+import { UIToast } from '@thibezer/ui-components-kit';
+
 export class CollabAuditTab {
   /** Agrupa entradas consecutivas do mesmo usuário e verbo ("Excluiu feição ..."). */
   static groupAudit(entries) {
@@ -101,7 +104,12 @@ export class CollabAuditTab {
     return `
       <div class="cm-collab-tab">
         <div class="cm-collab-members">
-          <span class="cm-sidebar-section-title">Equipe Online (${members.length})</span>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <span class="cm-sidebar-section-title">Equipe Online (${members.length})</span>
+            <ui-botao-primario inline id="btn-force-reload-all" variante="ghost" style="height: 22px; padding: 0 8px; font-size: 10.5px;" title="Força todos os operadores com o site aberto a recarregarem a página agora">
+              ↻ Atualizar Todos
+            </ui-botao-primario>
+          </div>
           <div class="cm-team-members-list" id="cm-team-members-box">
             ${CollabAuditTab.renderMembers(panel)}
           </div>
@@ -143,6 +151,32 @@ export class CollabAuditTab {
         if (text) {
           panel.onSendMessage(text);
           if (input) input.value = '';
+        }
+      });
+    }
+
+    const btnReloadAll = document.getElementById('btn-force-reload-all');
+    if (btnReloadAll && !btnReloadAll._boundReloadAll) {
+      btnReloadAll._boundReloadAll = true;
+      btnReloadAll.addEventListener('click', async () => {
+        btnReloadAll.setAttribute('disabled', 'true');
+        try {
+          await StorageService.triggerForceReloadAll(panel.app?.projectId || 'projeto_padrao');
+          UIToast.notificar({
+            tipo: 'sucesso',
+            titulo: 'Comando Enviado',
+            mensagem: 'Todos os usuários conectados recarregarão a página em instantes.',
+            duracao: 3500
+          });
+        } catch (err) {
+          UIToast.notificar({
+            tipo: 'erro',
+            titulo: 'Falha ao disparar atualização',
+            mensagem: err.message || 'Não foi possível enviar o comando ao servidor.',
+            duracao: 4000
+          });
+        } finally {
+          btnReloadAll.removeAttribute('disabled');
         }
       });
     }
