@@ -10,6 +10,7 @@ import { CLOUD_ENABLED } from '../services/Storage/StorageConstants.js';
 import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { normalizeFeature } from '../services/MockData.js';
 import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
+import { LoadingOverlay } from './LoadingOverlay.js';
 
 export class AppBootstrapSync {
   /**
@@ -74,6 +75,7 @@ export class AppBootstrapSync {
    */
   static async loadStateAsync(app) {
     try {
+      LoadingOverlay.update('Carregando o projeto…', 'Lendo os dados salvos neste dispositivo.');
       const saved = await StorageService.loadCurrentProjectAsync(app.projectId);
       if (saved) {
         if (saved.name) app.projectName = saved.name;
@@ -113,6 +115,8 @@ export class AppBootstrapSync {
 
           // Respeita Regra 1 do GEMINI.md: array vazio [] se o projeto estiver limpo
           app.features = cleanedFeatures.map(normalizeFeature);
+          // O desenho é síncrono e pesado: deixa o aviso pintar antes de travar a thread
+          if (LoadingOverlay.announceDrawing(app.features.length)) await LoadingOverlay.nextPaint();
           app.refreshMapAndTable(true);
           if (app.layerPanel) app.layerPanel.updateLayers(app.getLayersWithCounts(), app.features);
           if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
@@ -141,6 +145,7 @@ export class AppBootstrapSync {
 
       // Auto-cura preventiva: se localmente não há feições, SEMPRE consulta a nuvem
       if (!hasLocalFeatures) {
+        LoadingOverlay.update('Baixando o projeto da nuvem…', 'Projetos com muitas formas levam alguns segundos. O mapa não travou, aguarde.');
         const hydrated = await this.hydrateFromCloud(app);
         if (!hydrated && saved) {
           // Fallback se a nuvem estiver indisponível no momento: tenta deltas incrementais
@@ -166,11 +171,16 @@ export class AppBootstrapSync {
             });
           }
           let pages = 0;
+          LoadingOverlay.update('Sincronizando com a nuvem…', 'Buscando alterações feitas por outros operadores.');
           let deltaChanges = await StorageService.pullChangesFromCloud(app.projectId);
           while (deltaChanges && pages < 50) {
             pages++;
             this.applyRemoteProjectName(app, deltaChanges.project);
             if (deltaChanges.upserted.length > 0 || deltaChanges.deleted.length > 0 || deltaChanges.layers.length > 0 || deltaChanges.audit?.length > 0 || deltaChanges.chat?.length > 0) {
+              if (deltaChanges.upserted.length >= 100) {
+                LoadingOverlay.update(`Aplicando ${LoadingOverlay.formatCount(deltaChanges.upserted.length)} da nuvem…`, 'Projetos com muitas formas levam alguns segundos. O mapa não travou, aguarde.');
+                await LoadingOverlay.nextPaint();
+              }
               FeatureSyncController.applyRemoteDeltas(app, deltaChanges);
             }
             if (!deltaChanges.hasMore) break;
@@ -192,6 +202,7 @@ export class AppBootstrapSync {
       }
       this.updateSyncChip(app);
       this.startCloudSyncLoop(app);
+      LoadingOverlay.hideAfterPaint();
     }
   }
 
@@ -286,6 +297,7 @@ export class AppBootstrapSync {
       }
 
       if (updated) {
+        if (LoadingOverlay.announceDrawing(app.features.length)) await LoadingOverlay.nextPaint();
         app.refreshMapAndTable?.(true);
         if (app.layerPanel) {
           const layersWithCounts = typeof app.getLayersWithCounts === 'function' ? app.getLayersWithCounts() : app.layers;

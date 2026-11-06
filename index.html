@@ -55,6 +55,15 @@
 
     <!-- Área de Trabalho Principal -->
     <main class="cm-workspace">
+      <!-- Aviso de carregamento (aparece após ~0,6 s por CSS; removido por LoadingOverlay ao terminar) -->
+      <div id="cm-loading" class="cm-loading" role="status" aria-live="polite">
+        <div class="cm-loading__box">
+          <div class="cm-loading__spinner" aria-hidden="true"></div>
+          <strong id="cm-loading-title" class="cm-loading__title">Carregando o mapa…</strong>
+          <span id="cm-loading-detail" class="cm-loading__detail">Projetos com muitas formas levam alguns segundos. O mapa não travou, aguarde.</span>
+        </div>
+      </div>
+
       <!-- Barra de Ferramentas Vetoriais Flutuante (Esquerda) -->
       <div id="drawing-toolbar-mount"></div>
 

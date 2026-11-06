@@ -29,6 +29,75 @@
   height: calc(100vh - var(--cm-header-height, 32px));
 }
 
+/* Aviso de carregamento sobre o mapa. Nasce invisível e aparece por CSS após 600 ms
+   (compositor: continua animando mesmo com a thread principal ocupada desenhando). */
+.cm-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 11, 13, 0.72);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  animation: cm-loading-in 0.25s ease 0.6s forwards;
+  transition: opacity 0.25s ease;
+}
+
+.cm-loading.is-done {
+  animation: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cm-loading__box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, 86%);
+  padding: 22px 28px;
+  text-align: center;
+  background: var(--cm-glass-bg, rgba(20, 20, 23, 0.85));
+  border: 1px solid var(--cm-border, rgba(255, 255, 255, 0.12));
+  border-radius: 12px;
+  box-shadow: var(--cm-shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.65));
+}
+
+.cm-loading__spinner {
+  width: 34px;
+  height: 34px;
+  border: 3px solid var(--cm-border, rgba(255, 255, 255, 0.12));
+  border-top-color: var(--cm-primary, #00E08A);
+  border-radius: 50%;
+  animation: cm-loading-spin 0.9s linear infinite;
+}
+
+.cm-loading__title {
+  color: var(--cm-text, #e1e1e6);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cm-loading__detail {
+  color: var(--cm-text-muted, #888899);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@keyframes cm-loading-in {
+  to { opacity: 1; }
+}
+
+@keyframes cm-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-loading__spinner { animation-duration: 2.4s; }
+}
+
 /* Altura da tabela de atributos: fluida e compartilhada com os painéis flutuantes,
    que se acomodam acima dela em vez de ficarem escondidos por baixo. */
 :root {
