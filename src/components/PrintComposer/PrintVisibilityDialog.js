@@ -233,8 +233,10 @@ export class PrintVisibilityDialog {
       <tr class="cm-vv-row cm-vv-row--defaults" data-row-kind="defaults" data-row-id="*">
         <td class="cm-vv-cell"></td>
         <td class="cm-vv-cell cm-vv-name">
-          ${this.swatch(g)}
-          <span class="cm-vv-name-text"><strong>Todas as camadas</strong> <span class="cm-vv-muted">(padrão)</span></span>
+          <div class="cm-vv-name-wrap">
+            ${this.swatch(g)}
+            <span class="cm-vv-name-text"><strong>Todas as camadas</strong> <span class="cm-vv-muted">(padrão)</span></span>
+          </div>
         </td>
         ${this.graphicsCells(g, ov, locked)}
         <td class="cm-vv-cell"></td>
@@ -257,7 +259,7 @@ export class PrintVisibilityDialog {
         <td class="cm-vv-cell cm-vv-center ${mark('show')}">
           <input type="checkbox" data-gfx="show" ${ov.show ? 'checked' : ''} ${dis} aria-label="Mostrar rótulos de todas as camadas" />
         </td>
-        <td class="cm-vv-cell cm-vv-name"><span class="cm-vv-name-text"><strong>Todos os rótulos</strong> <span class="cm-vv-muted">(padrão)</span></span></td>
+        <td class="cm-vv-cell cm-vv-name"><div class="cm-vv-name-wrap"><span class="cm-vv-name-text"><strong>Todos os rótulos</strong> <span class="cm-vv-muted">(padrão)</span></span></div></td>
         <td class="cm-vv-cell ${mark('text')}">
           <input type="text" class="cm-vertex-input cm-vv-text" data-gfx="text" value="${esc(ov.text ?? '')}" placeholder="${esc(lb.text)}" ${dis} aria-label="Texto padrão dos rótulos" />
         </td>
@@ -386,9 +388,11 @@ export class PrintVisibilityDialog {
           <input type="checkbox" data-gfx="visible" ${visible ? 'checked' : ''} ${dis} aria-label="Visível: ${esc(layer.name)}" />
         </td>
         <td class="cm-vv-cell cm-vv-name">
-          ${this.swatch(g)}
-          <span class="cm-vv-name-text" title="${esc(layer.name)}">${esc(layer.name || 'Camada')}</span>
-          <span class="cm-vv-count" title="${count} feições">${count}</span>
+          <div class="cm-vv-name-wrap">
+            ${this.swatch(g)}
+            <span class="cm-vv-name-text" title="${esc(layer.name)}">${esc(layer.name || 'Camada')}</span>
+            <span class="cm-vv-count" title="${count} feições">${count}</span>
+          </div>
         </td>
         ${this.graphicsCells(g, ov, locked)}
         <td class="cm-vv-cell ${ov?.minScale || ov?.maxScale ? 'is-overridden' : ''}">
@@ -459,8 +463,10 @@ export class PrintVisibilityDialog {
           <input type="checkbox" data-gfx="show" ${lb.show ? 'checked' : ''} ${dis} aria-label="Mostrar rótulo: ${esc(layer.name)}" />
         </td>
         <td class="cm-vv-cell cm-vv-name">
-          ${this.swatch(g)}
-          <span class="cm-vv-name-text" title="${esc(layer.name)}">${esc(layer.name || 'Camada')}</span>
+          <div class="cm-vv-name-wrap">
+            ${this.swatch(g)}
+            <span class="cm-vv-name-text" title="${esc(layer.name)}">${esc(layer.name || 'Camada')}</span>
+          </div>
         </td>
         <td class="cm-vv-cell ${mark('text')}">
           <input type="text" class="cm-vertex-input cm-vv-text" data-gfx="text" value="${esc(ov?.text ?? '')}" placeholder="${esc(lb.text)}" ${dis} aria-label="Texto do rótulo de ${esc(layer.name)}" />
@@ -607,9 +613,11 @@ export class PrintVisibilityDialog {
         <td class="cm-vv-cell cm-vv-center"><input type="checkbox" data-gfx="enabled" ${entry.enabled !== false ? 'checked' : ''} ${dis} aria-label="Filtro ativo: ${esc(def.name)}" /></td>
         <td class="cm-vv-cell cm-vv-center ${entry.visible === false ? 'is-overridden' : ''}"><input type="checkbox" data-gfx="visible" ${entry.visible !== false ? 'checked' : ''} ${dis} aria-label="Mostrar o que o filtro pega" title="Desmarcado: oculta as feições que o filtro pega" /></td>
         <td class="cm-vv-cell cm-vv-name">
-          ${this.swatch(g)}
-          <span class="cm-vv-name-text" title="${esc(def.name)}">${esc(def.name || 'Filtro')}</span>
-          <span class="cm-vv-count" title="${ids.length} feições">${ids.length}</span>
+          <div class="cm-vv-name-wrap">
+            ${this.swatch(g)}
+            <span class="cm-vv-name-text" title="${esc(def.name)}">${esc(def.name || 'Filtro')}</span>
+            <span class="cm-vv-count" title="${ids.length} feições">${ids.length}</span>
+          </div>
         </td>
         ${this.graphicsCells(g, entry, locked)}
         <td class="cm-vv-cell cm-vv-center">
@@ -718,9 +726,11 @@ export class PrintVisibilityDialog {
           <input type="checkbox" data-gfx="visible" ${ov.visible === false ? '' : 'checked'} ${dis} aria-label="Visível: ${esc(feat.name || id)}" />
         </td>
         <td class="cm-vv-cell cm-vv-name">
-          ${this.swatch(g)}
-          <span class="cm-vv-name-text" title="${esc(feat.name || id)}">${esc(feat.name || id)}</span>
-          <span class="cm-vv-muted">${esc(layer.name || '')}</span>
+          <div class="cm-vv-name-wrap">
+            ${this.swatch(g)}
+            <span class="cm-vv-name-text" title="${esc(feat.name || id)}">${esc(feat.name || id)}</span>
+            <span class="cm-vv-muted">${esc(layer.name || '')}</span>
+          </div>
         </td>
         ${this.graphicsCells(g, ov, locked)}
         <td class="cm-vv-cell cm-vv-center">

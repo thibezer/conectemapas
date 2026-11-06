@@ -233,8 +233,13 @@
   background: rgba(0, 224, 138, 0.06);
 }
 
-.cm-vv-row.is-hidden .cm-vv-name,
-.cm-vv-row.is-hidden .cm-vv-cell:not(:first-child) > * {
+/* Hover não apaga o destaque de campo ajustado */
+.cm-vv-row:hover .cm-vv-cell.is-overridden {
+  background: rgba(0, 224, 138, 0.1);
+}
+
+/* Camada oculta: esmaece o conteúdo, mas mantém checkbox e botão de reset legíveis */
+.cm-vv-row.is-hidden .cm-vv-cell:not(:first-child):not(:last-child) > * {
   opacity: 0.45;
 }
 
@@ -242,12 +247,17 @@
   text-align: center;
 }
 
+/* A célula continua display:table-cell; o flex fica no wrapper interno */
 .cm-vv-name {
+  min-width: 180px;
+  max-width: 280px;
+}
+
+.cm-vv-name-wrap {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 180px;
-  max-width: 280px;
+  min-width: 0;
 }
 
 .cm-vv-name-text {
