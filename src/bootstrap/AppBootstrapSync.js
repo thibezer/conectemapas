@@ -13,6 +13,7 @@ import { FeatureSyncController } from '../controllers/FeatureSyncController.js';
 import { LoadingOverlay } from './LoadingOverlay.js';
 import { mergeLocalVisibility } from '../services/Storage/LayerVisibility.js';
 import { FeatureVisibility } from '../services/Storage/FeatureVisibility.js';
+import { allowAutoReload } from '../services/Storage/ReloadGuard.js';
 
 export class AppBootstrapSync {
   /**
@@ -490,6 +491,7 @@ export class AppBootstrapSync {
    */
   static scheduleSafeReload(app, reason = 'deploy') {
     if (app._reloadScheduled) return;
+    if (reason !== 'command' && !allowAutoReload()) return; // trava anti-loop (1 por minuto)
     app._reloadScheduled = true;
 
     const msg = reason === 'command'

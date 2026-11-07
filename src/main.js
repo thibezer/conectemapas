@@ -12,6 +12,7 @@ import { CollaborationHub } from './services/CollaborationHub.js';
 import { AccessManager } from './services/Storage/AccessManager.js';
 import { AuthService } from './services/Storage/AuthService.js';
 import { GuestIdentity } from './services/Storage/GuestIdentity.js';
+import { allowAutoReload } from './services/Storage/ReloadGuard.js';
 
 import { FeatureSyncController } from './controllers/FeatureSyncController.js';
 import { ShortcutsController } from './controllers/ShortcutsController.js';
@@ -183,7 +184,7 @@ class ConecteMapasApp {
       return;
     }
     // Projeto protegido que estava sem acesso e agora liberou (login/convite): recarrega para baixar os dados
-    if (this._lastAccessRole === 'none' && role && role !== 'none') {
+    if (this._lastAccessRole === 'none' && role && role !== 'none' && allowAutoReload()) {
       window.location.reload();
       return;
     }
