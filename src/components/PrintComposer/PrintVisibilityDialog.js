@@ -304,7 +304,7 @@ export class PrintVisibilityDialog {
   }
 
   /** Células de gráficos (traço, preenchimento, meio-tom) de uma linha */
-  static graphicsCells(g, ov, disabled) {
+  static graphicsCells(g, ov, disabled, opts = {}) {
     const o = ov || {};
     const dis = disabled ? 'disabled' : '';
     const mark = (cond) => (cond ? 'is-overridden' : '');
@@ -344,12 +344,12 @@ export class PrintVisibilityDialog {
       <td class="cm-vv-cell cm-vv-center ${mark(o.halftone)}">
         <input type="checkbox" data-gfx="halftone" ${o.halftone ? 'checked' : ''} ${dis} aria-label="Meio-tom" title="Meio-tom: apaga a camada sem ocultá-la" />
       </td>
-      ${this.effectsCell(g, o, disabled)}
+      ${this.effectsCell(g, o, disabled, opts)}
     `;
   }
 
   /** Efeitos avançados: mesclagem, opacidade, hachura, linha composta e ícone de ponto */
-  static effectsCell(g, ov, disabled) {
+  static effectsCell(g, ov, disabled, { callout = false } = {}) {
     const o = ov || {};
     const dis = disabled ? 'disabled' : '';
     const strokeOv = o.stroke || {};
@@ -367,7 +367,8 @@ export class PrintVisibilityDialog {
     const touched = o.blend !== undefined || o.opacity !== undefined
       || ['casingColor', 'casingWidthMm', 'altColor', 'decor'].some(k => strokeOv[k] !== undefined)
       || ['hatchAngle', 'hatchSpacingMm', 'hatchWidthMm'].some(k => fillOv[k] !== undefined)
-      || pointOv.icon !== undefined || pointOv.sizeMm !== undefined;
+      || pointOv.icon !== undefined || pointOv.sizeMm !== undefined
+      || o.label?.dxMm !== undefined || o.label?.dyMm !== undefined;
     return `
       <td class="cm-vv-cell ${touched ? 'is-overridden' : ''}">
         <details class="cm-vv-adv" data-vv-adv>
@@ -390,6 +391,11 @@ export class PrintVisibilityDialog {
               ${num('fill.hatchAngle', fillOv.hatchAngle, 'pad.', 'min="0" max="180" step="5"', 'Ângulo da hachura (graus)')}
               ${num('fill.hatchSpacingMm', fillOv.hatchSpacingMm, g.fill.hatch?.spacingMm ?? HATCH_SPACING_MM.default, `min="${HATCH_SPACING_MM.min}" max="${HATCH_SPACING_MM.max}" step="0.1"`, 'Espaçamento da hachura (mm)')}
               ${num('fill.hatchWidthMm', fillOv.hatchWidthMm, g.fill.hatch?.widthMm ?? HATCH_WIDTH_MM.default, `min="${HATCH_WIDTH_MM.min}" max="${HATCH_WIDTH_MM.max}" step="0.05"`, 'Pena da hachura (mm)')}</span></div>
+            ${callout ? `
+            <div class="cm-vv-adv-title">Chamada do rótulo</div>
+            <div class="cm-vv-adv-row"><span>Deslocar X / Y (mm)</span><span class="cm-vv-inline">
+              ${num('label.dxMm', o.label?.dxMm, 0, 'min="-200" max="200" step="1"', 'Deslocamento horizontal do rótulo (mm)')}
+              ${num('label.dyMm', o.label?.dyMm, 0, 'min="-200" max="200" step="1"', 'Deslocamento vertical do rótulo (mm)')}</span></div>` : ''}
             <div class="cm-vv-adv-title">Ponto</div>
             <label class="cm-vv-adv-row"><span>Ícone</span>
               <select class="cm-native-select cm-vv-select" data-gfx="point.icon" ${dis} aria-label="Ícone do ponto">${opt(POINT_ICONS, pointOv.icon)}</select></label>
@@ -811,7 +817,7 @@ export class PrintVisibilityDialog {
             <span class="cm-vv-muted">${esc(layer.name || '')}</span>
           </div>
         </td>
-        ${this.graphicsCells(g, ov, locked)}
+        ${this.graphicsCells(g, ov, locked, { callout: true })}
         <td class="cm-vv-cell cm-vv-center">
           <button type="button" class="cm-vv-reset" data-vv-reset ${dis} title="Tirar o ajuste desta feição" aria-label="Tirar o ajuste de ${esc(feat.name || id)}">↺</button>
         </td>
@@ -850,7 +856,7 @@ export class PrintVisibilityDialog {
     const raw = input.value;
     if (raw === '' || raw === null) return null;
     if (path === 'fill.opacity' || path === 'opacity') return Math.min(100, Math.max(0, Number(raw))) / 100;
-    if (['stroke.widthMm', 'sizePt', 'stroke.casingWidthMm', 'fill.hatchAngle', 'fill.hatchSpacingMm', 'fill.hatchWidthMm', 'point.sizeMm'].includes(path)) return Number(raw);
+    if (['stroke.widthMm', 'sizePt', 'stroke.casingWidthMm', 'fill.hatchAngle', 'fill.hatchSpacingMm', 'fill.hatchWidthMm', 'point.sizeMm', 'label.dxMm', 'label.dyMm'].includes(path)) return Number(raw);
     if (path === 'minScale' || path === 'maxScale') {
       const n = Math.round(Number(raw));
       return n > 0 ? n : null;

@@ -587,6 +587,28 @@ export const PrintMapRenderer = {
     const style = { sizePt: g.label.sizePt, color: g.label.color, halo: g.label.halo, font: g.label.font, bold: g.label.bold };
     const sizePx = g.label.sizePt * PT_TO_MM * pxPerMm;
     const lift = sizePx * 0.7 + g.stroke.widthMm * pxPerMm;
+    // Chamada: texto deslocado, sem girar, com linha-guia saindo da feição
+    const dx = (Number(g.label.dxMm) || 0) * pxPerMm;
+    const dy0 = (Number(g.label.dyMm) || 0) * pxPerMm;
+    if (dx || dy0) {
+      const tx = anchor.x + dx;
+      const ty = anchor.y + dy0;
+      ctx.save();
+      ctx.strokeStyle = g.label.color || '#111111';
+      ctx.lineWidth = Math.max(0.5, 0.15 * pxPerMm);
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(anchor.x, anchor.y);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(anchor.x, anchor.y, Math.max(0.8, 0.35 * pxPerMm), 0, Math.PI * 2);
+      ctx.fillStyle = g.label.color || '#111111';
+      ctx.fill();
+      ctx.restore();
+      this.drawText(ctx, text, tx, ty, { ...style, align: 'center' }, pxPerMm);
+      return;
+    }
     // Linha com rótulo "acompanhar a curva": o texto segue o traçado; se não couber, vai reto como antes
     if (g.label.curved && anchor.path && !String(text).includes('\n') && this.drawCurvedText(ctx, text, anchor.path, anchor.pathLen, { ...style, lift }, pxPerMm)) return;
     ctx.save();

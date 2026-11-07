@@ -392,6 +392,10 @@ export const PrintViewResolver = {
     const p = ov.point || {};
     if (has(p, 'icon')) g.point.icon = POINT_ICONS[p.icon] ? p.icon : 'circulo';
     if (has(p, 'sizeMm')) g.point.sizeMm = clampNum(p.sizeMm, 0.5, 20, 2.2);
+    // Chamada: rótulo deslocado (mm no papel) com linha-guia até a feição
+    const lb = ov.label || {};
+    if (has(lb, 'dxMm')) g.label.dxMm = clampNum(lb.dxMm, -200, 200, 0);
+    if (has(lb, 'dyMm')) g.label.dyMm = clampNum(lb.dyMm, -200, 200, 0);
     if (has(ov, 'opacity')) g.opacity = clampNum(ov.opacity, 0, 1, 1);
     if (has(ov, 'blend')) g.blend = BLEND_MODES[ov.blend] ? ov.blend : 'normal';
     if (has(ov, 'halftone')) g.halftone = ov.halftone === true;

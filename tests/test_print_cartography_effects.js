@@ -184,6 +184,16 @@ const rtl = PrintMapRenderer.lineAnchor([[{ x: 400, y: 100 }, { x: 200, y: 140 }
 const ctxR = fakeCtx();
 PrintMapRenderer.drawLabel(ctxR, { anchor: rtl, g: gl, f: line }, 3.78);
 assert.strictEqual(ctxR.__calls.filter(c => c[0] === 'fillText').map(c => c[1]).join(''), 'LinhaNorte', 'Texto não sai de cabeça para baixo');
+// Chamada: rótulo deslocado por feição, com linha-guia e sem girar
+const vC = resolveWith({ labels: { pontos: { show: true } }, elements: { pt: { label: { dxMm: 10, dyMm: -6 } } } });
+const gC = PrintViewResolver.resolve(point, vC);
+assert.strictEqual(gC.label.dxMm, 10);
+assert.strictEqual(gC.label.dyMm, -6);
+const ctxC = fakeCtx();
+PrintMapRenderer.drawLabel(ctxC, { anchor: { x: 100, y: 100, angle: 0 }, g: gC, f: point }, 4);
+assert.ok(ctxC.__calls.some(c => c[0] === 'lineTo' && c[1] === 140 && c[2] === 76), 'Linha-guia até o rótulo deslocado');
+assert.ok(ctxC.__calls.some(c => c[0] === 'fillText' && c[1] === 'Ponto' && c[2] === 140 && c[3] === 76), 'Texto na posição deslocada');
+assert.strictEqual(PrintViewResolver.resolve(point, resolveWith({ labels: { pontos: { show: true } } })).label.dxMm, undefined, 'Sem ajuste: rótulo no lugar');
 // Texto de várias linhas não acompanha a curva
 assert.ok(PrintFonts.normalize('nada') === 'sans' && Object.keys(FONT_FAMILIES).length >= 5);
 assert.ok(PrintFonts.css('mono').includes('Courier'));
