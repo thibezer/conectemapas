@@ -222,6 +222,21 @@ export class AccessManager {
     return this.buildShareUrl(projectId, myKey);
   }
 
+  /** Converte um link do projeto no link "só pranchas" (o resto do sistema fica oculto). */
+  static toSheetsUrl(url) {
+    if (!url) return '';
+    const [base, hash] = String(url).split('#');
+    if (/[?&]modo=pranchas(&|$)/.test(base)) return url;
+    const withMode = `${base}${base.includes('?') ? '&' : '?'}modo=pranchas`;
+    return hash ? `${withMode}#${hash}` : withMode;
+  }
+
+  /** O endereço atual pede o modo "só pranchas"? */
+  static isSheetsOnlyUrl() {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('modo') === 'pranchas';
+  }
+
   /** Link de compartilhamento: a chave vai no fragmento, fora de logs de servidor. */
   static buildShareUrl(projectId, key = null) {
     const origin = typeof window !== 'undefined' ? window.location.origin : '';

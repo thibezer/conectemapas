@@ -12,6 +12,7 @@ import { CollaborationHub } from './services/CollaborationHub.js';
 import { AccessManager } from './services/Storage/AccessManager.js';
 import { AuthService } from './services/Storage/AuthService.js';
 import { GuestIdentity } from './services/Storage/GuestIdentity.js';
+import { LoadingOverlay } from './bootstrap/LoadingOverlay.js';
 import { allowAutoReload } from './services/Storage/ReloadGuard.js';
 
 import { FeatureSyncController } from './controllers/FeatureSyncController.js';
@@ -30,6 +31,9 @@ class ConecteMapasApp {
     this.projectId = (urlParams && urlParams.get('project')) ? urlParams.get('project') : 'projeto_padrao';
     StorageService.setCurrentProjectId(this.projectId);
     AccessManager.adoptKeyFromUrl(this.projectId);
+    // Link "só pranchas" (?modo=pranchas): a pessoa vê apenas as pranchas; o sistema fica oculto
+    this.sheetsOnly = AccessManager.isSheetsOnlyUrl();
+    if (this.sheetsOnly) document.body.classList.add('cm-modo-pranchas');
 
     if (typeof window !== 'undefined' && (!urlParams || !urlParams.get('project'))) {
       try {
@@ -77,7 +81,8 @@ class ConecteMapasApp {
     AppComponentsBuilder.initComponents(this);
     if (this._projectSeed) this.applyProjectSeed(this._projectSeed);
     AppGeometryCoordinator.updateHUD(this);
-    AppBootstrapSync.loadStateAsync(this);
+    const hydration = AppBootstrapSync.loadStateAsync(this);
+    if (this.sheetsOnly) this.enterSheetsOnlyMode(hydration);
 
     StorageService.onCloudStatusChange(() => {
       AppBootstrapSync.updateSyncChip(this);
@@ -102,7 +107,8 @@ class ConecteMapasApp {
     if (inviteCode && this.authModal) this.authModal.openInvite(inviteCode);
 
     // Convidado sem conta e sem nome neste dispositivo: pede o nome (o convite abre o cadastro, não o nome)
-    if (!inviteCode) {
+    // No link "só pranchas" não há o que identificar: ninguém edita nem aparece no mapa.
+    if (!inviteCode && !this.sheetsOnly) {
       AuthService.refresh().finally(() => {
         if (!AuthService.isLoggedIn() && !GuestIdentity.getName()) this.guestNameModal?.open();
       });
@@ -115,6 +121,19 @@ class ConecteMapasApp {
         setTimeout(() => this.drawingToolbar?.openColorPicker('stroke'), 500);
       }
     }
+  }
+
+  /**
+   * Modo "só pranchas": espera os dados do projeto e abre o compositor em tela cheia, somente leitura,
+   * sem botão de fechar. O mapa e os painéis ficam ocultos por CSS (body.cm-modo-pranchas).
+   */
+  async enterSheetsOnlyMode(hydration) {
+    try { await hydration; } catch {}
+    const composer = this.printComposerModal;
+    if (!composer) return;
+    composer.enablePresentationMode();
+    composer.open(this.projectName, this.layers, this.features, this.currentBasemap, this.projectId);
+    LoadingOverlay.hide();
   }
 
   /**
@@ -198,7 +217,7 @@ class ConecteMapasApp {
       this.headerBar?.updateCollaborators(list);
       this.layerPanel?.updateTeamMembers?.(list);
     }
-    if (role === 'viewer') {
+    if (role === 'viewer' && !this.sheetsOnly) {
       UIToast.notificar({ tipo: 'alerta', titulo: 'Modo leitura', mensagem: 'Você pode visualizar o mapa, mas não editá-lo.', duracao: 5000 });
     } else if (role === 'none') {
       UIToast.notificar({

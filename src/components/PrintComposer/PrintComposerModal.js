@@ -45,6 +45,8 @@ export class PrintComposerModal {
     this.clientId = options.clientId || '';
     this.cloud = null;
     this.readOnly = false;
+    // Modo "só pranchas" (link de apresentação): sem edição, sem trava e sem sair para o sistema
+    this.presentationMode = false;
     this.container = null;
     this.isOpen = false;
 
@@ -351,7 +353,7 @@ export class PrintComposerModal {
     // Pranchas na nuvem: carrega, pega a trava da prancha aberta e acompanha as mudanças
     this.cloud?.stop();
     const store = this.createCloudStore ? this.createCloudStore(this.projectId) : null;
-    this.cloud = new PrintCloudSync(this, store, { canWrite: () => this.canWriteProject(this.projectId), clientId: this.clientId });
+    this.cloud = new PrintCloudSync(this, store, { canWrite: () => !this.presentationMode && this.canWriteProject(this.projectId), clientId: this.clientId });
     this.setReadOnly(false);
     this.cloud.start();
   }
@@ -415,7 +417,7 @@ export class PrintComposerModal {
    * `holder` = quem edita; `free` = a trava foi liberada (oferece "Editar").
    */
   setReadOnly(flag, holder = null, { free = false } = {}) {
-    this.readOnly = Boolean(flag);
+    this.readOnly = Boolean(flag) || this.presentationMode;
     const banner = document.getElementById('cm-print-lock-banner');
     if (banner) {
       banner.classList.toggle('hidden', !this.readOnly);
@@ -533,7 +535,14 @@ export class PrintComposerModal {
     this.revealHidden.clear();
   }
 
+  /** Liga o modo "só pranchas": a interface do sistema some e as pranchas ficam só para leitura */
+  enablePresentationMode() {
+    this.presentationMode = true;
+    document.body.classList.add('cm-modo-pranchas');
+  }
+
   close() {
+    if (this.presentationMode) return;
     this.clearTempStates();
     this.visibilityDialog?.close();
     this.cloud?.stop();

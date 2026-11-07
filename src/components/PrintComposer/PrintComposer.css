@@ -964,3 +964,42 @@
   color: #fca5a5;
   background: rgba(239, 68, 68, 0.15);
 }
+
+/* ==========================================================================
+   Modo "só pranchas" (link ?modo=pranchas): só a prancha aparece; o sistema fica oculto
+   ========================================================================== */
+body.cm-modo-pranchas {
+  background: #0b0f14;
+}
+
+body.cm-modo-pranchas #header-mount,
+body.cm-modo-pranchas .cm-workspace,
+body.cm-modo-pranchas #cm-loading {
+  display: none !important;
+}
+
+body.cm-modo-pranchas .cm-print-modal-overlay {
+  background: #0b0f14;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* Edição, histórico, fechar, painéis e avisos de trava: nada disso existe para quem só vê */
+body.cm-modo-pranchas .cm-print-title,
+body.cm-modo-pranchas .cm-print-topbar > .cm-ptb-sep,
+body.cm-modo-pranchas .cm-print-topbar [aria-label="Inserir elemento"],
+body.cm-modo-pranchas .cm-print-topbar [aria-label="Histórico e guias"],
+body.cm-modo-pranchas #btn-close-print-composer,
+body.cm-modo-pranchas #cm-print-side-toolbox,
+body.cm-modo-pranchas #cm-print-props-panel-mount,
+body.cm-modo-pranchas #btn-expand-props-panel,
+body.cm-modo-pranchas #cm-print-lock-banner,
+body.cm-modo-pranchas #cm-print-atlas-bar,
+body.cm-modo-pranchas #cm-print-statusbar,
+body.cm-modo-pranchas [data-ptb-action="sheet:new"],
+body.cm-modo-pranchas [data-ptb-action="sheet:duplicate"],
+body.cm-modo-pranchas [data-ptb-action="sheet:rename"],
+body.cm-modo-pranchas [data-ptb-action="sheet:delete"],
+body.cm-modo-pranchas #cm-ptb-menu-sheets .cm-ptb-menu-divider {
+  display: none !important;
+}

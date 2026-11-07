@@ -40,4 +40,12 @@ const url = AccessManager.buildShareUrl('p1', KEY);
 assert.ok(url.endsWith(`#k=${KEY}`));
 assert.ok(!url.split('#')[0].includes(KEY));
 
+// Link "só pranchas": acrescenta o modo na query e preserva a chave no fragmento
+const sheetsUrl = AccessManager.toSheetsUrl(url);
+assert.ok(sheetsUrl.split('#')[0].endsWith('&modo=pranchas'));
+assert.ok(sheetsUrl.endsWith(`#k=${KEY}`));
+assert.strictEqual(AccessManager.toSheetsUrl(sheetsUrl), sheetsUrl);
+assert.strictEqual(AccessManager.toSheetsUrl('http://x/app?project=a'), 'http://x/app?project=a&modo=pranchas');
+assert.strictEqual(AccessManager.toSheetsUrl(''), '');
+
 console.log('✔ AccessManager OK');

@@ -65,7 +65,20 @@ export class ShareModal {
         iframeInput.value = embedHtml;
       }
       if (iframeCopyBtn) iframeCopyBtn.setAttribute('copiar-texto', embedHtml);
+      // Link "só pranchas": mesma permissão do link principal, mas sem mostrar o sistema.
+      // Quem entrou com chave de editor/dono não repassa essa chave por aqui (url = null).
+      const sheetsUrl = allowSheets ? AccessManager.toSheetsUrl(url) : '';
+      const sheetsInput = this.container.querySelector('#share-sheets-link-input');
+      const sheetsBtn = this.container.querySelector('#btn-copy-sheets-link');
+      const sheetsCard = this.container.querySelector('#cm-share-sheets-card');
+      if (sheetsCard) sheetsCard.style.display = sheetsUrl ? '' : 'none';
+      if (sheetsInput) {
+        sheetsInput.setAttribute('value', sheetsUrl);
+        sheetsInput.value = sheetsUrl;
+      }
+      if (sheetsBtn) sheetsBtn.setAttribute('copiar-texto', sheetsUrl);
     };
+    let allowSheets = true;
 
     if (!info) {
       if (badgeSecurity) badgeSecurity.innerHTML = `<span class="cm-share-sync-chip is-error">● Nuvem Indisponível</span>`;
@@ -112,6 +125,7 @@ export class ShareModal {
 
     if (!info.canManage) {
       const myUrl = AccessManager.buildShareUrl(projectId, AccessManager.getKey(projectId));
+      allowSheets = info.role === 'viewer';
       updateMainLinks(myUrl);
       const roleLabel = { owner: 'Dono', editor: 'Editor', viewer: 'Leitor' }[info.role] || info.role || 'Convidado';
       if (badgeSecurity) {
@@ -462,6 +476,31 @@ export class ShareModal {
                 class="cm-share-sync-btn"
                 title="Forçar salvamento manual agora">
                 ☁️ Salvar Agora
+              </ui-botao-primario>
+            </div>
+          </div>
+
+          <!-- Link só das pranchas: o destinatário não vê o sistema -->
+          <div id="cm-share-sheets-card" class="cm-form-card">
+            <div class="cm-form-header">
+              <span class="cm-form-title">📐 Link só das Pranchas</span>
+              <span class="cm-form-desc">Quem abrir vê apenas as pranchas, somente leitura. O mapa, as camadas e as ferramentas ficam ocultos.</span>
+            </div>
+            <div class="cm-share-hero-row">
+              <ui-campo-texto
+                id="share-sheets-link-input"
+                value="${this.escapeHtml(AccessManager.toSheetsUrl(currentUrl))}"
+                readonly
+                style="font-family: var(--cm-fonte-mono, monospace); font-size: 11.5px;">
+              </ui-campo-texto>
+              <ui-botao-primario
+                inline
+                id="btn-copy-sheets-link"
+                variante="primary"
+                class="cm-share-copy-btn"
+                copiar-texto="${this.escapeHtml(AccessManager.toSheetsUrl(currentUrl))}"
+                toast-sucesso="Link das pranchas copiado!">
+                📋 Copiar
               </ui-botao-primario>
             </div>
           </div>
