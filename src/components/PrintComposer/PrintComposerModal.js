@@ -1266,7 +1266,9 @@ export class PrintComposerModal {
         wMm: item.width,
         hMm: item.height,
         pxPerMm,
-        title: PrintItemsManager.legendTitle(item)
+        title: PrintItemsManager.legendTitle(item),
+        columns: item.legendColumns,
+        font: item.fontFamily
       });
     } else if (item.type === 'title_block') {
       PrintTitleBlockRenderer.draw(ctx, {

@@ -4,6 +4,7 @@ import { PrintImageUtils } from './PrintImageUtils.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 import { PrintViewResolver } from './PrintViewResolver.js';
+import { PrintFonts } from './PrintFonts.js';
 import { ppIcon, itemTypeIcon } from './PrintIcons.js';
 
 export class PrintPropertiesPanel {
@@ -367,6 +368,18 @@ export class PrintPropertiesPanel {
     `;
   }
 
+  /** Linha "Fonte" (rótulo, bloco de texto e legenda): mesma lista da prancha (PrintFonts) */
+  static fontRow(item, id) {
+    const current = PrintFonts.normalize(item.fontFamily);
+    return `
+          <div class="cm-param-row">
+            <span class="cm-param-label">Fonte:</span>
+            <ui-select id="${id}" class="cm-native-select cm-pp-w-l" tamanho="sm" value="${current}">
+              ${PrintFonts.list().map(f => `<option value="${f.id}" ${f.id === current ? 'selected' : ''}>${PrintItemsManager.escapeHtml(f.label)}</option>`).join('')}
+            </ui-select>
+          </div>`;
+  }
+
   /** Campos específicos do tipo do elemento selecionado */
   static renderTypeFields(item, composer, polygonFeatures) {
     const esc = PrintItemsManager.escapeHtml;
@@ -492,6 +505,13 @@ export class PrintPropertiesPanel {
         <div class="cm-pp-stack">
           <span class="cm-param-label">Título da Legenda (vazio = sem título):</span>
           <ui-campo-texto type="text" tamanho="sm" id="prop-legend-title" class="cm-vertex-input" value="${esc(item.title ?? PrintItemsManager.DEFAULT_LEGEND_TITLE)}"></ui-campo-texto>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Colunas:</span>
+            <ui-select id="prop-legend-columns" class="cm-native-select cm-pp-w-s" tamanho="sm" value="${Math.min(3, Math.max(1, Number(item.legendColumns) || 1))}">
+              ${[1, 2, 3].map(n => `<option value="${n}" ${sel((Number(item.legendColumns) || 1) === n)}>${n}</option>`).join('')}
+            </ui-select>
+          </div>
+          ${this.fontRow(item, 'prop-legend-font')}
           ${maps.length > 1 ? `
             <div class="cm-param-row">
               <span class="cm-param-label">Mapa vinculado:</span>
@@ -543,6 +563,7 @@ export class PrintPropertiesPanel {
             <span class="cm-param-label">Tamanho da Fonte (pt):</span>
             <ui-campo-texto type="number" tamanho="sm" id="prop-text-size" class="cm-vertex-input cm-pp-w-s" min="5" max="18" step="0.5" value="${Number(item.fontSize) || 7.5}"></ui-campo-texto>
           </div>
+          ${this.fontRow(item, 'prop-text-font')}
         </div>
       `;
     }
@@ -607,6 +628,7 @@ export class PrintPropertiesPanel {
             <span class="cm-param-label">Tamanho da Fonte (pt):</span>
             <ui-campo-texto type="number" tamanho="sm" id="prop-label-size" class="cm-vertex-input cm-pp-w-s" min="6" max="36" value="${Number(item.fontSize) || 10}"></ui-campo-texto>
           </div>
+          ${this.fontRow(item, 'prop-label-font')}
           <div class="cm-param-row">
             <span class="cm-param-label">Peso da Fonte:</span>
             <ui-select id="prop-label-weight" class="cm-native-select cm-pp-w-m" tamanho="sm" value="${esc(item.fontWeight || 'bold')}">
@@ -1143,6 +1165,9 @@ export class PrintPropertiesPanel {
     // Legenda
     const propLegendTitle = document.getElementById('prop-legend-title');
     if (propLegendTitle) propLegendTitle.addEventListener('input', (e) => updateCurrent(it => it.title = e.target.value));
+    const setFont = (e) => updateCurrent(it => { it.fontFamily = e.target.value === 'sans' && !it.fontFamily ? undefined : PrintFonts.normalize(e.target.value); });
+    ['prop-label-font', 'prop-text-font', 'prop-legend-font'].forEach(id => document.getElementById(id)?.addEventListener('change', setFont));
+    document.getElementById('prop-legend-columns')?.addEventListener('change', (e) => updateCurrent(it => { it.legendColumns = Math.min(3, Math.max(1, parseInt(e.target.value, 10) || 1)); }));
     document.querySelectorAll('[data-legend-layer]').forEach(chk => {
       chk.addEventListener('change', () => {
         const id = chk.getAttribute('data-legend-layer');

@@ -7,7 +7,8 @@
    ========================================================================== */
 
 import { PrintItemsManager } from './PrintItemsManager.js';
-import { PrintViewResolver, PEN_WIDTHS_MM, LINE_PATTERNS, FILL_PATTERNS, TEMPLATE_SECTIONS, DEFAULT_LABEL } from './PrintViewResolver.js';
+import { PrintViewResolver, PEN_WIDTHS_MM, LINE_PATTERNS, FILL_PATTERNS, TEMPLATE_SECTIONS, DEFAULT_LABEL, BLEND_MODES, LINE_DECORS, POINT_ICONS, HATCH_SPACING_MM, HATCH_WIDTH_MM } from './PrintViewResolver.js';
+import { PrintFonts } from './PrintFonts.js';
 import { PrintViewTemplates, BUILTIN_TEMPLATES } from './PrintViewTemplates.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 import { PrintCategoryFilters, CATEGORY_PALETTES } from './PrintCategoryFilters.js';
@@ -272,6 +273,7 @@ export class PrintVisibilityDialog {
         <td class="cm-vv-cell cm-vv-center ${mark('halo')}">
           <input type="checkbox" data-gfx="halo" ${lb.halo ? 'checked' : ''} ${dis} aria-label="Halo branco" />
         </td>
+        ${this.labelFontCells(lb, ov, locked)}
         <td class="cm-vv-cell"></td>
         <td class="cm-vv-cell cm-vv-center">
           <button type="button" class="cm-vv-reset" data-vv-reset ${Object.keys(ov).length && !locked ? '' : 'disabled'} title="Tirar o padrão" aria-label="Tirar o padrão dos rótulos">↺</button>
@@ -342,7 +344,60 @@ export class PrintVisibilityDialog {
       <td class="cm-vv-cell cm-vv-center ${mark(o.halftone)}">
         <input type="checkbox" data-gfx="halftone" ${o.halftone ? 'checked' : ''} ${dis} aria-label="Meio-tom" title="Meio-tom: apaga a camada sem ocultá-la" />
       </td>
+      ${this.effectsCell(g, o, disabled)}
     `;
+  }
+
+  /** Efeitos avançados: mesclagem, opacidade, hachura, linha composta e ícone de ponto */
+  static effectsCell(g, ov, disabled) {
+    const o = ov || {};
+    const dis = disabled ? 'disabled' : '';
+    const strokeOv = o.stroke || {};
+    const fillOv = o.fill || {};
+    const pointOv = o.point || {};
+    const hex = (c, fb) => (PrintItemsManager.parseColor(c) || { hex: fb }).hex;
+    const opt = (map, current) => [
+      `<option value="" ${current ? '' : 'selected'}>Herdar</option>`,
+      ...Object.entries(map).map(([id, v]) => `<option value="${id}" ${current === id ? 'selected' : ''}>${esc(typeof v === 'string' ? v : v.label)}</option>`)
+    ].join('');
+    const num = (path, val, ph, attrs, label) => `<input type="number" class="cm-vertex-input cm-vv-num" data-gfx="${path}" ${attrs} value="${val ?? ''}" placeholder="${ph}" ${dis} aria-label="${label}" title="${label}" />`;
+    const color = (path, val, fb, label) => `
+      <input type="color" class="cm-vv-color" data-gfx="${path}" value="${hex(val, fb)}" ${dis} aria-label="${label}" title="${label}" />
+      <button type="button" class="cm-vv-clear" data-vv-clear="${path}" ${val && !disabled ? '' : 'disabled'} title="Tirar (herdar)" aria-label="Tirar: ${label}">×</button>`;
+    const touched = o.blend !== undefined || o.opacity !== undefined
+      || ['casingColor', 'casingWidthMm', 'altColor', 'decor'].some(k => strokeOv[k] !== undefined)
+      || ['hatchAngle', 'hatchSpacingMm', 'hatchWidthMm'].some(k => fillOv[k] !== undefined)
+      || pointOv.icon !== undefined || pointOv.sizeMm !== undefined;
+    return `
+      <td class="cm-vv-cell ${touched ? 'is-overridden' : ''}">
+        <details class="cm-vv-adv" data-vv-adv>
+          <summary title="Mesclagem, opacidade, hachura, linha composta e ícone">Efeitos${touched ? ' •' : ''}</summary>
+          <div class="cm-vv-adv-body">
+            <label class="cm-vv-adv-row"><span>Mesclagem</span>
+              <select class="cm-native-select cm-vv-select" data-gfx="blend" ${dis} aria-label="Modo de mesclagem">${opt(BLEND_MODES, o.blend)}</select></label>
+            <label class="cm-vv-adv-row"><span>Opacidade geral (%)</span>
+              ${num('opacity', o.opacity !== undefined ? Math.round(o.opacity * 100) : '', Math.round((g.opacity ?? 1) * 100), 'min="0" max="100" step="5"', 'Opacidade geral (%)')}</label>
+            <div class="cm-vv-adv-title">Linha</div>
+            <div class="cm-vv-adv-row"><span>Contorno (cor / mm por lado)</span><span class="cm-vv-inline">
+              ${color('stroke.casingColor', strokeOv.casingColor, '#000000', 'Cor do contorno da linha')}
+              ${num('stroke.casingWidthMm', strokeOv.casingWidthMm, g.stroke.casing?.widthMm || 0, 'min="0" max="5" step="0.1"', 'Largura do contorno por lado (mm)')}</span></div>
+            <div class="cm-vv-adv-row"><span>Cor alternada do tracejado</span><span class="cm-vv-inline">
+              ${color('stroke.altColor', strokeOv.altColor, '#ffffff', 'Cor alternada do tracejado')}</span></div>
+            <label class="cm-vv-adv-row"><span>Símbolos ao longo</span>
+              <select class="cm-native-select cm-vv-select" data-gfx="stroke.decor" ${dis} aria-label="Símbolos ao longo da linha">${opt(LINE_DECORS, strokeOv.decor)}</select></label>
+            <div class="cm-vv-adv-title">Hachura</div>
+            <div class="cm-vv-adv-row"><span>Ângulo° / espaço mm / pena mm</span><span class="cm-vv-inline">
+              ${num('fill.hatchAngle', fillOv.hatchAngle, 'pad.', 'min="0" max="180" step="5"', 'Ângulo da hachura (graus)')}
+              ${num('fill.hatchSpacingMm', fillOv.hatchSpacingMm, g.fill.hatch?.spacingMm ?? HATCH_SPACING_MM.default, `min="${HATCH_SPACING_MM.min}" max="${HATCH_SPACING_MM.max}" step="0.1"`, 'Espaçamento da hachura (mm)')}
+              ${num('fill.hatchWidthMm', fillOv.hatchWidthMm, g.fill.hatch?.widthMm ?? HATCH_WIDTH_MM.default, `min="${HATCH_WIDTH_MM.min}" max="${HATCH_WIDTH_MM.max}" step="0.05"`, 'Pena da hachura (mm)')}</span></div>
+            <div class="cm-vv-adv-title">Ponto</div>
+            <label class="cm-vv-adv-row"><span>Ícone</span>
+              <select class="cm-native-select cm-vv-select" data-gfx="point.icon" ${dis} aria-label="Ícone do ponto">${opt(POINT_ICONS, pointOv.icon)}</select></label>
+            <label class="cm-vv-adv-row"><span>Tamanho (mm)</span>
+              ${num('point.sizeMm', pointOv.sizeMm, g.point?.sizeMm ?? 2.2, 'min="0.5" max="20" step="0.2"', 'Tamanho do ponto (mm)')}</label>
+          </div>
+        </details>
+      </td>`;
   }
 
   static renderLayersTab(composer, item, view, locked) {
@@ -367,6 +422,7 @@ export class PrintVisibilityDialog {
             <th>Traço</th>
             <th>Preenchimento</th>
             <th class="cm-vv-center">Meio-tom</th>
+            <th>Efeitos</th>
             <th title="Faixa de escala em que a camada aparece (vazio = sempre)">Escala 1: mín. / máx.</th>
             <th></th>
           </tr>
@@ -439,6 +495,8 @@ export class PrintVisibilityDialog {
             <th>Tamanho (pt)</th>
             <th>Cor</th>
             <th class="cm-vv-center">Halo</th>
+            <th>Fonte</th>
+            <th class="cm-vv-center" title="Em linhas, o texto acompanha a curva">Curvo</th>
             <th>Exemplo</th>
             <th></th>
           </tr>
@@ -480,12 +538,32 @@ export class PrintVisibilityDialog {
         <td class="cm-vv-cell cm-vv-center ${mark('halo')}">
           <input type="checkbox" data-gfx="halo" ${lb.halo ? 'checked' : ''} ${dis} aria-label="Halo branco" title="Contorno branco para ler sobre a imagem" />
         </td>
+        ${this.labelFontCells(lb, ov, locked)}
         <td class="cm-vv-cell cm-vv-example" title="${esc(example)}">${example ? esc(example.split('\n').join(' / ')) : '<span class="cm-vv-muted">—</span>'}</td>
         <td class="cm-vv-cell cm-vv-center">
           <button type="button" class="cm-vv-reset" data-vv-reset ${ov && !locked ? '' : 'disabled'} title="Voltar ao rótulo do projeto" aria-label="Voltar o rótulo de ${esc(layer.name)} ao projeto">↺</button>
         </td>
       </tr>
     `;
+  }
+
+  /** Fonte, negrito e "acompanhar a curva" do rótulo (células da linha de rótulo) */
+  static labelFontCells(lb, ov, locked) {
+    const dis = locked ? 'disabled' : '';
+    const o = ov || {};
+    const mark = (k) => (o[k] !== undefined ? 'is-overridden' : '');
+    return `
+        <td class="cm-vv-cell ${o.font !== undefined || o.bold !== undefined ? 'is-overridden' : ''}">
+          <div class="cm-vv-inline">
+            <select class="cm-native-select cm-vv-select" data-gfx="font" ${dis} aria-label="Fonte do rótulo">
+              ${PrintFonts.list().map(f => `<option value="${f.id}" ${PrintFonts.normalize(lb.font) === f.id ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}
+            </select>
+            <label class="cm-vv-chip" title="Negrito"><input type="checkbox" data-gfx="bold" ${lb.bold ? 'checked' : ''} ${dis} aria-label="Negrito" /> N</label>
+          </div>
+        </td>
+        <td class="cm-vv-cell cm-vv-center ${mark('curved')}">
+          <input type="checkbox" data-gfx="curved" ${lb.curved ? 'checked' : ''} ${dis} aria-label="Texto acompanha a curva da linha" title="Em linhas, o texto acompanha a curva" />
+        </td>`;
   }
 
   /** Feições que o filtro pega (escopo das camadas dele; sem critérios = todas) */
@@ -523,6 +601,7 @@ export class PrintVisibilityDialog {
               <th>Traço</th>
               <th>Preenchimento</th>
               <th class="cm-vv-center">Meio-tom</th>
+              <th>Efeitos</th>
               <th></th>
             </tr>
           </thead>
@@ -700,7 +779,7 @@ export class PrintVisibilityDialog {
       ${entries.length ? `
         <table class="cm-vv-table">
           <thead>
-            <tr><th class="cm-vv-center">Visível</th><th>Feição</th><th>Traço</th><th>Preenchimento</th><th class="cm-vv-center">Meio-tom</th><th></th></tr>
+            <tr><th class="cm-vv-center">Visível</th><th>Feição</th><th>Traço</th><th>Preenchimento</th><th class="cm-vv-center">Meio-tom</th><th>Efeitos</th><th></th></tr>
           </thead>
           <tbody>${entries.map(id => this.elementRow(composer, view, id, byId.get(String(id)), locked)).join('')}</tbody>
         </table>` : '<div class="cm-vv-empty cm-vv-empty--small">Nenhuma feição ajustada. Escolha no mapa ou busque pelo nome.</div>'}
@@ -770,8 +849,8 @@ export class PrintVisibilityDialog {
     }
     const raw = input.value;
     if (raw === '' || raw === null) return null;
-    if (path === 'fill.opacity') return Math.min(100, Math.max(0, Number(raw))) / 100;
-    if (path === 'stroke.widthMm' || path === 'sizePt') return Number(raw);
+    if (path === 'fill.opacity' || path === 'opacity') return Math.min(100, Math.max(0, Number(raw))) / 100;
+    if (['stroke.widthMm', 'sizePt', 'stroke.casingWidthMm', 'fill.hatchAngle', 'fill.hatchSpacingMm', 'fill.hatchWidthMm', 'point.sizeMm'].includes(path)) return Number(raw);
     if (path === 'minScale' || path === 'maxScale') {
       const n = Math.round(Number(raw));
       return n > 0 ? n : null;
@@ -814,6 +893,13 @@ export class PrintVisibilityDialog {
       if (chip) { this.insertField(chip.dataset.vvField); return; }
       const action = t.closest('[data-vv-action]');
       if (action && !action.disabled) { this.runAction(action.dataset.vvAction, action); return; }
+      const clear = t.closest('[data-vv-clear]');
+      if (clear && !clear.disabled) {
+        const row = clear.closest('[data-row-kind]');
+        const path = clear.dataset.vvClear;
+        this.edit(row, (view) => PrintViewEdits.setField(view, row.dataset.rowKind, row.dataset.rowId, path, null), this.actionName(row.dataset.rowKind, path), null, true);
+        return;
+      }
       const reset = t.closest('[data-vv-reset]');
       if (reset && !reset.disabled) {
         const row = reset.closest('[data-row-kind]');
@@ -929,7 +1015,10 @@ export class PrintVisibilityDialog {
     const tpl = document.createElement('tbody');
     tpl.innerHTML = html.trim();
     const fresh = tpl.firstElementChild;
+    // "Efeitos" aberto continua aberto depois de reconstruir a linha
+    const advOpen = row.querySelector('[data-vv-adv]')?.open === true;
     row.replaceWith(fresh);
+    if (advOpen) { const adv = fresh.querySelector('[data-vv-adv]'); if (adv) adv.open = true; }
     if (input?.dataset.gfx) fresh.querySelector(`[data-gfx="${input.dataset.gfx}"]`)?.focus({ preventScroll: true });
     // A faixa "espelha o mapa principal" some na 1ª edição
     this.root.querySelector('.cm-vv-note--info')?.remove();

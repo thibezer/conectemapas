@@ -7,6 +7,7 @@
 
 import { PrintMapRenderer } from './PrintMapRenderer.js';
 import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
+import { PrintFonts } from './PrintFonts.js';
 
 const PT_TO_MM = 0.3528;
 
@@ -25,7 +26,7 @@ export const PrintLegendRenderer = {
    * @param pxPerMm  px do contexto por mm de papel
    * @param title    título resolvido ('' = sem título)
    */
-  draw(ctx, { entries = [], wMm, hMm, pxPerMm, title = '' }) {
+  draw(ctx, { entries = [], wMm, hMm, pxPerMm, title = '', columns = 1, font }) {
     const mm = (v) => v * pxPerMm;
     const W = mm(wMm);
     const H = mm(hMm);
@@ -49,23 +50,27 @@ export const PrintLegendRenderer = {
       PrintMapRenderer.drawText(ctx, 'Nenhuma camada visível', W / 2, top + (H - top) / 2, { sizePt: 7, color: '#555555', halo: false }, pxPerMm);
     } else {
       const avail = H - top - mm(this.PAD_MM);
-      const row = Math.min(mm(this.ROW_MM), avail / entries.length);
+      // Colunas: as entradas enchem uma coluna de cada vez (1 a 3)
+      const cols = Math.max(1, Math.min(3, Math.round(Number(columns)) || 1, entries.length));
+      const perCol = Math.ceil(entries.length / cols);
+      const colW = (W - mm(this.PAD_MM) * 2) / cols;
+      const row = Math.min(mm(this.ROW_MM), avail / perCol);
       const sw = Math.min(mm(this.SWATCH_W_MM), row * 1.8);
       const sh = Math.min(mm(this.SWATCH_H_MM), row * 0.7);
       const fontPt = Math.max(4, Math.min(6.5, (row / pxPerMm) / PT_TO_MM * 0.6));
       entries.forEach((e, i) => {
-        const cy = top + mm(this.PAD_MM) / 2 + row * (i + 0.5);
-        const x0 = mm(this.PAD_MM);
+        const cy = top + mm(this.PAD_MM) / 2 + row * ((i % perCol) + 0.5);
+        const x0 = mm(this.PAD_MM) + Math.floor(i / perCol) * colW;
         PrintMapRenderer.drawSwatch(ctx, e.graphics, x0, cy - sh / 2, sw, sh, pxPerMm);
         // Nome que não cabe na caixa é encurtado com "…" (mesmo fonte que drawText usa)
         const textX = x0 + sw + mm(1.5);
         const sizePx = Math.max(1, fontPt * PT_TO_MM * pxPerMm);
         const measure = (t) => {
-          ctx.font = `${e.isFilter ? '' : 'bold '}${sizePx}px Arial, Helvetica, sans-serif`;
+          ctx.font = `${e.isFilter ? '' : 'bold '}${sizePx}px ${PrintFonts.css(font)}`;
           return ctx.measureText(t).width;
         };
-        const name = PrintTitleBlockRenderer.fitEllipsis(measure, e.name, W - textX - mm(this.PAD_MM), sizePx);
-        PrintMapRenderer.drawText(ctx, name, textX, cy, { sizePt: fontPt, color: '#000000', halo: false, align: 'left', bold: !e.isFilter }, pxPerMm);
+        const name = PrintTitleBlockRenderer.fitEllipsis(measure, e.name, x0 + colW - textX - mm(1), sizePx);
+        PrintMapRenderer.drawText(ctx, name, textX, cy, { sizePt: fontPt, color: '#000000', halo: false, align: 'left', bold: !e.isFilter, font }, pxPerMm);
       });
     }
 

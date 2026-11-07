@@ -834,7 +834,8 @@ export class PrintExporter {
     // Título com filete embaixo (padding-bottom 2, borda 1, margem 3)
     const titleH = fs * 1.15;
     ctx.fillStyle = '#000000';
-    ctx.font = `bold ${fs}px Arial, sans-serif`;
+    const family = PrintItemsManager.fontStack(item);
+    ctx.font = `bold ${fs}px ${family}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     const titleText = evalAtlas(item.title || PrintItemsManager.TEXT_BLOCK_DEFAULT_TITLE);
@@ -848,7 +849,7 @@ export class PrintExporter {
 
     // Corpo: linha a 1,35 e, se não couber, a última linha visível termina em "…"
     const lineStep = fs * 1.35;
-    ctx.font = `${fs}px Arial, sans-serif`;
+    ctx.font = `${fs}px ${family}`;
     const lines = this.wrapTextLines(ctx, evalAtlas(item.text || PrintItemsManager.TEXT_BLOCK_DEFAULT_TEXT), textW);
     const first = ruleY + k + 3 * k;
     const capacity = Math.max(1, Math.floor((bottom - first) / lineStep));
@@ -939,7 +940,7 @@ export class PrintExporter {
       ctx.clip();
     }
     const fontSize = (Number(item.fontSize) || 10) * k;
-    ctx.font = `${item.fontWeight === 'normal' ? 'normal' : 'bold'} ${fontSize}px Arial, sans-serif`;
+    ctx.font = `${item.fontWeight === 'normal' ? 'normal' : 'bold'} ${fontSize}px ${PrintItemsManager.fontStack(item)}`;
     ctx.fillStyle = PrintItemsManager.sanitizeColor(item.textColor, '#000000');
     const align = ['left', 'right'].includes(item.textAlign) ? item.textAlign : 'center';
     ctx.textAlign = align;

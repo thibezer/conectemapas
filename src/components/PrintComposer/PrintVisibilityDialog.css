@@ -512,3 +512,51 @@ label.cm-vv-chip {
   border-radius: 6px;
   background: rgba(34, 211, 238, 0.06);
 }
+
+/* Efeitos avançados (mesclagem, hachura, linha composta, ícone): abre na própria linha */
+.cm-vv-adv > summary {
+  cursor: pointer;
+  font-size: 10.5px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.cm-vv-adv-body {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  min-width: 250px;
+}
+
+.cm-vv-adv-title {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+.cm-vv-adv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+}
+
+.cm-vv-clear {
+  width: 18px;
+  height: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.cm-vv-clear:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

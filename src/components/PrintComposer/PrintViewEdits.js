@@ -5,7 +5,7 @@
    usado pela janela Visibilidade/Gráficos e testado no Node.
    ========================================================================== */
 
-const GRAPHIC_KEYS = ['visible', 'stroke', 'fill', 'halftone', 'color', 'minScale', 'maxScale'];
+const GRAPHIC_KEYS = ['visible', 'stroke', 'fill', 'point', 'opacity', 'blend', 'halftone', 'color', 'minScale', 'maxScale'];
 
 const isEmptyObj = (o) => !o || (typeof o === 'object' && Object.keys(o).length === 0);
 

@@ -15,6 +15,7 @@ import { FeatureStyle, PX_TO_MM } from '../../services/FeatureStyle.js';
 import { FeatureQuery } from '../../services/FeatureQuery.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 import { PrintViewTemplates } from './PrintViewTemplates.js';
+import { PrintFonts } from './PrintFonts.js';
 
 /** Série ISO de penas (mm) oferecida na interface */
 export const PEN_WIDTHS_MM = [0.13, 0.18, 0.25, 0.35, 0.5, 0.7, 1.0, 1.4];
@@ -23,6 +24,7 @@ export const PEN_WIDTHS_MM = [0.13, 0.18, 0.25, 0.35, 0.5, 0.7, 1.0, 1.4];
 export const LINE_PATTERNS = {
   continuo: { label: 'Contínuo', dashMm: null },
   tracejado: { label: 'Tracejado', dashMm: [3, 1.5] },
+  'tracejado-longo': { label: 'Tracejado longo', dashMm: [6, 2] },
   pontilhado: { label: 'Pontilhado', dashMm: [0.01, 1] },
   'traco-ponto': { label: 'Traço-ponto', dashMm: [4, 1, 0.01, 1] }
 };
@@ -31,9 +33,63 @@ export const FILL_PATTERNS = {
   solido: 'Sólido',
   nenhum: 'Sem preenchimento',
   hachura: 'Hachura diagonal',
+  'hachura-inversa': 'Hachura diagonal inversa',
   'hachura-cruzada': 'Hachura cruzada',
   horizontal: 'Linhas horizontais',
+  vertical: 'Linhas verticais',
+  quadriculado: 'Quadriculado',
   pontos: 'Pontos'
+};
+
+/** Hachura: ângulo (graus, anti-horário, 0 = horizontal) de cada padrão e se tem 2ª direção (+90°) */
+export const HATCH_DEFAULTS = {
+  hachura: { angle: 45, cross: false },
+  'hachura-inversa': { angle: 135, cross: false },
+  'hachura-cruzada': { angle: 45, cross: true },
+  horizontal: { angle: 0, cross: false },
+  vertical: { angle: 90, cross: false },
+  quadriculado: { angle: 0, cross: true },
+  pontos: { angle: 0, cross: false }
+};
+export const HATCH_SPACING_MM = { min: 0.4, max: 20, default: 1.5 };
+export const HATCH_WIDTH_MM = { min: 0.05, max: 2, default: 0.13 };
+
+/** Mesclagem da camada sobre o que está embaixo (fundo e camadas de baixo) */
+export const BLEND_MODES = {
+  normal: { label: 'Normal', op: 'source-over', css: 'normal' },
+  multiply: { label: 'Multiplicar', op: 'multiply', css: 'multiply' },
+  screen: { label: 'Tela', op: 'screen', css: 'screen' },
+  overlay: { label: 'Sobrepor', op: 'overlay', css: 'overlay' },
+  darken: { label: 'Escurecer', op: 'darken', css: 'darken' },
+  lighten: { label: 'Clarear', op: 'lighten', css: 'lighten' }
+};
+
+/** Símbolos aplicados ao longo da linha (ou do contorno do polígono) */
+export const LINE_DECORS = {
+  nenhum: 'Nenhum',
+  tracos: 'Travessas (ferrovia, cerca)',
+  dentes: 'Dentes (fortificação)'
+};
+
+/** Ícones de ponto (desenhados em PrintMapRenderer.drawPointIcon) */
+export const POINT_ICONS = {
+  circulo: 'Círculo',
+  quadrado: 'Quadrado',
+  triangulo: 'Triângulo',
+  losango: 'Losango',
+  estrela: 'Estrela',
+  cruz: 'Cruz',
+  x: 'X',
+  pino: 'Marcador',
+  forte: 'Forte (pentágono)',
+  ponte: 'Ponte',
+  onibus: 'Ônibus',
+  gota: 'Gota (água)'
+};
+
+const clampNum = (v, min, max, fb) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fb;
 };
 
 /** Seções que um modelo de vista pode controlar */
@@ -44,7 +100,7 @@ export const TEMPLATE_SECTIONS = {
   basemap: 'Mapa de fundo'
 };
 
-export const DEFAULT_LABEL = { show: false, text: '{name}', sizePt: 7, color: '#111111', halo: true };
+export const DEFAULT_LABEL = { show: false, text: '{name}', sizePt: 7, color: '#111111', halo: true, font: 'sans', bold: false, curved: false };
 
 /** Tamanho do texto do mapa principal (px) -> pt no papel */
 const PX_TO_PT = 0.6;
@@ -272,10 +328,21 @@ export const PrintViewResolver = {
         color: base.stroke.color,
         widthMm: Math.max(0, base.stroke.width * PX_TO_MM),
         pattern: null,
-        dashMm: this.parseDash(base.stroke.dash)
+        dashMm: this.parseDash(base.stroke.dash),
+        // Linha composta: contorno (cor + largura extra por lado), traço bicolor e símbolos ao longo
+        casing: { color: null, widthMm: 0 },
+        altColor: null,
+        decor: 'nenhum'
       },
-      fill: { color: base.fill.color, opacity: base.fill.opacity, pattern: base.fill.color === 'none' ? 'nenhum' : 'solido' },
-      point: { sizeMm: 2.2 },
+      fill: {
+        color: base.fill.color,
+        opacity: base.fill.opacity,
+        pattern: base.fill.color === 'none' ? 'nenhum' : 'solido',
+        hatch: { angle: null, spacingMm: HATCH_SPACING_MM.default, widthMm: HATCH_WIDTH_MM.default }
+      },
+      point: { sizeMm: 2.2, icon: 'circulo' },
+      opacity: 1,
+      blend: 'normal',
       text: { color: base.text.color, sizePt: (base.text.size || 14) * PX_TO_PT, halo: base.text.halo },
       label: base.label.show
         ? { ...DEFAULT_LABEL, show: true, text: base.label.field }
@@ -311,10 +378,22 @@ export const PrintViewResolver = {
     if (has(s, 'color')) g.stroke.color = s.color;
     if (has(s, 'widthMm')) g.stroke.widthMm = Math.max(0, Number(s.widthMm) || 0);
     if (has(s, 'pattern')) g.stroke.pattern = LINE_PATTERNS[s.pattern] ? s.pattern : 'continuo';
+    if (has(s, 'casingColor')) g.stroke.casing.color = s.casingColor;
+    if (has(s, 'casingWidthMm')) g.stroke.casing.widthMm = clampNum(s.casingWidthMm, 0, 5, 0);
+    if (has(s, 'altColor')) g.stroke.altColor = s.altColor;
+    if (has(s, 'decor')) g.stroke.decor = LINE_DECORS[s.decor] ? s.decor : 'nenhum';
     const f = ov.fill || {};
     if (has(f, 'color')) g.fill.color = f.color;
     if (has(f, 'opacity')) g.fill.opacity = Math.min(1, Math.max(0, Number(f.opacity)));
     if (has(f, 'pattern')) g.fill.pattern = FILL_PATTERNS[f.pattern] ? f.pattern : 'solido';
+    if (has(f, 'hatchAngle')) g.fill.hatch.angle = clampNum(f.hatchAngle, 0, 180, null);
+    if (has(f, 'hatchSpacingMm')) g.fill.hatch.spacingMm = clampNum(f.hatchSpacingMm, HATCH_SPACING_MM.min, HATCH_SPACING_MM.max, HATCH_SPACING_MM.default);
+    if (has(f, 'hatchWidthMm')) g.fill.hatch.widthMm = clampNum(f.hatchWidthMm, HATCH_WIDTH_MM.min, HATCH_WIDTH_MM.max, HATCH_WIDTH_MM.default);
+    const p = ov.point || {};
+    if (has(p, 'icon')) g.point.icon = POINT_ICONS[p.icon] ? p.icon : 'circulo';
+    if (has(p, 'sizeMm')) g.point.sizeMm = clampNum(p.sizeMm, 0.5, 20, 2.2);
+    if (has(ov, 'opacity')) g.opacity = clampNum(ov.opacity, 0, 1, 1);
+    if (has(ov, 'blend')) g.blend = BLEND_MODES[ov.blend] ? ov.blend : 'normal';
     if (has(ov, 'halftone')) g.halftone = ov.halftone === true;
     if (has(ov, 'color')) { // atalho: mesma cor no traço e no preenchimento
       g.stroke.color = ov.color;
@@ -329,6 +408,9 @@ export const PrintViewResolver = {
     if (has(l, 'sizePt')) out.sizePt = Math.min(48, Math.max(3, Number(l.sizePt) || DEFAULT_LABEL.sizePt));
     if (has(l, 'color')) out.color = l.color;
     if (has(l, 'halo')) out.halo = l.halo !== false;
+    if (has(l, 'font')) out.font = PrintFonts.normalize(l.font);
+    if (has(l, 'bold')) out.bold = l.bold === true;
+    if (has(l, 'curved')) out.curved = l.curved === true;
     return out;
   },
 
@@ -356,6 +438,8 @@ export const PrintViewResolver = {
   applyHalftone(g) {
     const mix = (c) => this.mixWithWhite(c, 0.5);
     if (g.stroke.color !== 'none') g.stroke.color = mix(g.stroke.color);
+    if (g.stroke.casing.color) g.stroke.casing.color = mix(g.stroke.casing.color);
+    if (g.stroke.altColor) g.stroke.altColor = mix(g.stroke.altColor);
     if (g.fill.color !== 'none') g.fill.color = mix(g.fill.color);
     g.label.color = mix(g.label.color);
     g.text.color = mix(g.text.color);
@@ -404,7 +488,7 @@ export const PrintViewResolver = {
     });
     ctx.filters.forEach(({ entry, def, ids }) => {
       if (entry.visible === false || !ids.size || hidden.has(`filter:${def.id}`)) return;
-      if (!entry.stroke && !entry.fill && !entry.color && !entry.halftone) return;
+      if (!entry.stroke && !entry.fill && !entry.color && !entry.halftone && !entry.point && entry.opacity === undefined && !entry.blend) return;
       const sample = features.find(f => ids.has(String(f.id)) && this.isVisible(f, ctx));
       if (!sample) return;
       const g = this.resolve(sample, ctx);

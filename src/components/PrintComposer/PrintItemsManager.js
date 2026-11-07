@@ -8,6 +8,7 @@ import proj4 from 'proj4';
 import { utmProjection } from '../../services/Shapefile/Projections.js';
 import { Geodesy } from '../../services/Geodesy.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
+import { PrintFonts } from './PrintFonts.js';
 
 export class PrintItemsManager {
   /** Menor lado de um item, em mm (o mesmo para as alças e para o painel) */
@@ -728,12 +729,18 @@ export class PrintItemsManager {
     const weight = item.fontWeight === 'normal' ? 'normal' : 'bold';
     const color = this.sanitizeColor(item.textColor, '#000000');
     const align = ['left', 'right'].includes(item.textAlign) ? item.textAlign : 'center';
+    const family = this.escapeHtml(this.fontStack(item));
 
     return `
-      <div class="cm-item-label-box" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: ${align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start')}; font-size: ${fontSize}px; font-weight: ${weight}; color: ${color}; text-align: ${align}; font-family: Arial, sans-serif; white-space: pre-wrap; word-break: break-word; box-sizing: border-box; padding: 2px;">
+      <div class="cm-item-label-box" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: ${align === 'center' ? 'center' : (align === 'right' ? 'flex-end' : 'flex-start')}; font-size: ${fontSize}px; font-weight: ${weight}; color: ${color}; text-align: ${align}; font-family: ${family}; white-space: pre-wrap; word-break: break-word; box-sizing: border-box; padding: 2px;">
         ${esc(text)}
       </div>
     `;
+  }
+
+  /** Pilha de fontes do item (sem `fontFamily` = Arial, como sempre foi); tela e PDF usam esta */
+  static fontStack(item) {
+    return item?.fontFamily ? PrintFonts.css(item.fontFamily) : 'Arial, sans-serif';
   }
 
   /** Textos padrão (item sem texto): o exportador usa os mesmos da tela */
@@ -747,7 +754,7 @@ export class PrintItemsManager {
     const formatted = esc(text).replace(/\n/g, '<br>');
 
     return `
-      <div class="cm-item-text-block" style="font-size: ${Number(item.fontSize) || 7.5}px;">
+      <div class="cm-item-text-block" style="font-size: ${Number(item.fontSize) || 7.5}px;${item.fontFamily ? ` font-family: ${this.escapeHtml(this.fontStack(item))};` : ''}">
         <div class="cm-text-block-title">${esc(item.title || 'NOTAS GERAIS')}</div>
         <div class="cm-text-block-body">${formatted}</div>
       </div>
