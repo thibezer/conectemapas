@@ -77,6 +77,20 @@ export class AppBootstrapSync {
    * Hidratação completa e assíncrona do IndexedDB e nuvem
    */
   static async loadStateAsync(app) {
+    // Medida emergencial: carga lenta (>5 s) não prende o usuário; libera a tela para ele ir criando
+    // enquanto a hidratação termina em segundo plano.
+    const releaseTimer = setTimeout(() => {
+      if (app._isStorageHydrated) return;
+      LoadingOverlay.hide();
+      try {
+        UIToast.notificar({
+          tipo: 'alerta',
+          titulo: 'Carregamento demorado',
+          mensagem: 'O projeto ainda está carregando em segundo plano. Você já pode criar novas feições.',
+          duracao: 6000
+        });
+      } catch {}
+    }, 5000);
     try {
       LoadingOverlay.update('Carregando o projeto…', 'Lendo os dados salvos neste dispositivo.');
       const saved = await StorageService.loadCurrentProjectAsync(app.projectId);
@@ -197,6 +211,7 @@ export class AppBootstrapSync {
     } catch (err) {
       console.warn('[AppBootstrapSync] Erro na hidratação do projeto:', err);
     } finally {
+      clearTimeout(releaseTimer);
       app._isStorageHydrated = true;
       try { await this.settleProjectName(app); } catch (e) { console.warn('[AppBootstrapSync] Nome do projeto:', e); }
       try {
