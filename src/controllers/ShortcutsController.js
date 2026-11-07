@@ -220,7 +220,7 @@ export class ShortcutsController {
     ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
     app.refreshMapAndTable();
     app.saveMetadata(false);
-
+    UIToast.notificar({ tipo: 'informativo', titulo: 'Desfeito', mensagem: 'Ctrl+Y refaz a ação.', duracao: 1200 });
   }
 
   static redo(app) {
@@ -246,7 +246,7 @@ export class ShortcutsController {
     ShortcutsController._notifyDiffToCollab(app, oldFeatures, diff);
     app.refreshMapAndTable();
     app.saveMetadata(false);
-
+    UIToast.notificar({ tipo: 'informativo', titulo: 'Refeito', mensagem: 'Ctrl+Z desfaz novamente.', duracao: 1200 });
   }
 
   static navigateFeature(app, direction = 1) {

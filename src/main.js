@@ -512,6 +512,15 @@ window.addEventListener('pagehide', () => {
   }
 });
 
+window.addEventListener('online', () => {
+  UIToast.notificar({
+    tipo: 'sucesso',
+    titulo: 'Conexão Restabelecida',
+    mensagem: 'De volta online. Sincronizando suas edições com a nuvem.',
+    duracao: 3000
+  });
+});
+
 window.addEventListener('offline', () => {
   UIToast.notificar({
     tipo: 'alerta',
