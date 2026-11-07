@@ -852,6 +852,25 @@ export class AppComponentsBuilder {
         const feats = app.features.filter(f => set.has(f.id));
         if (feats.length > 0) app.mapEngine?.zoomToFeatures(feats);
       },
+      // Ctrl+C: copia a seleção. Ctrl+V: cola na camada ativa e seleciona as novas feições
+      copySelection: () => {
+        const ids = AppComponentsBuilder.getSelectedFeatures(app).map(f => f.id);
+        if (ids.length === 0) return 0;
+        const n = BatchActions.copy(app, ids);
+        toast('info', 'Copiar', `${n} feição(ões) copiada(s). Ctrl+V cola na camada ativa.`);
+        return n;
+      },
+      pasteToActiveLayer: () => {
+        if (BatchActions.clipboardSize() === 0) return null;
+        const layerId = app.layers.some(l => l.id === app.activeLayerId) ? app.activeLayerId : app.layers[0]?.id;
+        const res = report('Colar', BatchActions.paste(app, layerId), 'coladas');
+        if (res?.ids?.length) {
+          app.mapEngine?.selectFeatures(res.ids);
+          const byId = new Map(app.features.map(f => [f.id, f]));
+          app.layerPanel?.setSelectedFeatures(res.ids.map(id => byId.get(id)).filter(Boolean), false);
+        }
+        return res;
+      },
       moveToLayer: (ids, layerId, opts) => report('Mover para camada', BatchActions.moveToLayer(app, ids, layerId, opts), 'movidas'),
       applyColors: (ids, colors) => report('Aplicar cores', BatchActions.applyColors(app, ids, colors), 'coloridas'),
       invertColors: (ids) => report('Inverter cores', BatchActions.invertColors(app, ids), 'invertidas'),

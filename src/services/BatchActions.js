@@ -93,6 +93,54 @@ export class BatchActions {
     });
   }
 
+  /** Área de transferência interna (Ctrl+C / Ctrl+V): cópias das feições, independentes das originais. */
+  static _clipboard = [];
+
+  /** Guarda cópia das feições indicadas (inclusive bloqueadas: copiar não altera a original). */
+  static copy(app, ids) {
+    const set = new Set(ids || []);
+    BatchActions._clipboard = app.features.filter(f => set.has(f.id)).map(clone);
+    return BatchActions._clipboard.length;
+  }
+
+  static clipboardSize() {
+    return BatchActions._clipboard.length;
+  }
+
+  /**
+   * Cola o conteúdo da área de transferência na camada indicada (feições novas, mesma geometria).
+   * Na própria camada de origem a cópia sai deslocada 30 m para não ficar sobreposta.
+   */
+  static paste(app, layerId) {
+    const empty = { changed: 0, locked: 0, missing: 0, unchanged: 0, skipped: 0, ids: [] };
+    const layer = app.layers.find(l => l.id === layerId);
+    if (!layer) return { ...empty, error: 'Camada de destino não encontrada.' };
+    if (BatchActions._clipboard.length === 0) return { ...empty, error: 'Nada copiado. Selecione feições e use Ctrl+C.' };
+
+    const created = [];
+    for (const src of BatchActions._clipboard) {
+      const sameLayer = src.layerId === layerId;
+      const copy = SpatialAlgorithms.duplicateWithOffset(src, sameLayer ? 30 : 0);
+      if (!copy) continue;
+      copy.layerId = layerId;
+      if (!sameLayer) copy.name = src.name;
+      copy.createdBy = 'Colagem';
+      created.push(copy);
+    }
+    if (created.length === 0) return { ...empty, error: 'Não foi possível colar as feições copiadas.' };
+
+    app.pushHistory(`Colar em "${layer.name}" (${created.length})`);
+    for (const feat of created) {
+      app.features.push(feat);
+      app.collabHub?.notifyFeatureCreated(feat);
+    }
+    app.saveFeaturesBulk(created);
+    recordBatchAudit(app, `Colar em "${layer.name}" (${created.length} feições)`);
+    app.refreshMapAndTable(true);
+    app.updateHUD?.();
+    return { ...empty, changed: created.length, skipped: BatchActions._clipboard.length - created.length, unchanged: BatchActions._clipboard.length - created.length, ids: created.map(f => f.id) };
+  }
+
   /**
    * Aplica cores. Linhas só recebem o traço, textos só a cor do texto (mesma regra do seletor de cores).
    * @param {{fillColor?: string, strokeColor?: string}} colors

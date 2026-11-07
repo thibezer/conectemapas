@@ -156,7 +156,7 @@ function fakeApp() {
     log,
     features: mk(),
     layers: layers.map(l => ({ ...l })),
-    collabHub: { notifyFeatureUpdated: f => log.notified.push(f.id), notifyFeatureDeleted: id => log.notified.push('del:' + id) },
+    collabHub: { notifyFeatureCreated: f => log.notified.push('new:' + f.id), notifyFeatureUpdated: f => log.notified.push(f.id), notifyFeatureDeleted: id => log.notified.push('del:' + id) },
     pushHistory: d => log.history.push(d),
     saveFeature: f => log.saved.push(f.id),
     saveFeaturesBulk: fs => fs.forEach(f => log.saved.push(f.id)),
@@ -227,6 +227,21 @@ function fakeApp() {
   assert.deepStrictEqual(app.log.removed.sort(), ['a', 'c']);
   assert(BatchActions.describe(r, 'excluídas').includes('1 ignorada(s) (1 bloqueada(s))'));
   console.log('✔ remove em lote passou');
+}
+
+{
+  const app = fakeApp();
+  assert.strictEqual(BatchActions.paste(app, 'L2').error !== undefined, true, 'colar sem copiar avisa');
+  assert.strictEqual(BatchActions.copy(app, ['a', 'b', 'zzz']), 2, 'copia inclusive bloqueada, ignora inexistente');
+  const before = app.features.length;
+  const r = BatchActions.paste(app, 'L2');
+  assert.strictEqual(r.changed, 2);
+  assert.strictEqual(app.features.length, before + 2, 'originais permanecem');
+  const pasted = app.features.filter(f => r.ids.includes(f.id));
+  assert(pasted.every(f => f.layerId === 'L2' && f.locked === false), 'nasce na camada ativa e editável');
+  assert.deepStrictEqual(pasted[0].coordinates, app.features.find(f => f.id === 'a').coordinates, 'outra camada: sem deslocamento');
+  assert.strictEqual(app.log.history.length, 1, 'um único passo de histórico');
+  console.log('✔ copiar/colar entre camadas passou');
 }
 
 console.log('🏁 Busca avançada e ações em lote: todos os testes passaram');

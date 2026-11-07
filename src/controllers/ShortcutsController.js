@@ -370,6 +370,15 @@ export class ShortcutsController {
         e.preventDefault();
         this.selectAll(app);
       }
+      // Copiar / Colar feições: Ctrl+C copia a seleção; Ctrl+V cola na camada ativa
+      else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'c') {
+        if (window.getSelection?.().toString()) return; // texto selecionado na página: cópia nativa
+        if (app.batchActions?.copySelection?.() > 0) e.preventDefault();
+      }
+      else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'v') {
+        if (app.mapEngine?.isDrawing) return;
+        if (app.batchActions?.pasteToActiveLayer?.()) e.preventDefault();
+      }
       // Busca Avançada: Ctrl+Shift+F / Cmd+Shift+F
       else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
