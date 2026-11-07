@@ -14,6 +14,9 @@ import {
 import { LocalStore } from './LocalStore.js';
 import { IndexedDbSchema } from './IndexedDbSchema.js';
 
+/** Acima disto a cópia local é considerada defasada/perigosa e é rebaixada da nuvem. */
+const OVERSIZED_LOCAL_CACHE = 50000;
+
 function yieldToMain() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -317,12 +320,52 @@ export class IndexedDbStore {
     }
   }
 
+  /**
+   * Cópia local gigante (ex.: projeto que chegou a >100 mil formas e foi enxugado na nuvem) trava ou
+   * derruba a aba ao ler/desenhar tudo. Sem edições pendentes, descarta só as feições locais:
+   * o boot cai no caminho "sem feições locais" e baixa a versão atual da nuvem.
+   */
+  static async discardOversizedCache(db, projectId) {
+    try {
+      const total = await new Promise((resolve) => {
+        const tx = db.transaction(STORE_FEATURES, 'readonly');
+        const req = tx.objectStore(STORE_FEATURES).index('projectId').count(IDBKeyRange.only(projectId));
+        req.onsuccess = () => resolve(req.result || 0);
+        req.onerror = () => resolve(0);
+      });
+      if (total <= OVERSIZED_LOCAL_CACHE) return false;
+
+      const pending = LocalStore.readPendingDeltas(projectId);
+      if ((pending.dirty || []).length > 0 || (pending.deleted || []).length > 0) return false; // não perde edição offline
+
+      console.warn(`[IndexedDbStore] Cache local com ${total} feições descartado; será baixado da nuvem.`);
+      return await new Promise((resolve) => {
+        const tx = db.transaction(STORE_FEATURES, 'readwrite');
+        const store = tx.objectStore(STORE_FEATURES);
+        const req = store.index('projectId').openKeyCursor(IDBKeyRange.only(projectId));
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            store.delete(cursor.primaryKey);
+            cursor.continue();
+          }
+        };
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
+      });
+    } catch {
+      return false;
+    }
+  }
+
   static async loadCurrentProjectAsync(projectId = 'projeto_padrao') {
     try {
       const db = await this.getDB();
       if (!db) return LocalStore.loadManifestFor(projectId);
 
       await this.migrateLegacyDataIfNeeded(db, projectId);
+      await this.discardOversizedCache(db, projectId);
 
       return new Promise((resolve) => {
         const tx = db.transaction([STORE_PROJECTS, STORE_LAYERS, STORE_FEATURES, STORE_AUDIT], 'readonly');
