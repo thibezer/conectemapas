@@ -12,18 +12,42 @@ import {
   STORE_AUDIT
 } from './StorageConstants.js';
 
+let _cachedDbPromise = null;
+let _cachedIdbFactory = null;
+
 export class IndexedDbSchema {
+  /** Invalida o cache de conexão (usado em onclose, onversionchange ou falha de abertura). */
+  static resetConnectionCache() {
+    _cachedDbPromise = null;
+    _cachedIdbFactory = null;
+  }
+
   /**
-   * Inicializa o banco IndexedDB (v3) com Object Stores normalizadas e índices relacionais
+   * Inicializa e reutiliza a conexão IndexedDB (v3) com Object Stores normalizadas e índices relacionais.
+   * Reabre automaticamente se o objeto `window.indexedDB` mudar (isolamento de testes) ou após fechamento/upgrade.
    */
   static async getDB() {
-    return new Promise((resolve) => {
-      if (typeof window === 'undefined' || !window.indexedDB) {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      IndexedDbSchema.resetConnectionCache();
+      return null;
+    }
+
+    const factory = window.indexedDB;
+    if (_cachedDbPromise && _cachedIdbFactory === factory) {
+      return _cachedDbPromise;
+    }
+
+    _cachedIdbFactory = factory;
+    _cachedDbPromise = new Promise((resolve) => {
+      let request;
+      try {
+        request = factory.open(DB_NAME, DB_VERSION);
+      } catch (err) {
+        console.error('[IndexedDbSchema] Erro ao abrir IndexedDB:', err);
+        IndexedDbSchema.resetConnectionCache();
         resolve(null);
         return;
       }
-
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onblocked = () => {
         console.warn('[IndexedDbSchema] Upgrade do IndexedDB aguardando fechamento de outras abas.');
@@ -69,17 +93,29 @@ export class IndexedDbSchema {
 
       request.onsuccess = (e) => {
         const db = e.target.result;
+        if (!db) {
+          IndexedDbSchema.resetConnectionCache();
+          resolve(null);
+          return;
+        }
         db.onversionchange = () => {
-          db.close();
+          IndexedDbSchema.resetConnectionCache();
+          try { db.close(); } catch {}
+        };
+        db.onclose = () => {
+          IndexedDbSchema.resetConnectionCache();
         };
         resolve(db);
       };
 
       request.onerror = (err) => {
         console.error('[IndexedDbSchema] Erro ao abrir IndexedDB:', err);
+        IndexedDbSchema.resetConnectionCache();
         resolve(null);
       };
     });
+
+    return _cachedDbPromise;
   }
 
   /**

@@ -23,6 +23,7 @@ import { RibbonViewController } from './controllers/RibbonViewController.js';
 import { AppBootstrapSync } from './bootstrap/AppBootstrapSync.js';
 import { AppComponentsBuilder } from './bootstrap/AppComponentsBuilder.js';
 import { AppGeometryCoordinator } from './bootstrap/AppGeometryCoordinator.js';
+import { AppModalsBuilder } from './bootstrap/AppModalsBuilder.js';
 import { FeatureVisibility } from './services/Storage/FeatureVisibility.js';
 
 class ConecteMapasApp {
@@ -128,8 +129,10 @@ class ConecteMapasApp {
    * sem botão de fechar. O mapa e os painéis ficam ocultos por CSS (body.cm-modo-pranchas).
    */
   async enterSheetsOnlyMode(hydration) {
-    try { await hydration; } catch {}
-    const composer = this.printComposerModal;
+    const [, composer] = await Promise.all([
+      Promise.resolve(hydration).catch(() => {}),
+      AppModalsBuilder.ensurePrintComposer(this)
+    ]);
     if (!composer) return;
     composer.enablePresentationMode();
     composer.open(this.projectName, this.layers, this.features, this.currentBasemap, this.projectId);
@@ -159,6 +162,15 @@ class ConecteMapasApp {
     if (this._orphanTimer) {
       clearTimeout(this._orphanTimer);
       this._orphanTimer = null;
+    }
+    if (this._metricsTimer != null) {
+      if (this._metricsTimerIdle && typeof cancelIdleCallback === 'function') {
+        cancelIdleCallback(this._metricsTimer);
+      } else {
+        clearTimeout(this._metricsTimer);
+      }
+      this._metricsTimer = null;
+      this._metricsTimerIdle = false;
     }
     StorageService.discardPendingWrites();
     document.body.classList.add('cm-readonly');

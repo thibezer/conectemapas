@@ -586,6 +586,17 @@ function prepareFeatureUpsert(PDO $pdo) {
 }
 
 function executeFeatureUpsert(PDOStatement $stmt, array $feat, $projectId, $rev, $clientId) {
+    list($layerId, $name, $type, $coords, $propsJson, $style, $color, $createdBy) = normalizeFeatureUpsertParams($feat);
+
+    return $stmt->execute([
+        // INSERT
+        $feat['id'], $projectId, $layerId, $name, $type, $coords, $propsJson, $style, $color, $createdBy, $rev, $clientId,
+        // ON DUPLICATE KEY UPDATE (parâmetros posicionais: compatibilidade MariaDB 11.8)
+        $layerId, $name, $type, $coords, $propsJson, $style, $color, $rev, $clientId
+    ]);
+}
+
+function normalizeFeatureUpsertParams(array $feat) {
     $props = !empty($feat['properties']) ? (is_array($feat['properties']) ? $feat['properties'] : json_decode($feat['properties'], true)) : [];
     if (!is_array($props)) $props = [];
     if (!empty($feat['radius'])) {
@@ -605,12 +616,85 @@ function executeFeatureUpsert(PDOStatement $stmt, array $feat, $projectId, $rev,
     $color     = preg_match('/^#[0-9a-fA-F]{3,8}$/', $rawColor) ? $rawColor : '#00E08A';
     $createdBy = $feat['createdBy'] ?? 'Operador';
 
-    return $stmt->execute([
-        // INSERT
-        $feat['id'], $projectId, $layerId, $name, $type, $coords, $propsJson, $style, $color, $createdBy, $rev, $clientId,
-        // ON DUPLICATE KEY UPDATE (parâmetros posicionais: compatibilidade MariaDB 11.8)
-        $layerId, $name, $type, $coords, $propsJson, $style, $color, $rev, $clientId
-    ]);
+    return [$layerId, $name, $type, $coords, $propsJson, $style, $color, $createdBy];
+}
+
+function executeFeaturesUpsertBatch(PDO $pdo, array $features, $projectId, $rev, $clientId, array &$upsertErrors = []) {
+    if (empty($features)) return 0;
+
+    $upsertCount = 0;
+    $stmtSingle = null;
+    $rowPlaceholder = '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, NOW())';
+
+    foreach (array_chunk($features, 200) as $chunk) {
+        if (count($chunk) === 1) {
+            $feat = $chunk[0];
+            try {
+                if (!$stmtSingle) $stmtSingle = prepareFeatureUpsert($pdo);
+                if (executeFeatureUpsert($stmtSingle, $feat, $projectId, $rev, $clientId)) {
+                    $upsertCount++;
+                } else {
+                    $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $stmtSingle->errorInfo()];
+                }
+            } catch (Exception $e) {
+                $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $e->getMessage()];
+            }
+            continue;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($chunk), $rowPlaceholder));
+        $params = [];
+        foreach ($chunk as $feat) {
+            list($layerId, $name, $type, $coords, $propsJson, $style, $color, $createdBy) = normalizeFeatureUpsertParams($feat);
+            array_push($params, $feat['id'], $projectId, $layerId, $name, $type, $coords, $propsJson, $style, $color, $createdBy, $rev, $clientId);
+        }
+
+        $sql = "
+            INSERT INTO cm_features (id, project_id, layer_id, name, geom_type, coordinates, properties, style, color, created_by, deleted, rev, client_id, updated_at)
+            VALUES $placeholders
+            ON DUPLICATE KEY UPDATE
+                layer_id = VALUES(layer_id),
+                name = VALUES(name),
+                geom_type = VALUES(geom_type),
+                coordinates = VALUES(coordinates),
+                properties = VALUES(properties),
+                style = VALUES(style),
+                color = VALUES(color),
+                deleted = 0,
+                rev = VALUES(rev),
+                client_id = VALUES(client_id),
+                updated_at = NOW()
+        ";
+
+        $batchOk = false;
+        try {
+            $stmtBatch = $pdo->prepare($sql);
+            $batchOk = $stmtBatch->execute($params);
+        } catch (Exception $e) {
+            $batchOk = false;
+        }
+
+        if ($batchOk) {
+            $upsertCount += count($chunk);
+            continue;
+        }
+
+        // Fallback por linha para isolar apenas eventual registro inválido sem abortar os demais
+        if (!$stmtSingle) $stmtSingle = prepareFeatureUpsert($pdo);
+        foreach ($chunk as $feat) {
+            try {
+                if (executeFeatureUpsert($stmtSingle, $feat, $projectId, $rev, $clientId)) {
+                    $upsertCount++;
+                } else {
+                    $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $stmtSingle->errorInfo()];
+                }
+            } catch (Exception $e) {
+                $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $e->getMessage()];
+            }
+        }
+    }
+
+    return $upsertCount;
 }
 
 // 3.1 Controle de acesso (papéis: viewer < editor < owner)
@@ -1726,17 +1810,18 @@ switch ($action) {
             $countMayChange = !empty($toDelete);
             if (!empty($toUpsert)) {
                 $deletedSet = !empty($toDelete) ? array_flip($toDelete) : [];
-                $stmtUpsert = prepareFeatureUpsert($pdo);
                 $foreignIds = foreignFeatureIds($pdo, $projectId, array_column(array_filter($toUpsert, 'is_array'), 'id'));
 
                 // Só vale recontar as feições ativas se algum id enviado ainda não estava ativo
                 // (nova ou ressuscitada); editar feições existentes não muda a contagem.
-                $candidateIds = [];
+                $eligibleById = [];
                 foreach ($toUpsert as $feat) {
-                    if (empty($feat['id']) || isset($foreignIds[$feat['id']]) || isset($deletedSet[$feat['id']])) continue;
-                    $candidateIds[(string)$feat['id']] = true;
+                    if (empty($feat['id']) || isset($foreignIds[$feat['id']])) continue;
+                    // Salvaguarda Anti-Zumbi: Não ressuscita feição excluída no mesmo batch
+                    if (isset($deletedSet[$feat['id']])) continue;
+                    $eligibleById[(string)$feat['id']] = $feat;
                 }
-                $candidateIds = array_keys($candidateIds);
+                $candidateIds = array_keys($eligibleById);
                 $activeBefore = 0;
                 foreach (array_chunk($candidateIds, 500) as $chunk) {
                     $ph = implode(',', array_fill(0, count($chunk), '?'));
@@ -1746,18 +1831,7 @@ switch ($action) {
                 }
                 if ($activeBefore !== count($candidateIds)) $countMayChange = true;
 
-                foreach ($toUpsert as $feat) {
-                    if (empty($feat['id'])) continue;
-                    if (isset($foreignIds[$feat['id']])) continue; // id pertence a outro projeto
-                    // Salvaguarda Anti-Zumbi: Não ressuscita feição excluída no mesmo batch
-                    if (isset($deletedSet[$feat['id']])) continue;
-
-                    if (executeFeatureUpsert($stmtUpsert, $feat, $projectId, $rev, $clientId)) {
-                        $upsertCount++;
-                    } else {
-                        $upsertErrors[] = ['id' => $feat['id'], 'error' => $stmtUpsert->errorInfo()];
-                    }
-                }
+                $upsertCount += executeFeaturesUpsertBatch($pdo, array_values($eligibleById), $projectId, $rev, $clientId, $upsertErrors);
             }
 
             // 3. Atualiza contagem de feições ativas no projeto (só varre a tabela quando ela pode ter mudado)
@@ -1870,28 +1944,32 @@ switch ($action) {
         // 1. Presença: heartbeat + posição do cursor deste operador, e lista dos demais ativos
         $presence = [];
         if ($clientId) {
-            $rawName = trim((string)($_GET['userName'] ?? ''));
-            $pName = $rawName !== '' ? (function_exists('mb_substr') ? mb_substr($rawName, 0, 128) : substr($rawName, 0, 128)) : 'Colaborador';
-            $pColor = preg_match('/^#[0-9a-fA-F]{3,8}$/', (string)($_GET['userColor'] ?? '')) ? $_GET['userColor'] : '#00E08A';
-            $pLat = isset($_GET['lat']) && is_numeric($_GET['lat']) ? (float)$_GET['lat'] : null;
-            $pLng = isset($_GET['lng']) && is_numeric($_GET['lng']) ? (float)$_GET['lng'] : null;
+            $skipPresenceWrite = !empty($_GET['skipPresenceWrite']);
 
             try {
-                $stmtPres = $pdo->prepare("
-                    INSERT INTO cm_presence (project_id, client_id, user_name, color, lat, lng, last_seen, role)
-                    VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
-                    ON DUPLICATE KEY UPDATE
-                        role = VALUES(role),
-                        user_name = ?,
-                        color = ?,
-                        lat = COALESCE(?, lat),
-                        lng = COALESCE(?, lng),
-                        last_seen = NOW()
-                ");
-                $stmtPres->execute([$projectId, $clientId, $pName, $pColor, $pLat, $pLng, $accessRole, $pName, $pColor, $pLat, $pLng]);
+                if (!$skipPresenceWrite) {
+                    $rawName = trim((string)($_GET['userName'] ?? ''));
+                    $pName = $rawName !== '' ? (function_exists('mb_substr') ? mb_substr($rawName, 0, 128) : substr($rawName, 0, 128)) : 'Colaborador';
+                    $pColor = preg_match('/^#[0-9a-fA-F]{3,8}$/', (string)($_GET['userColor'] ?? '')) ? $_GET['userColor'] : '#00E08A';
+                    $pLat = isset($_GET['lat']) && is_numeric($_GET['lat']) ? (float)$_GET['lat'] : null;
+                    $pLng = isset($_GET['lng']) && is_numeric($_GET['lng']) ? (float)$_GET['lng'] : null;
 
-                if (mt_rand(1, 200) === 1) {
-                    $pdo->exec("DELETE FROM cm_presence WHERE last_seen < NOW() - INTERVAL 1 HOUR");
+                    $stmtPres = $pdo->prepare("
+                        INSERT INTO cm_presence (project_id, client_id, user_name, color, lat, lng, last_seen, role)
+                        VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
+                        ON DUPLICATE KEY UPDATE
+                            role = VALUES(role),
+                            user_name = ?,
+                            color = ?,
+                            lat = COALESCE(?, lat),
+                            lng = COALESCE(?, lng),
+                            last_seen = NOW()
+                    ");
+                    $stmtPres->execute([$projectId, $clientId, $pName, $pColor, $pLat, $pLng, $accessRole, $pName, $pColor, $pLat, $pLng]);
+
+                    if (mt_rand(1, 200) === 1) {
+                        $pdo->exec("DELETE FROM cm_presence WHERE last_seen < NOW() - INTERVAL 1 HOUR");
+                    }
                 }
 
                 $stmtOthers = $pdo->prepare("
@@ -2162,8 +2240,8 @@ switch ($action) {
                 }
 
                 $currentIds = [];
-                $stmtFeat = prepareFeatureUpsert($pdo);
                 $foreignIds = foreignFeatureIds($pdo, $projectId, array_column(array_filter($body['features'], 'is_array'), 'id'));
+                $eligibleById = [];
                 foreach ($body['features'] as $f) {
                     if (empty($f['id'])) continue;
                     if (isset($foreignIds[$f['id']])) continue; // id pertence a outro projeto
@@ -2172,7 +2250,15 @@ switch ($action) {
                         $skipped++;
                         continue;
                     }
-                    executeFeatureUpsert($stmtFeat, $f, $projectId, $rev, $clientId);
+                    $eligibleById[(string)$f['id']] = $f;
+                }
+                if (!empty($eligibleById)) {
+                    $saveErrors = [];
+                    executeFeaturesUpsertBatch($pdo, array_values($eligibleById), $projectId, $rev, $clientId, $saveErrors);
+                    if (!empty($saveErrors)) {
+                        $firstErr = $saveErrors[0]['error'] ?? 'erro desconhecido';
+                        throw new Exception('Falha ao salvar feição em lote: ' . (is_string($firstErr) ? $firstErr : json_encode($firstErr)));
+                    }
                 }
 
                 if ($prune) {

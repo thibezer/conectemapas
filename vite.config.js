@@ -34,8 +34,8 @@ export default defineConfig({
           if (id.includes('node_modules/leaflet') || id.includes('node_modules/proj4')) {
             return 'vendor-gis';
           }
-          if (id.includes('node_modules/jspdf') || id.includes('node_modules/jszip') || id.includes('node_modules/html2canvas')) {
-            return 'vendor-export';
+          if (id.includes('node_modules/jszip')) {
+            return 'vendor-zip';
           }
           if (id.includes('ui-components-kit') || id.includes('vendor/ui-components-kit')) {
             return 'vendor-ui';

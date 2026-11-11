@@ -17,7 +17,6 @@ import { ImportExportModal } from '../components/Modals/ImportExportModal.js';
 import { ProjectModal } from '../components/Modals/ProjectModal.js';
 import { NewFeatureModal } from '../components/Modals/NewFeatureModal.js';
 import { NewLayerModal } from '../components/Modals/NewLayerModal.js';
-import { PrintComposerModal } from '../components/PrintComposer/PrintComposerModal.js';
 import { TextPromptModal } from '../components/Modals/TextPromptModal.js';
 import { BufferModal } from '../components/Modals/BufferModal.js';
 import { ShortcutsModal } from '../components/Modals/ShortcutsModal.js';
@@ -115,25 +114,46 @@ export class AppModalsBuilder {
     });
     app.newLayerModal.render(document.getElementById('new-layer-modal-mount'));
 
-    app.printComposerModal = new PrintComposerModal({
-      projectName: app.projectName,
-      layers: app.layers,
-      features: app.features,
-      currentBasemap: app.currentBasemap,
-      // Pranchas na nuvem (sem nuvem configurada, ficam só neste navegador)
-      clientId: StorageService.getClientId(),
-      canWrite: (projectId) => AccessManager.canWrite(projectId),
-      createCloudStore: (projectId) => (CLOUD_ENABLED
-        ? new PrintCloudStore({
-          projectId,
-          clientId: StorageService.getClientId(),
-          getUserName: () => app.collabHub?.currentUser?.displayName || ''
-        })
-        : null)
-    });
-    app.printComposerModal.render(document.getElementById('print-composer-mount'));
-
     app.shortcutsModal = new ShortcutsModal();
     app.shortcutsModal.render(document.getElementById('shortcuts-modal-mount'));
+  }
+
+  /**
+   * Carrega e monta o Compositor de Impressão (inclui jsPDF) sob demanda,
+   * retirando vendor-pdf do download inicial do mapa.
+   */
+  static async ensurePrintComposer(app) {
+    if (!app) return null;
+    if (app.printComposerModal) return app.printComposerModal;
+    if (!app._printComposerPromise) {
+      app._printComposerPromise = import('../components/PrintComposer/PrintComposerModal.js')
+        .then(({ PrintComposerModal }) => {
+          const modal = new PrintComposerModal({
+            projectName: app.projectName,
+            layers: app.layers,
+            features: app.features,
+            currentBasemap: app.currentBasemap,
+            // Pranchas na nuvem (sem nuvem configurada, ficam só neste navegador)
+            clientId: StorageService.getClientId(),
+            canWrite: (projectId) => AccessManager.canWrite(projectId),
+            createCloudStore: (projectId) => (CLOUD_ENABLED
+              ? new PrintCloudStore({
+                projectId,
+                clientId: StorageService.getClientId(),
+                getUserName: () => app.collabHub?.currentUser?.displayName || ''
+              })
+              : null)
+          });
+          const mount = typeof document !== 'undefined' ? document.getElementById('print-composer-mount') : null;
+          if (mount) modal.render(mount);
+          app.printComposerModal = modal;
+          return modal;
+        })
+        .catch((err) => {
+          app._printComposerPromise = null;
+          throw err;
+        });
+    }
+    return app._printComposerPromise;
   }
 }

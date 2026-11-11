@@ -290,9 +290,18 @@ export class AppComponentsBuilder {
         }
         app._updateSyncChip();
       },
-      onOpenPrintComposer: () => {
-        if (app.printComposerModal) {
-          app.printComposerModal.open(app.projectName, app.layers, app.features, app.currentBasemap, app.projectId);
+      onOpenPrintComposer: async () => {
+        try {
+          const composer = await AppModalsBuilder.ensurePrintComposer(app);
+          composer?.open(app.projectName, app.layers, app.features, app.currentBasemap, app.projectId);
+        } catch (err) {
+          console.error('[PrintComposer] Falha ao carregar compositor de impressão:', err);
+          UIToast.notificar({
+            tipo: 'erro',
+            titulo: 'Erro ao abrir impressão',
+            mensagem: err?.message || 'Não foi possível carregar o módulo de impressão.',
+            duracao: 4000
+          });
         }
       },
       onToggleFeaturePopup: () => {

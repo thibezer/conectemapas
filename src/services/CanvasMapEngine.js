@@ -534,10 +534,13 @@ export class CanvasMapEngine {
       const converted = [];
       for (const f of list) {
         const feicao = this._toFeicao(f, layer, entities.get(f.id));
-        if (feicao) converted.push(feicao);
+        if (feicao) {
+          feicao.camadaId = layer.id;
+          converted.push(feicao);
+        }
       }
       for (const id of removed) this._applied.delete(id);
-      this.host.definirFeicoes(layer.id, converted.map(c => ({ ...c, camadaId: layer.id })), options);
+      this.host.definirFeicoes(layer.id, converted, options);
       for (const f of list) this._applied.set(f.id, { ref: f, layerId: layer.id, layerSig: sig, entidadeId: entities.get(f.id) });
     } else {
       this._applyLayerOptions(layer.id, options);
@@ -558,7 +561,8 @@ export class CanvasMapEngine {
           this._applied.delete(f.id);
           continue;
         }
-        adicionar.push({ ...feicao, camadaId: layer.id });
+        feicao.camadaId = layer.id;
+        adicionar.push(feicao);
         this._applied.set(f.id, { ref: f, layerId: layer.id, layerSig: sig, entidadeId: entities.get(f.id) });
       }
       for (const [fromLayerId, ids] of leaving) this.host.aplicarLote(fromLayerId, { remover: ids });
@@ -644,8 +648,17 @@ export class CanvasMapEngine {
       this.host.removerFeicao(applied.layerId, featId);
       this._applied.delete(featId);
     }
-    this.selectedFeatureIds.delete(featId);
+    this.selectedFeatureIds?.delete(featId);
     if (this.selectedFeatureId === featId) this.selectedFeatureId = null;
+  }
+
+  /** Limpa seleções locais de IDs removidos quando a camada inteira já foi sincronizada via `renderFeatures`. */
+  pruneDeletedSelection(featIds) {
+    if (!featIds) return;
+    for (const featId of featIds) {
+      this.selectedFeatureIds?.delete(featId);
+      if (this.selectedFeatureId === featId) this.selectedFeatureId = null;
+    }
   }
 
   setLayerVisibility(layerId, isVisible) {

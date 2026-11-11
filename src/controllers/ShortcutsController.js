@@ -326,9 +326,10 @@ export class ShortcutsController {
   static selectAll(app) {
     const features = app.features || [];
     const layers = app.layers || [];
+    const layerMap = new Map(layers.map(l => [l.id, l]));
     const visibleFeats = features.filter(f => {
       if (f.visible === false) return false;
-      const layer = layers.find(l => l.id === f.layerId);
+      const layer = layerMap.get(f.layerId);
       return !layer || layer.visible !== false;
     });
     const ids = visibleFeats.map(f => f.id);

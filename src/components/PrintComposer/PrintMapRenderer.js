@@ -6,11 +6,41 @@
    tela e PDF saem iguais. Espessuras e textos em mm/pt de papel (`pxPerMm`).
    ========================================================================== */
 
+import RBush from 'rbush';
 import { PrintViewResolver, BLEND_MODES, HATCH_DEFAULTS } from './PrintViewResolver.js';
 import { PrintFonts } from './PrintFonts.js';
 
 const PT_TO_MM = 0.3528;
 const bboxCache = new WeakMap();
+const planTreeCache = new WeakMap();
+const PLAN_TREE_THRESHOLD = 300;
+
+function getPlanTree(features, renderer) {
+  const len = features.length;
+  const first = features[0];
+  const mid = features[len >> 1];
+  const last = features[len - 1];
+  let cached = planTreeCache.get(features);
+  if (cached && cached.len === len && cached.first === first && cached.mid === mid && cached.last === last) {
+    return cached;
+  }
+  const tree = new RBush();
+  const entries = [];
+  const noBox = [];
+  for (let idx = 0; idx < len; idx++) {
+    const f = features[idx];
+    const box = renderer.bboxOf(f);
+    if (!box) {
+      noBox.push({ f, idx });
+    } else {
+      entries.push({ minX: box[1], minY: box[0], maxX: box[3], maxY: box[2], f, idx });
+    }
+  }
+  if (entries.length > 0) tree.load(entries);
+  cached = { len, first, mid, last, tree, noBox };
+  planTreeCache.set(features, cached);
+  return cached;
+}
 
 /** [lat, lng] de um vértice (array ou {lat, lng}); null se inválido */
 function toLL(pt) {
@@ -116,11 +146,23 @@ export const PrintMapRenderer = {
   plan({ features = [], layers = [], resolveCtx, bounds = null }) {
     const order = new Map(layers.map((l, i) => [l.id, i]));
     const items = [];
-    features.forEach((f, idx) => {
-      if (!this.intersects(this.bboxOf(f), bounds)) return;
+    const pushIfVisible = (f, idx) => {
       const g = PrintViewResolver.resolve(f, resolveCtx);
       if (g) items.push({ f, g, idx, layerOrder: order.has(f.layerId) ? order.get(f.layerId) : layers.length });
-    });
+    };
+
+    if (bounds && features.length >= PLAN_TREE_THRESHOLD) {
+      const { tree, noBox } = getPlanTree(features, this);
+      const hits = tree.search({ minX: bounds.west, minY: bounds.south, maxX: bounds.east, maxY: bounds.north });
+      for (let i = 0; i < hits.length; i++) pushIfVisible(hits[i].f, hits[i].idx);
+      for (let i = 0; i < noBox.length; i++) pushIfVisible(noBox[i].f, noBox[i].idx);
+    } else {
+      for (let idx = 0; idx < features.length; idx++) {
+        const f = features[idx];
+        if (!this.intersects(this.bboxOf(f), bounds)) continue;
+        pushIfVisible(f, idx);
+      }
+    }
     // Camadas de baixo primeiro; dentro da camada, a ordem do projeto
     items.sort((a, b) => (b.layerOrder - a.layerOrder) || (a.idx - b.idx));
     const runs = [];

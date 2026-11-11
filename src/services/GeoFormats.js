@@ -3,14 +3,39 @@
    Importação e Exportação: GeoJSON, KML, GPX, CSV, WKT e Shapefile
    ========================================================================== */
 
-import { ShapefileParser } from './ShapefileParser.js';
 import { GeoJsonConverter } from './GeoFormats/GeoJsonConverter.js';
 import { KmlConverter } from './GeoFormats/KmlConverter.js';
 import { GpxConverter } from './GeoFormats/GpxConverter.js';
 import { CsvConverter } from './GeoFormats/CsvConverter.js';
 import { WktConverter } from './GeoFormats/WktConverter.js';
-import { DwgDxfParser } from './CadFormats/DwgDxfParser.js';
 import { geoWorkerClient } from './Workers/GeoWorkerClient.js';
+
+let _shapefileParserPromise = null;
+let _dwgDxfParserPromise = null;
+
+async function getShapefileParser() {
+  if (!_shapefileParserPromise) {
+    _shapefileParserPromise = import('./ShapefileParser.js')
+      .then((m) => m.ShapefileParser)
+      .catch((err) => {
+        _shapefileParserPromise = null;
+        throw err;
+      });
+  }
+  return _shapefileParserPromise;
+}
+
+async function getDwgDxfParser() {
+  if (!_dwgDxfParserPromise) {
+    _dwgDxfParserPromise = import('./CadFormats/DwgDxfParser.js')
+      .then((m) => m.DwgDxfParser)
+      .catch((err) => {
+        _dwgDxfParserPromise = null;
+        throw err;
+      });
+  }
+  return _dwgDxfParserPromise;
+}
 
 export class GeoFormats {
   static sanitizeText(str) {
@@ -18,14 +43,17 @@ export class GeoFormats {
   }
 
   static async parseCad(input, fileName = '', options = {}) {
+    const DwgDxfParser = await getDwgDxfParser();
     return DwgDxfParser.parseCadFile(input, fileName, options);
   }
 
   static async toShapefileZip(features, projectName = 'conectemapas_export') {
+    const ShapefileParser = await getShapefileParser();
     return ShapefileParser.exportToShapefileZip(features, projectName);
   }
 
   static async parseShapefile(input) {
+    const ShapefileParser = await getShapefileParser();
     return ShapefileParser.parse(input);
   }
 
@@ -106,6 +134,7 @@ export class GeoFormats {
 
     // Se for buffer e tiver assinatura AC10xx de DWG
     if (contentOrFile instanceof ArrayBuffer || (typeof Uint8Array !== 'undefined' && contentOrFile instanceof Uint8Array)) {
+      const DwgDxfParser = await getDwgDxfParser();
       const version = DwgDxfParser.detectDwgVersion(contentOrFile);
       if (version.isDwg || version.isDxf) {
         return DwgDxfParser.parseCadFile(contentOrFile, fileName, options);
@@ -118,6 +147,7 @@ export class GeoFormats {
 
     // Detecção de DXF em texto plano
     if (content.includes('ENTITIES') && content.includes('SECTION')) {
+      const DwgDxfParser = await getDwgDxfParser();
       return DwgDxfParser.parseDxf(content, options);
     }
 

@@ -769,7 +769,9 @@ export class CloudSyncEngine {
       clientId: _clientId,
       v: _clientAppVersion
     });
-    if (presence) {
+    if (presence && presence.skipWrite) {
+      params.set('skipPresenceWrite', '1');
+    } else if (presence) {
       if (presence.name) params.set('userName', presence.name);
       if (presence.color) params.set('userColor', presence.color);
       if (Number.isFinite(presence.lat) && Number.isFinite(presence.lng)) {

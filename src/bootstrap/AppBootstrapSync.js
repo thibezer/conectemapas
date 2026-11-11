@@ -14,6 +14,20 @@ import { LoadingOverlay } from './LoadingOverlay.js';
 import { mergeLocalVisibility } from '../services/Storage/LayerVisibility.js';
 import { FeatureVisibility } from '../services/Storage/FeatureVisibility.js';
 import { allowAutoReload } from '../services/Storage/ReloadGuard.js';
+import { geoWorkerClient } from '../services/Workers/GeoWorkerClient.js';
+
+const WORKER_NORMALIZE_THRESHOLD = 2000;
+
+async function normalizeForHydration(list) {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  if (list.length >= WORKER_NORMALIZE_THRESHOLD && geoWorkerClient?.worker) {
+    try {
+      const normalized = await geoWorkerClient.normalizeFeaturesAsync(list);
+      if (Array.isArray(normalized)) return normalized;
+    } catch {}
+  }
+  return list.map(normalizeFeature);
+}
 
 export class AppBootstrapSync {
   /**
@@ -136,7 +150,9 @@ export class AppBootstrapSync {
 
           // Respeita Regra 1 do GEMINI.md: array vazio [] se o projeto estiver limpo
           FeatureVisibility.seedIfMissing(app.projectId, saved.features);
-          const visibleFeatures = FeatureVisibility.applyAll(app.projectId, cleanedFeatures.map(normalizeFeature));
+          const normFeatures = await normalizeForHydration(cleanedFeatures);
+          if (app._projectClosed) return;
+          const visibleFeatures = FeatureVisibility.applyAll(app.projectId, normFeatures);
           app.features = this._mergePendingSessionFeatures(app, visibleFeatures);
           // O desenho é síncrono e pesado: deixa o aviso pintar antes de travar a thread
           if (LoadingOverlay.announceDrawing(app.features.length)) await LoadingOverlay.nextPaint();
@@ -220,10 +236,9 @@ export class AppBootstrapSync {
       app._isStorageHydrated = true;
       try { await this.settleProjectName(app); } catch (e) { console.warn('[AppBootstrapSync] Nome do projeto:', e); }
       try {
-        const fixed = FeatureSyncController.refreshStoredMetrics(app);
-        if (fixed > 0) console.info(`[AppBootstrapSync] Métricas de ${fixed} feição(ões) recalculadas (área/perímetro).`);
+        FeatureSyncController.scheduleRefreshStoredMetrics(app);
       } catch (e) {
-        console.warn('[AppBootstrapSync] Falha ao recalcular métricas gravadas:', e);
+        console.warn('[AppBootstrapSync] Falha ao agendar verificação de métricas gravadas:', e);
       }
       this.updateSyncChip(app);
       this.startCloudSyncLoop(app);
@@ -303,10 +318,12 @@ export class AppBootstrapSync {
 
       if (Array.isArray(cloudData.features)) {
         const tombstones = StorageService.getLocalTombstones(app.projectId);
-        const visibleCloud = FeatureVisibility.applyAll(app.projectId, cloudData.features
-          .filter(f => !tombstones.has(f.id))
-          .map(normalizeFeature));
+        const filteredCloud = cloudData.features.filter(f => f && f.id && !tombstones.has(f.id));
+        const normCloud = await normalizeForHydration(filteredCloud);
+        if (app._projectClosed) return false;
+        const visibleCloud = FeatureVisibility.applyAll(app.projectId, normCloud);
         app.features = this._mergePendingSessionFeatures(app, visibleCloud, tombstones);
+        FeatureSyncController.invalidateMetricsCheck(app.projectId);
         // Substituição completa pela nuvem: o histórico local não vale mais (restauraria feições antigas)
         app.historyUndo = [];
         app.historyRedo = [];
@@ -410,12 +427,23 @@ export class AppBootstrapSync {
       }
 
       const user = app.collabHub ? app.collabHub.currentUser : null;
-      const presence = user ? {
+      const now = Date.now();
+      const rawLat = app._lastCursorLatLng ? app._lastCursorLatLng.lat : undefined;
+      const rawLng = app._lastCursorLatLng ? app._lastCursorLatLng.lng : undefined;
+      const presenceSig = user
+        ? `${user.displayName || user.name || ''}|${user.color || ''}|${Number.isFinite(rawLat) ? rawLat.toFixed(6) : ''},${Number.isFinite(rawLng) ? rawLng.toFixed(6) : ''}`
+        : '';
+      const shouldWritePresence = !!user && (presenceSig !== app._lastPresenceSig || (now - (app._lastPresenceWriteAt || 0)) >= 4000);
+      if (shouldWritePresence) {
+        app._lastPresenceSig = presenceSig;
+        app._lastPresenceWriteAt = now;
+      }
+      const presence = user ? (shouldWritePresence ? {
         name: user.displayName || user.name,
         color: user.color,
-        lat: app._lastCursorLatLng ? app._lastCursorLatLng.lat : undefined,
-        lng: app._lastCursorLatLng ? app._lastCursorLatLng.lng : undefined
-      } : null;
+        lat: rawLat,
+        lng: rawLng
+      } : { skipWrite: true }) : null;
 
       if (app.mapEngine && app.mapEngine.isDrawing) {
         // Mantém o heartbeat de presença ativo durante desenhos longos (>12s) sem puxar deltas de feições

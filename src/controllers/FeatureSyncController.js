@@ -16,6 +16,81 @@ import { FeatureGeometryUtils } from '../services/MapEngine/FeatureGeometryUtils
 import { AppGeometryCoordinator } from '../bootstrap/AppGeometryCoordinator.js';
 import { nextFeatureName } from '../utils/featureNaming.js';
 
+const METRIC_KEYS_BY_TYPE = {
+  Polygon: ['Área (ha)', 'Área (m²)', 'Perímetro'],
+  LineString: ['Extensão'],
+  Circle: ['Raio', 'Área Coberta']
+};
+
+const METRICS_VERIFIED_PREFIX = 'cm_metrics_v2_';
+
+function parseMetricNum(str) {
+  if (typeof str !== 'string') return NaN;
+  const m = str.match(/-?[\d.]+(?:,\d+)?/);
+  if (!m) return NaN;
+  const raw = m[0].includes(',') ? m[0].replace(/\./g, '').replace(',', '.') : m[0];
+  return parseFloat(raw);
+}
+
+function isLegacyMetricDiff(oldStr, newStr) {
+  if (oldStr === newStr) return false;
+  if (typeof oldStr !== 'string' || typeof newStr !== 'string') return true;
+  const a = parseMetricNum(oldStr);
+  const b = parseMetricNum(newStr);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
+  const absDiff = Math.abs(a - b);
+  const relDiff = Math.abs(b) > 1e-6 ? absDiff / Math.abs(b) : absDiff;
+  // Quantização de 6 casas decimais (~11 cm) gera variação < 0.2%; fórmula legada divergia em ~2.2×
+  return relDiff > 0.005 && absDiff > 0.5;
+}
+
+/** Verifica se a feição possui métricas legadas divergentes; faz pré-filtro O(1) antes de Vincenty/GRS80. */
+function computeLegacyMetricFix(feat, tombstones) {
+  if (!feat || !feat.id || !feat.properties || typeof feat.properties !== 'object') return null;
+  if (tombstones && tombstones.has(feat.id)) return null;
+  const candidateKeys = METRIC_KEYS_BY_TYPE[feat.type];
+  if (!candidateKeys || !candidateKeys.some(k => k in feat.properties)) return null;
+  const metrics = FeatureGeometryUtils.computeMetricProperties(feat);
+  const keys = Object.keys(metrics);
+  if (keys.length === 0) return null;
+  if (keys.every(k => !(k in feat.properties) || !isLegacyMetricDiff(feat.properties[k], metrics[k]))) return null;
+  return { ...feat, properties: { ...feat.properties, ...metrics } };
+}
+
+function syncMapAfterBatch(app, deletedSet, upsertedList, forceFullRender = false) {
+  const engine = app?.mapEngine;
+  if (!engine) return;
+  const delCount = deletedSet ? deletedSet.size : 0;
+  const upsCount = Array.isArray(upsertedList) ? upsertedList.length : 0;
+  const total = delCount + upsCount;
+
+  if (!forceFullRender && total === 0) return;
+
+  const canBatch = typeof engine.renderFeatures === 'function';
+  const hasStatus = upsCount > 0 && upsertedList.some(f => f && (f.status || f.properties?.status));
+  if (canBatch && (forceFullRender || total > 1 || hasStatus)) {
+    if (delCount > 0) {
+      if (typeof engine.pruneDeletedSelection === 'function') {
+        engine.pruneDeletedSelection(deletedSet);
+      } else {
+        for (const delId of deletedSet) {
+          engine.selectedFeatureIds?.delete?.(delId);
+          if (engine.selectedFeatureId === delId) engine.selectedFeatureId = null;
+        }
+      }
+    }
+    engine.renderFeatures(app.features, app.layers);
+    return;
+  }
+
+  if (delCount > 0 && typeof engine.removeFeature === 'function') {
+    for (const delId of deletedSet) engine.removeFeature(delId);
+  }
+  if (upsCount > 0 && typeof engine.updateFeature === 'function') {
+    for (const feat of upsertedList) engine.updateFeature(feat, app.layers);
+  }
+}
+
 export class FeatureSyncController {
   /** Registra uma entrada na trilha de auditoria (memória, BroadcastChannel, IndexedDB e nuvem). */
   static recordAudit(app, action, detail = '') {
@@ -257,6 +332,18 @@ export class FeatureSyncController {
     });
   }
 
+  static _commitRefreshedMetrics(app, changed) {
+    if (!changed || changed.length === 0) return;
+    StorageService.queueFeaturesBulkUpsert(changed, app.projectId);
+    syncMapAfterBatch(app, null, changed, false);
+    if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+    if (app.layerPanel) {
+      app.layerPanel.updateFeatures(app.features);
+      const fresh = changed.find(f => f.id === app.layerPanel.selectedFeature?.id);
+      if (fresh) app.layerPanel.refreshSelectedFeature?.(fresh);
+    }
+  }
+
   /**
    * Corrige métricas gravadas por versões anteriores (a fórmula antiga de área
    * superestimava ~2,2× e ignorava o lado de fechamento no perímetro).
@@ -267,52 +354,141 @@ export class FeatureSyncController {
    */
   static refreshStoredMetrics(app) {
     if (!app || !Array.isArray(app.features)) return 0;
-    const parseMetricNum = (str) => {
-      if (typeof str !== 'string') return NaN;
-      // Ex: "1.250,45 m²" ou "12,50 m" -> extrai o primeiro número formatado em pt-BR ou ponto
-      const m = str.match(/-?[\d.]+(?:,\d+)?/);
-      if (!m) return NaN;
-      const raw = m[0].includes(',') ? m[0].replace(/\./g, '').replace(',', '.') : m[0];
-      return parseFloat(raw);
-    };
-    const isLegacyMetricDiff = (oldStr, newStr) => {
-      if (oldStr === newStr) return false;
-      if (typeof oldStr !== 'string' || typeof newStr !== 'string') return true;
-      const a = parseMetricNum(oldStr);
-      const b = parseMetricNum(newStr);
-      if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
-      const absDiff = Math.abs(a - b);
-      const relDiff = Math.abs(b) > 1e-6 ? absDiff / Math.abs(b) : absDiff;
-      // Quantização de 6 casas decimais (~11 cm) gera variação < 0.2% ou poucos décimos;
-      // a fórmula legada divergia em ~2.2× (120%) na área ou um lado inteiro no perímetro.
-      return relDiff > 0.005 && absDiff > 0.5;
-    };
 
     const changed = [];
     const tombstones = StorageService.getLocalTombstones(app.projectId);
     for (let i = 0; i < app.features.length; i++) {
-      const feat = app.features[i];
-      if (!feat || !feat.id || !feat.properties || typeof feat.properties !== 'object') continue;
-      if (tombstones.has(feat.id)) continue;
-      const metrics = FeatureGeometryUtils.computeMetricProperties(feat);
-      const keys = Object.keys(metrics);
-      if (keys.length === 0 || !keys.some(k => k in feat.properties)) continue;
-      if (keys.every(k => !(k in feat.properties) || !isLegacyMetricDiff(feat.properties[k], metrics[k]))) continue;
-      const fixed = { ...feat, properties: { ...feat.properties, ...metrics } };
+      const fixed = computeLegacyMetricFix(app.features[i], tombstones);
+      if (!fixed) continue;
       app.features[i] = fixed;
       changed.push(fixed);
     }
-    if (changed.length > 0) {
-      StorageService.queueFeaturesBulkUpsert(changed, app.projectId);
-      if (app.mapEngine) changed.forEach(f => app.mapEngine.updateFeature(f, app.layers));
-      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
-      if (app.layerPanel) {
-        app.layerPanel.updateFeatures(app.features);
-        const fresh = changed.find(f => f.id === app.layerPanel.selectedFeature?.id);
-        if (fresh) app.layerPanel.refreshSelectedFeature?.(fresh);
-      }
-    }
+    FeatureSyncController._commitRefreshedMetrics(app, changed);
     return changed.length;
+  }
+
+  /**
+   * Marca ou consulta se o projeto já teve suas métricas validadas nesta versão GRS80.
+   * Limpar quando uma carga integral da nuvem (`hydrateFromCloud`) trouxer dados novos.
+   */
+  static invalidateMetricsCheck(projectId) {
+    try {
+      if (typeof localStorage !== 'undefined' && projectId) {
+        localStorage.removeItem(`${METRICS_VERIFIED_PREFIX}${projectId}`);
+      }
+    } catch {}
+  }
+
+  /**
+   * Executa a verificação de métricas legadas em fatias ociosas (não bloqueantes) pós-boot,
+   * respeitando trocas de projeto, fechamento e edições concorrentes por identidade de objeto.
+   */
+  static scheduleRefreshStoredMetrics(app) {
+    if (!app || !Array.isArray(app.features) || app.features.length === 0) return;
+    const startProjectId = app.projectId;
+    const cacheKey = startProjectId ? `${METRICS_VERIFIED_PREFIX}${startProjectId}` : '';
+
+    try {
+      if (cacheKey && typeof localStorage !== 'undefined' && localStorage.getItem(cacheKey) === '1') {
+        return;
+      }
+    } catch {}
+
+    // Projetos pequenos rodam instantaneamente (~1-20 ms) sem necessidade de fatiamento assíncrono
+    if (app.features.length <= 1500) {
+      const fixed = FeatureSyncController.refreshStoredMetrics(app);
+      try { if (cacheKey && typeof localStorage !== 'undefined') localStorage.setItem(cacheKey, '1'); } catch {}
+      if (fixed > 0) console.info(`[AppBootstrapSync] Métricas de ${fixed} feição(ões) recalculadas (área/perímetro).`);
+      return;
+    }
+
+    if (app._metricsTimer != null) {
+      if (app._metricsTimerIdle && typeof cancelIdleCallback === 'function') {
+        cancelIdleCallback(app._metricsTimer);
+      } else {
+        clearTimeout(app._metricsTimer);
+      }
+      app._metricsTimer = null;
+      app._metricsTimerIdle = false;
+    }
+
+    const snapshot = app.features.slice();
+    const tombstones = StorageService.getLocalTombstones(startProjectId);
+    const pendingChanges = [];
+    let cursor = 0;
+
+    const scheduleSlice = (fn) => {
+      if (typeof requestIdleCallback === 'function') {
+        app._metricsTimerIdle = true;
+        app._metricsTimer = requestIdleCallback(() => fn(), { timeout: 200 });
+      } else {
+        app._metricsTimerIdle = false;
+        app._metricsTimer = setTimeout(fn, 16);
+      }
+    };
+
+    const step = () => {
+      app._metricsTimer = null;
+      app._metricsTimerIdle = false;
+      if (app._projectClosed || app.projectId !== startProjectId) return;
+
+      const tStart = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      let processed = 0;
+      while (cursor < snapshot.length) {
+        const feat = snapshot[cursor];
+        const idx = cursor++;
+        processed++;
+        const fixed = computeLegacyMetricFix(feat, tombstones);
+        if (fixed) {
+          pendingChanges.push({ idx, expectedRef: feat, fixed });
+        }
+        if (processed >= 400 || ((typeof performance !== 'undefined' ? performance.now() : Date.now()) - tStart) >= 8) {
+          break;
+        }
+      }
+
+      if (cursor < snapshot.length) {
+        scheduleSlice(step);
+        return;
+      }
+
+      const applied = [];
+      if (pendingChanges.length > 0 && Array.isArray(app.features)) {
+        const liveTombstones = StorageService.getLocalTombstones(startProjectId);
+        let fallbackMap = null;
+        for (const item of pendingChanges) {
+          if (liveTombstones.has(item.fixed.id) || StorageService.hasPendingLocalChange?.(item.fixed.id, startProjectId)) {
+            continue;
+          }
+          if (app.features[item.idx] === item.expectedRef) {
+            app.features[item.idx] = item.fixed;
+            applied.push(item.fixed);
+            continue;
+          }
+          if (!fallbackMap) {
+            fallbackMap = new Map();
+            for (let j = 0; j < app.features.length; j++) {
+              if (app.features[j]?.id) fallbackMap.set(app.features[j].id, j);
+            }
+          }
+          const actualIdx = fallbackMap.get(item.fixed.id);
+          if (actualIdx !== undefined && app.features[actualIdx] === item.expectedRef) {
+            app.features[actualIdx] = item.fixed;
+            applied.push(item.fixed);
+          }
+        }
+        FeatureSyncController._commitRefreshedMetrics(app, applied);
+      }
+
+      try {
+        if (cacheKey && typeof localStorage !== 'undefined') localStorage.setItem(cacheKey, '1');
+      } catch {}
+      if (applied.length > 0) {
+        console.info(`[AppBootstrapSync] Métricas de ${applied.length} feição(ões) recalculadas (área/perímetro).`);
+      }
+    };
+
+    scheduleSlice(step);
   }
 
   static updateFeature(app, updatedFeature) {
@@ -559,8 +735,8 @@ export class FeatureSyncController {
       const validIds = Array.from(delSet);
       ShortcutsController.markRemoteTouched(app, validIds);
       app.features = app.features.filter(f => !delSet.has(f.id));
+      syncMapAfterBatch(app, delSet, [], false);
       for (const delId of validIds) {
-        app.mapEngine?.removeFeature?.(delId);
         app.layerPanel?.handleSelectedFeatureRemoved?.(delId);
       }
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
@@ -698,15 +874,16 @@ export class FeatureSyncController {
     if (!app) return false;
 
     let stateChanged = false;
+    let needsMapRender = false;
     const deletedSet = new Set(deleted);
     ShortcutsController.markRemoteTouched(app, [...deletedSet, ...(Array.isArray(upserted) ? upserted.map(f => f && f.id) : [])]);
 
     // 1. Processa reconciliação de camadas remotas
+    let layersChanged = false;
+    let layersRemoved = false;
+    let layersAdded = false;
+    let layersReordered = false;
     if (Array.isArray(layers) && layers.length > 0) {
-      let layersChanged = false;
-      let layersRemoved = false;
-      let layersAdded = false;
-      let layersReordered = false;
       // Edição local de camadas ainda não confirmada na nuvem vence: não reverte nome/cor/ordem
       const localLayersPending = StorageService.hasPendingLayerSync();
       for (const remLayer of layers) {
@@ -764,25 +941,20 @@ export class FeatureSyncController {
         if (app.newFeatureModal) app.newFeatureModal.updateLayers(app.layers);
         if (app.bufferModal) app.bufferModal.updateLayers?.(app.layers);
         if (app.textPromptModal) app.textPromptModal.updateLayers?.(app.layers);
-        if (layersRemoved && typeof app.refreshMapAndTable === 'function') {
-          app.refreshMapAndTable();
-        } else if (layersAdded) {
-          app.mapEngine?.renderFeatures?.(app.features, app.layers);
+        if (layersRemoved || layersAdded) {
+          needsMapRender = true;
         }
       }
     }
 
     // 2. Processa expurgos remotos (Tombstones)
+    const removedIds = new Set();
     if (deletedSet.size > 0) {
       const initialCount = app.features.length;
       app.features = app.features.filter(f => !deletedSet.has(f.id));
       if (app.features.length !== initialCount) {
         stateChanged = true;
-        for (const delId of deletedSet) {
-          if (app.mapEngine) {
-            app.mapEngine.removeFeature(delId);
-          }
-        }
+        for (const delId of deletedSet) removedIds.add(delId);
       }
     }
 
@@ -809,12 +981,16 @@ export class FeatureSyncController {
           app.features.push(normalized);
         }
 
-        if (app.mapEngine) {
-          app.mapEngine.updateFeature(normalized, app.layers);
-        }
         validUpserted.push(normalized);
         stateChanged = true;
       }
+    }
+
+    // Consolida atualização no mapa em um único diff/lote em vez de loop O(K·N)
+    if (layersRemoved && typeof app.refreshMapAndTable === 'function' && removedIds.size === 0 && validUpserted.length === 0) {
+      app.refreshMapAndTable();
+    } else {
+      syncMapAfterBatch(app, removedIds, validUpserted, needsMapRender);
     }
 
     // 4. Atualiza UI se houve qualquer modificação em memória
