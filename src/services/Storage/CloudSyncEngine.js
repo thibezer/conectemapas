@@ -8,6 +8,7 @@
    - keepalive só abaixo de 60 KB
    ========================================================================== */
 
+import { GeoCompressor } from '../GeoCompressor.js';
 import { CLOUD_API_URL, cloudFetch } from './StorageConstants.js';
 import { LocalStore } from './LocalStore.js';
 import { DeltaQueue } from './DeltaQueue.js';
@@ -15,9 +16,21 @@ import { AccessManager } from './AccessManager.js';
 import { layersForCloud, layersForSignature, changedLayers, baselineFrom } from './LayerVisibility.js';
 import { FeatureVisibility } from './FeatureVisibility.js';
 
-const _clientId = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
-  ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
-  : Math.random().toString(36).substring(2, 12) + Date.now().toString(36));
+function _resolveTabClientId() {
+  const fresh = 'cli_' + (typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID().replace(/-/g, '').slice(0, 16)
+    : Math.random().toString(36).substring(2, 12) + Date.now().toString(36));
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const existing = sessionStorage.getItem('cm_collab_client_id');
+      if (existing && /^cli_[a-zA-Z0-9_-]{6,64}$/.test(existing)) return existing;
+      sessionStorage.setItem('cm_collab_client_id', fresh);
+    }
+  } catch {}
+  return fresh;
+}
+
+const _clientId = _resolveTabClientId();
 
 // Campos da feição que a API não possui como coluna: viajam empacotados em
 // properties._cm e são restaurados no recebimento (compatível com o servidor atual).
@@ -74,6 +87,7 @@ let _pushChain = Promise.resolve();
 const _inFlightCounts = new Map();
 const _localWriteRev = new Map();
 const _appliedRevs = new Map();
+const _projFeatureKey = (projectId, id) => `${projectId || 'projeto_padrao'}::${id}`;
 let _offlineFlushPromise = null;
 // Último metadado confirmado pela nuvem (por projeto): editar uma feição não muda
 // nome/camadas, então reenviar o mesmo save_metadata só gasta rede e consultas no servidor.
@@ -178,10 +192,25 @@ export class CloudSyncEngine {
     }
   }
 
-  static resetProjectState() {
-    _localWriteRev.clear();
-    _appliedRevs.clear();
-    _lastMetaSig.clear();
+  static resetProjectState(projectId = null) {
+    if (!projectId) {
+      _localWriteRev.clear();
+      _appliedRevs.clear();
+      _lastMetaSig.clear();
+      return;
+    }
+    const prefix = `${projectId}::`;
+    for (const k of _localWriteRev.keys()) {
+      if (k.startsWith(prefix)) _localWriteRev.delete(k);
+    }
+    for (const k of _appliedRevs.keys()) {
+      if (k.startsWith(prefix)) _appliedRevs.delete(k);
+    }
+    _lastMetaSig.delete(projectId);
+  }
+
+  static waitForPushIdle() {
+    return _pushChain.catch(() => true).then(() => true);
   }
 
   static getAppVersion() {
@@ -208,8 +237,8 @@ export class CloudSyncEngine {
 
   static hasPendingLocalChange(featureId, currentProjectId = 'projeto_padrao') {
     if (!featureId) return false;
-    return DeltaQueue.hasPendingLocalChange(featureId)
-      || _inFlightCounts.has(featureId)
+    return DeltaQueue.hasPendingLocalChange(featureId, currentProjectId)
+      || _inFlightCounts.has(_projFeatureKey(currentProjectId, featureId))
       || LocalStore.getOfflinePendingIds(currentProjectId).has(featureId);
   }
 
@@ -227,18 +256,19 @@ export class CloudSyncEngine {
     });
   }
 
-  static _enqueuePush(ids, task) {
-    for (const id of ids) {
-      _inFlightCounts.set(id, (_inFlightCounts.get(id) || 0) + 1);
+  static _enqueuePush(ids, task, projectId = 'projeto_padrao') {
+    const keys = (ids || []).map(id => _projFeatureKey(projectId, id));
+    for (const key of keys) {
+      _inFlightCounts.set(key, (_inFlightCounts.get(key) || 0) + 1);
     }
     const run = async () => {
       try {
         return await task();
       } finally {
-        for (const id of ids) {
-          const n = (_inFlightCounts.get(id) || 1) - 1;
-          if (n <= 0) _inFlightCounts.delete(id);
-          else _inFlightCounts.set(id, n);
+        for (const key of keys) {
+          const n = (_inFlightCounts.get(key) || 1) - 1;
+          if (n <= 0) _inFlightCounts.delete(key);
+          else _inFlightCounts.set(key, n);
         }
       }
     };
@@ -290,7 +320,7 @@ export class CloudSyncEngine {
     if (upserts.length === 0 && deletes.length === 0) return Promise.resolve(true);
 
     const ids = [...upserts.map(f => f && f.id).filter(Boolean), ...deletes];
-    return this._enqueuePush(ids, () => this._pushDeltas(upserts, deletes, projectId));
+    return this._enqueuePush(ids, () => this._pushDeltas(upserts, deletes, projectId), projectId);
   }
 
   static async _pushDeltas(toUpsert, toDelete, projectId) {
@@ -338,8 +368,8 @@ export class CloudSyncEngine {
 
         const resData = await res.json().catch(() => null);
         if (resData && Number.isFinite(resData.rev)) {
-          for (const f of chunkDirty) _localWriteRev.set(f.id, resData.rev);
-          for (const id of chunkDelete) _localWriteRev.set(id, resData.rev);
+          for (const f of chunkDirty) _localWriteRev.set(_projFeatureKey(projectId, f.id), resData.rev);
+          for (const id of chunkDelete) _localWriteRev.set(_projFeatureKey(projectId, id), resData.rev);
         }
       }
 
@@ -351,7 +381,7 @@ export class CloudSyncEngine {
         merged.deleted,
         projectId,
         projectId,
-        (id) => DeltaQueue.hasPendingLocalChange(id)
+        (id) => DeltaQueue.hasPendingLocalChange(id, projectId)
       );
       return true;
     } catch (err) {
@@ -566,7 +596,8 @@ export class CloudSyncEngine {
     const ids = Array.isArray(projectData.features)
       ? projectData.features.map(f => f && f.id).filter(Boolean)
       : [];
-    return this._enqueuePush(ids, () => this._saveProjectToCloudNow(projectData));
+    const projId = projectData.id || 'projeto_padrao';
+    return this._enqueuePush(ids, () => this._saveProjectToCloudNow(projectData), projId);
   }
 
   static async _saveProjectToCloudNow(projectData) {
@@ -576,6 +607,10 @@ export class CloudSyncEngine {
 
       const projId = projectData.id || 'projeto_padrao';
       const cursor = LocalStore.loadSyncCursor(projId);
+      const rawFeatures = Array.isArray(projectData.features) ? projectData.features : [];
+      const sentCompacted = rawFeatures
+        .filter(f => f && f.id)
+        .map(f => ({ ...GeoCompressor.compactFeatureForStorage(f), projectId: projId }));
       const payload = {
         id: projId,
         clientId: _clientId,
@@ -586,7 +621,7 @@ export class CloudSyncEngine {
         center: projectData.center || [-23.7661, -53.3206],
         zoom: projectData.zoom || 14,
         layers: layersForCloud(projectData.layers),
-        features: Array.isArray(projectData.features) ? projectData.features.map(packFeatureForCloud) : []
+        features: rawFeatures.map(packFeatureForCloud)
       };
 
       const res = await cloudFetch(`${CLOUD_API_URL}?action=save_all`, {
@@ -606,7 +641,24 @@ export class CloudSyncEngine {
         _cloudStatus.connected = true;
         _cloudStatus.lastSyncedAt = new Date().toISOString();
         _cloudStatus.error = null;
-        return { success: true, count: payload.features.length, skipped: result.skipped || 0, message: result.message };
+        if (Number.isFinite(Number(result.rev))) {
+          const rev = Number(result.rev);
+          for (const f of sentCompacted) {
+            const key = _projFeatureKey(projId, f.id);
+            _localWriteRev.set(key, Math.max(_localWriteRev.get(key) || 0, rev));
+          }
+          if (cursor.rev === 0 && (result.skipped || 0) === 0 && rev > 0) {
+            LocalStore.saveSyncCursor(projId, { rev, id: '' });
+          }
+        }
+        LocalStore.removeConfirmedDeltas(
+          sentCompacted,
+          [],
+          projId,
+          projId,
+          (id) => DeltaQueue.hasPendingLocalChange(id, projId) || (_inFlightCounts.get(_projFeatureKey(projId, id)) || 0) > 1
+        );
+        return { success: true, count: payload.features.length, skipped: result.skipped || 0, rev: result.rev, message: result.message };
       } else {
         throw new Error(result?.error || 'Erro ao persistir no servidor');
       }
@@ -708,40 +760,46 @@ export class CloudSyncEngine {
     }
   }
 
+  static async _fetchPullPage(projectId, cursor, presence = null) {
+    const params = new URLSearchParams({
+      action: 'pull_changes',
+      projectId,
+      sinceRev: String(cursor.rev),
+      sinceId: cursor.id || '',
+      clientId: _clientId,
+      v: _clientAppVersion
+    });
+    if (presence) {
+      if (presence.name) params.set('userName', presence.name);
+      if (presence.color) params.set('userColor', presence.color);
+      if (Number.isFinite(presence.lat) && Number.isFinite(presence.lng)) {
+        params.set('lat', presence.lat.toFixed(6));
+        params.set('lng', presence.lng.toFixed(6));
+      }
+    }
+
+    const res = await cloudFetch(`${CLOUD_API_URL}?${params.toString()}`, {
+      method: 'GET',
+      headers: AccessManager.headers(projectId, { 'Accept': 'application/json' }),
+      cache: 'no-cache'
+    });
+
+    if (!res.ok) {
+      AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
+      return null;
+    }
+    const data = await res.json();
+    if (!data || !data.success) return null;
+    if (data.role) AccessManager.setRole(projectId, data.role);
+    checkRemoteVersionSignals(data);
+    return data;
+  }
+
   static async pullChangesFromCloud(projectId = 'projeto_padrao', presence = null) {
     try {
-      const cursor = LocalStore.loadSyncCursor(projectId);
-      const params = new URLSearchParams({
-        action: 'pull_changes',
-        projectId,
-        sinceRev: String(cursor.rev),
-        sinceId: cursor.id || '',
-        clientId: _clientId,
-        v: _clientAppVersion
-      });
-      if (presence) {
-        if (presence.name) params.set('userName', presence.name);
-        if (presence.color) params.set('userColor', presence.color);
-        if (Number.isFinite(presence.lat) && Number.isFinite(presence.lng)) {
-          params.set('lat', presence.lat.toFixed(6));
-          params.set('lng', presence.lng.toFixed(6));
-        }
-      }
-
-      const res = await cloudFetch(`${CLOUD_API_URL}?${params.toString()}`, {
-        method: 'GET',
-        headers: AccessManager.headers(projectId, { 'Accept': 'application/json' }),
-        cache: 'no-cache'
-      });
-
-      if (!res.ok) {
-        AccessManager.handleDenied(projectId, res.status, await res.json().catch(() => null));
-        return null;
-      }
-      const data = await res.json();
-      if (!data || !data.success) return null;
-      if (data.role) AccessManager.setRole(projectId, data.role);
-      checkRemoteVersionSignals(data);
+      const savedCursor = LocalStore.loadSyncCursor(projectId);
+      const firstPage = await this._fetchPullPage(projectId, savedCursor, presence);
+      if (!firstPage) return null;
 
       const wasConnected = _cloudStatus.connected;
       const hadError = _cloudStatus.error !== null;
@@ -752,72 +810,133 @@ export class CloudSyncEngine {
         this._notifyCloudStatus();
       }
 
-      const layers = Array.isArray(data.layers) ? data.layers : [];
-      const audit = Array.isArray(data.audit) ? data.audit : [];
-      const chat = Array.isArray(data.chat) ? data.chat : [];
-
-      if (!Array.isArray(data.changes)) {
+      if (!Array.isArray(firstPage.changes)) {
         return {
-          upserted: Array.isArray(data.upserted) ? data.upserted.map(unpackFeatureFromCloud) : [],
-          deleted: Array.isArray(data.deleted) ? data.deleted : [],
-          layers,
-          audit,
-          chat,
-          project: data.project || null,
+          upserted: Array.isArray(firstPage.upserted) ? firstPage.upserted.map(unpackFeatureFromCloud) : [],
+          deleted: Array.isArray(firstPage.deleted) ? firstPage.deleted : [],
+          layers: Array.isArray(firstPage.layers) ? firstPage.layers : [],
+          audit: Array.isArray(firstPage.audit) ? firstPage.audit : [],
+          chat: Array.isArray(firstPage.chat) ? firstPage.chat : [],
+          project: firstPage.project || null,
           presence: null,
           hasMore: false
         };
       }
 
-      if (data.reset) {
-        _localWriteRev.clear();
-        _appliedRevs.clear();
-      }
-
       const upserted = [];
       const deleted = [];
+      const layersById = new Map();
+      const extraLayers = [];
+      const auditSeen = new Set();
+      const audit = [];
+      const chatSeen = new Set();
+      const chat = [];
       let heldCursor = null;
-      let prev = data.reset ? { rev: 0, id: '' } : cursor;
+      let pageData = firstPage;
+      let pageStartCursor = savedCursor;
+      const MAX_HELD_PAGES = 20;
 
-      for (const ch of data.changes) {
-        if (!ch || !ch.id) continue;
-        const here = { rev: ch.rev, id: ch.id };
+      for (let pageIdx = 0; pageIdx < MAX_HELD_PAGES && pageData; pageIdx++) {
+        if (Array.isArray(pageData.layers)) {
+          for (const l of pageData.layers) {
+            if (l && l.id) layersById.set(l.id, l);
+            else if (l) extraLayers.push(l);
+          }
+        }
+        if (Array.isArray(pageData.audit)) {
+          for (const a of pageData.audit) {
+            const key = a?.id || JSON.stringify(a);
+            if (!auditSeen.has(key)) { auditSeen.add(key); audit.push(a); }
+          }
+        }
+        if (Array.isArray(pageData.chat)) {
+          for (const c of pageData.chat) {
+            const key = c?.id || JSON.stringify(c);
+            if (!chatSeen.has(key)) { chatSeen.add(key); chat.push(c); }
+          }
+        }
 
-        const ownRev = _localWriteRev.get(ch.id);
-        if (ownRev !== undefined && ownRev > ch.rev) {
-          prev = here;
-          continue;
-        }
-        if (this.hasPendingLocalChange(ch.id, projectId)) {
-          if (!heldCursor) heldCursor = prev;
-          prev = here;
-          continue;
-        }
-        if (_appliedRevs.get(ch.id) === ch.rev) {
-          prev = here;
-          continue;
+        if (pageData.reset) {
+          this.resetProjectState(projectId);
         }
 
-        _appliedRevs.set(ch.id, ch.rev);
-        if (ch.deleted) deleted.push(ch.id);
-        else if (ch.feature) upserted.push(unpackFeatureFromCloud(ch.feature));
-        prev = here;
+        let prev = pageData.reset ? { rev: 0, id: '' } : pageStartCursor;
+        const changes = Array.isArray(pageData.changes) ? pageData.changes : [];
+        for (const ch of changes) {
+          if (!ch || !ch.id) continue;
+          const here = { rev: ch.rev, id: ch.id };
+          const key = _projFeatureKey(projectId, ch.id);
+
+          const ownRev = _localWriteRev.get(key);
+          if (ownRev !== undefined && ownRev > ch.rev) {
+            prev = here;
+            continue;
+          }
+          if (this.hasPendingLocalChange(ch.id, projectId)) {
+            if (!heldCursor) heldCursor = prev;
+            prev = here;
+            continue;
+          }
+          if (_appliedRevs.get(key) === ch.rev) {
+            prev = here;
+            continue;
+          }
+
+          _appliedRevs.set(key, ch.rev);
+          if (ch.deleted) deleted.push(ch.id);
+          else if (ch.feature) upserted.push(unpackFeatureFromCloud(ch.feature));
+          prev = here;
+        }
+
+        const serverCursor = pageData.cursor && Number.isFinite(pageData.cursor.rev)
+          ? pageData.cursor
+          : { rev: Number(pageData.rev) || 0, id: '' };
+
+        if (!heldCursor) {
+          LocalStore.saveSyncCursor(projectId, serverCursor);
+          return {
+            upserted,
+            deleted,
+            layers: [...layersById.values(), ...extraLayers],
+            audit,
+            chat,
+            project: pageData.project || firstPage.project || null,
+            presence: Array.isArray(firstPage.presence) ? firstPage.presence : null,
+            hasMore: !!pageData.hasMore
+          };
+        }
+
+        // Há pendência local retendo heldCursor: não avançar o cursor persistido, mas drenar páginas restantes
+        if (!pageData.hasMore || (serverCursor.rev === pageStartCursor.rev && serverCursor.id === pageStartCursor.id)) {
+          LocalStore.saveSyncCursor(projectId, heldCursor);
+          return {
+            upserted,
+            deleted,
+            layers: [...layersById.values(), ...extraLayers],
+            audit,
+            chat,
+            project: pageData.project || firstPage.project || null,
+            presence: Array.isArray(firstPage.presence) ? firstPage.presence : null,
+            hasMore: false
+          };
+        }
+
+        pageStartCursor = serverCursor;
+        pageData = (pageIdx + 1 < MAX_HELD_PAGES)
+          ? await this._fetchPullPage(projectId, pageStartCursor, null)
+          : null;
       }
 
-      const serverCursor = data.cursor && Number.isFinite(data.cursor.rev)
-        ? data.cursor
-        : { rev: Number(data.rev) || 0, id: '' };
-      LocalStore.saveSyncCursor(projectId, heldCursor || serverCursor);
-
+      LocalStore.saveSyncCursor(projectId, heldCursor || savedCursor);
       return {
         upserted,
         deleted,
-        layers,
+        layers: [...layersById.values(), ...extraLayers],
         audit,
         chat,
-        project: data.project || null,
-        presence: Array.isArray(data.presence) ? data.presence : null,
-        hasMore: !!data.hasMore && !heldCursor
+        project: pageData?.project || firstPage.project || null,
+        presence: Array.isArray(firstPage.presence) ? firstPage.presence : null,
+        hasMore: false
       };
     } catch {
       return null;

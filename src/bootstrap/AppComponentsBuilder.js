@@ -238,15 +238,39 @@ export class AppComponentsBuilder {
           mensagem: `Gravando ${app.features.length} feições...`
         });
 
-        const cloudRes = await StorageService.saveProjectToCloud({
-          id: app.projectId || 'projeto_padrao',
-          name: app.projectName,
-          basemap: app.currentBasemap,
-          layers: app.layers,
-          features: app.features,
-          center: app.mapEngine?.map ? [app.mapEngine.map.getCenter().lat, app.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
-          zoom: app.mapEngine?.map ? app.mapEngine.map.getZoom() : 14
-        });
+        const pid = app.projectId || 'projeto_padrao';
+        await StorageService.commitDeltas(pid, { waitForCloud: true });
+        await StorageService.flushPendingOfflineDeltas(pid);
+
+        const cursor = StorageService.getSyncCursor(pid);
+        let cloudRes;
+        if (app._cloudProjectMissing || (cursor?.rev || 0) === 0) {
+          cloudRes = await StorageService.saveProjectToCloud({
+            id: pid,
+            name: app.projectName,
+            basemap: app.currentBasemap,
+            layers: app.layers,
+            features: app.features,
+            center: app.mapEngine?.map ? [app.mapEngine.map.getCenter().lat, app.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
+            zoom: app.mapEngine?.map ? app.mapEngine.map.getZoom() : 14
+          });
+        } else {
+          const metaOk = await StorageService.syncMetadataToCloud({
+            id: pid,
+            name: app.projectName,
+            basemap: app.currentBasemap,
+            layers: app.layers,
+            featureCount: app.features.length,
+            center: app.mapEngine?.map ? [app.mapEngine.map.getCenter().lat, app.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
+            zoom: app.mapEngine?.map ? app.mapEngine.map.getZoom() : 14
+          });
+          await StorageService.waitForCloudPushIdle();
+          const cloudStatus = StorageService.getCloudStatus?.() || {};
+          cloudRes = {
+            success: metaOk !== false && !StorageService.hasPendingOfflineDeltas(),
+            error: cloudStatus.error || null
+          };
+        }
 
         progress.done();
         if (cloudRes && cloudRes.success) {
@@ -611,8 +635,6 @@ export class AppComponentsBuilder {
       onFeaturesReorder: (newFeatures) => {
         app.features = [...newFeatures];
         app.refreshMapAndTable();
-        StorageService.queueFeaturesBulkUpsert(app.features);
-        app.saveMetadata(false);
       },
       onFeatureLockToggle: (featureId, isLocked) => {
         const idx = app.features.findIndex(f => f.id === featureId);

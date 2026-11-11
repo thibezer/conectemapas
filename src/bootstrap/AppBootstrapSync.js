@@ -118,10 +118,11 @@ export class AppBootstrapSync {
         if (Array.isArray(saved.features)) {
           const TEST_MOCK_IDS = new Set(['feat-m01', 'feat-m02', 'feat-app-01', 'feat-quadra-a', 'feat-rota-01', 'feat-buffer-01']);
           const tombstones = StorageService.getLocalTombstones(app.projectId);
+          const mockDeleteIds = [];
           const cleanedFeatures = saved.features.filter(f => {
             if (!f || !f.id) return false;
             if (TEST_MOCK_IDS.has(f.id)) {
-              StorageService.deleteFeature(f.id);
+              mockDeleteIds.push(f.id);
               return false;
             }
             if (tombstones.has(f.id)) {
@@ -129,6 +130,9 @@ export class AppBootstrapSync {
             }
             return true;
           });
+          if (mockDeleteIds.length > 0) {
+            await StorageService.queueFeaturesBulkDelete(mockDeleteIds, app.projectId);
+          }
 
           // Respeita Regra 1 do GEMINI.md: array vazio [] se o projeto estiver limpo
           FeatureVisibility.seedIfMissing(app.projectId, saved.features);
@@ -532,7 +536,8 @@ export class AppBootstrapSync {
       }
       try {
         StorageService.flushSync();
-        await StorageService.commitDeltas(app.projectId);
+        await StorageService.commitDeltas(app.projectId, { waitForCloud: true });
+        await StorageService.waitForCloudPushIdle?.();
       } catch {}
       setTimeout(() => {
         if (typeof window !== 'undefined' && window.location && typeof window.location.reload === 'function') {
@@ -643,7 +648,7 @@ export class AppBootstrapSync {
 
     for (const localFeat of current) {
       if (!localFeat?.id || delSet.has(localFeat.id)) continue;
-      if (!StorageService.hasPendingLocalChange(localFeat.id)) continue;
+      if (!StorageService.hasPendingLocalChange(localFeat.id, app.projectId)) continue;
       if (indexById.has(localFeat.id)) {
         resolved[indexById.get(localFeat.id)] = localFeat;
       } else {

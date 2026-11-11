@@ -74,22 +74,31 @@ export class ShortcutsController {
     const features = app.features || [];
     const cache = app._historyIntern || (app._historyIntern = new Map());
     const snapshot = new Array(features.length);
+    const entries = new Array(features.length);
     for (let i = 0; i < features.length; i++) {
       const feat = features[i];
       const id = feat && feat.id;
-      if (id === undefined || id === null) { snapshot[i] = JSON.stringify(feat); continue; }
+      if (id === undefined || id === null) {
+        snapshot[i] = JSON.stringify(feat);
+        entries[i] = null;
+        continue;
+      }
       const entry = cache.get(id);
       if (entry && unchangedSince(feat, entry.shadow)) {
         snapshot[i] = entry.json;
+        entries[i] = entry;
         continue;
       }
       let json = JSON.stringify(feat);
       if (entry && entry.json === json) json = entry.json; // mesmo conteúdo, objeto novo: reaproveita a string
-      cache.set(id, { shadow: shadowOf(feat), json });
+      const nextEntry = { id, shadow: shadowOf(feat), json };
+      cache.set(id, nextEntry);
       snapshot[i] = json;
+      entries[i] = nextEntry;
     }
     // Marca em que ponto das mudanças remotas esta foto foi tirada (ver reconcileSnapshot)
     snapshot.seq = app._remoteSeq || 0;
+    Object.defineProperty(snapshot, '_entries', { value: entries, enumerable: false });
     // Feições excluídas deixam o cache (os snapshots antigos mantêm as próprias strings)
     if (cache.size > features.length * 2 + 100) {
       const alive = new Set();
@@ -110,11 +119,26 @@ export class ShortcutsController {
     for (let i = 0; i < current.length; i++) byId.set(current[i].id, current[i]);
 
     if (Array.isArray(snapshot)) {
+      const entries = snapshot._entries;
       const restored = new Array(snapshot.length);
       for (let i = 0; i < snapshot.length; i++) {
-        const parsed = JSON.parse(snapshot[i]);
+        const raw = snapshot[i];
+        const entry = entries ? entries[i] : null;
+        if (entry && entry.id !== undefined && entry.id !== null) {
+          const old = byId.get(entry.id);
+          // Fast-path: se o objeto atual ainda coincide com a cópia rasa da foto e o JSON é o mesmo,
+          // evita JSON.parse + JSON.stringify nas dezenas de milhares de feições inalteradas.
+          if (old && entry.shadow && entry.json === raw && unchangedSince(old, entry.shadow)) {
+            restored[i] = old;
+            continue;
+          }
+          const parsed = JSON.parse(raw);
+          restored[i] = old && JSON.stringify(old) === raw ? old : parsed;
+          continue;
+        }
+        const parsed = JSON.parse(raw);
         const old = byId.get(parsed.id);
-        restored[i] = old && JSON.stringify(old) === snapshot[i] ? old : parsed;
+        restored[i] = old && JSON.stringify(old) === raw ? old : parsed;
       }
       return restored;
     }

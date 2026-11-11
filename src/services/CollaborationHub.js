@@ -132,6 +132,18 @@ export class CollaborationHub {
         this.onEvent('feature:deleted', { featureId: data.featureId, user: sender });
         break;
 
+      case 'features:batch-create':
+        this.onEvent('features:batch-created', { features: Array.isArray(data.features) ? data.features : [], user: sender });
+        break;
+
+      case 'features:batch-update':
+        this.onEvent('features:batch-updated', { features: Array.isArray(data.features) ? data.features : [], user: sender });
+        break;
+
+      case 'features:batch-delete':
+        this.onEvent('features:batch-deleted', { featureIds: Array.isArray(data.featureIds) ? data.featureIds : [], user: sender });
+        break;
+
       case 'layer:create':
         this.onEvent('layer:created', { layer: data.layer, user: sender });
         break;
@@ -202,6 +214,21 @@ export class CollaborationHub {
 
   notifyFeatureDeleted(featureId) {
     this.broadcast('feature:delete', { featureId });
+  }
+
+  notifyFeaturesBatchCreated(features) {
+    if (!Array.isArray(features) || features.length === 0) return;
+    this.broadcast('features:batch-create', { features });
+  }
+
+  notifyFeaturesBatchUpdated(features) {
+    if (!Array.isArray(features) || features.length === 0) return;
+    this.broadcast('features:batch-update', { features });
+  }
+
+  notifyFeaturesBatchDeleted(featureIds) {
+    if (!Array.isArray(featureIds) || featureIds.length === 0) return;
+    this.broadcast('features:batch-delete', { featureIds });
   }
 
   notifyLayerCreated(layer) {

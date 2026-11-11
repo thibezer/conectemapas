@@ -343,8 +343,7 @@ export class LocalStore {
         if (typeof isStillDirtyFn === 'function' && isStillDirtyFn(f.id)) return true;
         if (!confirmedUpsertById.has(f.id)) return true;
         const sent = confirmedUpsertById.get(f.id);
-        // Se o objeto mudou enquanto o request estava em voo, mantém na fila
-        return JSON.stringify(f) !== JSON.stringify(sent);
+        return !this._sameFeatureState(f, sent);
       });
 
       const remainingDeleted = current.deleted.filter((id) => {
@@ -361,6 +360,45 @@ export class LocalStore {
       }
       this.refreshOfflinePendingCache(projectId, currentProjectId, next);
     } catch {}
+  }
+
+  static _coordsEqual(a, b) {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      const va = a[i];
+      const vb = b[i];
+      if (va === vb) continue;
+      if (Array.isArray(va)) {
+        if (!this._coordsEqual(va, vb)) return false;
+      } else if (va !== vb) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static _sameFeatureState(a, b) {
+    if (a === b) return true;
+    if (!a || !b) return false;
+    if (
+      a.name !== b.name ||
+      a.type !== b.type ||
+      a.layerId !== b.layerId ||
+      a.color !== b.color ||
+      a.status !== b.status ||
+      !!a.locked !== !!b.locked ||
+      a.visible !== b.visible ||
+      a.radius !== b.radius ||
+      a.description !== b.description ||
+      a.category !== b.category ||
+      a.updatedAt !== b.updatedAt
+    ) {
+      return false;
+    }
+    if (a.style !== b.style && JSON.stringify(a.style || null) !== JSON.stringify(b.style || null)) return false;
+    if (a.properties !== b.properties && JSON.stringify(a.properties || null) !== JSON.stringify(b.properties || null)) return false;
+    return this._coordsEqual(a.coordinates, b.coordinates);
   }
 
   static getOfflinePendingIds(currentProjectId = 'projeto_padrao') {

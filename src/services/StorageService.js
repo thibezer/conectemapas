@@ -23,10 +23,15 @@ export class StorageService {
     if (id && typeof id === 'string') {
       const clean = id.trim();
       if (clean !== _currentProjectId) {
+        const prevId = _currentProjectId;
+        if (prevId) {
+          DeltaQueue.commitDeltas(prevId);
+        }
         _currentProjectId = clean;
+        DeltaQueue.setCurrentProjectId(clean);
         _layersSigByProject.clear();
         LocalStore.resetProjectCache();
-        CloudSyncEngine.resetProjectState();
+        CloudSyncEngine.resetProjectState(prevId);
       }
     }
   }
@@ -47,12 +52,12 @@ export class StorageService {
     LocalStore.saveSyncCursor(projectId || _currentProjectId, { rev: 0, id: '' });
   }
 
-  static hasPendingLocalChange(featureId) {
-    return CloudSyncEngine.hasPendingLocalChange(featureId, _currentProjectId);
+  static hasPendingLocalChange(featureId, projectId = null) {
+    return CloudSyncEngine.hasPendingLocalChange(featureId, projectId || _currentProjectId);
   }
 
-  static hasPendingOfflineDeltas() {
-    return CloudSyncEngine.hasPendingOfflineDeltas(_currentProjectId);
+  static hasPendingOfflineDeltas(projectId = null) {
+    return CloudSyncEngine.hasPendingOfflineDeltas(projectId || _currentProjectId);
   }
 
   static getDB() {
@@ -261,8 +266,8 @@ export class StorageService {
     return DeltaQueue.commitDeltasDebounced(delayMs, projectId || _currentProjectId);
   }
 
-  static commitDeltas(projectId = null) {
-    return DeltaQueue.commitDeltas(projectId || _currentProjectId);
+  static commitDeltas(projectId = null, options = {}) {
+    return DeltaQueue.commitDeltas(projectId || _currentProjectId, options);
   }
 
   static executeDeltasChunked(db, toDelete, toUpsert, chunkSize = 10000) {
@@ -289,11 +294,9 @@ export class StorageService {
   static async deleteFeature(featureId, projectId = null) {
     if (!featureId) return;
     const projId = projectId || _currentProjectId || 'projeto_padrao';
+    // queueFeatureDelete já grava tombstone local, pendência em cm_pending_deltas_ e agenda commitDeltasDebounced
     this.queueFeatureDelete(featureId, projId);
-    LocalStore.addLocalTombstone(featureId, projId);
-    LocalStore.persistPendingDeltasWithItems([], [featureId], projId, _currentProjectId);
     await IndexedDbStore.deleteFeatureDirect(featureId);
-    this.commitDeltasDebounced(100, projId);
   }
 
   static async saveFeaturesBatch(features, projectId = null) {
@@ -383,8 +386,12 @@ export class StorageService {
     return CloudSyncEngine._postJson(action, payload);
   }
 
-  static _enqueuePush(ids, task) {
-    return CloudSyncEngine._enqueuePush(ids, task);
+  static _enqueuePush(ids, task, projectId = null) {
+    return CloudSyncEngine._enqueuePush(ids, task, projectId || _currentProjectId);
+  }
+
+  static waitForCloudPushIdle() {
+    return CloudSyncEngine.waitForPushIdle();
   }
 
   static syncDeltasToCloud(toUpsert, toDelete, projectId = null) {

@@ -6,25 +6,7 @@
 
 define('CONECTEMAPAS_API', true);
 
-// 1. Compressão HTTP GZIP e Headers
-if (!ob_start('ob_gzhandler')) {
-    ob_start();
-}
-
-header('Content-Type: application/json; charset=utf-8');
-header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-header('Pragma: no-cache');
-header('Expires: 0');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Project-Key, X-Auth-Token');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(200);
-    exit(0);
-}
-
-// 2. Conexão PDO Singleton
+// 1. Carregamento de variáveis de ambiente (.env), Compressão HTTP GZIP e Headers
 function loadEnvFileIfNeeded() {
     static $envLoaded = false;
     if ($envLoaded) return;
@@ -50,6 +32,38 @@ function loadEnvFileIfNeeded() {
         }
     }
 }
+
+loadEnvFileIfNeeded();
+
+if (!ob_start('ob_gzhandler')) {
+    ob_start();
+}
+
+header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
+
+$allowedOriginsEnv = getenv('CM_ALLOWED_ORIGINS');
+if ($allowedOriginsEnv === false || trim($allowedOriginsEnv) === '') {
+    header('Access-Control-Allow-Origin: *');
+} else {
+    $allowedOrigins = array_values(array_filter(array_map('trim', explode(',', $allowedOriginsEnv))));
+    $requestOrigin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    header('Vary: Origin');
+    if ($requestOrigin !== '' && (in_array('*', $allowedOrigins, true) || in_array($requestOrigin, $allowedOrigins, true))) {
+        header('Access-Control-Allow-Origin: ' . $requestOrigin);
+    }
+}
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, X-Project-Key, X-Auth-Token');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit(0);
+}
+
+// 2. Conexão PDO Singleton
 
 /**
  * Detalhe de erro seguro para o cliente: a mensagem real (SQL, caminhos) vai só para o log do servidor.
@@ -452,6 +466,7 @@ function decodeFeatureRow(array $f) {
     if (!is_array($style)) $style = [];
     $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
     $visible = isset($props['visible']) ? (bool)$props['visible'] : true;
+    unset($props['radius'], $props['visible']);
     return [
         'id'          => $f['id'],
         'layerId'     => $f['layerId'],
@@ -586,7 +601,8 @@ function executeFeatureUpsert(PDOStatement $stmt, array $feat, $projectId, $rev,
     $coords    = json_encode($feat['coordinates'] ?? [], JSON_UNESCAPED_UNICODE);
     $propsJson = json_encode($props, JSON_UNESCAPED_UNICODE);
     $style     = json_encode($feat['style'] ?? [], JSON_UNESCAPED_UNICODE);
-    $color     = $feat['color'] ?? '#00E08A';
+    $rawColor  = is_string($feat['color'] ?? null) ? trim($feat['color']) : '';
+    $color     = preg_match('/^#[0-9a-fA-F]{3,8}$/', $rawColor) ? $rawColor : '#00E08A';
     $createdBy = $feat['createdBy'] ?? 'Operador';
 
     return $stmt->execute([
@@ -862,10 +878,26 @@ ensureDatabaseSchema($pdo);
 
 $action = isset($_GET['action']) ? trim($_GET['action']) : '';
 
-// Helper para ler body JSON
+if (!defined('CM_MAX_BODY_BYTES')) {
+    $maxBodyEnv = getenv('CM_MAX_BODY_BYTES');
+    define('CM_MAX_BODY_BYTES', ($maxBodyEnv !== false && is_numeric($maxBodyEnv) && (int)$maxBodyEnv > 0) ? (int)$maxBodyEnv : (32 * 1024 * 1024));
+}
+
+// Helper para ler body JSON com teto explícito contra payloads excessivos
 function getJsonBody() {
-    $raw = file_get_contents('php://input');
+    $contentLength = isset($_SERVER['CONTENT_LENGTH']) ? (int)$_SERVER['CONTENT_LENGTH'] : 0;
+    if ($contentLength > CM_MAX_BODY_BYTES) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Payload excede o limite permitido', 'maxBytes' => CM_MAX_BODY_BYTES]);
+        exit;
+    }
+    $raw = file_get_contents('php://input', false, null, 0, CM_MAX_BODY_BYTES + 1);
     if (empty($raw)) return [];
+    if (strlen($raw) > CM_MAX_BODY_BYTES) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Payload excede o limite permitido', 'maxBytes' => CM_MAX_BODY_BYTES]);
+        exit;
+    }
     $decoded = json_decode($raw, true);
     return is_array($decoded) ? $decoded : [];
 }
@@ -1401,15 +1433,17 @@ switch ($action) {
             if (!empty($usedLayerIds)) {
                 $defaultColors = ['#00E08A', '#38BDF8', '#F59E0B', '#EF4444', '#A855F7', '#EC4899'];
                 $idx = 0;
+                $autoRev = null;
+                $stmtInsLayer = $pdo->prepare("
+                    INSERT IGNORE INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, rev, updated_at)
+                    VALUES (?, ?, ?, ?, 'custom', 1, 1.0, ?, ?, NOW())
+                ");
                 foreach ($usedLayerIds as $lid) {
                     if (empty($lid)) continue;
+                    if ($autoRev === null) $autoRev = nextRevision($pdo, $projectId);
                     $color = $defaultColors[$idx % count($defaultColors)];
                     $cleanName = ucfirst(str_replace(['layer-', '-', '_'], ['Camada ', ' ', ' '], $lid));
-                    $stmtInsLayer = $pdo->prepare("
-                        INSERT IGNORE INTO cm_layers (id, project_id, name, color, type, visible, opacity, order_idx, updated_at)
-                        VALUES (?, ?, ?, ?, 'custom', 1, 1.0, ?, NOW())
-                    ");
-                    $stmtInsLayer->execute([$lid, $projectId, $cleanName, $color, $idx]);
+                    $stmtInsLayer->execute([$lid, $projectId, $cleanName, $color, $idx, $autoRev]);
                     $idx++;
                 }
                 $stmtLayers->execute([$projectId]);
@@ -1442,6 +1476,7 @@ switch ($action) {
             if (!is_array($style)) $style = [];
             $radius = isset($props['radius']) ? (float)$props['radius'] : (isset($props['raio']) ? (float)$props['raio'] : null);
             $visible = isset($props['visible']) ? (bool)$props['visible'] : true;
+            unset($props['radius'], $props['visible']);
             $features[] = [
                 'id'          => $f['id'],
                 'layerId'     => $f['layerId'],
@@ -1589,7 +1624,6 @@ switch ($action) {
                     center_lat = ?,
                     center_lng = ?,
                     zoom = ?,
-                    feature_count = ?,
                     updated_at = NOW()
             ");
             $latVal = $center[0] ?? -23.7661;
@@ -1603,13 +1637,12 @@ switch ($action) {
                 $lngVal,
                 $zoom,
                 $featureCount,
-                // ON DUPLICATE KEY UPDATE (compatibilidade MariaDB 11.8; o mapa base só vale no INSERT)
+                // ON DUPLICATE KEY UPDATE (compatibilidade MariaDB 11.8; mapa-base e feature_count oficial só inicializam no INSERT)
                 $name,
                 $description,
                 $latVal,
                 $lngVal,
-                $zoom,
-                $featureCount
+                $zoom
             ]);
             assertProjectNotDeleted($pdo, $projectId, true);
 

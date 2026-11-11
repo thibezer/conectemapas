@@ -22,6 +22,14 @@ function yieldToMain() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function awaitTx(tx, okVal = true, failVal = false) {
+  return new Promise((resolve) => {
+    tx.oncomplete = () => resolve(okVal);
+    tx.onerror = () => resolve(failVal);
+    tx.onabort = () => resolve(failVal);
+  });
+}
+
 export class IndexedDbStore {
   static getDB() {
     return IndexedDbSchema.getDB();
@@ -38,35 +46,39 @@ export class IndexedDbStore {
   static async saveProjectRecord(projectRecord) {
     try {
       const db = await this.getDB();
-      if (!db) return;
+      if (!db) return false;
       const tx = db.transaction(STORE_PROJECTS, 'readwrite');
       tx.objectStore(STORE_PROJECTS).put(projectRecord);
+      return await awaitTx(tx, true, false);
     } catch (e) {
       console.warn('[IndexedDbStore] Erro ao gravar registro de projeto:', e);
+      return false;
     }
   }
 
   static async saveLayer(layer, projectId = 'projeto_padrao') {
-    if (!layer || !layer.id) return;
+    if (!layer || !layer.id) return false;
     try {
       const db = await this.getDB();
-      if (!db) return;
+      if (!db) return false;
       const tx = db.transaction(STORE_LAYERS, 'readwrite');
       tx.objectStore(STORE_LAYERS).put({
         ...layer,
         projectId,
         updatedAt: new Date().toISOString()
       });
+      return await awaitTx(tx, true, false);
     } catch (e) {
       console.warn('[IndexedDbStore] Erro ao salvar camada:', e);
+      return false;
     }
   }
 
   static async saveLayersBatch(layers, projectId = 'projeto_padrao') {
-    if (!Array.isArray(layers)) return;
+    if (!Array.isArray(layers)) return false;
     try {
       const db = await this.getDB();
-      if (!db) return;
+      if (!db) return false;
       const tx = db.transaction(STORE_LAYERS, 'readwrite');
       const store = tx.objectStore(STORE_LAYERS);
       for (let i = 0; i < layers.length; i++) {
@@ -81,16 +93,18 @@ export class IndexedDbStore {
           });
         }
       }
+      return await awaitTx(tx, true, false);
     } catch (e) {
       console.warn('[IndexedDbStore] Erro ao salvar lote de camadas:', e);
+      return false;
     }
   }
 
   static async deleteLayer(layerId, fallbackLayerId = null) {
-    if (!layerId) return;
+    if (!layerId) return false;
     try {
       const db = await this.getDB();
-      if (!db) return;
+      if (!db) return false;
       const tx = db.transaction([STORE_LAYERS, STORE_FEATURES], 'readwrite');
       const layersStore = tx.objectStore(STORE_LAYERS);
       const featuresStore = tx.objectStore(STORE_FEATURES);
@@ -107,8 +121,10 @@ export class IndexedDbStore {
         };
       }
       layersStore.delete(layerId);
+      return await awaitTx(tx, true, false);
     } catch (e) {
       console.warn('[IndexedDbStore] Erro ao excluir camada com cascade:', e);
+      return false;
     }
   }
 
@@ -228,6 +244,10 @@ export class IndexedDbStore {
             console.warn('[IndexedDbStore] Falha na transação de deltas:', err);
             resolve(false);
           };
+          tx.onabort = (err) => {
+            console.warn('[IndexedDbStore] Transação de deltas abortada:', err);
+            resolve(false);
+          };
         });
       }
 
@@ -239,34 +259,39 @@ export class IndexedDbStore {
   }
 
   static async executeDeltasChunked(db, toDelete, toUpsert, chunkSize = 10000) {
+    let allOk = true;
     for (let i = 0; i < toDelete.length; i += chunkSize) {
       const slice = toDelete.slice(i, i + chunkSize);
-      await new Promise((resolve) => {
+      const ok = await new Promise((resolve) => {
         const tx = db.transaction(STORE_FEATURES, 'readwrite');
         const store = tx.objectStore(STORE_FEATURES);
         for (let j = 0; j < slice.length; j++) {
           store.delete(slice[j]);
         }
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => resolve();
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
       });
+      if (!ok) allOk = false;
       await yieldToMain();
     }
 
     for (let i = 0; i < toUpsert.length; i += chunkSize) {
       const slice = toUpsert.slice(i, i + chunkSize);
-      await new Promise((resolve) => {
+      const ok = await new Promise((resolve) => {
         const tx = db.transaction(STORE_FEATURES, 'readwrite');
         const store = tx.objectStore(STORE_FEATURES);
         for (let j = 0; j < slice.length; j++) {
           store.put(slice[j]);
         }
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => resolve();
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+        tx.onabort = () => resolve(false);
       });
+      if (!ok) allOk = false;
       await yieldToMain();
     }
-    return true;
+    return allOk;
   }
 
   static async logAudit(entry, projectId = 'projeto_padrao') {

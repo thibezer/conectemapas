@@ -66,7 +66,11 @@ export class GeoWorkerClient {
 
     if (!this.worker) {
       // Fallback síncrono resiliente caso Worker não esteja disponível
-      return Promise.resolve(features.map(f => normalizeFeature(f)));
+      return Promise.resolve(
+        features
+          .map(f => normalizeFeature(f))
+          .filter(f => f && f.coordinates !== null)
+      );
     }
 
     const id = ++this.callIdCounter;

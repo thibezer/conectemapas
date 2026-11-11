@@ -167,7 +167,10 @@ export class FeatureSyncController {
       broadcastCollab = false
     } = options;
 
-    const normalized = featureList.map(raw => normalizeFeature(raw));
+    const normalized = featureList
+      .map(raw => normalizeFeature(raw))
+      .filter(f => f && f.coordinates !== null);
+    if (normalized.length === 0) return [];
 
     if (!skipHistory) {
       app.pushHistory(`${sourceDescription} (${normalized.length} feições)`);
@@ -186,7 +189,11 @@ export class FeatureSyncController {
     // 4. Notificação de Colaboração em lote (se aplicável)
     if (app.collabHub) {
       if (broadcastCollab) {
-        normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+        if (normalized.length > 1 && typeof app.collabHub.notifyFeaturesBatchCreated === 'function') {
+          app.collabHub.notifyFeaturesBatchCreated(normalized);
+        } else {
+          normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+        }
       }
       FeatureSyncController.recordAudit(app, `${sourceDescription} (${normalized.length} feições)`, 'Lote');
     }
@@ -208,7 +215,9 @@ export class FeatureSyncController {
       broadcastCollab = false
     } = options;
 
-    const normalized = await geoWorkerClient.normalizeFeaturesAsync(featureList);
+    const rawNormalized = await geoWorkerClient.normalizeFeaturesAsync(featureList);
+    const normalized = (rawNormalized || []).filter(f => f && f.coordinates !== null);
+    if (normalized.length === 0) return [];
 
     if (!skipHistory) {
       app.pushHistory(`${sourceDescription} (${normalized.length} feições)`);
@@ -227,7 +236,11 @@ export class FeatureSyncController {
     // 4. Notificação de Colaboração em lote (se aplicável)
     if (app.collabHub) {
       if (broadcastCollab) {
-        normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+        if (normalized.length > 1 && typeof app.collabHub.notifyFeaturesBatchCreated === 'function') {
+          app.collabHub.notifyFeaturesBatchCreated(normalized);
+        } else {
+          normalized.forEach(f => app.collabHub.notifyFeatureCreated(f));
+        }
       }
       FeatureSyncController.recordAudit(app, `${sourceDescription} (${normalized.length} feições)`, 'Lote');
     }
@@ -323,7 +336,7 @@ export class FeatureSyncController {
       app.collabHub.notifyFeatureUpdated(updatedFeature);
       const audit = app.collabHub.logAudit(`Editou feição "${updatedFeature.name}"`, updatedFeature.id);
       app.auditLog.unshift(audit);
-      StorageService.logAudit(audit);
+      StorageService.logAudit(audit, app.projectId);
       if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
       app.saveFeature(updatedFeature);
       // Mantém o HUD de seleção sincronizado com a referência mais recente (evita reverter cor ao editar vértices/inspecionar)
@@ -421,7 +434,7 @@ export class FeatureSyncController {
     app.collabHub.notifyFeatureDeleted(featureId);
     const audit = app.collabHub.logAudit(`Excluiu feição "${name}"`, featureId);
     app.auditLog.unshift(audit);
-    StorageService.logAudit(audit);
+    StorageService.logAudit(audit, app.projectId);
     if (app.layerPanel) app.layerPanel.updateAuditLog(app.auditLog);
     app.removeFeature(featureId);
 
@@ -449,9 +462,9 @@ export class FeatureSyncController {
     } else if (type === 'feature:created') {
       if (!data.feature || app.features.some(f => f.id === data.feature.id)) return; // eco/reenvio da mesma feição
       if (StorageService.hasLocalTombstone(data.feature.id, app.projectId)) return;
-      if (StorageService.hasPendingLocalChange(data.feature.id)) return;
+      if (StorageService.hasPendingLocalChange(data.feature.id, app.projectId)) return;
       ShortcutsController.markRemoteTouched(app, [data.feature.id]);
-      const incoming = FeatureVisibility.apply(app.projectId, data.feature);
+      const incoming = FeatureVisibility.apply(app.projectId, normalizeFeature(data.feature));
       app.features.push(incoming);
       app.mapEngine.updateFeature(incoming, app.layers);
       if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
@@ -470,11 +483,11 @@ export class FeatureSyncController {
 
     } else if (type === 'feature:updated') {
       if (!data.feature || StorageService.hasLocalTombstone(data.feature.id, app.projectId)) return;
-      if (StorageService.hasPendingLocalChange(data.feature.id)) return;
+      if (StorageService.hasPendingLocalChange(data.feature.id, app.projectId)) return;
       const idx = app.features.findIndex(f => f.id === data.feature.id);
       if (idx >= 0) {
         ShortcutsController.markRemoteTouched(app, [data.feature.id]);
-        const incoming = FeatureVisibility.apply(app.projectId, data.feature);
+        const incoming = FeatureVisibility.apply(app.projectId, normalizeFeature(data.feature));
         app.features[idx] = incoming;
         app.mapEngine.updateFeature(incoming, app.layers);
         if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
@@ -494,6 +507,66 @@ export class FeatureSyncController {
 
       // Persistência local imediata do expurgo
       StorageService.applyRemoteChangesLocally([], [data.featureId], app.projectId);
+      StorageService.saveMetadata({
+        id: app.projectId,
+        name: app.projectName,
+        basemap: app.currentBasemap,
+        layers: app.layers,
+        featureCount: app.features.length
+      }, { syncCloud: false });
+
+    } else if (type === 'features:batch-created' || type === 'features:batch-updated') {
+      const list = Array.isArray(data.features) ? data.features : [];
+      if (list.length === 0) return;
+      const indexById = new Map(app.features.map((f, i) => [f.id, i]));
+      const tombstones = StorageService.getLocalTombstones(app.projectId);
+      const valid = [];
+      const touchedIds = [];
+      for (const rawFeat of list) {
+        if (!rawFeat || !rawFeat.id) continue;
+        if (tombstones.has(rawFeat.id) || StorageService.hasPendingLocalChange(rawFeat.id, app.projectId)) continue;
+        const normalized = FeatureVisibility.apply(app.projectId, normalizeFeature(rawFeat));
+        const existingIdx = indexById.get(normalized.id);
+        if (existingIdx !== undefined) {
+          app.features[existingIdx] = normalized;
+        } else {
+          indexById.set(normalized.id, app.features.length);
+          app.features.push(normalized);
+        }
+        valid.push(normalized);
+        touchedIds.push(normalized.id);
+      }
+      if (valid.length === 0) return;
+      ShortcutsController.markRemoteTouched(app, touchedIds);
+      app.mapEngine?.renderFeatures?.(app.features, app.layers);
+      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      FeatureSyncController.scheduleLayerPanelRefresh(app);
+      app.updateHUD?.();
+      StorageService.applyRemoteChangesLocally(valid, [], app.projectId);
+      StorageService.saveMetadata({
+        id: app.projectId,
+        name: app.projectName,
+        basemap: app.currentBasemap,
+        layers: app.layers,
+        featureCount: app.features.length
+      }, { syncCloud: false });
+
+    } else if (type === 'features:batch-deleted') {
+      const ids = Array.isArray(data.featureIds) ? data.featureIds.filter(Boolean) : [];
+      if (ids.length === 0) return;
+      const delSet = new Set(ids.filter(id => !StorageService.hasPendingLocalChange(id, app.projectId)));
+      if (delSet.size === 0) return;
+      const validIds = Array.from(delSet);
+      ShortcutsController.markRemoteTouched(app, validIds);
+      app.features = app.features.filter(f => !delSet.has(f.id));
+      for (const delId of validIds) {
+        app.mapEngine?.removeFeature?.(delId);
+        app.layerPanel?.handleSelectedFeatureRemoved?.(delId);
+      }
+      if (app.attributeTable) app.attributeTable.updateData(app.features, app.layers);
+      FeatureSyncController.scheduleLayerPanelRefresh(app);
+      app.updateHUD?.();
+      StorageService.applyRemoteChangesLocally([], validIds, app.projectId);
       StorageService.saveMetadata({
         id: app.projectId,
         name: app.projectName,
@@ -886,7 +959,11 @@ export class FeatureSyncController {
         StorageService.commitDeltasDebounced(undefined, app.projectId);
       }
       if (app.collabHub) {
-        updatedFeats.forEach(uf => app.collabHub.notifyFeatureUpdated(uf));
+        if (updatedFeats.length > 1 && typeof app.collabHub.notifyFeaturesBatchUpdated === 'function') {
+          app.collabHub.notifyFeaturesBatchUpdated(updatedFeats);
+        } else {
+          updatedFeats.forEach(uf => app.collabHub.notifyFeatureUpdated(uf));
+        }
       }
     }
     app.layerPanel?.updateLayers?.(app.getLayersWithCounts?.() || app.layers);

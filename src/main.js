@@ -287,7 +287,7 @@ class ConecteMapasApp {
 
   removeFeature(featureId) {
     if (featureId) {
-      StorageService.deleteFeature(featureId);
+      StorageService.deleteFeature(featureId, this.projectId);
       this.saveMetadata(false);
     }
   }

@@ -129,16 +129,9 @@ export class ProjectActionsController {
           app.mapEngine.zoomToFeature(normalized[0].id);
         }
 
-        // Sincroniza lote importado com o MySQL da Hostinger em segundo plano
-        StorageService.syncProjectToCloudDebounced({
-          id: app.projectId || 'projeto_padrao',
-          name: app.projectName,
-          basemap: app.currentBasemap,
-          layers: app.layers,
-          features: app.features,
-          center: app.mapEngine && app.mapEngine.map ? [app.mapEngine.map.getCenter().lat, app.mapEngine.map.getCenter().lng] : [-23.7661, -53.3206],
-          zoom: app.mapEngine && app.mapEngine.map ? app.mapEngine.map.getZoom() : 14
-        }, 1000);
+        // Sincroniza lote importado via fila de deltas (evita reenviar o projeto inteiro via save_all)
+        StorageService.commitDeltasDebounced(200, app.projectId);
+        app.saveMetadata?.(true);
 
         const modal = document.getElementById('modal-import-export');
         if (modal && modal.fechar) modal.fechar();
@@ -233,12 +226,16 @@ export class ProjectActionsController {
     const layerName = layer ? layer.name : layerId;
     const remainingLayer = app.layers.find(l => l.id !== layerId);
 
+    app.pushHistory?.(`Excluir camada "${layerName}"`);
+
     const movedFeatures = [];
-    app.features.forEach(f => {
+    app.features = app.features.map(f => {
       if (f.layerId === layerId) {
-        f.layerId = remainingLayer.id;
-        movedFeatures.push(f);
+        const updated = { ...f, layerId: remainingLayer.id };
+        movedFeatures.push(updated);
+        return updated;
       }
+      return f;
     });
 
     StorageService.deleteLayer(layerId, remainingLayer.id, app.projectId);
@@ -248,7 +245,12 @@ export class ProjectActionsController {
       FeatureSyncController.recordAudit(app, `Excluiu camada "${layerName}"`, layerId);
     }
     if (movedFeatures.length > 0) {
-      StorageService.queueFeaturesBulkUpsert(movedFeatures, app.projectId);
+      if (typeof app.saveFeaturesBulk === 'function') {
+        app.saveFeaturesBulk(movedFeatures);
+      } else {
+        StorageService.queueFeaturesBulkUpsert(movedFeatures, app.projectId);
+      }
+      app.collabHub?.notifyFeaturesBatchUpdated?.(movedFeatures);
     }
 
     app.layers = app.layers.filter(l => l.id !== layerId);

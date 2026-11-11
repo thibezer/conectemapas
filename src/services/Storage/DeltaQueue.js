@@ -13,76 +13,101 @@ import { LocalStore } from './LocalStore.js';
 import { CLOUD_ENABLED } from './StorageConstants.js';
 import { IndexedDbStore } from './IndexedDbStore.js';
 
-const _dirtyFeatures = new Map();
-const _deletedFeatureIds = new Set();
-let _deltaDebounceTimer = null;
-let _deltaFirstQueuedAt = 0;
+const _queuesByProject = new Map();
+let _defaultProjectId = 'projeto_padrao';
 let _onCommitCallback = null;
 
+function _getQueue(projectId = null, create = false) {
+  const pid = projectId || _defaultProjectId || 'projeto_padrao';
+  let q = _queuesByProject.get(pid);
+  if (!q && create) {
+    q = { dirty: new Map(), deleted: new Set(), timer: null, firstQueuedAt: 0 };
+    _queuesByProject.set(pid, q);
+  }
+  return { pid, q };
+}
+
 export class DeltaQueue {
+  static setCurrentProjectId(projectId) {
+    if (projectId && typeof projectId === 'string') {
+      _defaultProjectId = projectId.trim() || 'projeto_padrao';
+    }
+  }
+
   static setCommitCallback(cb) {
     _onCommitCallback = cb;
   }
 
-  static hasPendingLocalChange(featureId) {
+  static hasPendingLocalChange(featureId, projectId = null) {
     if (!featureId) return false;
-    return _dirtyFeatures.has(featureId) || _deletedFeatureIds.has(featureId);
+    if (projectId) {
+      const { q } = _getQueue(projectId, false);
+      return !!(q && (q.dirty.has(featureId) || q.deleted.has(featureId)));
+    }
+    for (const q of _queuesByProject.values()) {
+      if (q.dirty.has(featureId) || q.deleted.has(featureId)) return true;
+    }
+    return false;
   }
 
-  static queueFeatureUpsert(feature, projectId = 'projeto_padrao') {
+  static queueFeatureUpsert(feature, projectId = null) {
     if (!feature || !feature.id) return;
+    const { pid, q } = _getQueue(projectId, true);
     const compacted = GeoCompressor.compactFeatureForStorage(feature);
-    const item = { ...compacted, projectId };
-    _deletedFeatureIds.delete(feature.id);
-    _dirtyFeatures.set(feature.id, item);
+    const item = { ...compacted, projectId: pid };
+    q.deleted.delete(feature.id);
+    q.dirty.set(feature.id, item);
     // Regravar uma feição excluída antes (ex.: desfazer a exclusão) tira a tombstone local
-    LocalStore.removeLocalTombstone(feature.id, projectId);
-    LocalStore.persistPendingDeltasWithItems([item], [], projectId, projectId);
-    this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
+    LocalStore.removeLocalTombstone(feature.id, pid);
+    LocalStore.persistPendingDeltasWithItems([item], [], pid, pid);
+    this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, pid);
   }
 
-  static queueFeaturesBulkUpsert(features, projectId = 'projeto_padrao') {
+  static queueFeaturesBulkUpsert(features, projectId = null) {
     if (!Array.isArray(features) || features.length === 0) return;
+    const { pid, q } = _getQueue(projectId, true);
     const ids = [];
     const items = [];
     for (let i = 0; i < features.length; i++) {
       const feat = features[i];
       if (feat && feat.id) {
         const compacted = GeoCompressor.compactFeatureForStorage(feat);
-        const item = { ...compacted, projectId };
-        _deletedFeatureIds.delete(feat.id);
-        _dirtyFeatures.set(feat.id, item);
+        const item = { ...compacted, projectId: pid };
+        q.deleted.delete(feat.id);
+        q.dirty.set(feat.id, item);
         ids.push(feat.id);
         items.push(item);
       }
     }
-    LocalStore.removeLocalTombstones(ids, projectId);
+    LocalStore.removeLocalTombstones(ids, pid);
     if (items.length > 0) {
-      LocalStore.persistPendingDeltasWithItems(items, [], projectId, projectId);
+      LocalStore.persistPendingDeltasWithItems(items, [], pid, pid);
     }
-    this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
+    this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, pid);
   }
 
-  static queueFeatureDelete(featureId, projectId = 'projeto_padrao') {
+  static queueFeatureDelete(featureId, projectId = null) {
     if (!featureId) return;
-    _dirtyFeatures.delete(featureId);
-    _deletedFeatureIds.add(featureId);
-    LocalStore.addLocalTombstone(featureId, projectId);
-    LocalStore.persistPendingDeltasWithItems([], [featureId], projectId, projectId);
-    this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, projectId);
+    const { pid, q } = _getQueue(projectId, true);
+    q.dirty.delete(featureId);
+    q.deleted.add(featureId);
+    LocalStore.addLocalTombstone(featureId, pid);
+    LocalStore.persistPendingDeltasWithItems([], [featureId], pid, pid);
+    this.commitDeltasDebounced(DELTA_DEBOUNCE_MS, pid);
   }
 
-  static async queueFeaturesBulkDelete(featureIds, projectId = 'projeto_padrao') {
+  static async queueFeaturesBulkDelete(featureIds, projectId = null) {
     if (!Array.isArray(featureIds) || featureIds.length === 0) return;
+    const { pid, q } = _getQueue(projectId, true);
     for (let i = 0; i < featureIds.length; i++) {
       const id = featureIds[i];
       if (id) {
-        _dirtyFeatures.delete(id);
-        _deletedFeatureIds.add(id);
+        q.dirty.delete(id);
+        q.deleted.add(id);
       }
     }
-    LocalStore.addLocalTombstones(featureIds, projectId);
-    LocalStore.persistPendingDeltasWithItems([], featureIds, projectId, projectId);
+    LocalStore.addLocalTombstones(featureIds, pid);
+    LocalStore.persistPendingDeltasWithItems([], featureIds, pid, pid);
 
     try {
       const db = await IndexedDbStore.getDB();
@@ -102,68 +127,101 @@ export class DeltaQueue {
       console.warn('[DeltaQueue] Erro ao deletar lote do IndexedDB:', e);
     }
 
-    this.commitDeltasDebounced(100, projectId);
+    this.commitDeltasDebounced(100, pid);
   }
 
-  static commitDeltasDebounced(delayMs = DELTA_DEBOUNCE_MS, projectId = 'projeto_padrao') {
+  static commitDeltasDebounced(delayMs = DELTA_DEBOUNCE_MS, projectId = null) {
+    const { pid, q } = _getQueue(projectId, true);
     const now = Date.now();
-    if (!_deltaFirstQueuedAt) _deltaFirstQueuedAt = now;
-    if (_deltaDebounceTimer) clearTimeout(_deltaDebounceTimer);
+    if (!q.firstQueuedAt) q.firstQueuedAt = now;
+    if (q.timer) clearTimeout(q.timer);
 
-    const maxWaitLeft = Math.max(0, DELTA_MAX_WAIT_MS - (now - _deltaFirstQueuedAt));
-    _deltaDebounceTimer = setTimeout(() => {
-      _deltaDebounceTimer = null;
-      this.commitDeltas(projectId);
+    const maxWaitLeft = Math.max(0, DELTA_MAX_WAIT_MS - (now - q.firstQueuedAt));
+    q.timer = setTimeout(() => {
+      q.timer = null;
+      this.commitDeltas(pid);
     }, Math.min(delayMs, maxWaitLeft));
   }
 
-  static async commitDeltas(projectId = 'projeto_padrao') {
-    _deltaFirstQueuedAt = 0;
-    if (_deltaDebounceTimer) {
-      clearTimeout(_deltaDebounceTimer);
-      _deltaDebounceTimer = null;
+  static async commitDeltas(projectId = null, options = {}) {
+    const { pid, q } = _getQueue(projectId, false);
+    if (!q) return true;
+
+    q.firstQueuedAt = 0;
+    if (q.timer) {
+      clearTimeout(q.timer);
+      q.timer = null;
     }
 
-    if (_dirtyFeatures.size === 0 && _deletedFeatureIds.size === 0) {
+    if (q.dirty.size === 0 && q.deleted.size === 0) {
       return true;
     }
 
-    const toUpsert = Array.from(_dirtyFeatures.values());
-    const toDelete = Array.from(_deletedFeatureIds);
-    _dirtyFeatures.clear();
-    _deletedFeatureIds.clear();
+    const toUpsert = Array.from(q.dirty.values());
+    const toDelete = Array.from(q.deleted);
+    q.dirty.clear();
+    q.deleted.clear();
 
+    let cloudPromise = null;
     if (typeof _onCommitCallback === 'function') {
-      _onCommitCallback(toUpsert, toDelete, projectId);
+      cloudPromise = Promise.resolve(_onCommitCallback(toUpsert, toDelete, pid)).catch(() => false);
     }
 
-    const ok = await IndexedDbStore.commitDeltasToDb(toUpsert, toDelete);
+    const dbPromise = IndexedDbStore.commitDeltasToDb(toUpsert, toDelete);
+    const ok = options && options.waitForCloud && cloudPromise
+      ? (await Promise.all([dbPromise, cloudPromise]))[0]
+      : await dbPromise;
+
     // No modo local (sem backend em nuvem), o IndexedDB é o destino final: evita acúmulo infinito em cm_pending_deltas_
     if (ok && !CLOUD_ENABLED && (toUpsert.length > 0 || toDelete.length > 0)) {
       LocalStore.removeConfirmedDeltas(
         toUpsert,
         toDelete,
-        projectId,
-        projectId,
-        (id) => this.hasPendingLocalChange(id)
+        pid,
+        pid,
+        (id) => this.hasPendingLocalChange(id, pid)
       );
     }
     return ok;
   }
 
   /** Esquece o que está na fila sem gravar (projeto excluído). */
-  static discardPending(projectId = 'projeto_padrao') {
-    this.cancelTimers();
-    _dirtyFeatures.clear();
-    _deletedFeatureIds.clear();
-    LocalStore.clearPendingDeltas(projectId, projectId);
+  static discardPending(projectId = null) {
+    if (!projectId) {
+      for (const [pid, q] of _queuesByProject.entries()) {
+        if (q.timer) clearTimeout(q.timer);
+        LocalStore.clearPendingDeltas(pid, pid);
+      }
+      _queuesByProject.clear();
+      LocalStore.clearPendingDeltas(_defaultProjectId, _defaultProjectId);
+      return;
+    }
+    const { pid, q } = _getQueue(projectId, false);
+    if (q) {
+      if (q.timer) clearTimeout(q.timer);
+      _queuesByProject.delete(pid);
+    }
+    LocalStore.clearPendingDeltas(pid, pid);
   }
 
-  static cancelTimers() {
-    if (_deltaDebounceTimer) {
-      clearTimeout(_deltaDebounceTimer);
-      _deltaDebounceTimer = null;
+  static cancelTimers(projectId = null) {
+    if (!projectId) {
+      for (const q of _queuesByProject.values()) {
+        if (q.timer) {
+          clearTimeout(q.timer);
+          q.timer = null;
+        }
+        q.firstQueuedAt = 0;
+      }
+      return;
     }
-    _deltaFirstQueuedAt = 0;
+    const { q } = _getQueue(projectId, false);
+    if (q) {
+      if (q.timer) {
+        clearTimeout(q.timer);
+        q.timer = null;
+      }
+      q.firstQueuedAt = 0;
+    }
   }
 }
