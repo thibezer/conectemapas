@@ -579,6 +579,7 @@ export class AppComponentsBuilder {
           app.saveMetadata(true);
         }
       },
+      onLayerLockToggle: (layerId, isLocked) => FeatureSyncController.toggleLayerLock(app, layerId, isLocked),
       onLayerDelete: (layerId) => ProjectActionsController.deleteLayer(app, layerId),
       onLayerFit: (layerId) => app.mapEngine.fitLayer(layerId),
       onAddLayer: () => ProjectActionsController.openNewLayerModal(app),

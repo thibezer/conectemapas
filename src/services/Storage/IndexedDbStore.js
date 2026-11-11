@@ -13,6 +13,7 @@ import {
 } from './StorageConstants.js';
 import { LocalStore } from './LocalStore.js';
 import { IndexedDbSchema } from './IndexedDbSchema.js';
+import { CLOUD_ENABLED } from './StorageConstants.js';
 
 /** Acima disto a cópia local é considerada defasada/perigosa e é rebaixada da nuvem. */
 const OVERSIZED_LOCAL_CACHE = 50000;
@@ -327,6 +328,10 @@ export class IndexedDbStore {
    */
   static async discardOversizedCache(db, projectId) {
     try {
+      // Sem nuvem configurada (modo local de testes) ou offline, o IndexedDB é a única cópia dos dados: nunca descartar
+      if (!CLOUD_ENABLED) return false;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+
       const total = await new Promise((resolve) => {
         const tx = db.transaction(STORE_FEATURES, 'readonly');
         const req = tx.objectStore(STORE_FEATURES).index('projectId').count(IDBKeyRange.only(projectId));

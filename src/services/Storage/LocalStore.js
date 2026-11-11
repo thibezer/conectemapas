@@ -292,16 +292,23 @@ export class LocalStore {
     const batches = Array.from(_queuedPendingWrites.entries());
     _queuedPendingWrites.clear();
     for (const [projectId, q] of batches) {
+      const key = PENDING_DELTAS_KEY_PREFIX + projectId;
+      let merged = null;
       try {
-        const key = PENDING_DELTAS_KEY_PREFIX + projectId;
-        const merged = this.mergeDeltas(this.readPendingDeltas(projectId), Array.from(q.upsert.values()), Array.from(q.del));
+        merged = this.mergeDeltas(this.readPendingDeltas(projectId), Array.from(q.upsert.values()), Array.from(q.del));
         if (merged.dirty.length === 0 && merged.deleted.length === 0) {
           localStorage.removeItem(key);
         } else {
           localStorage.setItem(key, JSON.stringify(merged));
         }
         this.refreshOfflinePendingCache(projectId, projectId, merged);
-      } catch {}
+      } catch (err) {
+        if (merged) {
+          // Mantém o rastreamento em memória mesmo se o localStorage atingir cota máxima
+          this.refreshOfflinePendingCache(projectId, projectId, merged);
+        }
+        console.warn('[LocalStore] Falha ao persistir pendências em localStorage:', err?.name || err);
+      }
     }
   }
 

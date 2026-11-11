@@ -132,7 +132,8 @@ export class AppBootstrapSync {
 
           // Respeita Regra 1 do GEMINI.md: array vazio [] se o projeto estiver limpo
           FeatureVisibility.seedIfMissing(app.projectId, saved.features);
-          app.features = FeatureVisibility.applyAll(app.projectId, cleanedFeatures.map(normalizeFeature));
+          const visibleFeatures = FeatureVisibility.applyAll(app.projectId, cleanedFeatures.map(normalizeFeature));
+          app.features = this._mergePendingSessionFeatures(app, visibleFeatures);
           // O desenho é síncrono e pesado: deixa o aviso pintar antes de travar a thread
           if (LoadingOverlay.announceDrawing(app.features.length)) await LoadingOverlay.nextPaint();
           app.refreshMapAndTable(true);
@@ -298,9 +299,10 @@ export class AppBootstrapSync {
 
       if (Array.isArray(cloudData.features)) {
         const tombstones = StorageService.getLocalTombstones(app.projectId);
-        app.features = FeatureVisibility.applyAll(app.projectId, cloudData.features
+        const visibleCloud = FeatureVisibility.applyAll(app.projectId, cloudData.features
           .filter(f => !tombstones.has(f.id))
           .map(normalizeFeature));
+        app.features = this._mergePendingSessionFeatures(app, visibleCloud, tombstones);
         // Substituição completa pela nuvem: o histórico local não vale mais (restauraria feições antigas)
         app.historyUndo = [];
         app.historyRedo = [];
@@ -445,8 +447,9 @@ export class AppBootstrapSync {
           app._cloudSyncBackoff = ACTIVE_INTERVAL_MS;
 
           // Auto-cura contínua: se o servidor tem feições mas o cliente está com 0 feições locais
-          if (changes.project && typeof changes.project.featureCount === 'number' && changes.project.featureCount > 0 && app.features.length === 0) {
-            console.warn(`[AppBootstrapSync] Auto-cura ativada: servidor tem ${changes.project.featureCount} feições e local está com 0. Re-hidratando...`);
+          const serverFeatureCount = changes.project ? (changes.project.feature_count ?? changes.project.featureCount) : null;
+          if (typeof serverFeatureCount === 'number' && serverFeatureCount > 0 && app.features.length === 0) {
+            console.warn(`[AppBootstrapSync] Auto-cura ativada: servidor tem ${serverFeatureCount} feições e local está com 0. Re-hidratando...`);
             await this.hydrateFromCloud(app);
           }
 
@@ -615,5 +618,39 @@ export class AppBootstrapSync {
         }
       });
     }
+  }
+
+  /**
+   * Preserva feições com alterações locais pendentes feitas enquanto loadStateAsync
+   * ou hydrateFromCloud estava em execução (ex.: após releaseTimer de 5s) e filtra tombstones locais.
+   */
+  static _mergePendingSessionFeatures(app, baseFeatures, tombstones = null) {
+    const hasTombstoneFn = typeof StorageService?.getLocalTombstones === 'function';
+    const hasPendingFn = typeof StorageService?.hasPendingLocalChange === 'function';
+    const delSet = tombstones || (hasTombstoneFn && app?.projectId ? StorageService.getLocalTombstones(app.projectId) : new Set());
+
+    const resolved = Array.isArray(baseFeatures)
+      ? baseFeatures.filter(f => f && f.id && !delSet.has(f.id))
+      : [];
+
+    const current = Array.isArray(app?.features) ? app.features : [];
+    if (current.length === 0 || !hasPendingFn) return resolved;
+
+    const indexById = new Map();
+    for (let i = 0; i < resolved.length; i++) {
+      indexById.set(resolved[i].id, i);
+    }
+
+    for (const localFeat of current) {
+      if (!localFeat?.id || delSet.has(localFeat.id)) continue;
+      if (!StorageService.hasPendingLocalChange(localFeat.id)) continue;
+      if (indexById.has(localFeat.id)) {
+        resolved[indexById.get(localFeat.id)] = localFeat;
+      } else {
+        indexById.set(localFeat.id, resolved.length);
+        resolved.push(localFeat);
+      }
+    }
+    return resolved;
   }
 }

@@ -136,10 +136,9 @@ function getDatabaseConnection() {
 // 3. Auto-Migração do Esquema Relacional (DDL Idempotente)
 // A versão do esquema fica gravada em disco para que as requisições de alta frequência
 // (pull_changes a cada ~1s por operador) não executem DDL/SHOW COLUMNS a cada chamada.
-define('CM_SCHEMA_VERSION', 9);
+define('CM_SCHEMA_VERSION', 10);
 define('CM_SCHEMA_MARKER', __DIR__ . '/.cm_schema_version');
 define('CM_APP_VERSION_FILE', __DIR__ . '/.cm_app_version');
-define('CM_FORCE_RELOAD_FILE', __DIR__ . '/.cm_force_reload');
 
 function getAppVersion() {
     $ver = @file_get_contents(CM_APP_VERSION_FILE);
@@ -150,9 +149,11 @@ function getAppVersion() {
     return $ver;
 }
 
-function getForceReloadEpoch() {
-    $raw = @file_get_contents(CM_FORCE_RELOAD_FILE);
-    return $raw !== false ? (int)trim($raw) : 0;
+function getProjectForceReloadEpoch(PDO $pdo, $projectId) {
+    $stmt = $pdo->prepare("SELECT force_reload_epoch FROM cm_projects WHERE id = ?");
+    $stmt->execute([$projectId]);
+    $val = $stmt->fetchColumn();
+    return $val !== false ? (int)$val : 0;
 }
 
 function columnExists(PDO $pdo, $table, $column) {
@@ -181,6 +182,7 @@ function ensureDatabaseSchema(PDO $pdo) {
             center_lng DOUBLE DEFAULT -53.3206,
             zoom INT DEFAULT 14,
             feature_count INT DEFAULT 0,
+            force_reload_epoch BIGINT NOT NULL DEFAULT 0,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -407,6 +409,11 @@ function ensureDatabaseSchema(PDO $pdo) {
             PRIMARY KEY (project_id, id),
             INDEX idx_chat_rev (project_id, rev)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+        // v10: Epoch de força de reload isolado por projeto (evita DoS cross-tenant)
+        if (!columnExists($pdo, 'cm_projects', 'force_reload_epoch')) {
+            $pdo->exec("ALTER TABLE cm_projects ADD COLUMN force_reload_epoch BIGINT NOT NULL DEFAULT 0;");
+        }
     } catch (Exception $e) {
         // Mantém a API operante; a migração será tentada novamente na próxima requisição
         return;
@@ -498,7 +505,8 @@ function upsertChangedLayers(PDO $pdo, $projectId, array $layers, $clientId, $re
         // Camada excluída não ressuscita por cópia defasada de outro operador
         if ($existing && (int)$existing['deleted'] === 1) continue;
         $lname = $layer['name'] ?? 'Camada';
-        $lcolor = $layer['color'] ?? '#00E08A';
+        $rawColor = is_string($layer['color'] ?? null) ? trim($layer['color']) : '';
+        $lcolor = preg_match('/^#[0-9a-fA-F]{3,8}$/', $rawColor) ? $rawColor : '#00E08A';
         $ltype = $layer['type'] ?? 'custom';
         $lvis = isset($layer['visible']) && !$layer['visible'] ? 0 : 1;
         $lopac = isset($layer['opacity']) ? (float)$layer['opacity'] : 1.0;
@@ -899,11 +907,12 @@ switch ($action) {
     // ACTION: LIST_PROJECTS (Listar Projetos na Nuvem)
     // --------------------------------------------------------------------------
     case 'list_projects':
-        // Projetos protegidos nunca são listados: só quem tem o link os alcança
+        // Projetos protegidos (por link/senha ou por membros) nunca são listados
         $stmt = $pdo->query("
             SELECT id, name, description, basemap, feature_count, updated_at
             FROM cm_projects
             WHERE NOT EXISTS (SELECT 1 FROM cm_access a WHERE a.project_id = cm_projects.id)
+              AND NOT EXISTS (SELECT 1 FROM cm_members m WHERE m.project_id = cm_projects.id)
             ORDER BY updated_at DESC
         ");
         $list = $stmt->fetchAll();
@@ -1879,14 +1888,14 @@ switch ($action) {
                 'presence'         => $presence,
                 'role'             => $accessRole,
                 'appVersion'       => getAppVersion(),
-                'forceReloadEpoch' => getForceReloadEpoch()
+                'forceReloadEpoch' => getProjectForceReloadEpoch($pdo, $projectId)
             ]);
             exit;
         }
 
         // 2. Leitura em snapshot consistente: tudo com rev <= projRev já está commitado
         $pdo->beginTransaction();
-        $stmtRev = $pdo->prepare("SELECT rev, name, basemap, feature_count, updated_at FROM cm_projects WHERE id = ?");
+        $stmtRev = $pdo->prepare("SELECT rev, name, basemap, feature_count, updated_at, force_reload_epoch FROM cm_projects WHERE id = ?");
         $stmtRev->execute([$projectId]);
         $projectRow = $stmtRev->fetch();
         $projRev = $projectRow ? (int)$projectRow['rev'] : 0;
@@ -2017,7 +2026,7 @@ switch ($action) {
             'success'          => true,
             'serverTime'       => date('Y-m-d H:i:s'),
             'appVersion'       => getAppVersion(),
-            'forceReloadEpoch' => getForceReloadEpoch(),
+            'forceReloadEpoch' => $projectRow ? (int)$projectRow['force_reload_epoch'] : 0,
             'rev'              => $projRev,
             'cursor'     => $cursor,
             'hasMore'    => $hasMore,
@@ -2545,7 +2554,7 @@ switch ($action) {
         }
 
     // --------------------------------------------------------------------------
-    // ACTION: FORCE_RELOAD (Dispara recarregamento remoto em todos os clientes ativos)
+    // ACTION: FORCE_RELOAD (Dispara recarregamento remoto apenas no projeto alvo)
     // --------------------------------------------------------------------------
     case 'force_reload':
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') denyAccess(405, 'bad_method', 'Método inválido');
@@ -2553,7 +2562,16 @@ switch ($action) {
         $projectId = cleanProjectId($body['projectId'] ?? 'projeto_padrao');
         requireRole($pdo, $projectId, 'editor');
         $epoch = (int)round(microtime(true) * 1000);
-        @file_put_contents(CM_FORCE_RELOAD_FILE, (string)$epoch);
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare("INSERT IGNORE INTO cm_projects (id) VALUES (?)")->execute([$projectId]);
+            assertProjectNotDeleted($pdo, $projectId, true);
+            $pdo->prepare("UPDATE cm_projects SET force_reload_epoch = ? WHERE id = ?")->execute([$epoch, $projectId]);
+            $pdo->commit();
+        } catch (Exception $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
         echo json_encode([
             'success'          => true,
             'forceReloadEpoch' => $epoch,

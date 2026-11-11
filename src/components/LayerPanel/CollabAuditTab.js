@@ -31,13 +31,18 @@ export class CollabAuditTab {
     return isToday ? entry.timestamp : `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${entry.timestamp}`;
   }
 
+  static sanitizeCssColor(raw, fallback = '#00E08A') {
+    const val = typeof raw === 'string' ? raw.trim() : '';
+    return /^#[0-9a-f]{3,8}$/i.test(val) ? val : fallback;
+  }
+
   static renderMessage(panel, msg) {
     const selfId = panel.app?.collabHub?.currentUser?.id;
     const isSelf = !!(selfId && msg.user?.id === selfId);
     const rawName = (msg.user?.displayName || msg.user?.name || 'Operador').replace(/\s*\(você\)$/i, '');
     const displayUser = isSelf ? `${rawName} (você)` : rawName.replace(/^Você\s*\(Operador\)$/i, 'Operador');
     const safeUser = panel.escapeHtml(displayUser);
-    const safeColor = panel.escapeHtml(msg.user?.color || 'var(--cm-primary)');
+    const safeColor = this.sanitizeCssColor(msg.user?.color, 'var(--cm-primary)');
     const safeText = panel.escapeHtml(msg.text || '');
     const safeTime = panel.escapeHtml(msg.timestamp || '');
     return `
@@ -66,7 +71,7 @@ export class CollabAuditTab {
       const rawName = (m.displayName || m.name || 'Operador').replace(/\s*\(você\)$/i, '').replace(/^Você\s*\(Operador\)$/i, 'Operador');
       const label = isSelf ? `${rawName} (você)` : rawName;
       const initial = (rawName.trim()[0] || 'U').toUpperCase();
-      const color = panel.escapeHtml(m.color || '#00E08A');
+      const color = this.sanitizeCssColor(m.color, '#00E08A');
       const role = panel.escapeHtml(m.role || 'Editor');
       const hasCoords = !isSelf && Number.isFinite(m.lat) && Number.isFinite(m.lng);
       return `

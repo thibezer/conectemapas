@@ -10,6 +10,7 @@ import {
   DELTA_MAX_WAIT_MS
 } from './StorageConstants.js';
 import { LocalStore } from './LocalStore.js';
+import { CLOUD_ENABLED } from './StorageConstants.js';
 import { IndexedDbStore } from './IndexedDbStore.js';
 
 const _dirtyFeatures = new Map();
@@ -136,7 +137,18 @@ export class DeltaQueue {
       _onCommitCallback(toUpsert, toDelete, projectId);
     }
 
-    return await IndexedDbStore.commitDeltasToDb(toUpsert, toDelete);
+    const ok = await IndexedDbStore.commitDeltasToDb(toUpsert, toDelete);
+    // No modo local (sem backend em nuvem), o IndexedDB é o destino final: evita acúmulo infinito em cm_pending_deltas_
+    if (ok && !CLOUD_ENABLED && (toUpsert.length > 0 || toDelete.length > 0)) {
+      LocalStore.removeConfirmedDeltas(
+        toUpsert,
+        toDelete,
+        projectId,
+        projectId,
+        (id) => this.hasPendingLocalChange(id)
+      );
+    }
+    return ok;
   }
 
   /** Esquece o que está na fila sem gravar (projeto excluído). */

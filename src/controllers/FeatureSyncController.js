@@ -856,4 +856,45 @@ export class FeatureSyncController {
       }
     }
   }
+
+  /**
+   * Bloqueia ou desbloqueia uma camada e todas as suas feições de forma persistente,
+   * imutável e sincronizada (histórico, lote local/IDB, mapa e colaboração).
+   */
+  static toggleLayerLock(app, layerId, isLocked) {
+    const layer = (app?.layers || []).find(l => l && l.id === layerId);
+    if (!layer) return [];
+    const locked = !!isLocked;
+    app.pushHistory?.(`${locked ? 'Bloquear' : 'Desbloquear'} camada "${layer.name || layerId}"`);
+    layer.locked = locked;
+    const updatedFeats = [];
+    if (Array.isArray(app.features)) {
+      app.features = app.features.map((f) => {
+        if (!f || f.layerId !== layerId || !!f.locked === locked) return f;
+        const nextFeat = { ...f, locked };
+        updatedFeats.push(nextFeat);
+        return nextFeat;
+      });
+    }
+    if (updatedFeats.length > 0) {
+      app.mapEngine?.renderFeatures?.(app.features, app.layers);
+      app.attributeTable?.setData?.(app.features);
+      if (typeof app.saveFeaturesBulk === 'function') {
+        app.saveFeaturesBulk(updatedFeats);
+      } else {
+        StorageService.queueFeaturesBulkUpsert(updatedFeats, app.projectId);
+        StorageService.commitDeltasDebounced(undefined, app.projectId);
+      }
+      if (app.collabHub) {
+        updatedFeats.forEach(uf => app.collabHub.notifyFeatureUpdated(uf));
+      }
+    }
+    app.layerPanel?.updateLayers?.(app.getLayersWithCounts?.() || app.layers);
+    app.layerPanel?.updateFeatures?.(app.features);
+    StorageService.saveLayer(layer, app.projectId);
+    if (app.collabHub) app.collabHub.notifyLayerUpdated(layer);
+    app.saveMetadata?.(true);
+    app.updateHUD?.();
+    return updatedFeats;
+  }
 }

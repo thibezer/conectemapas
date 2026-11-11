@@ -65,6 +65,7 @@ export class GeoCompressor {
     if (feat.description) compacted.description = feat.description;
     if (feat.radius) compacted.radius = feat.radius;
     if (feat.locked) compacted.locked = true;
+    if (feat.status) compacted.status = feat.status;
     if (feat.visible !== undefined) compacted.visible = feat.visible;
     if (feat.createdBy) compacted.createdBy = feat.createdBy;
     if (feat.createdAt) compacted.createdAt = feat.createdAt;

@@ -51,6 +51,7 @@ export class LayerPanel {
     this.onFeatureToggle = options.onFeatureToggle || (() => {});
     this.onFeatureSelect = options.onFeatureSelect || (() => {});
     this.onFeatureLockToggle = options.onFeatureLockToggle || (() => {});
+    this.onLayerLockToggle = options.onLayerLockToggle || (() => {});
     this.onBulkDelete = options.onBulkDelete || (() => {});
     this.onBulkUpdate = options.onBulkUpdate || (() => {});
     this.onFeaturesReorder = options.onFeaturesReorder || (() => {});

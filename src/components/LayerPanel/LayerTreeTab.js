@@ -131,13 +131,8 @@ export class LayerTreeTab {
     // Bloqueio de Camada
     el.addEventListener('ui-camada-bloqueio', (e) => {
       const { camadaId, bloqueado } = e.detail || {};
-      const layer = panel.layers.find(l => l.id === camadaId);
-      if (layer) {
-        layer.locked = bloqueado;
-        panel.features.forEach(f => {
-          if (f.layerId === camadaId) f.locked = bloqueado;
-        });
-      }
+      if (!camadaId) return;
+      panel.onLayerLockToggle(camadaId, !!bloqueado);
     });
 
     // Opacidade da Camada

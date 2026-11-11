@@ -739,13 +739,16 @@ export class DrawingToolbar {
     } else {
       list.innerHTML = layers.map(layer => {
         const isSelected = layer.id === this.activeLayer?.id;
+        const safeColor = /^#[0-9a-f]{3,8}$/i.test(String(layer.color || '').trim())
+          ? String(layer.color).trim()
+          : '#00E08A';
         return `
           <div class="cm-layer-dropdown-item ${isSelected ? 'cm-layer-dropdown-item--active' : ''}" 
                data-layer-id="${this._esc(layer.id)}" 
                title="${this._esc(layer.name)}" 
                role="option" 
                aria-selected="${isSelected}">
-            <span class="cm-layer-dropdown-dot" style="background: ${layer.color || '#00E08A'};"></span>
+            <span class="cm-layer-dropdown-dot" style="background: ${safeColor};"></span>
             <span class="cm-layer-dropdown-name">${this._esc(layer.name)}</span>
             ${isSelected ? '<svg class="cm-layer-dropdown-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
           </div>
