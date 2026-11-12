@@ -94,7 +94,7 @@ Options -Indexes +FollowSymLinks
   Header always set Permissions-Policy "geolocation=(self), camera=(), microphone=()"
 
   # CSP permissivo para provedores de tiles (Google Maps, Esri, OSM, OpenTopoMap) e fontes Google
-  Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://mt1.google.com https://*.google.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://images.unsplash.com; connect-src 'self' blob: data: https://*; worker-src 'self' blob:;"
+  Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://mt1.google.com https://*.google.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://images.unsplash.com; connect-src 'self' blob: data: https://*.google.com https://*.arcgisonline.com https://*.tile.openstreetmap.org https://*.tile.opentopomap.org https://images.unsplash.com; worker-src 'self' blob:;"
 
   # Cache imutável para a pasta de assets gerados pelo build do Vite
   <FilesMatch "\.(js|css|woff2|svg|png|jpg|webp)$">

@@ -33,7 +33,7 @@ export class PrintAtlasBar {
 
             <span class="cm-atlas-page-indicator">
               <strong data-atlas-cur>${total ? curIdx : 0}</strong> / <span data-atlas-total>${total}</span>:
-              <span class="cm-atlas-feat-name" data-atlas-name>${curFeat ? (curFeat.name || curFeat.id) : '(Nenhuma feição)'}</span>
+              <span class="cm-atlas-feat-name" data-atlas-name>${curFeat ? String(curFeat.name || curFeat.id).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])) : '(Nenhuma feição)'}</span>
             </span>
 
             <button type="button" class="cm-atlas-btn cm-atlas-btn-icon" data-atlas-nav="next" title="Próxima feição" ${curIdx >= total ? 'disabled' : ''}>

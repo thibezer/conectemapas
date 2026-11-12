@@ -634,10 +634,10 @@ function executeFeaturesUpsertBatch(PDO $pdo, array $features, $projectId, $rev,
                 if (executeFeatureUpsert($stmtSingle, $feat, $projectId, $rev, $clientId)) {
                     $upsertCount++;
                 } else {
-                    $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $stmtSingle->errorInfo()];
+                    $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => safeDetail(new RuntimeException(implode(' | ', array_map('strval', $stmtSingle->errorInfo()))))];
                 }
             } catch (Exception $e) {
-                $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $e->getMessage()];
+                $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => safeDetail($e)];
             }
             continue;
         }
@@ -686,10 +686,10 @@ function executeFeaturesUpsertBatch(PDO $pdo, array $features, $projectId, $rev,
                 if (executeFeatureUpsert($stmtSingle, $feat, $projectId, $rev, $clientId)) {
                     $upsertCount++;
                 } else {
-                    $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $stmtSingle->errorInfo()];
+                    $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => safeDetail(new RuntimeException(implode(' | ', array_map('strval', $stmtSingle->errorInfo()))))];
                 }
             } catch (Exception $e) {
-                $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => $e->getMessage()];
+                $upsertErrors[] = ['id' => $feat['id'] ?? null, 'error' => safeDetail($e)];
             }
         }
     }

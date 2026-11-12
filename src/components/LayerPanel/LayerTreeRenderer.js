@@ -265,7 +265,7 @@ export class LayerTreeRenderer {
             <div class="cm-ai-footer-move-wrapper ${!hasSelection ? 'disabled' : ''}" title="Mover selecionados para outra camada">
               <select id="select-footer-move-layer" class="cm-ai-footer-select" ${!hasSelection ? 'disabled' : ''}>
                 <option value="" disabled selected>📁</option>
-                ${panel.layers.map(l => `<option value="${l.id}">${l.name}</option>`).join('')}
+                ${panel.layers.map(l => `<option value="${panel.escapeHtml(l.id || '')}">${panel.escapeHtml(l.name || 'Camada')}</option>`).join('')}
               </select>
             </div>
             <ui-botao-primario inline variante="primary" id="btn-footer-new-layer" title="Criar Nova Camada" style="height: 22px; width: 22px; padding: 0; min-width: 22px;">
