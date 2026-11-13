@@ -1003,3 +1003,87 @@ body.cm-modo-pranchas [data-ptb-action="sheet:delete"],
 body.cm-modo-pranchas #cm-ptb-menu-sheets .cm-ptb-menu-divider {
   display: none !important;
 }
+
+/* ==========================================================================
+   Modo Desenho-Criação na folha, Editor Inline e Barra de Escala Avançada
+   ========================================================================== */
+#cm-paper-sheet.cm-placement-active {
+  cursor: crosshair;
+}
+
+.cm-placement-ghost {
+  position: absolute;
+  border: 1.5px dashed #0284c7;
+  background: rgba(56, 189, 248, 0.14);
+  pointer-events: none;
+  z-index: 250;
+  box-sizing: border-box;
+}
+
+.cm-stb-btn.is-placing {
+  background: rgba(14, 165, 233, 0.25);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.cm-inline-text-editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid #0284c7;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111827;
+  padding: 4px;
+  resize: none;
+  outline: none;
+  z-index: 260;
+  line-height: 1.3;
+}
+
+.cm-item-scale-bar--nobox {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.cm-scale-bar-title {
+  font-size: 7.5px;
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.cm-scale-bar-seg-double {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-right: 0.5px solid #000;
+  box-sizing: border-box;
+}
+
+.cm-scale-bar-seg-double > span {
+  flex: 1;
+  display: block;
+}
+
+.cm-scale-bar-ticks-base {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-bottom: 1.5px solid #000;
+  box-sizing: border-box;
+}
+
+.cm-scale-bar-ticks-base > i {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 100%;
+  transform: translateX(-0.5px);
+}
+
+.cm-item-scale-bar--line_ticks .cm-scale-bar-ruler {
+  border: none !important;
+}

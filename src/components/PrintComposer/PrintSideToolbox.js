@@ -101,8 +101,24 @@ export class PrintSideToolbox {
 
       const insertType = btn.dataset.stbInsert;
       if (insertType) {
-        composer.insertItem(insertType);
+        if (e.shiftKey && typeof composer.setPlacementTool === 'function') {
+          const next = composer.canvasEngine?.placementType === insertType ? null : insertType;
+          composer.setPlacementTool(next);
+        } else {
+          composer.insertItem(insertType);
+        }
       }
+    });
+  }
+
+  static updateActivePlacementTool(composer) {
+    const toolbox = document.getElementById('cm-print-side-toolbox');
+    if (!toolbox) return;
+    const active = composer.canvasEngine?.placementType || null;
+    toolbox.querySelectorAll('[data-stb-insert]').forEach(btn => {
+      const match = active && btn.dataset.stbInsert === active;
+      btn.classList.toggle('is-placing', !!match);
+      btn.setAttribute('aria-pressed', String(!!match));
     });
   }
 

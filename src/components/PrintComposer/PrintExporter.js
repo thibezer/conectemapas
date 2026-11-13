@@ -254,9 +254,9 @@ export class PrintExporter {
       } else if (item.type === 'legend') {
         this.drawLegendItem(ctx, item, x, y, w, h, composer, scaleFactor);
       } else if (item.type === 'shape') {
-        this.drawShapeItem(ctx, item, x, y, w, h);
+        this.drawShapeItem(ctx, item, x, y, w, h, scaleFactor);
       } else if (item.type === 'image') {
-        await this.drawImageItem(ctx, item, x, y, w, h);
+        await this.drawImageItem(ctx, item, x, y, w, h, scaleFactor);
       } else if (item.type === 'label') {
         this.drawLabelItem(ctx, item, x, y, w, h, composer, scaleFactor);
       }
@@ -529,7 +529,8 @@ export class PrintExporter {
    * (PrintItemsManager.northArrowModel), centrado e na escala do menor lado do item.
    */
   static drawNorthArrowItem(ctx, item, x, y, w, h) {
-    const model = PrintItemsManager.northArrowModel(item.arrowStyle || 'classic');
+    const color = PrintItemsManager.sanitizeColor(item.color, '#000000');
+    const model = PrintItemsManager.northArrowModel(item.arrowStyle || 'classic', color);
     const u = Math.min(w, h) / 100;
     ctx.save();
     ctx.translate(x + w / 2, y + h / 2);
@@ -537,7 +538,7 @@ export class PrintExporter {
     const px = (v) => (v - 50) * u;
 
     model.circles.forEach(c => {
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = color;
       ctx.lineWidth = c.w * u;
       if (typeof ctx.setLineDash === 'function') ctx.setLineDash(c.dash ? c.dash.map(d => d * u) : []);
       ctx.beginPath();
@@ -575,13 +576,18 @@ export class PrintExporter {
   static drawScaleBarItem(ctx, item, x, y, w, h, scaleFactor) {
     const k = scaleFactor / PrintCanvasEngine.BASE_PX_PER_MM;
     const model = PrintItemsManager.scaleBarModel(item, item.scale || 10000);
+    const barStyle = ['double', 'line_ticks'].includes(item.barStyle) ? item.barStyle : 'alternating';
+    const barColor = PrintItemsManager.sanitizeColor(item.barColor, '#000000');
+    const showBox = item.showBox !== false;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = k;
-    ctx.strokeRect(x + k / 2, y + k / 2, w - k, h - k);
+    if (showBox) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = barColor;
+      ctx.lineWidth = k;
+      ctx.strokeRect(x + k / 2, y + k / 2, w - k, h - k);
+    }
 
     const titleH = model.showText ? 8.6 * k : 0;
     const titleGap = model.showText ? 2 * k : 0;
@@ -592,27 +598,53 @@ export class PrintExporter {
 
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = barColor;
     if (model.showText) {
       ctx.font = `bold ${7.5 * k}px Arial, sans-serif`;
       ctx.fillText(model.scaleText, x + w / 2, top + titleH / 2);
     }
     top += titleH + titleGap + 2 * k;
 
-    // Mesma régua da prancheta: comprimento = distância rotulada na escala do mapa
     const barW = w * model.ratio;
     const barX = x + (w - barW) / 2;
     const segW = barW / model.segments;
-    for (let i = 0; i < model.segments; i++) {
-      ctx.fillStyle = i % 2 === 0 ? '#000000' : '#ffffff';
-      ctx.fillRect(barX + i * segW, top, segW, rulerH);
+    if (barStyle === 'double') {
+      const halfH = rulerH / 2;
+      for (let i = 0; i < model.segments; i++) {
+        const topDark = i % 2 === 0;
+        ctx.fillStyle = topDark ? barColor : '#ffffff';
+        ctx.fillRect(barX + i * segW, top, segW, halfH);
+        ctx.fillStyle = topDark ? '#ffffff' : barColor;
+        ctx.fillRect(barX + i * segW, top + halfH, segW, halfH);
+      }
+      ctx.strokeStyle = barColor;
+      ctx.lineWidth = k;
+      ctx.strokeRect(barX + k / 2, top + k / 2, barW - k, rulerH - k);
+    } else if (barStyle === 'line_ticks') {
+      ctx.strokeStyle = barColor;
+      ctx.lineWidth = Math.max(1, k * 1.2);
+      ctx.beginPath();
+      const baseY = top + rulerH;
+      ctx.moveTo(barX, baseY);
+      ctx.lineTo(barX + barW, baseY);
+      for (let i = 0; i <= model.segments; i++) {
+        const tx = barX + i * segW;
+        ctx.moveTo(tx, top + (i % 2 === 0 ? 0 : rulerH * 0.35));
+        ctx.lineTo(tx, baseY);
+      }
+      ctx.stroke();
+    } else {
+      for (let i = 0; i < model.segments; i++) {
+        ctx.fillStyle = i % 2 === 0 ? barColor : '#ffffff';
+        ctx.fillRect(barX + i * segW, top, segW, rulerH);
+      }
+      ctx.strokeStyle = barColor;
+      ctx.lineWidth = k;
+      ctx.strokeRect(barX + k / 2, top + k / 2, barW - k, rulerH - k);
     }
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = k;
-    ctx.strokeRect(barX + k / 2, top + k / 2, barW - k, rulerH - k);
 
     top += rulerH + 2 * k;
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = barColor;
     ctx.font = `bold ${7 * k}px Arial, sans-serif`;
     model.labels.forEach(l => ctx.fillText(l.text, barX + barW * l.position, top + 4 * k));
     ctx.restore();
@@ -637,9 +669,20 @@ export class PrintExporter {
   static drawVerticesTableItem(ctx, item, x, y, w, h, composer, scaleFactor) {
     const T = PrintItemsManager.VERT_TABLE;
     const k = scaleFactor / T.PX_PER_MM;
+    const isAreas = item.tableMode === 'areas';
     const targetId = item.targetFeatureId || (composer?.atlas?.enabled ? composer.atlas.getCurrentFeature()?.id : null);
-    const data = PrintItemsManager.extractVerticesData(composer?.features || [], targetId);
-    const fit = PrintItemsManager.verticesTableFit(data, item.width, item.height);
+    const data = isAreas
+      ? PrintItemsManager.extractAreasSummaryData(composer?.features || [], composer?.layers || [])
+      : PrintItemsManager.extractVerticesData(composer?.features || [], targetId, {
+          crs: item.crs || 'utm',
+          segmentFormat: item.segmentFormat || 'vertex',
+          vertexPrefix: item.vertexPrefix,
+          startVertex: item.startVertex,
+          endVertex: item.endVertex
+        });
+    const baseCols = PrintItemsManager.resolveVerticesTableColumns(item);
+    const showFooter = item.showFooter !== false;
+    const fit = PrintItemsManager.verticesTableFit(data, item.width, item.height, baseCols, { showFooter });
     const fitText = (text, maxW) => PrintTitleBlockRenderer.fit(ctx, text, maxW);
 
     const bw = T.BORDER * k;
@@ -664,9 +707,9 @@ export class PrintExporter {
     ctx.textBaseline = 'middle';
 
     // Cabeçalho: título à esquerda (encurtado se preciso) e sistema de referência à direita
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = item.headerBgColor ? PrintItemsManager.sanitizeColor(item.headerBgColor, '#000000') : '#000000';
     ctx.fillRect(ix, iy, iw, headH);
-    const datum = PrintItemsManager.verticesTableDatum(data);
+    const datum = PrintItemsManager.verticesTableDatum(data, item);
     let datumW = 0;
     if (datum) {
       ctx.font = `${T.FONT * k}px Arial, sans-serif`;
@@ -675,13 +718,15 @@ export class PrintExporter {
       ctx.textAlign = 'right';
       ctx.fillText(datum, ix + iw - 5 * k, iy + headH / 2);
     }
+    const defaultTitle = isAreas ? 'QUADRO DE ÁREAS E PERÍMETROS' : 'TABELA DE COORDENADAS E CONFRONTAÇÕES';
+    const headerTitle = item.title || defaultTitle;
     ctx.font = `bold ${7 * k}px Arial, sans-serif`;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
-    ctx.fillText(fitText('TABELA DE COORDENADAS E CONFRONTAÇÕES', iw - 10 * k - datumW - (datum ? 6 * k : 0)), ix + 5 * k, iy + headH / 2);
+    ctx.fillText(fitText(headerTitle, iw - 10 * k - datumW - (datum ? 6 * k : 0)), ix + 5 * k, iy + headH / 2);
 
     // Colunas
-    const cols = T.COLS.map((c, i) => ({ ...c, x0: ix + T.COLS.slice(0, i).reduce((s, q) => s + q.pct * iw, 0), w: c.pct * iw }));
+    const cols = baseCols.map((c, i) => ({ ...c, x0: ix + baseCols.slice(0, i).reduce((s, q) => s + q.pct * iw, 0), w: c.pct * iw }));
     const subY = iy + headH;
     ctx.fillStyle = '#e8ecef';
     ctx.fillRect(ix, subY, iw, subH);
@@ -702,7 +747,7 @@ export class PrintExporter {
     if (!data.vertices.length) {
       ctx.fillStyle = '#888888';
       ctx.font = `${px}px Arial, sans-serif`;
-      ctx.fillText(fitText('Nenhum polígono selecionado', iw - pad * 2), ix + iw / 2, rowsY + rowH / 2);
+      ctx.fillText(fitText(isAreas ? 'Nenhuma feição medida na prancha' : 'Nenhum polígono selecionado', iw - pad * 2), ix + iw / 2, rowsY + rowH / 2);
     }
     data.vertices.slice(0, fit.shown).forEach((v, i) => {
       const ry = rowsY + rowH * i;
@@ -731,7 +776,7 @@ export class PrintExporter {
     }
 
     // Rodapé: "Área: valor (ha)" à esquerda e "Perímetro: valor" à direita (rótulo normal, valor em negrito)
-    if (data.vertices.length > 0) {
+    if (showFooter && data.vertices.length > 0) {
       const foot = PrintItemsManager.verticesFooterParts(data);
       const fy = iy + ih - footH;
       ctx.fillStyle = '#eef2f5';
@@ -746,8 +791,8 @@ export class PrintExporter {
       const parts = (size) => {
         const width = (t, bold) => { ctx.font = `${bold ? 'bold ' : ''}${size}px Arial, sans-serif`; return ctx.measureText(t).width; };
         return {
-          left: [['Área: ', false], [foot.area, true], [` ${foot.hectares}`, false]],
-          right: [['Perímetro: ', false], [foot.perimeter, true]],
+          left: [[`Área${isAreas ? ' total' : ''}: `, false], [foot.area, true], [` ${foot.hectares}`, false]],
+          right: [[`Perímetro${isAreas ? ' total' : ''}: `, false], [foot.perimeter, true]],
           width
         };
       };
@@ -811,14 +856,21 @@ export class PrintExporter {
     const k = scaleFactor / PrintCanvasEngine.BASE_PX_PER_MM;
     const fs = (Number(item.fontSize) || 7.5) * k;
     const evalAtlas = (t) => (composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(t) : t);
-    const border = 1.5 * k;
+    const hasCustomStroke = item.strokeWidth != null && item.strokeWidth !== '';
+    const border = item.showBorder === false ? 0 : (hasCustomStroke ? (Number(item.strokeWidth) || 0) : 1.5) * k;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.98)';
+    ctx.fillStyle = item.fillColor
+      ? PrintItemsManager.sanitizeColor(item.fillColor, 'rgba(255, 255, 255, 0.98)')
+      : 'rgba(255, 255, 255, 0.98)';
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = border;
-    ctx.strokeRect(x + border / 2, y + border / 2, w - border, h - border);
+    if (border > 0) {
+      ctx.strokeStyle = item.strokeColor
+        ? PrintItemsManager.sanitizeColor(item.strokeColor, '#000000')
+        : '#000000';
+      ctx.lineWidth = border;
+      ctx.strokeRect(x + border / 2, y + border / 2, w - border, h - border);
+    }
 
     if (typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
       ctx.beginPath();
@@ -830,32 +882,58 @@ export class PrintExporter {
     const textW = Math.max(10, w - (border + 6 * k) * 2);
     const top = y + border + 4 * k;
     const bottom = y + h - border - 4 * k;
-
-    // Título com filete embaixo (padding-bottom 2, borda 1, margem 3)
-    const titleH = fs * 1.15;
-    ctx.fillStyle = '#000000';
     const family = PrintItemsManager.fontStack(item);
-    ctx.font = `bold ${fs}px ${family}`;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    const titleText = evalAtlas(item.title || PrintItemsManager.TEXT_BLOCK_DEFAULT_TITLE);
-    ctx.fillText(PrintTitleBlockRenderer.fit(ctx, titleText, textW), left, top + titleH / 2);
-    const ruleY = top + titleH + 2 * k;
-    ctx.lineWidth = k;
-    ctx.beginPath();
-    ctx.moveTo(left, ruleY + k / 2);
-    ctx.lineTo(left + textW, ruleY + k / 2);
-    ctx.stroke();
+    const showTitle = item.showTitle !== false;
+    let first = top;
 
-    // Corpo: linha a 1,35 e, se não couber, a última linha visível termina em "…"
+    if (showTitle) {
+      const titleH = fs * 1.15;
+      const hdrColor = item.headerColor ? PrintItemsManager.sanitizeColor(item.headerColor, '#000000') : '#000000';
+      ctx.fillStyle = hdrColor;
+      ctx.font = `bold ${fs}px ${family}`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      const titleText = evalAtlas(item.title || PrintItemsManager.TEXT_BLOCK_DEFAULT_TITLE);
+      ctx.fillText(PrintTitleBlockRenderer.fit(ctx, titleText, textW), left, top + titleH / 2);
+      const ruleY = top + titleH + 2 * k;
+      ctx.strokeStyle = hdrColor;
+      ctx.lineWidth = k;
+      ctx.beginPath();
+      ctx.moveTo(left, ruleY + k / 2);
+      ctx.lineTo(left + textW, ruleY + k / 2);
+      ctx.stroke();
+      first = ruleY + k + 3 * k;
+    }
+
+    const cols = Number(item.columns) === 2 ? 2 : 1;
+    const gap = cols > 1 ? 10 * k : 0;
+    const colW = (textW - gap * (cols - 1)) / cols;
+    const align = ['left', 'center', 'right', 'justify'].includes(item.textAlign) ? item.textAlign : 'left';
     const lineStep = fs * 1.35;
+    ctx.fillStyle = item.textColor ? PrintItemsManager.sanitizeColor(item.textColor, '#000000') : '#000000';
     ctx.font = `${fs}px ${family}`;
-    const lines = this.wrapTextLines(ctx, evalAtlas(item.text || PrintItemsManager.TEXT_BLOCK_DEFAULT_TEXT), textW);
-    const first = ruleY + k + 3 * k;
-    const capacity = Math.max(1, Math.floor((bottom - first) / lineStep));
-    lines.slice(0, capacity).forEach((line, i) => {
-      const cut = lines.length > capacity && i === capacity - 1;
-      ctx.fillText(cut ? PrintTitleBlockRenderer.fit(ctx, `${line} …`, textW) : line, left, first + i * lineStep + lineStep / 2);
+    ctx.textBaseline = 'middle';
+    const lines = this.wrapTextLines(ctx, evalAtlas(item.text || PrintItemsManager.TEXT_BLOCK_DEFAULT_TEXT), colW);
+    const capPerCol = Math.max(1, Math.floor((bottom - first) / lineStep));
+    const totalCap = capPerCol * cols;
+
+    lines.slice(0, totalCap).forEach((line, i) => {
+      const colIdx = Math.floor(i / capPerCol);
+      const rowIdx = i % capPerCol;
+      const cx0 = left + colIdx * (colW + gap);
+      const cy = first + rowIdx * lineStep + lineStep / 2;
+      const cut = lines.length > totalCap && i === totalCap - 1;
+      const drawLine = cut ? PrintTitleBlockRenderer.fit(ctx, `${line} …`, colW) : line;
+      if (align === 'center') {
+        ctx.textAlign = 'center';
+        ctx.fillText(drawLine, cx0 + colW / 2, cy);
+      } else if (align === 'right') {
+        ctx.textAlign = 'right';
+        ctx.fillText(drawLine, cx0 + colW, cy);
+      } else {
+        ctx.textAlign = 'left';
+        ctx.fillText(drawLine, cx0, cy);
+      }
     });
     ctx.restore();
   }
@@ -871,25 +949,157 @@ export class PrintExporter {
     ctx.restore();
   }
 
+  /** Traça caminho de retângulo arredondado compatível com Canvas 2D e PdfVectorContext */
+  static _traceRoundedRect(ctx, x, y, w, h, r) {
+    const rad = Math.max(0, Math.min(r, w / 2, h / 2));
+    if (rad <= 0 || typeof ctx.quadraticCurveTo !== 'function') {
+      ctx.rect(x, y, w, h);
+      return;
+    }
+    ctx.moveTo(x + rad, y);
+    ctx.lineTo(x + w - rad, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+    ctx.lineTo(x + w, y + h - rad);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+    ctx.lineTo(x + rad, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+    ctx.lineTo(x, y + rad);
+    ctx.quadraticCurveTo(x, y, x + rad, y);
+    ctx.closePath();
+  }
+
+  /** Traça caminho de elipse com 4 curvas Bézier cúbicas (sem depender de ctx.ellipse) */
+  static _traceEllipse(ctx, cx, cy, rx, ry) {
+    if (typeof ctx.bezierCurveTo !== 'function') {
+      ctx.arc(cx, cy, Math.min(rx, ry), 0, Math.PI * 2);
+      return;
+    }
+    const ox = rx * 0.5522848;
+    const oy = ry * 0.5522848;
+    ctx.moveTo(cx - rx, cy);
+    ctx.bezierCurveTo(cx - rx, cy - oy, cx - ox, cy - ry, cx, cy - ry);
+    ctx.bezierCurveTo(cx + ox, cy - ry, cx + rx, cy - oy, cx + rx, cy);
+    ctx.bezierCurveTo(cx + rx, cy + oy, cx + ox, cy + ry, cx, cy + ry);
+    ctx.bezierCurveTo(cx - ox, cy + ry, cx - rx, cy + oy, cx - rx, cy);
+    ctx.closePath();
+  }
 
   /**
    * Renderiza Forma Geométrica / Moldura Técnica
    */
-  static drawShapeItem(ctx, item, x, y, w, h) {
+  static drawShapeItem(ctx, item, x, y, w, h, scaleFactor = PrintCanvasEngine.BASE_PX_PER_MM) {
+    const k = (Number(scaleFactor) || PrintCanvasEngine.BASE_PX_PER_MM) / PrintCanvasEngine.BASE_PX_PER_MM;
+    const fill = PrintItemsManager.sanitizeColor(item.fillColor, 'rgba(255, 255, 255, 0.5)');
+    const stroke = PrintItemsManager.sanitizeColor(item.strokeColor, '#000000');
+    const rawW = item.strokeWidth == null || item.strokeWidth === '' ? 1.5 : (Number(item.strokeWidth) || 0);
+    const lw = rawW * k;
+    const shapeType = item.shapeType || 'rect';
+    const strokeStyle = item.strokeStyle || 'solid';
+    const radius = (Number(item.borderRadius) || (shapeType === 'rounded_rect' ? 8 : 0)) * k;
+    const rot = Number(item.rotation) || 0;
+
     ctx.save();
-    ctx.fillStyle = PrintItemsManager.sanitizeColor(item.fillColor, 'rgba(255, 255, 255, 0.5)');
-    ctx.strokeStyle = PrintItemsManager.sanitizeColor(item.strokeColor, '#000000');
-    ctx.lineWidth = item.strokeWidth !== undefined ? item.strokeWidth : 1.5;
-    ctx.fillRect(x, y, w, h);
-    if (ctx.lineWidth > 0) ctx.strokeRect(x, y, w, h);
+    if (rot) {
+      ctx.translate(x + w / 2, y + h / 2);
+      ctx.rotate((rot * Math.PI) / 180);
+      ctx.translate(-(x + w / 2), -(y + h / 2));
+    }
+
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = lw;
+
+    if (shapeType === 'rect' && strokeStyle === 'solid' && radius <= 0 && !rot) {
+      ctx.fillRect(x, y, w, h);
+      if (lw > 0) ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+      return;
+    }
+
+    const dash = PrintItemsManager.strokeDashArray(strokeStyle, lw);
+    if (typeof ctx.setLineDash === 'function') ctx.setLineDash(dash);
+
+    if (shapeType === 'rect' || shapeType === 'rounded_rect' || shapeType === 'double_frame') {
+      ctx.beginPath();
+      this._traceRoundedRect(ctx, x, y, w, h, radius);
+      ctx.fill();
+      if (lw > 0) ctx.stroke();
+      if (shapeType === 'double_frame' && lw > 0) {
+        const gap = Math.max(2 * k, lw * 2);
+        const ix = x + gap;
+        const iy = y + gap;
+        const iw = w - gap * 2;
+        const ih = h - gap * 2;
+        if (iw > 2 && ih > 2) {
+          ctx.beginPath();
+          ctx.lineWidth = Math.max(0.75 * k, lw * 0.55);
+          this._traceRoundedRect(ctx, ix, iy, iw, ih, Math.max(0, radius - gap));
+          ctx.stroke();
+        }
+      }
+    } else if (shapeType === 'ellipse') {
+      ctx.beginPath();
+      this._traceEllipse(ctx, x + w / 2, y + h / 2, Math.max(1, (w - lw) / 2), Math.max(1, (h - lw) / 2));
+      ctx.fill();
+      if (lw > 0) ctx.stroke();
+    } else if (shapeType === 'triangle' || shapeType === 'diamond') {
+      const pad = Math.max(1, lw);
+      const pts = shapeType === 'triangle'
+        ? [[x + w / 2, y + pad], [x + w - pad, y + h - pad], [x + pad, y + h - pad]]
+        : [[x + w / 2, y + pad], [x + w - pad, y + h / 2], [x + w / 2, y + h - pad], [x + pad, y + h / 2]];
+      ctx.beginPath();
+      pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
+      ctx.closePath();
+      ctx.fill();
+      if (lw > 0) ctx.stroke();
+    } else if (shapeType === 'line_h' || shapeType === 'line_v' || shapeType === 'line_diag') {
+      const pad = Math.max(1, lw);
+      const [x1, y1, x2, y2] = shapeType === 'line_h'
+        ? [x + pad, y + h / 2, x + w - pad, y + h / 2]
+        : shapeType === 'line_v'
+          ? [x + w / 2, y + pad, x + w / 2, y + h - pad]
+          : [x + pad, y + h - pad, x + w - pad, y + pad];
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      if (lw > 0) ctx.stroke();
+    } else if (shapeType === 'arrow') {
+      const pad = Math.max(1, lw);
+      const head = Math.min(Math.min(w, h) * 0.45, Math.max(8 * k, lw * 4.5));
+      const cy = y + h / 2;
+      const x1 = x + pad;
+      const x2 = Math.max(x1 + head + 2, x + w - pad);
+      const wingY = Math.min((h / 2) - pad * 0.5, head * 0.65);
+      ctx.beginPath();
+      ctx.moveTo(x1, cy);
+      ctx.lineTo(x2 - head * 0.6, cy);
+      if (lw > 0) ctx.stroke();
+      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
+      ctx.fillStyle = stroke;
+      ctx.beginPath();
+      ctx.moveTo(x2, cy);
+      ctx.lineTo(x2 - head, cy - wingY);
+      ctx.lineTo(x2 - head, cy + wingY);
+      ctx.closePath();
+      ctx.fill();
+      if (item.arrowHead === 'both') {
+        ctx.beginPath();
+        ctx.moveTo(x1, cy);
+        ctx.lineTo(x1 + head, cy - wingY);
+        ctx.lineTo(x1 + head, cy + wingY);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
     ctx.restore();
   }
 
   /**
    * Renderiza Imagem / Logotipo em Alta Resolução respeitando objectFit ('contain' ou 'cover')
    */
-  static async drawImageItem(ctx, item, x, y, w, h) {
+  static async drawImageItem(ctx, item, x, y, w, h, scaleFactor = PrintCanvasEngine.BASE_PX_PER_MM) {
     if (!item.imageUrl) return;
+    const k = (Number(scaleFactor) || PrintCanvasEngine.BASE_PX_PER_MM) / PrintCanvasEngine.BASE_PX_PER_MM;
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -907,12 +1117,27 @@ export class PrintExporter {
             dy = y + (h - dh) / 2;
           }
           ctx.save();
+          const rot = Number(item.rotation) || 0;
+          if (rot) {
+            ctx.translate(x + w / 2, y + h / 2);
+            ctx.rotate((rot * Math.PI) / 180);
+            ctx.translate(-(x + w / 2), -(y + h / 2));
+          }
+          if (item.opacity != null && 'globalAlpha' in ctx) {
+            ctx.globalAlpha = Math.min(1, Math.max(0.05, Number(item.opacity) || 1));
+          }
           if (fit === 'cover' && typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
             ctx.beginPath();
             ctx.rect(x, y, w, h);
             ctx.clip();
           }
           ctx.drawImage(img, dx, dy, dw, dh);
+          const strokeW = (Number(item.strokeWidth) || 0) * k;
+          if (strokeW > 0) {
+            ctx.strokeStyle = PrintItemsManager.sanitizeColor(item.strokeColor, '#000000');
+            ctx.lineWidth = strokeW;
+            ctx.strokeRect(x + strokeW / 2, y + strokeW / 2, w - strokeW, h - strokeW);
+          }
           ctx.restore();
         } catch (e) {}
         resolve();
@@ -924,7 +1149,7 @@ export class PrintExporter {
 
   /**
    * Rótulo de Texto Livre / Título Customizado. Mesmas regras da tela (.cm-item-label-box): tamanho em
-   * px de tela a 100% (× k), recuo de 2 px, linha a 1,15, bloco centrado na vertical, quebra por palavras.
+   * px de tela a 100% (× k), recuo de 2 px, linha a 1,15, quebra por palavras, fundo/borda/rotação opcionais.
    */
   static drawLabelItem(ctx, item, x, y, w, h, composer, scaleFactor) {
     if (typeof composer === 'number') {
@@ -934,25 +1159,66 @@ export class PrintExporter {
     const k = scaleFactor / PrintCanvasEngine.BASE_PX_PER_MM;
 
     ctx.save();
+    const rot = Number(item.rotation) || 0;
+    if (rot) {
+      ctx.translate(x + w / 2, y + h / 2);
+      ctx.rotate((rot * Math.PI) / 180);
+      ctx.translate(-(x + w / 2), -(y + h / 2));
+    }
+    if (item.fillColor) {
+      ctx.fillStyle = PrintItemsManager.sanitizeColor(item.fillColor, 'transparent');
+      ctx.fillRect(x, y, w, h);
+    }
+    const strokeW = (Number(item.strokeWidth) || 0) * k;
+    if (strokeW > 0) {
+      ctx.strokeStyle = PrintItemsManager.sanitizeColor(item.strokeColor, '#000000');
+      ctx.lineWidth = strokeW;
+      ctx.strokeRect(x + strokeW / 2, y + strokeW / 2, w - strokeW, h - strokeW);
+    }
     if (typeof ctx.beginPath === 'function' && typeof ctx.rect === 'function' && typeof ctx.clip === 'function') {
       ctx.beginPath();
       ctx.rect(x, y, w, h);
       ctx.clip();
     }
     const fontSize = (Number(item.fontSize) || 10) * k;
-    ctx.font = `${item.fontWeight === 'normal' ? 'normal' : 'bold'} ${fontSize}px ${PrintItemsManager.fontStack(item)}`;
+    const style = item.fontStyle === 'italic' ? 'italic ' : '';
+    const weight = item.fontWeight === 'normal' ? 'normal' : 'bold';
+    ctx.font = `${style}${weight} ${fontSize}px ${PrintItemsManager.fontStack(item)}`;
     ctx.fillStyle = PrintItemsManager.sanitizeColor(item.textColor, '#000000');
     const align = ['left', 'right'].includes(item.textAlign) ? item.textAlign : 'center';
     ctx.textAlign = align;
     ctx.textBaseline = 'middle';
-    const pad = 2 * k;
+    const pad = 3 * k;
     const textX = align === 'center' ? x + w / 2 : (align === 'right' ? x + w - pad : x + pad);
-    const rawText = item.text || PrintItemsManager.LABEL_DEFAULT_TEXT;
-    const evaluatedText = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawText) : rawText;
+    const rawBase = item.text || PrintItemsManager.LABEL_DEFAULT_TEXT;
+    const rawEval = composer?.atlas?.enabled ? composer.atlas.evaluateExpressions(rawBase) : rawBase;
+    const evaluatedText = item.textTransform === 'uppercase'
+      ? rawEval.toUpperCase()
+      : (item.textTransform === 'lowercase' ? rawEval.toLowerCase() : rawEval);
     const lines = this.wrapTextLines(ctx, evaluatedText, Math.max(10, w - pad * 2));
-    const lineStep = fontSize * 1.15;
-    const startY = y + h / 2 - ((lines.length - 1) * lineStep) / 2;
-    lines.forEach((line, idx) => ctx.fillText(line, textX, startY + idx * lineStep));
+    const lineStep = fontSize * 1.25;
+    const vAlign = item.verticalAlign === 'top' ? 'top' : (item.verticalAlign === 'bottom' ? 'bottom' : 'middle');
+    const startY = vAlign === 'top'
+      ? y + pad + lineStep / 2
+      : (vAlign === 'bottom' ? y + h - pad - (lines.length - 0.5) * lineStep : y + h / 2 - ((lines.length - 1) * lineStep) / 2);
+    const ls = (Number(item.letterSpacing) || 0) * k;
+
+    lines.forEach((line, idx) => {
+      const ly = startY + idx * lineStep;
+      if (ls > 0 && line.length > 1) {
+        const chars = Array.from(line);
+        const totalW = chars.reduce((s, ch) => s + ctx.measureText(ch).width, 0) + ls * (chars.length - 1);
+        let cx = align === 'center' ? textX - totalW / 2 : (align === 'right' ? textX - totalW : textX);
+        ctx.textAlign = 'left';
+        chars.forEach(ch => {
+          ctx.fillText(ch, cx, ly);
+          cx += ctx.measureText(ch).width + ls;
+        });
+        ctx.textAlign = align;
+      } else {
+        ctx.fillText(line, textX, ly);
+      }
+    });
     ctx.restore();
   }
 

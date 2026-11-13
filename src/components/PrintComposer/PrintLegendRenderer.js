@@ -26,13 +26,14 @@ export const PrintLegendRenderer = {
    * @param pxPerMm  px do contexto por mm de papel
    * @param title    título resolvido ('' = sem título)
    */
-  draw(ctx, { entries = [], wMm, hMm, pxPerMm, title = '', columns = 1, font }) {
+  draw(ctx, { entries = [], wMm, hMm, pxPerMm, title = '', columns = 1, font, showFeatureCount = false, showAreaHa = false, showHeaderBg = true, headerColor = '#000000', showBorder = true, bgOpacity = 0.95 }) {
     const mm = (v) => v * pxPerMm;
     const W = mm(wMm);
     const H = mm(hMm);
+    const alpha = Math.min(1, Math.max(0, Number(bgOpacity ?? 0.95)));
     ctx.save();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = alpha >= 0.99 ? '#ffffff' : `rgba(255, 255, 255, ${alpha})`;
+    if (alpha > 0) ctx.fillRect(0, 0, W, H);
     ctx.beginPath();
     ctx.rect(0, 0, W, H);
     ctx.clip();
@@ -40,9 +41,14 @@ export const PrintLegendRenderer = {
     let top = 0;
     if (title) {
       const th = Math.min(mm(this.TITLE_MM), H * 0.3);
-      ctx.fillStyle = '#000000';
-      ctx.fillRect(0, 0, W, th);
-      PrintMapRenderer.drawText(ctx, title, W / 2, th / 2, { sizePt: 7, color: '#ffffff', halo: false, align: 'center', bold: true }, pxPerMm);
+      const hdrColor = headerColor || '#000000';
+      if (showHeaderBg !== false) {
+        ctx.fillStyle = hdrColor;
+        ctx.fillRect(0, 0, W, th);
+        PrintMapRenderer.drawText(ctx, title, W / 2, th / 2, { sizePt: 7, color: '#ffffff', halo: false, align: 'center', bold: true, font }, pxPerMm);
+      } else {
+        PrintMapRenderer.drawText(ctx, title, W / 2, th / 2, { sizePt: 7, color: hdrColor, halo: false, align: 'center', bold: true, font }, pxPerMm);
+      }
       top = th;
     }
 
@@ -62,23 +68,28 @@ export const PrintLegendRenderer = {
         const cy = top + mm(this.PAD_MM) / 2 + row * ((i % perCol) + 0.5);
         const x0 = mm(this.PAD_MM) + Math.floor(i / perCol) * colW;
         PrintMapRenderer.drawSwatch(ctx, e.graphics, x0, cy - sh / 2, sw, sh, pxPerMm);
-        // Nome que não cabe na caixa é encurtado com "…" (mesmo fonte que drawText usa)
         const textX = x0 + sw + mm(1.5);
         const sizePx = Math.max(1, fontPt * PT_TO_MM * pxPerMm);
         const measure = (t) => {
           ctx.font = `${e.isFilter ? '' : 'bold '}${sizePx}px ${PrintFonts.css(font)}`;
           return ctx.measureText(t).width;
         };
-        const name = PrintTitleBlockRenderer.fitEllipsis(measure, e.name, x0 + colW - textX - mm(1), sizePx);
+        const suffixParts = [];
+        if (showFeatureCount && Number(e.count) > 0) suffixParts.push(`(${e.count})`);
+        if (showAreaHa && Number(e.areaHa) > 0) suffixParts.push(`${Number(e.areaHa).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha`);
+        const fullLabel = suffixParts.length ? `${e.name} ${suffixParts.join(' · ')}` : e.name;
+        const name = PrintTitleBlockRenderer.fitEllipsis(measure, fullLabel, x0 + colW - textX - mm(1), sizePx);
         PrintMapRenderer.drawText(ctx, name, textX, cy, { sizePt: fontPt, color: '#000000', halo: false, align: 'left', bold: !e.isFilter, font }, pxPerMm);
       });
     }
 
     ctx.restore();
-    ctx.save();
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = Math.max(0.5, mm(0.35));
-    ctx.strokeRect(0, 0, W, H);
-    ctx.restore();
+    if (showBorder !== false) {
+      ctx.save();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = Math.max(0.5, mm(0.35));
+      ctx.strokeRect(0, 0, W, H);
+      ctx.restore();
+    }
   }
 };

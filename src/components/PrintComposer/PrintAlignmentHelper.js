@@ -314,4 +314,76 @@ export class PrintAlignmentHelper {
     composer.updatePropertiesPanel();
     composer.pushHistoryState('Distribuir Verticalmente');
   }
+
+  /** Helper comum após alterações de posição/dimensão em lote */
+  static _commitBatchLayout(composer, items, historyLabel) {
+    items.forEach(it => {
+      if (composer.paperSize) PrintItemsManager.clampItemToPaper(it, composer.paperSize);
+      composer.updateItemPositionDOM?.(it);
+      composer.refreshItemContent?.(it.id);
+    });
+    composer.updatePropertiesPanel?.();
+    composer.pushHistoryState?.(historyLabel);
+  }
+
+  /** Iguala largura, altura ou ambas usando o primeiro item selecionado como referência */
+  static _matchDimension(composer, mode) {
+    const selected = this.getSelectedItems(composer);
+    if (selected.length < 2) return;
+    const ref = selected[0];
+    const unlocked = selected.filter(i => !i.locked && i.id !== ref.id);
+    if (!unlocked.length) return;
+    unlocked.forEach(it => {
+      if (mode === 'width' || mode === 'both') it.width = ref.width;
+      if (mode === 'height' || mode === 'both') it.height = ref.height;
+    });
+    const labels = { width: 'Igualar Largura', height: 'Igualar Altura', both: 'Igualar Tamanho' };
+    this._commitBatchLayout(composer, unlocked, labels[mode] || 'Igualar Dimensão');
+  }
+
+  static matchWidth(composer) { return this._matchDimension(composer, 'width'); }
+  static matchHeight(composer) { return this._matchDimension(composer, 'height'); }
+  static matchSize(composer) { return this._matchDimension(composer, 'both'); }
+
+  /** Empilha itens selecionados em sequência vertical (sem espaçamento ou com intervalo fixo) */
+  static packVertical(composer, gapMm = 0) {
+    const items = this.getSelectedItems(composer).filter(i => !i.locked);
+    if (items.length < 2) return;
+    const sorted = [...items].sort((a, b) => a.y - b.y);
+    let cursorY = sorted[0].y + sorted[0].height + gapMm;
+    for (let i = 1; i < sorted.length; i++) {
+      sorted[i].y = Math.round(cursorY * 10) / 10;
+      cursorY = sorted[i].y + sorted[i].height + gapMm;
+    }
+    this._commitBatchLayout(composer, sorted, 'Empilhar Verticalmente');
+  }
+
+  /** Empilha itens selecionados lado a lado em sequência horizontal */
+  static packHorizontal(composer, gapMm = 0) {
+    const items = this.getSelectedItems(composer).filter(i => !i.locked);
+    if (items.length < 2) return;
+    const sorted = [...items].sort((a, b) => a.x - b.x);
+    let cursorX = sorted[0].x + sorted[0].width + gapMm;
+    for (let i = 1; i < sorted.length; i++) {
+      sorted[i].x = Math.round(cursorX * 10) / 10;
+      cursorX = sorted[i].x + sorted[i].width + gapMm;
+    }
+    this._commitBatchLayout(composer, sorted, 'Empilhar Horizontalmente');
+  }
+
+  /** Encaixa o item selecionado dentro das margens úteis da folha */
+  static fitToMargins(composer) {
+    const items = this.getSelectedItems(composer).filter(i => !i.locked);
+    if (!items.length || !composer.paperSize) return;
+    const m = PrintItemsManager.sheetMargins(composer.paperSize);
+    const w = Math.max(PrintItemsManager.MIN_ITEM_MM, composer.paperSize.width - m.left - m.right);
+    const h = Math.max(PrintItemsManager.MIN_ITEM_MM, composer.paperSize.height - m.top - m.bottom);
+    items.forEach(it => {
+      it.x = m.left;
+      it.y = m.top;
+      it.width = w;
+      it.height = h;
+    });
+    this._commitBatchLayout(composer, items, 'Ajustar às Margens');
+  }
 }

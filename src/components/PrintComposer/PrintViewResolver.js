@@ -13,6 +13,7 @@
 
 import { FeatureStyle, PX_TO_MM } from '../../services/FeatureStyle.js';
 import { FeatureQuery } from '../../services/FeatureQuery.js';
+import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
 import { PrintViewTemplates } from './PrintViewTemplates.js';
 import { PrintFonts } from './PrintFonts.js';
@@ -477,9 +478,18 @@ export const PrintViewResolver = {
     const ctx = this.prepare(view, { features, layers, library, scale });
     const hidden = new Set((hiddenLayerIds || []).map(String));
     const firstVisible = new Map();
+    const layerStats = new Map();
     for (const f of features) {
-      if (firstVisible.has(f.layerId)) continue;
-      if (this.isVisible(f, ctx)) firstVisible.set(f.layerId, f);
+      if (!this.isVisible(f, ctx)) continue;
+      if (!firstVisible.has(f.layerId)) firstVisible.set(f.layerId, f);
+      let st = layerStats.get(f.layerId);
+      if (!st) { st = { count: 0, areaHa: 0 }; layerStats.set(f.layerId, st); }
+      st.count += 1;
+      const t = (f.type || '').toLowerCase();
+      if (t === 'polygon' || t === 'multipolygon') {
+        const norm = FeatureGeometryUtils.normalizeCoordinates(f);
+        if (norm?.length) st.areaHa += FeatureGeometryUtils.calculatePolygonArea(norm) / 10000;
+      }
     }
     const entries = [];
     layers.forEach(l => {
@@ -488,15 +498,25 @@ export const PrintViewResolver = {
       if (!sample) return;
       // Amostra: estilo do projeto + camada na vista (sem filtros nem ajustes por feição)
       const g = this.resolve(sample, { ...ctx, filters: [], view: { ...ctx.view, elements: {} } });
-      if (g) entries.push({ id: l.id, name: l.name || 'Camada', kind: g.kind, graphics: g });
+      const st = layerStats.get(l.id) || { count: 0, areaHa: 0 };
+      if (g) entries.push({ id: l.id, name: l.name || 'Camada', kind: g.kind, graphics: g, count: st.count, areaHa: st.areaHa });
     });
     ctx.filters.forEach(({ entry, def, ids }) => {
       if (entry.visible === false || !ids.size || hidden.has(`filter:${def.id}`)) return;
       if (!entry.stroke && !entry.fill && !entry.color && !entry.halftone && !entry.point && entry.opacity === undefined && !entry.blend) return;
-      const sample = features.find(f => ids.has(String(f.id)) && this.isVisible(f, ctx));
+      const matching = features.filter(f => ids.has(String(f.id)) && this.isVisible(f, ctx));
+      const sample = matching[0];
       if (!sample) return;
+      let areaHa = 0;
+      matching.forEach(f => {
+        const t = (f.type || '').toLowerCase();
+        if (t === 'polygon' || t === 'multipolygon') {
+          const norm = FeatureGeometryUtils.normalizeCoordinates(f);
+          if (norm?.length) areaHa += FeatureGeometryUtils.calculatePolygonArea(norm) / 10000;
+        }
+      });
       const g = this.resolve(sample, ctx);
-      if (g) entries.push({ id: `filter:${def.id}`, name: def.name || 'Filtro', kind: g.kind, graphics: g, isFilter: true });
+      if (g) entries.push({ id: `filter:${def.id}`, name: def.name || 'Filtro', kind: g.kind, graphics: g, isFilter: true, count: matching.length, areaHa });
     });
     return entries;
   }

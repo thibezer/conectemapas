@@ -20,6 +20,10 @@ export class PrintCanvasEngine {
     this.zoom = 1.0;
     this.isDraggingItem = false;
     this.isResizing = false;
+    this.isPlacing = false;
+    this.placementType = null;
+    this.placeStartMm = null;
+    this.placementGhostEl = null;
     this.resizeHandle = null;
     this.dragStartX = 0;
     this.dragStartY = 0;
@@ -422,8 +426,9 @@ export class PrintCanvasEngine {
         else this.zoomOut(anchor);
       }, { passive: false });
 
-      // Pan da prancheta com Botão do Meio ou arrasto fora dos itens
+      // Pan da prancheta com Botão do Meio ou arrasto fora dos itens (exceto no modo Desenho-Criação)
       vp.addEventListener('mousedown', (e) => {
+        if (this.placementType && e.button === 0) return;
         const onEmptySpace = e.target === vp || e.target.id === 'cm-print-paper-sheet' || e.target.id === 'cm-print-items-layer' || e.target.id === 'cm-abnt-margins-frame';
         if (e.button === 1 || (e.button === 0 && onEmptySpace)) {
           if (e.button === 1) e.preventDefault();
@@ -437,7 +442,32 @@ export class PrintCanvasEngine {
       });
     }
 
+    const clientToSheetMm = (clientX, clientY) => {
+      const rect = paperSheet.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(this.composer.paperSize.width, (clientX - rect.left) / this.mmToPx)),
+        y: Math.max(0, Math.min(this.composer.paperSize.height, (clientY - rect.top) / this.mmToPx))
+      };
+    };
+
     paperSheet.onmousedown = (e) => {
+      // Modo Desenho-Criação (Shift+Clique na caixa lateral): desenhar retângulo na folha
+      if (this.placementType && e.button === 0 && !this.composer.readOnly) {
+        e.stopPropagation();
+        e.preventDefault();
+        this.isPlacing = true;
+        this.placeStartMm = clientToSheetMm(e.clientX, e.clientY);
+        const ghost = document.createElement('div');
+        ghost.className = 'cm-placement-ghost';
+        ghost.style.left = `${this.placeStartMm.x * this.mmToPx}px`;
+        ghost.style.top = `${this.placeStartMm.y * this.mmToPx}px`;
+        ghost.style.width = '0px';
+        ghost.style.height = '0px';
+        paperSheet.appendChild(ghost);
+        this.placementGhostEl = ghost;
+        return;
+      }
+
       // Se estiver no modo de navegação de conteúdo do mapa, não captura o arrasto da caixa
       if (this.composer.interactionMode === 'content_pan') {
         const isMapClick = e.target.closest('.cm-item-map-frame');
@@ -492,15 +522,25 @@ export class PrintCanvasEngine {
 
     paperSheet.ondblclick = (e) => {
       if (this.composer.readOnly) return;
+      const itemEl = e.target.closest?.('.cm-print-item');
+      if (!itemEl) return;
+      const itemId = itemEl.getAttribute('data-item-id');
+      const item = this.composer.items.find(i => i.id === itemId);
+      if (!item || item.locked) return;
+
       const mapFrame = e.target.closest?.('.cm-item-map-frame');
       if (mapFrame && this.composer.interactionMode === 'layout') {
-        const itemEl = e.target.closest?.('.cm-print-item');
-        const itemId = itemEl?.getAttribute('data-item-id');
-        const item = this.composer.items.find(i => i.id === itemId);
-        if (item && !item.locked) {
-          this.composer.selectItem(item.id);
-          this.composer.setInteractionMode('content_pan');
-        }
+        this.composer.selectItem(item.id);
+        this.composer.setInteractionMode('content_pan');
+        return;
+      }
+
+      if (item.type === 'label' || item.type === 'text_block') {
+        this.composer.selectItem(item.id);
+        this.startInlineTextEdit(item, itemEl);
+      } else if (item.type === 'image') {
+        this.composer.selectItem(item.id);
+        document.getElementById('prop-image-file')?.click();
       }
     };
 
@@ -509,6 +549,18 @@ export class PrintCanvasEngine {
     if (this.mouseUpHandler) window.removeEventListener('mouseup', this.mouseUpHandler);
 
     this.mouseMoveHandler = (e) => {
+      if (this.isPlacing && this.placeStartMm && this.placementGhostEl) {
+        const cur = clientToSheetMm(e.clientX, e.clientY);
+        const rx = Math.min(this.placeStartMm.x, cur.x);
+        const ry = Math.min(this.placeStartMm.y, cur.y);
+        const rw = Math.abs(cur.x - this.placeStartMm.x);
+        const rh = Math.abs(cur.y - this.placeStartMm.y);
+        this.placementGhostEl.style.left = `${rx * this.mmToPx}px`;
+        this.placementGhostEl.style.top = `${ry * this.mmToPx}px`;
+        this.placementGhostEl.style.width = `${rw * this.mmToPx}px`;
+        this.placementGhostEl.style.height = `${rh * this.mmToPx}px`;
+        return;
+      }
       if (this.isPanning && vp) {
         vp.scrollLeft = this.scrollStartX - (e.clientX - this.panStartX);
         vp.scrollTop = this.scrollStartY - (e.clientY - this.panStartY);
@@ -555,7 +607,30 @@ export class PrintCanvasEngine {
       }
     };
 
-    this.mouseUpHandler = () => {
+    this.mouseUpHandler = (e) => {
+      if (this.isPlacing) {
+        const start = this.placeStartMm;
+        const type = this.placementType;
+        this.placementGhostEl?.remove();
+        this.placementGhostEl = null;
+        this.isPlacing = false;
+        this.placeStartMm = null;
+        if (type && start) {
+          const end = clientToSheetMm(e.clientX, e.clientY);
+          const rw = Math.abs(end.x - start.x);
+          const rh = Math.abs(end.y - start.y);
+          const rect = rw >= 6 && rh >= 6
+            ? {
+                x: Math.round(Math.min(start.x, end.x) * 10) / 10,
+                y: Math.round(Math.min(start.y, end.y) * 10) / 10,
+                width: Math.round(rw * 10) / 10,
+                height: Math.round(rh * 10) / 10
+              }
+            : null;
+          this.composer.insertItem(type, rect);
+        }
+        return;
+      }
       if (this.isPanning && vp) {
         this.isPanning = false;
         vp.style.cursor = '';
@@ -583,6 +658,51 @@ export class PrintCanvasEngine {
     window.addEventListener('mouseup', this.mouseUpHandler);
   }
 
+  /** Edição direta de texto na folha ao dar duplo clique em Título ou Notas Técnicas */
+  startInlineTextEdit(item, itemEl) {
+    if (!item || !itemEl || itemEl.querySelector('.cm-inline-text-editor')) return;
+    const editor = document.createElement('textarea');
+    editor.className = 'cm-inline-text-editor';
+    const current = item.type === 'label'
+      ? (item.text ?? PrintItemsManager.LABEL_DEFAULT_TEXT)
+      : (item.text ?? PrintItemsManager.TEXT_BLOCK_DEFAULT_TEXT);
+    editor.value = current;
+    editor.style.fontFamily = PrintItemsManager.fontStack(item);
+    editor.style.fontSize = `${(Number(item.fontSize) || (item.type === 'label' ? 10 : 7.5)) * this.zoom}px`;
+    editor.style.textAlign = ['left', 'center', 'right'].includes(item.textAlign)
+      ? item.textAlign
+      : (item.type === 'label' ? 'center' : 'left');
+    itemEl.appendChild(editor);
+    editor.focus();
+    editor.select();
+
+    let finished = false;
+    const finish = (commit) => {
+      if (finished) return;
+      finished = true;
+      const val = editor.value;
+      editor.remove();
+      if (commit && val !== item.text) {
+        item.text = val;
+        this.composer.refreshItemContent(item.id);
+        this.composer.updatePropertiesPanel();
+        this.composer.pushHistoryState('Editar Texto na Folha');
+      }
+    };
+
+    editor.addEventListener('mousedown', (ev) => ev.stopPropagation());
+    editor.addEventListener('keydown', (ev) => {
+      ev.stopPropagation();
+      if (ev.key === 'Escape') {
+        finish(false);
+      } else if (ev.key === 'Enter' && ((item.type === 'label' && !ev.shiftKey) || ev.ctrlKey || ev.metaKey)) {
+        ev.preventDefault();
+        finish(true);
+      }
+    });
+    editor.addEventListener('blur', () => finish(true));
+  }
+
   handleItemResize(e) {
     const dx = (e.clientX - this.dragStartX) / this.mmToPx;
     const dy = (e.clientY - this.dragStartY) / this.mmToPx;
@@ -591,21 +711,48 @@ export class PrintCanvasEngine {
 
     const sp = this.itemStartProps;
     const min = PrintItemsManager.MIN_ITEM_MM;
+    const keepAspect = e.shiftKey || !!it.lockAspect;
+    const fromCenter = e.altKey;
+    const h = this.resizeHandle;
+    const mult = fromCenter ? 2 : 1;
 
-    if (this.resizeHandle === 'e' || this.resizeHandle === 'se' || this.resizeHandle === 'ne') {
-      it.width = Math.max(min, sp.width + dx);
+    let newW = sp.width;
+    let newH = sp.height;
+    let newX = sp.x;
+    let newY = sp.y;
+
+    if (h === 'e' || h === 'se' || h === 'ne') newW = Math.max(min, sp.width + dx * mult);
+    if (h === 'w' || h === 'sw' || h === 'nw') newW = Math.max(min, sp.width - dx * mult);
+    if (h === 's' || h === 'se' || h === 'sw') newH = Math.max(min, sp.height + dy * mult);
+    if (h === 'n' || h === 'ne' || h === 'nw') newH = Math.max(min, sp.height - dy * mult);
+
+    if (keepAspect && sp.height > 0 && sp.width > 0) {
+      const ratio = sp.width / sp.height;
+      if (h === 'e' || h === 'w') {
+        newH = Math.max(min, newW / ratio);
+      } else if (h === 'n' || h === 's') {
+        newW = Math.max(min, newH * ratio);
+      } else {
+        if (Math.abs(newW - sp.width) / sp.width >= Math.abs(newH - sp.height) / sp.height) {
+          newH = Math.max(min, newW / ratio);
+        } else {
+          newW = Math.max(min, newH * ratio);
+        }
+      }
     }
-    if (this.resizeHandle === 's' || this.resizeHandle === 'se' || this.resizeHandle === 'sw') {
-      it.height = Math.max(min, sp.height + dy);
+
+    if (fromCenter) {
+      newX = sp.x + (sp.width - newW) / 2;
+      newY = sp.y + (sp.height - newH) / 2;
+    } else {
+      if (h === 'w' || h === 'sw' || h === 'nw') newX = sp.x + (sp.width - newW);
+      if (h === 'n' || h === 'ne' || h === 'nw') newY = sp.y + (sp.height - newH);
     }
-    if (this.resizeHandle === 'w' || this.resizeHandle === 'sw' || this.resizeHandle === 'nw') {
-      it.width = Math.max(min, sp.width - dx);
-      it.x = sp.x + (sp.width - it.width);
-    }
-    if (this.resizeHandle === 'n' || this.resizeHandle === 'ne' || this.resizeHandle === 'nw') {
-      it.height = Math.max(min, sp.height - dy);
-      it.y = sp.y + (sp.height - it.height);
-    }
+
+    it.width = newW;
+    it.height = newH;
+    it.x = newX;
+    it.y = newY;
 
     // Aplica snap de guias inteligentes no redimensionamento
     const snapResult = this.smartGuides.calculateResizeSnap(
@@ -663,6 +810,21 @@ export class PrintCanvasEngine {
           PrintAlignmentHelper.duplicateItem(this.composer);
           return;
         }
+        if ((e.key === 'c' || e.key === 'C') && !e.shiftKey) {
+          if (this.composer.copySelectedItems?.()) e.preventDefault();
+          return;
+        }
+        if ((e.key === 'x' || e.key === 'X') && !e.shiftKey) {
+          if (this.composer.cutSelectedItems?.()) e.preventDefault();
+          return;
+        }
+        if ((e.key === 'v' || e.key === 'V') && !e.shiftKey) {
+          if (this.composer.clipboardItems?.length) {
+            e.preventDefault();
+            this.composer.pasteItems?.();
+          }
+          return;
+        }
         return; // Preserva outros atalhos com Ctrl
       }
       if (e.altKey) return;
@@ -713,7 +875,8 @@ export class PrintCanvasEngine {
 
       // Atalhos da prancheta (independem de haver item selecionado)
       if (e.key === 'Escape') {
-        if (this.composer.interactionMode === 'content_pan') this.composer.setInteractionMode('layout');
+        if (this.placementType) this.composer.setPlacementTool?.(null);
+        else if (this.composer.interactionMode === 'content_pan') this.composer.setInteractionMode('layout');
         else this.composer.selectItem(null);
         return;
       }

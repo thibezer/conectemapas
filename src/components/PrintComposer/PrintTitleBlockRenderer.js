@@ -69,6 +69,18 @@ export const PrintTitleBlockRenderer = {
         { key: 'doc', label: 'Código / Revisão', value: ev(doc || '—') }
       );
     }
+    if (Array.isArray(p.customFields)) {
+      p.customFields.forEach((cf, idx) => {
+        if (!cf || (!cf.label && !cf.value)) return;
+        cells.push({
+          key: `custom_${idx}`,
+          label: ev(cf.label || `Campo ${idx + 1}`),
+          value: ev(cf.value || '—'),
+          full: !!cf.full,
+          wrap: true
+        });
+      });
+    }
     if (p.showSignature === true) {
       const caption = [ev(p.author || 'Eng. Cartógrafo / Agrimensor'), ev(p.art || '')].filter(Boolean).join(' · ');
       cells.push({ key: 'signature', kind: 'signature', label: 'Assinatura do Responsável Técnico', value: '', caption, full: true, weight: 1.9 });

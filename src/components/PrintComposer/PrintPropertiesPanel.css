@@ -870,3 +870,19 @@
 }
 
 .cm-pp-help-box[hidden] { display: none; }
+
+.cm-pp-col-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px 8px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 4px;
+}
+
+.cm-pp-custom-field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 4px;
+  align-items: center;
+}

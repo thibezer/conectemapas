@@ -84,6 +84,8 @@ export class PrintComposerModal {
     this.tempViews = new Map(); // Isolar/ocultar temporário por mapa (só na tela)
     this.revealHidden = new Set(); // Mapas com "Revelar ocultos" ligado
     this._pick = null; // Escolha de feição no mapa em andamento
+    this.clipboardItems = []; // Itens copiados na prancha (Ctrl+C / Ctrl+V)
+    this.copiedStyle = null; // Estilo copiado de um objeto para colar em outros
     this.canvasEngine = new PrintCanvasEngine(this);
     this.visibilityDialog = new PrintVisibilityDialog(this);
     this.atlas = new PrintAtlasEngine(this);
@@ -745,7 +747,7 @@ export class PrintComposerModal {
         </div>
       `;
     } else if (item.type === 'north_arrow') {
-      return PrintItemsManager.getNorthArrowSVG(item.arrowStyle || 'classic', item.rotation || 0);
+      return PrintItemsManager.getNorthArrowSVG(item.arrowStyle || 'classic', item.rotation || 0, item.color || '#000000');
     } else if (item.type === 'scale_bar') {
       return PrintItemsManager.renderScaleBar(item, item.scale || 10000);
     } else if (item.type === 'legend') {
@@ -754,7 +756,7 @@ export class PrintComposerModal {
       return PrintItemsManager.renderItemCanvas(item);
     } else if (item.type === 'table_vertices') {
       const targetId = item.targetFeatureId || (this.atlas?.enabled ? this.atlas.getCurrentFeature()?.id : null);
-      return PrintItemsManager.renderVerticesTable({ ...item, targetFeatureId: targetId }, this.features);
+      return PrintItemsManager.renderVerticesTable({ ...item, targetFeatureId: targetId }, this.features, this.layers);
     } else if (item.type === 'text_block') {
       const evalText = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.text) : item.text;
       const evalTitle = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.title) : item.title;
@@ -1277,7 +1279,13 @@ export class PrintComposerModal {
         pxPerMm,
         title: PrintItemsManager.legendTitle(item),
         columns: item.legendColumns,
-        font: item.fontFamily
+        font: item.fontFamily,
+        showFeatureCount: !!item.showFeatureCount,
+        showAreaHa: !!item.showAreaHa,
+        showHeaderBg: item.showHeaderBg !== false,
+        headerColor: item.headerColor || '#000000',
+        showBorder: item.showBorder !== false,
+        bgOpacity: item.bgOpacity ?? 0.95
       });
     } else if (item.type === 'title_block') {
       PrintTitleBlockRenderer.draw(ctx, {
@@ -1371,12 +1379,155 @@ export class PrintComposerModal {
     }
   }
 
+  /** Ativa modo de desenho-criação na folha (arrastar retângulo) ou limpa para seleção normal */
+  setPlacementTool(type = null) {
+    const next = this.readOnly ? null : (type || null);
+    this.canvasEngine.placementType = next;
+    const paper = document.getElementById('cm-paper-sheet');
+    if (paper) paper.classList.toggle('cm-placement-active', !!next);
+    PrintSideToolbox.updateActivePlacementTool?.(this);
+  }
+
+  /** Copia itens selecionados para a área de transferência interna da prancha */
+  copySelectedItems() {
+    const sel = this.getSelectedItems();
+    if (!sel.length) return 0;
+    this.clipboardItems = sel.map(it => JSON.parse(JSON.stringify(it)));
+    return this.clipboardItems.length;
+  }
+
+  /** Recorta itens selecionados (ignora itens bloqueados) */
+  cutSelectedItems() {
+    if (this.readOnly) return 0;
+    const count = this.copySelectedItems();
+    if (!count) return 0;
+    const deletableIds = this.getSelectedItems().filter(i => !i.locked).map(i => i.id);
+    if (deletableIds.length) this.deleteItems(deletableIds);
+    return deletableIds.length;
+  }
+
+  /** Cola itens da área de transferência interna com deslocamento seguro dentro da folha */
+  pasteItems() {
+    if (this.readOnly || !this.clipboardItems?.length) return [];
+    const ts = Date.now();
+    const pasted = [];
+    this.clipboardItems.forEach((src, idx) => {
+      const clone = JSON.parse(JSON.stringify(src));
+      clone.id = `item-${clone.type}-${ts}-${idx}`;
+      clone.name = `${clone.name || 'Item'} (Cópia)`;
+      clone.locked = false;
+      clone.x = (Number(src.x) || 10) + 6;
+      clone.y = (Number(src.y) || 10) + 6;
+      PrintItemsManager.clampItemToPaper(clone, this.paperSize);
+      this.items.splice(PrintItemsManager.insertionIndex(this.items, clone.type), 0, clone);
+      pasted.push(clone);
+    });
+    this.renderAllItems();
+    if (pasted.length === 1) this.selectItem(pasted[0].id);
+    else if (pasted.length > 1) this.selectItems(pasted.map(i => i.id));
+    this.pushHistoryState(pasted.length > 1 ? `Colar ${pasted.length} Itens` : 'Colar Item');
+    return pasted;
+  }
+
+  /** Copia os atributos visuais do item selecionado para reaplicar em outros objetos */
+  copyItemStyle() {
+    const sel = this.getSelectedItems()[0];
+    if (!sel) return false;
+    const keys = [
+      'fillColor', 'strokeColor', 'strokeWidth', 'strokeStyle', 'borderRadius',
+      'textColor', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle',
+      'textAlign', 'verticalAlign', 'letterSpacing', 'headerBgColor', 'headerColor',
+      'opacity', 'color', 'barColor', 'barStyle', 'showBorder', 'showTitle', 'columns'
+    ];
+    const style = {};
+    keys.forEach(k => { if (sel[k] !== undefined) style[k] = sel[k]; });
+    this.copiedStyle = style;
+    return true;
+  }
+
+  /** Aplica o estilo copiado nos itens selecionados compatíveis */
+  pasteItemStyle() {
+    if (this.readOnly || !this.copiedStyle) return false;
+    const targets = this.getSelectedItems().filter(i => !i.locked);
+    if (!targets.length) return false;
+    targets.forEach(it => {
+      Object.entries(this.copiedStyle).forEach(([k, v]) => {
+        if (k === 'columns' && it.type !== 'text_block') return;
+        it[k] = v;
+      });
+      this.refreshItemContent(it.id);
+    });
+    this.updatePropertiesPanel();
+    this.pushHistoryState(targets.length > 1 ? `Colar Estilo (${targets.length} itens)` : 'Colar Estilo');
+    return true;
+  }
+
+  /** Divide uma Tabela de Vértices que não cabe na altura atual criando uma tabela de continuação */
+  splitVerticesTableContinuation(itemId) {
+    if (this.readOnly) return null;
+    const src = this.items.find(i => i.id === itemId && i.type === 'table_vertices');
+    if (!src || src.tableMode === 'areas') return null;
+
+    const targetId = src.targetFeatureId || (this.atlas?.enabled ? this.atlas.getCurrentFeature()?.id : null);
+    const baseOpts = {
+      crs: src.crs || 'utm',
+      segmentFormat: src.segmentFormat || 'vertex',
+      vertexPrefix: src.vertexPrefix,
+      startVertex: src.startVertex,
+      endVertex: src.endVertex
+    };
+    const data = PrintItemsManager.extractVerticesData(this.features, targetId, baseOpts);
+    const cols = PrintItemsManager.resolveVerticesTableColumns(src);
+    const fit = PrintItemsManager.verticesTableFit(data, src.width || 80, src.height || 60, cols, {
+      showFooter: src.showFooter !== false
+    });
+    if (fit.hidden <= 0 || fit.shown <= 0) return null;
+
+    const firstStart = Math.max(1, Number(src.startVertex) || 1);
+    const splitEnd = firstStart + fit.shown - 1;
+    const totalEnd = Number(src.endVertex) || (firstStart + data.vertices.length - 1);
+
+    src.endVertex = splitEnd;
+
+    const cont = JSON.parse(JSON.stringify(src));
+    cont.id = `item-vert-cont-${Date.now()}`;
+    cont.name = `${src.name || 'Tabela'} (Cont.)`;
+    cont.startVertex = splitEnd + 1;
+    cont.endVertex = totalEnd;
+    cont.locked = false;
+    cont.x = (src.x || 10) + (src.width || 80) + 5;
+    cont.y = src.y || 10;
+    if (cont.x + cont.width > this.paperSize.width - 5) {
+      const smart = PrintItemsManager.findSmartPosition(cont, this.items, this.paperSize);
+      cont.x = smart.x;
+      cont.y = smart.y;
+    }
+    PrintItemsManager.clampItemToPaper(cont, this.paperSize);
+    this.items.splice(this.items.indexOf(src) + 1, 0, cont);
+    this.renderAllItems();
+    this.selectItem(cont.id);
+    this.pushHistoryState('Dividir Tabela em Continuação');
+    return cont;
+  }
+
   /** Insere um novo elemento cartográfico na prancha e o seleciona */
-  insertItem(type) {
+  insertItem(type, customRect = null) {
     if (this.readOnly) return null;
     const item = PrintItemsManager.createNewItem(type, this.projectName, this.items.length);
     if (!item) return null;
+    if (customRect && Number.isFinite(customRect.width) && Number.isFinite(customRect.height)) {
+      item.x = customRect.x;
+      item.y = customRect.y;
+      item.width = customRect.width;
+      item.height = customRect.height;
+    } else {
+      const pos = PrintItemsManager.findSmartPosition(item, this.items, this.paperSize);
+      item.x = pos.x;
+      item.y = pos.y;
+    }
+    PrintItemsManager.clampItemToPaper(item, this.paperSize);
     this.items.splice(PrintItemsManager.insertionIndex(this.items, item.type), 0, item);
+    if (this.canvasEngine?.placementType) this.setPlacementTool(null);
     this.renderAllItems();
     this.selectItem(item.id);
     this.pushHistoryState('Inserir Item');
