@@ -112,6 +112,11 @@ export class AuthService {
     return data.projects || [];
   }
 
+  /** Desvincula a conta logada de um projeto compartilhado. */
+  static async leaveProject(projectId) {
+    return this._post('leave_project', { projectId });
+  }
+
   static async logout() {
     try { await this._post('auth_logout', {}); } catch {}
     this._setSession(null, null);

@@ -10,6 +10,9 @@ import { MapImageExporter } from '../services/MapImageExporter.js';
 import { StorageService } from '../services/StorageService.js';
 import { ProjectLifecycle } from '../services/Storage/ProjectLifecycle.js';
 import { AccessManager } from '../services/Storage/AccessManager.js';
+import { LocalStore } from '../services/Storage/LocalStore.js';
+import { CLOUD_ENABLED, CLOUD_API_URL, cloudFetch } from '../services/Storage/StorageConstants.js';
+import { AppBootstrapSync } from '../bootstrap/AppBootstrapSync.js';
 import { FeatureSyncController } from './FeatureSyncController.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
@@ -304,6 +307,57 @@ export class ProjectActionsController {
     });
     window.location.assign(AccessManager.buildShareUrl(next));
     return next;
+  }
+
+  /** Renomeia o projeto aberto ou outro projeto da lista sem recarregar a página. */
+  static async renameProject(app, projectId, newName) {
+    const cleanName = ProjectLifecycle.normalizeName(newName);
+    if (!cleanName) throw new Error('Informe um nome válido para o projeto.');
+
+    if (projectId === app.projectId) {
+      AppBootstrapSync.showProjectName(app, cleanName);
+      app.saveMetadata(true);
+    } else {
+      const existing = LocalStore.listProjects().find(p => p && p.id === projectId) || { id: projectId };
+      LocalStore.updateProjectsIndex({
+        ...existing,
+        id: projectId,
+        name: cleanName,
+        updatedAt: new Date().toISOString()
+      });
+      if (CLOUD_ENABLED) {
+        const res = await cloudFetch(`${CLOUD_API_URL}?action=save_metadata`, {
+          method: 'POST',
+          headers: AccessManager.headers(projectId, { 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ id: projectId, name: cleanName })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      }
+    }
+
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: 'Projeto renomeado',
+      mensagem: `Renomeado para "${cleanName}".`,
+      duracao: 2500
+    });
+    return cleanName;
+  }
+
+  /** Exclui qualquer projeto: se for o aberto usa deleteCurrentProject; caso contrário exclui sem recarregar. */
+  static async deleteProjectById(app, projectId) {
+    if (projectId === app.projectId) {
+      return this.deleteCurrentProject(app);
+    }
+    await ProjectLifecycle.deleteProject(projectId);
+    UIToast.notificar({
+      tipo: 'sucesso',
+      titulo: 'Projeto excluído',
+      mensagem: 'O projeto foi excluído permanentemente.',
+      duracao: 3000
+    });
+    return projectId;
   }
 
   static locateUser(app) {

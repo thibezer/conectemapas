@@ -223,6 +223,10 @@ export class AppComponentsBuilder {
       collaborators: app.collabHub.getActiveCollaboratorsList(),
       accountName: AuthService.getUser()?.name || '',
       onOpenAccount: () => {
+        if (app.projectsScreen?.isOpen) {
+          if (app.authModal) app.authModal.open(AuthService.isLoggedIn() ? 'account' : 'login');
+          return;
+        }
         if (AuthService.isLoggedIn() && app.projectsScreen) app.projectsScreen.open();
         else if (app.authModal) app.authModal.open();
       },

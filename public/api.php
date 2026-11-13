@@ -1690,10 +1690,13 @@ switch ($action) {
         $body = getJsonBody();
         $projectId = cleanProjectId($body['id'] ?? '');
         $name = !empty($body['name']) ? $body['name'] : 'Novo Projeto';
-        $description = isset($body['description']) ? $body['description'] : '';
+        $hasDesc = array_key_exists('description', $body);
+        $description = $hasDesc ? (string)$body['description'] : '';
         $basemap = !empty($body['basemap']) ? $body['basemap'] : 'google_satelite_puro';
-        $center = isset($body['center']) && is_array($body['center']) ? $body['center'] : [-23.7661, -53.3206];
-        $zoom = isset($body['zoom']) ? (int)$body['zoom'] : 14;
+        $hasCenter = isset($body['center']) && is_array($body['center']) && count($body['center']) >= 2;
+        $center = $hasCenter ? $body['center'] : [-23.7661, -53.3206];
+        $hasZoom = isset($body['zoom']) && $body['zoom'] !== null && $body['zoom'] !== '';
+        $zoom = $hasZoom ? (int)$body['zoom'] : 14;
         $featureCount = isset($body['featureCount']) ? (int)$body['featureCount'] : 0;
         requireRole($pdo, $projectId, 'editor');
 
@@ -1704,10 +1707,10 @@ switch ($action) {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
                 ON DUPLICATE KEY UPDATE
                     name = ?,
-                    description = ?,
-                    center_lat = ?,
-                    center_lng = ?,
-                    zoom = ?,
+                    description = COALESCE(?, description),
+                    center_lat = COALESCE(?, center_lat),
+                    center_lng = COALESCE(?, center_lng),
+                    zoom = COALESCE(?, zoom),
                     updated_at = NOW()
             ");
             $latVal = $center[0] ?? -23.7661;
@@ -1721,12 +1724,12 @@ switch ($action) {
                 $lngVal,
                 $zoom,
                 $featureCount,
-                // ON DUPLICATE KEY UPDATE (compatibilidade MariaDB 11.8; mapa-base e feature_count oficial só inicializam no INSERT)
+                // ON DUPLICATE KEY UPDATE (compatibilidade MariaDB 11.8; campos ausentes preservam valor existente)
                 $name,
-                $description,
-                $latVal,
-                $lngVal,
-                $zoom
+                $hasDesc ? $description : null,
+                $hasCenter ? $latVal : null,
+                $hasCenter ? $lngVal : null,
+                $hasZoom ? $zoom : null
             ]);
             assertProjectNotDeleted($pdo, $projectId, true);
 

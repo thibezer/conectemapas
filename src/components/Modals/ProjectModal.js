@@ -23,6 +23,7 @@ export class ProjectModal {
     this.getClaimMode = options.getClaimMode || (() => 'local');
     this.onCreate = options.onCreate || (async () => {});
     this.onDelete = options.onDelete || (async () => {});
+    this.onOpenProjectsScreen = options.onOpenProjectsScreen || null;
     this.container = null;
     this.view = 'manage';
     this.busy = false;
@@ -91,7 +92,10 @@ export class ProjectModal {
         <div class="cm-project-current-name">${this.escapeHtml(name)}</div>
         <div class="cm-project-hint">ID: <code>${this.escapeHtml(id)}</code></div>
       </div>
-      <ui-botao-primario id="cm-project-go-create" variante="primary">Novo projeto</ui-botao-primario>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <ui-botao-primario inline id="cm-project-go-create" variante="primary">Novo projeto</ui-botao-primario>
+        ${this.onOpenProjectsScreen ? '<ui-botao-primario inline id="cm-project-go-list" variante="secundario">Ver todos os projetos</ui-botao-primario>' : ''}
+      </div>
       <div class="cm-project-section cm-project-danger">
         <span class="cm-project-label">Zona de perigo</span>
         <div class="cm-project-hint">Excluir apaga o projeto, camadas, feições, histórico e acessos para todos os membros. Não dá para desfazer.</div>
@@ -134,6 +138,10 @@ export class ProjectModal {
 
   _bind(body) {
     body.querySelector('#cm-project-go-create')?.addEventListener('click', () => this.openCreate());
+    body.querySelector('#cm-project-go-list')?.addEventListener('click', () => {
+      this.close();
+      if (this.onOpenProjectsScreen) this.onOpenProjectsScreen();
+    });
     body.querySelector('#cm-project-go-delete')?.addEventListener('click', () => {
       if (this.getDeletePermission().allowed) this.show('delete');
     });

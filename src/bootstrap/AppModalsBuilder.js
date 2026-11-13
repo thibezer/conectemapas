@@ -53,7 +53,16 @@ export class AppModalsBuilder {
 
     app.projectsScreen = new ProjectsScreen({
       getCurrentProjectId: () => app.projectId,
+      getCurrentProject: () => ({
+        id: app.projectId,
+        name: app.projectName,
+        featureCount: Array.isArray(app.features) ? app.features.length : 0
+      }),
       onCreate: (data) => ProjectActionsController.createProject(app, data),
+      onRename: (id, name) => ProjectActionsController.renameProject(app, id, name),
+      onDelete: (id) => ProjectActionsController.deleteProjectById(app, id),
+      onLeave: (id) => AuthService.leaveProject(id),
+      onOpenInvite: () => app.authModal && app.authModal.openInvite(''),
       onOpenAccount: () => app.authModal.open('account')
     });
     app.projectsScreen.render(document.getElementById('projects-screen-mount'));
@@ -75,7 +84,8 @@ export class AppModalsBuilder {
       getDeletePermission: () => ProjectLifecycle.canDelete(app.projectId),
       getClaimMode: () => (!CLOUD_ENABLED ? 'local' : (AuthService.isLoggedIn() ? 'offer' : 'anonymous')),
       onCreate: (data) => ProjectActionsController.createProject(app, data),
-      onDelete: () => ProjectActionsController.deleteCurrentProject(app)
+      onDelete: () => ProjectActionsController.deleteCurrentProject(app),
+      onOpenProjectsScreen: () => app.projectsScreen && app.projectsScreen.open()
     });
     app.projectModal.render(document.getElementById('project-modal-mount'));
 
