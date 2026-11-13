@@ -108,7 +108,6 @@ export class ProjectsScreen {
     this.offlineFallback = false;
     this.isOpen = false;
     this._bodyOverflow = '';
-    this._headerResizeObserver = null;
     this._unsubAuth = AuthService.onChange(() => {
       if (this.isOpen) this._load();
     });
@@ -280,24 +279,8 @@ export class ProjectsScreen {
       }
     });
     container.appendChild(this.root);
-    this._trackHeader();
     this._syncOpenState();
     this._renderContent();
-  }
-
-  _trackHeader() {
-    if (typeof document === 'undefined' || !this.root) return;
-    const header = document.getElementById('header-mount');
-    const sync = () => {
-      if (!this.root) return;
-      const top = header ? header.getBoundingClientRect().bottom : 0;
-      this.root.style.top = `${Math.max(0, Math.round(top))}px`;
-    };
-    sync();
-    if (header && typeof ResizeObserver !== 'undefined') {
-      this._headerResizeObserver = new ResizeObserver(sync);
-      this._headerResizeObserver.observe(header);
-    }
   }
 
   open() {
@@ -408,6 +391,16 @@ export class ProjectsScreen {
     this.root.innerHTML = `
       <div class="cm-ps-top">
         <div class="cm-ps-top-left">
+          <div class="cm-ps-brand" aria-label="ConecteMapas">
+            <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
+              <rect width="32" height="32" rx="8" fill="#141417"/>
+              <path d="M16 4C10.477 4 6 8.477 6 14C6 21 16 28 16 28C16 28 26 21 26 14C26 8.477 21.523 4 16 4Z" fill="#00E08A" fill-opacity="0.25" stroke="#00E08A" stroke-width="2"/>
+              <circle cx="16" cy="14" r="4" fill="#00E08A"/>
+              <path d="M7 26L12 23L20 26L25 23" stroke="#00E08A" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 2"/>
+            </svg>
+            <span>ConecteMapas</span>
+          </div>
+          <span class="cm-ps-divider" aria-hidden="true"></span>
           <ui-botao-primario inline id="cm-ps-back" variante="ghost">&larr; Voltar ao mapa</ui-botao-primario>
           <span class="cm-ps-title">Projetos</span>
           <span class="cm-ps-kpi">

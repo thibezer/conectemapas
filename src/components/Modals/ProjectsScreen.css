@@ -39,6 +39,36 @@
   gap: 10px;
 }
 
+.cm-ps-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.cm-ps-brand svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.cm-ps-brand span {
+  background: linear-gradient(135deg, #ffffff 40%, var(--cm-primary, #00E08A) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.cm-ps-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--cm-border, rgba(255, 255, 255, 0.1));
+  flex-shrink: 0;
+}
+
 .cm-ps-title {
   font-size: 14px;
   font-weight: 700;
