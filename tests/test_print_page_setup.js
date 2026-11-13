@@ -131,61 +131,97 @@ assert.strictEqual(mgr.deletePreset('nao-existe'), false);
 console.log('✔ Pré-definições validadas');
 
 // ============================================================================
-// 4. Painel
+// 4. Painel da folha (<ui-painel-propriedades>), formatos custom e guias InDesign
 // ============================================================================
-console.log('4. Painel da folha...');
-const panelComposer = {
-  items: [], selectedItemId: null, features: [], paperSizes,
-  paperSize: A4, showAbntMargins: true, sheetsManager: mgr
-};
-let html = PrintPropertiesPanel.render(panelComposer);
-assert.ok(/id="print-margins-abnt-badge"[^>]*>ABNT</.test(html) && !/id="print-margins-abnt-badge"[^>]*hidden/.test(html), 'Margens ABNT mostram o selo');
-assert.ok(/id="btn-margins-abnt"[^>]*hidden/.test(html), 'Sem botão de voltar quando já é ABNT');
-const order = ['top', 'left', 'bottom', 'right'].map(side => html.indexOf(`data-margin-side="${side}"`));
-assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'Duas linhas: Sup. e Esq., depois Inf. e Dir.');
-assert.ok(/<label class="cm-pp-margin-label" for="print-margin-top">Sup\.<\/label>/.test(html), 'Rótulo à esquerda do campo');
-['top', 'right', 'bottom', 'left'].forEach(side => {
-  assert.ok(new RegExp(`data-margin-side="${side}"[^>]*value="${PrintItemsManager.sheetMargins(A4)[side]}"`).test(html), `Campo da margem ${side}`);
+console.log('4. Painel da folha (<ui-painel-propriedades>), custom e guias...');
+
+// Formatos padrão e personalizados
+const customPaper = PrintItemsManager.customPaper(700.3, 450, A4);
+assert.strictEqual(customPaper.id, 'CUSTOM');
+assert.strictEqual(customPaper.width, 700.5);
+assert.strictEqual(customPaper.height, 450);
+assert.strictEqual(PrintItemsManager.customPaper(10, 99999, A4).width, 50, 'Largura mínima é 50mm');
+assert.strictEqual(PrintItemsManager.customPaper(10, 99999, A4).height, 5000, 'Altura máxima é 5000mm');
+
+// Guias estilo InDesign: 3 colunas com calha de 5mm dentro das margens do A4 (x útil = 25..290, span=265)
+const gridGuides = PrintItemsManager.computeGridGuides(A4, {
+  cols: 3, colGutter: 5, rows: 2, rowGutter: 10, fitTo: 'margins', mode: 'grid'
 });
-assert.ok(new RegExp(`<option value="${p1b.id}" selected>`).test(html), 'Pré-definição correspondente vem selecionada');
-assert.ok(new RegExp(`id="btn-preset-delete"[^>]*data-preset-id="${p1b.id}"`).test(html));
-assert.ok(!html.includes('encadernação e borda interna'), 'Sem texto institucional longo');
-assert.ok(html.includes('A4 Paisagem · 297×210'));
+// spanX = 265, calhas = 2*5 = 10 -> célula = 85 -> div1 = 25+85=110, 115; div2 = 200, 205
+assert.deepStrictEqual(gridGuides.x, [110, 115, 200, 205], 'Colunas estilo InDesign com espaçamento (calha)');
+// spanY = 210 - 7 - 7 = 196, calha = 10 -> célula = 93 -> div1 = 7+93=100, 110
+assert.deepStrictEqual(gridGuides.y, [100, 110], 'Linhas estilo InDesign com espaçamento (calha)');
+
+// 1 coluna com espaçamento centralizado na página inteira
+const pageSplit = PrintItemsManager.computeGridGuides(A4, {
+  cols: 1, colGutter: 10, rows: 0, fitTo: 'page', mode: 'grid'
+});
+assert.deepStrictEqual(pageSplit.x, [143.5, 153.5], 'Divisão única centralizada com calha');
+assert.deepStrictEqual(pageSplit.y, []);
+
+// Modo passo fixo
+const stepGuides = PrintItemsManager.computeGridGuides(A4, {
+  cols: 2, colGutter: 50, rows: 1, rowGutter: 30, fitTo: 'page', mode: 'step'
+});
+assert.deepStrictEqual(stepGuides.x, [50, 100]);
+assert.deepStrictEqual(stepGuides.y, [30]);
+
+const fullPaperSizes = {
+  ...paperSizes,
+  A4_P: { id: 'A4_P', name: 'A4 Retrato', width: 210, height: 297, marginL: 25, marginO: 7 },
+  A3_P: { id: 'A3_P', name: 'A3 Retrato', width: 297, height: 420, marginL: 25, marginO: 10 },
+  A2_L: { id: 'A2_L', name: 'A2 Paisagem', width: 594, height: 420, marginL: 25, marginO: 10 },
+  A2_P: { id: 'A2_P', name: 'A2 Retrato', width: 420, height: 594, marginL: 25, marginO: 10 },
+  A1_L: { id: 'A1_L', name: 'A1 Paisagem', width: 841, height: 594, marginL: 25, marginO: 10 },
+  A1_P: { id: 'A1_P', name: 'A1 Retrato', width: 594, height: 841, marginL: 25, marginO: 10 },
+  A0_L: { id: 'A0_L', name: 'A0 Paisagem', width: 1189, height: 841, marginL: 25, marginO: 10 },
+  A0_P: { id: 'A0_P', name: 'A0 Retrato', width: 841, height: 1189, marginL: 25, marginO: 10 }
+};
+
+const panelComposer = {
+  items: [], selectedItemId: null, features: [], paperSizes: fullPaperSizes,
+  paperSize: A4, showAbntMargins: true, sheetsManager: mgr,
+  manualGuides: gridGuides,
+  guideGeneratorConfig: { rows: 2, rowGutter: 10, cols: 3, colGutter: 5, fitTo: 'margins', mode: 'grid', replace: true }
+};
+
+const html = PrintPropertiesPanel.render(panelComposer);
+assert.ok(html.includes('<ui-painel-propriedades'), 'Aba da folha renderiza o componente <ui-painel-propriedades> do kit');
+assert.ok(html.includes('id="print-paper-props-panel"'), 'Id esperado no componente de propriedades da folha');
+assert.ok(html.includes('data-paper-id="A4_L"'));
+assert.ok(html.includes('data-margins-abnt="true"'));
+
+const propById = (cats, id) => {
+  for (const c of cats) {
+    const p = c.propriedades.find(x => x.id === id);
+    if (p) return p;
+  }
+  return null;
+};
+
+let cats = PrintPropertiesPanel.buildPaperCategories(panelComposer);
+assert.deepStrictEqual(cats.map(c => c.id), ['formato', 'margens', 'guias', 'presets']);
+const formatOpts = propById(cats, 'paper_size').opcoes.map(o => o.id);
+assert.ok(['A4_L', 'A4_P', 'A3_L', 'A3_P', 'A2_L', 'A2_P', 'A1_L', 'A1_P', 'A0_L', 'A0_P', 'CUSTOM'].every(k => formatOpts.includes(k)), 'Contém todos os formatos padrão e Personalizado');
+assert.strictEqual(propById(cats, 'margin_standard').valor, 'ABNT');
+assert.strictEqual(propById(cats, 'reset_margins_abnt'), null, 'Sem botão de voltar à ABNT quando já está em ABNT');
+assert.strictEqual(propById(cats, 'preset_select').valor, p1b.id);
+assert.ok(propById(cats, 'preset_delete'), 'Mostra botão de excluir quando corresponde a uma pré-definição');
+assert.strictEqual(propById(cats, 'guides_clear').rotuloAcao, 'Limpar guias (6)', 'Contador de guias no botão');
 
 panelComposer.paperSize = custom;
-html = PrintPropertiesPanel.render(panelComposer);
-assert.ok(/id="btn-margins-abnt"(?![^>]*hidden)/.test(html), 'Margem personalizada oferece voltar à ABNT');
-assert.ok(/id="print-margins-abnt-badge"[^>]*hidden/.test(html), 'Selo ABNT some com margem personalizada');
-assert.ok(/id="btn-preset-delete"[^>]*disabled/.test(html), 'Sem pré-definição correspondente, excluir fica desabilitado');
-assert.ok(html.includes('value="30"'));
+cats = PrintPropertiesPanel.buildPaperCategories(panelComposer);
+assert.strictEqual(propById(cats, 'margin_standard').valor, 'Personalizada');
+assert.strictEqual(propById(cats, 'margin_left').valor, 30);
+assert.ok(propById(cats, 'reset_margins_abnt'), 'Margem personalizada oferece voltar à ABNT');
+assert.strictEqual(propById(cats, 'preset_delete'), null, 'Sem pré-definição correspondente, não exibe excluir');
 
-// Reconstrução mantém os controles da folha e só copia os valores (o clique não cai num elemento removido)
-const fakeSection = (state) => {
-  const nodes = {
-    '#print-paper-size-select': { value: state.paper },
-    '#print-margins-abnt-badge': { hidden: !state.abnt },
-    '#btn-margins-abnt': { hidden: state.abnt },
-    '#print-abnt-margins-check': { checked: state.frame },
-    '#print-preset-select': { value: state.preset, innerHTML: state.options },
-    '#btn-preset-delete': { disabled: !state.preset, dataset: state.preset ? { presetId: state.preset } : {} }
-  };
-  const margins = ['top', 'left', 'bottom', 'right'].map(side => ({ dataset: { marginSide: side }, value: String(state.m[side]) }));
-  margins.forEach(i => { nodes[`[data-margin-side="${i.dataset.marginSide}"]`] = i; });
-  return { querySelector: (sel) => nodes[sel] || null, querySelectorAll: () => margins, nodes };
-};
-const kept = fakeSection({ paper: 'A4_L', abnt: false, frame: false, preset: '', options: '<option>a</option>', m: { top: 10, left: 20.5, bottom: 10, right: 10 } });
-const keptTop = kept.nodes['[data-margin-side="top"]'];
-const fresh = fakeSection({ paper: 'A3_L', abnt: true, frame: true, preset: 'p1', options: '<option>b</option>', m: { top: 10, left: 25, bottom: 10, right: 10 } });
-PrintPropertiesPanel.syncPaperSection(kept, fresh);
-assert.strictEqual(kept.nodes['[data-margin-side="top"]'], keptTop, 'Mesmo elemento');
-assert.strictEqual(kept.nodes['[data-margin-side="left"]'].value, '25', 'Campos refletem a margem aplicada');
-assert.strictEqual(kept.nodes['#print-paper-size-select'].value, 'A3_L');
-assert.strictEqual(kept.nodes['#print-margins-abnt-badge'].hidden, false);
-assert.strictEqual(kept.nodes['#btn-margins-abnt'].hidden, true);
-assert.strictEqual(kept.nodes['#print-abnt-margins-check'].checked, true);
-assert.strictEqual(kept.nodes['#print-preset-select'].value, 'p1');
-assert.strictEqual(kept.nodes['#btn-preset-delete'].dataset.presetId, 'p1');
-assert.strictEqual(kept.nodes['#btn-preset-delete'].disabled, false);
+// syncPaperSection atualiza a instância viva de <ui-painel-propriedades> sem recriá-la
+const fakePanelEl = { dataset: {}, categorias: null, shadowRoot: null };
+PrintPropertiesPanel.syncPaperSection(fakePanelEl, panelComposer);
+assert.strictEqual(fakePanelEl.dataset.paperId, 'A4_L');
+assert.strictEqual(fakePanelEl.dataset.marginsAbnt, 'false');
+assert.ok(Array.isArray(fakePanelEl.categorias) && fakePanelEl.categorias.length === 4);
 console.log('✔ Painel validado');
 
 console.log('\n🎉 TESTES DA CONFIGURAÇÃO DA FOLHA PASSARAM!');

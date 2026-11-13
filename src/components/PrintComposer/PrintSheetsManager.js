@@ -507,6 +507,8 @@ export class PrintSheetsManager {
       id: `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       name: cleanName,
       paperSizeId: paperSize.id,
+      width: paperSize.width,
+      height: paperSize.height,
       margins: paperSize.margins ? { ...PrintItemsManager.sheetMargins(paperSize) } : null,
       showFrame: showFrame !== false
     };
@@ -557,6 +559,7 @@ export class PrintSheetsManager {
     const cur = PrintItemsManager.sheetMargins(paperSize);
     return this.loadPresets().find(p => {
       if (p.paperSizeId !== paperSize.id || (p.showFrame !== false) !== (showFrame !== false)) return false;
+      if (paperSize.id === 'CUSTOM' && (p.width !== paperSize.width || p.height !== paperSize.height)) return false;
       const m = PrintItemsManager.sheetMargins({ ...paperSize, margins: p.margins || undefined });
       return ['top', 'right', 'bottom', 'left'].every(k => m[k] === cur[k]);
     }) || null;

@@ -61,9 +61,14 @@ export class PrintComposerModal {
       A3_L: { id: 'A3_L', name: 'A3 Paisagem', width: 420, height: 297, marginL: 25, marginO: 10 },
       A3_P: { id: 'A3_P', name: 'A3 Retrato', width: 297, height: 420, marginL: 25, marginO: 10 },
       A2_L: { id: 'A2_L', name: 'A2 Paisagem', width: 594, height: 420, marginL: 25, marginO: 10 },
-      A1_L: { id: 'A1_L', name: 'A1 Paisagem', width: 841, height: 594, marginL: 25, marginO: 10 }
+      A2_P: { id: 'A2_P', name: 'A2 Retrato', width: 420, height: 594, marginL: 25, marginO: 10 },
+      A1_L: { id: 'A1_L', name: 'A1 Paisagem', width: 841, height: 594, marginL: 25, marginO: 10 },
+      A1_P: { id: 'A1_P', name: 'A1 Retrato', width: 594, height: 841, marginL: 25, marginO: 10 },
+      A0_L: { id: 'A0_L', name: 'A0 Paisagem', width: 1189, height: 841, marginL: 25, marginO: 10 },
+      A0_P: { id: 'A0_P', name: 'A0 Retrato', width: 841, height: 1189, marginL: 25, marginO: 10 }
     };
     this.paperSize = this.paperSizes.A4_L;
+    this.guideGeneratorConfig = { rows: 0, rowGutter: 5, cols: 0, colGutter: 5, fitTo: 'margins', mode: 'grid', replace: true };
     this.exportDpi = 300;
 
     this.projectId = options.projectId || 'projeto_padrao';
@@ -618,12 +623,83 @@ export class PrintComposerModal {
 
   /** Troca a folha mantendo os itens do usuário e as margens personalizadas (pode ser desfeito) */
   setPaperSize(sizeKey) {
+    if (sizeKey === 'CUSTOM') {
+      if (this.paperSize.id === 'CUSTOM') return;
+      const custom = PrintItemsManager.customPaper(this.paperSize.width, this.paperSize.height, this.paperSize);
+      this.paperSize = custom;
+      this.updatePropertiesPanel();
+      this.pushHistoryState('Folha Personalizada');
+      return;
+    }
     const target = this.paperSizes[sizeKey];
     if (!target || target.id === this.paperSize.id) return;
     const paper = this.paperSize.margins
       ? PrintItemsManager.withMargins(target, PrintItemsManager.sheetMargins(this.paperSize))
       : target;
     this.applyPageSetup(paper, this.showAbntMargins, `Folha ${target.name}`);
+  }
+
+  /** Define dimensões personalizadas (em mm) ou reconhece um padrão equivalente */
+  setCustomPaperDimensions(width, height) {
+    const cleanW = Math.min(5000, Math.max(50, Math.round((Number(width) || this.paperSize.width) * 2) / 2));
+    const cleanH = Math.min(5000, Math.max(50, Math.round((Number(height) || this.paperSize.height) * 2) / 2));
+    if (cleanW === this.paperSize.width && cleanH === this.paperSize.height) {
+      this.updatePropertiesPanel();
+      return;
+    }
+    const std = Object.values(this.paperSizes).find(p => p.width === cleanW && p.height === cleanH);
+    const base = std || PrintItemsManager.customPaper(cleanW, cleanH, this.paperSize);
+    const paper = (std && this.paperSize.margins)
+      ? PrintItemsManager.withMargins(std, PrintItemsManager.sheetMargins(this.paperSize))
+      : base;
+    this.applyPageSetup(paper, this.showAbntMargins, `Folha ${paper.name}`);
+  }
+
+  /** Alterna orientação da folha (landscape / portrait) trocando largura e altura */
+  setPaperOrientation(orientation) {
+    const isLandscape = this.paperSize.width >= this.paperSize.height;
+    if ((orientation === 'landscape' && isLandscape) || (orientation === 'portrait' && !isLandscape)) return;
+    this.setCustomPaperDimensions(this.paperSize.height, this.paperSize.width);
+  }
+
+  /** Cria guias estilo InDesign a partir da quantidade de linhas/colunas e espaçamento */
+  applyGridGuides(partial = {}, { announce = false } = {}) {
+    if (this.readOnly) return;
+    this.guideGeneratorConfig = { ...(this.guideGeneratorConfig || {}), ...partial };
+    const cfg = this.guideGeneratorConfig;
+    const generated = PrintItemsManager.computeGridGuides(this.paperSize, cfg);
+    if (cfg.replace !== false) {
+      this.manualGuides = generated;
+    } else {
+      const cur = this.manualGuides || { x: [], y: [] };
+      this.manualGuides = {
+        x: [...new Set([...(cur.x || []), ...generated.x])].sort((a, b) => a - b),
+        y: [...new Set([...(cur.y || []), ...generated.y])].sort((a, b) => a - b)
+      };
+    }
+    this.canvasEngine?.renderManualGuides?.();
+    this.updatePropertiesPanel();
+    this.pushHistoryState('Criar Guias na Folha', { coalesceKey: 'paper-grid-guides' });
+    if (announce) {
+      const total = (generated.x?.length || 0) + (generated.y?.length || 0);
+      UIToast.notificar({
+        tipo: total > 0 ? 'sucesso' : 'informativo',
+        titulo: 'Guias atualizadas',
+        mensagem: total > 0 ? `${generated.x.length} verticais e ${generated.y.length} horizontais aplicadas.` : 'Nenhuma guia gerada (defina linhas ou colunas > 0).',
+        duracao: 2200
+      });
+    }
+  }
+
+  /** Remove todas as guias manuais da folha */
+  clearManualGuides() {
+    if (this.readOnly) return;
+    this.manualGuides = { x: [], y: [] };
+    this.guideGeneratorConfig = { ...(this.guideGeneratorConfig || {}), rows: 0, cols: 0 };
+    this.canvasEngine?.renderManualGuides?.();
+    this.updatePropertiesPanel();
+    this.pushHistoryState('Limpar Guias');
+    UIToast.notificar({ tipo: 'informativo', titulo: 'Guias removidas', mensagem: 'Todas as guias da folha foram limpas.', duracao: 1800 });
   }
 
   /** Altera um ou mais lados da margem (mm); `null` volta à ABNT */
@@ -649,7 +725,11 @@ export class PrintComposerModal {
 
   applyPagePreset(presetId) {
     const preset = this.sheetsManager.loadPresets().find(p => p.id === presetId);
-    const base = preset && this.paperSizes[preset.paperSizeId];
+    if (!preset) return;
+    const base = this.paperSizes[preset.paperSizeId]
+      || (preset.paperSizeId === 'CUSTOM' && preset.width && preset.height
+        ? PrintItemsManager.customPaper(preset.width, preset.height)
+        : null);
     if (!base) return;
     this.applyPageSetup(PrintItemsManager.withMargins(base, preset.margins), preset.showFrame, `Pré-definição ${preset.name}`);
   }
@@ -1362,14 +1442,14 @@ export class PrintComposerModal {
     if (mount) {
       // Preserva a rolagem ao reconstruir após cada seleção/arrasto (as seções abertas ficam em this.panelSections)
       const prevScroll = mount.querySelector('.cm-print-props-scroll')?.scrollTop || 0;
-      const keptPaper = mount.querySelector('details[data-section="paper"]');
+      const keptPaper = mount.querySelector('#print-paper-props-panel');
       // Quem usa o teclado não perde o lugar na lista ao bloquear, ocultar ou selecionar
       const focusSel = PrintPropertiesPanel.listFocusSelector(document.activeElement, mount);
       mount.innerHTML = PrintPropertiesPanel.render(this);
-      // A seção da folha continua a mesma na tela, só com os valores atualizados
-      const freshPaper = mount.querySelector('details[data-section="paper"]');
+      // A seção da folha continua a mesma instância do componente na tela, só com as categorias atualizadas
+      const freshPaper = mount.querySelector('#print-paper-props-panel');
       if (keptPaper && freshPaper) {
-        PrintPropertiesPanel.syncPaperSection(keptPaper, freshPaper);
+        PrintPropertiesPanel.syncPaperSection(keptPaper, this);
         freshPaper.replaceWith(keptPaper);
       }
       const scroller = mount.querySelector('.cm-print-props-scroll');

@@ -208,108 +208,179 @@ export class PrintPropertiesPanel {
   static TABS = [['item', 'Item', 'target'], ['items', 'Elementos', 'layers'], ['paper', 'Folha', 'sheet'], ['atlas', 'Atlas', 'book']];
 
   static PAPER_OPTIONS = [
-    ['A4_L', 'A4 Paisagem'], ['A4_P', 'A4 Retrato'], ['A3_L', 'A3 Paisagem'],
-    ['A3_P', 'A3 Retrato'], ['A2_L', 'A2 Paisagem'], ['A1_L', 'A1 Paisagem']
+    ['A4_L', 'A4 Paisagem'], ['A4_P', 'A4 Retrato'],
+    ['A3_L', 'A3 Paisagem'], ['A3_P', 'A3 Retrato'],
+    ['A2_L', 'A2 Paisagem'], ['A2_P', 'A2 Retrato'],
+    ['A1_L', 'A1 Paisagem'], ['A1_P', 'A1 Retrato'],
+    ['A0_L', 'A0 Paisagem'], ['A0_P', 'A0 Retrato'],
+    ['CUSTOM', 'Personalizado']
   ];
 
-  /** Seção da folha: papel, margens (ABNT por padrão, editáveis), moldura e pré-definições */
-  static renderPaperSection(composer, openAttr) {
-    const esc = PrintItemsManager.escapeHtml;
-    const paper = composer.paperSize;
+  /** Categorias no contrato de `<ui-painel-propriedades>` para a aba Folha */
+  static buildPaperCategories(composer) {
+    const paper = composer.paperSize || { id: 'A4_L', name: 'A4 Paisagem', width: 297, height: 210 };
     const sizes = composer.paperSizes || {};
     const m = PrintItemsManager.sheetMargins(paper);
-    const isAbnt = !paper.margins;
+    const isAbnt = PrintItemsManager.isAbntMargins(paper);
+    const isStandard = Boolean(sizes[paper.id]);
     const presets = composer.sheetsManager?.loadPresets?.() || [];
     const match = composer.sheetsManager?.findMatchingPreset?.(paper, composer.showAbntMargins) || null;
-    const maxW = Math.floor(paper.width / 2);
-    const maxH = Math.floor(paper.height / 2);
-    const marginInput = (side, label, max) => `
-      <label class="cm-pp-margin-label" for="print-margin-${side}">${label}</label>
-      <ui-campo-texto type="number" tamanho="sm" id="print-margin-${side}" class="cm-vertex-input cm-pp-margin-input" data-margin-side="${side}" min="0" max="${max}" step="0.5" value="${m[side]}"></ui-campo-texto>
-    `;
+    const maxW = Math.max(0, Math.floor(paper.width / 2) - PrintItemsManager.MIN_ITEM_MM);
+    const maxH = Math.max(0, Math.floor(paper.height / 2) - PrintItemsManager.MIN_ITEM_MM);
+    const cfg = composer.guideGeneratorConfig || { rows: 0, rowGutter: 5, cols: 0, colGutter: 5, fitTo: 'margins', mode: 'grid', replace: true };
+    const guideCount = (composer.manualGuides?.x?.length || 0) + (composer.manualGuides?.y?.length || 0);
+
+    const paperOpcoes = this.PAPER_OPTIONS.map(([id, label]) => {
+      if (id === 'CUSTOM') {
+        return {
+          id: 'CUSTOM',
+          rotulo: !isStandard ? `Personalizado · ${paper.width}×${paper.height} mm` : 'Personalizado…'
+        };
+      }
+      const sz = sizes[id];
+      return { id, rotulo: sz ? `${label} · ${sz.width}×${sz.height}` : label };
+    });
+
+    const marginProps = [
+      { id: 'margin_standard', rotulo: 'Padrão', tipo: 'readonly', valor: isAbnt ? 'ABNT' : 'Personalizada' },
+      { id: 'margin_top', rotulo: 'Superior', tipo: 'numero', valor: m.top, unidade: 'mm', min: 0, max: maxH, passo: 0.5, casasDecimais: 1 },
+      { id: 'margin_left', rotulo: 'Esquerda', tipo: 'numero', valor: m.left, unidade: 'mm', min: 0, max: maxW, passo: 0.5, casasDecimais: 1 },
+      { id: 'margin_bottom', rotulo: 'Inferior', tipo: 'numero', valor: m.bottom, unidade: 'mm', min: 0, max: maxH, passo: 0.5, casasDecimais: 1 },
+      { id: 'margin_right', rotulo: 'Direita', tipo: 'numero', valor: m.right, unidade: 'mm', min: 0, max: maxW, passo: 0.5, casasDecimais: 1 },
+      { id: 'show_abnt_frame', rotulo: 'Moldura nas margens', tipo: 'booleano', valor: composer.showAbntMargins !== false }
+    ];
+    if (!isAbnt) {
+      marginProps.push({ id: 'reset_margins_abnt', rotulo: 'Margem ABNT', tipo: 'acao', valor: null, rotuloAcao: '↺ Voltar à ABNT' });
+    }
+    marginProps.push({
+      id: 'reset_default_layout',
+      rotulo: 'Elementos',
+      tipo: 'acao',
+      valor: null,
+      rotuloAcao: 'Layout padrão',
+      dica: 'Volta às margens ABNT e ao layout padrão dos elementos (Ctrl+Z desfaz)'
+    });
+
+    const presetProps = [
+      {
+        id: 'preset_select',
+        rotulo: 'Aplicar salva',
+        tipo: 'selecao',
+        valor: match ? match.id : '',
+        opcoes: [
+          { id: '', rotulo: presets.length ? 'Pré-definições…' : 'Nenhuma pré-definição' },
+          ...presets.map(p => ({ id: p.id, rotulo: p.name }))
+        ]
+      },
+      { id: 'preset_save', rotulo: 'Salvar atual', tipo: 'acao', valor: null, rotuloAcao: 'Salvar pré-definição…' }
+    ];
+    if (match) {
+      presetProps.push({ id: 'preset_delete', rotulo: 'Excluir salva', tipo: 'acao', valor: null, rotuloAcao: `Excluir "${match.name}"` });
+    }
+
+    return [
+      {
+        id: 'formato',
+        titulo: 'Formato e Dimensões',
+        aberto: true,
+        propriedades: [
+          { id: 'paper_size', rotulo: 'Formato', tipo: 'selecao', valor: isStandard ? paper.id : 'CUSTOM', opcoes: paperOpcoes },
+          {
+            id: 'paper_orientation',
+            rotulo: 'Orientação',
+            tipo: 'selecao',
+            valor: paper.width >= paper.height ? 'landscape' : 'portrait',
+            opcoes: [{ id: 'landscape', rotulo: 'Paisagem' }, { id: 'portrait', rotulo: 'Retrato' }]
+          },
+          { id: 'paper_width', rotulo: 'Largura', tipo: 'numero', valor: paper.width, unidade: 'mm', min: 50, max: 5000, passo: 1, casasDecimais: 1, dica: 'Largura da folha (aceita expressões)' },
+          { id: 'paper_height', rotulo: 'Altura', tipo: 'numero', valor: paper.height, unidade: 'mm', min: 50, max: 5000, passo: 1, casasDecimais: 1, dica: 'Altura da folha (aceita expressões)' }
+        ]
+      },
+      {
+        id: 'margens',
+        titulo: 'Margens e Moldura',
+        aberto: true,
+        propriedades: marginProps
+      },
+      {
+        id: 'guias',
+        titulo: 'Criar Guias (Estilo InDesign)',
+        aberto: true,
+        propriedades: [
+          { id: 'guides_rows', rotulo: 'Linhas (Horiz.)', tipo: 'numero', valor: cfg.rows ?? 0, min: 0, max: 50, passo: 1, casasDecimais: 0, dica: 'Quantidade de linhas horizontais' },
+          { id: 'guides_row_gutter', rotulo: 'Espaçamento L.', tipo: 'numero', valor: cfg.rowGutter ?? 5, unidade: 'mm', min: 0, max: 500, passo: 0.5, casasDecimais: 1, dica: 'Calha entre linhas (ou passo fixo)' },
+          { id: 'guides_cols', rotulo: 'Colunas (Vert.)', tipo: 'numero', valor: cfg.cols ?? 0, min: 0, max: 50, passo: 1, casasDecimais: 0, dica: 'Quantidade de colunas verticais' },
+          { id: 'guides_col_gutter', rotulo: 'Espaçamento C.', tipo: 'numero', valor: cfg.colGutter ?? 5, unidade: 'mm', min: 0, max: 500, passo: 0.5, casasDecimais: 1, dica: 'Calha entre colunas (ou passo fixo)' },
+          {
+            id: 'guides_fit',
+            rotulo: 'Ajustar às',
+            tipo: 'selecao',
+            valor: cfg.fitTo === 'page' ? 'page' : 'margins',
+            opcoes: [{ id: 'margins', rotulo: 'Margens' }, { id: 'page', rotulo: 'Página inteira' }]
+          },
+          {
+            id: 'guides_mode',
+            rotulo: 'Distribuição',
+            tipo: 'selecao',
+            valor: cfg.mode === 'step' ? 'step' : 'grid',
+            opcoes: [{ id: 'grid', rotulo: 'Dividir área (InDesign)' }, { id: 'step', rotulo: 'Passo fixo (mm)' }]
+          },
+          { id: 'guides_replace', rotulo: 'Substituir guias', tipo: 'booleano', valor: cfg.replace !== false },
+          { id: 'guides_apply', rotulo: 'Grade', tipo: 'acao', valor: null, rotuloAcao: 'Aplicar guias' },
+          { id: 'guides_clear', rotulo: 'Limpeza', tipo: 'acao', valor: null, rotuloAcao: `Limpar guias (${guideCount})` }
+        ]
+      },
+      {
+        id: 'presets',
+        titulo: 'Pré-definições da Folha',
+        aberto: presets.length > 0,
+        propriedades: presetProps
+      }
+    ];
+  }
+
+  /** Seção da folha com `<ui-painel-propriedades>` do kit (papel, dimensões, margens e guias InDesign) */
+  static renderPaperSection(composer) {
+    const esc = PrintItemsManager.escapeHtml;
+    const paper = composer.paperSize || { id: 'A4_L', width: 297, height: 210 };
+    const isAbnt = PrintItemsManager.isAbntMargins(paper);
 
     return `
-      <details class="cm-inspector-accordion" data-section="paper" ${openAttr('paper')}>
-        <summary class="cm-pp-summary">${ppIcon('sheet')}Folha</summary>
-        <div class="cm-pp-body">
-          <ui-select id="print-paper-size-select" class="cm-native-select cm-pp-full cm-pp-compact-select" tamanho="sm" value="${esc(paper.id)}" title="Tamanho do papel">
-            ${this.PAPER_OPTIONS.map(([id, label]) => {
-              const sz = sizes[id];
-              const dims = sz ? ` · ${sz.width}×${sz.height}` : '';
-              return `<option value="${id}" ${paper.id === id ? 'selected' : ''}>${label}${dims}</option>`;
-            }).join('')}
-          </ui-select>
-
-          <div class="cm-pp-margins">
-            <div class="cm-pp-margins-head">
-              <span class="cm-param-label">Margens (mm)</span>
-              <ui-badge variante="sucesso" tamanho="sm" class="cm-pp-badge" id="print-margins-abnt-badge" title="25 mm à esquerda para encadernação" ${isAbnt ? '' : 'hidden'}>ABNT</ui-badge>
-              <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-margins-abnt" title="Voltar às margens ABNT" ${isAbnt ? 'hidden' : ''}>↺ ABNT</ui-botao-primario>
-            </div>
-            <div class="cm-pp-margins-grid">
-              ${marginInput('top', 'Sup.', maxH)}
-              ${marginInput('left', 'Esq.', maxW)}
-              ${marginInput('bottom', 'Inf.', maxH)}
-              ${marginInput('right', 'Dir.', maxW)}
-            </div>
-          </div>
-          <label class="cm-param-row" for="print-abnt-margins-check">
-            <span class="cm-param-label">Moldura nas margens</span>
-            <ui-checkbox id="print-abnt-margins-check" ${composer.showAbntMargins ? 'checked' : ''}></ui-checkbox>
-          </label>
-
-          <div class="cm-pp-inline">
-            <ui-select id="print-preset-select" class="cm-native-select cm-pp-grow cm-pp-compact-select" tamanho="sm" value="${match ? esc(match.id) : ''}" title="Pré-definições deste projeto">
-              <option value="" ${match ? '' : 'selected'}>${presets.length ? 'Pré-definições…' : 'Nenhuma pré-definição'}</option>
-              ${presets.map(p => `<option value="${esc(p.id)}" ${match?.id === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}
-            </ui-select>
-            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-save" title="Salvar papel, margens e moldura atuais" aria-label="Salvar pré-definição">${ppIcon('save')}</ui-botao-primario>
-            <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-preset-btn" id="btn-preset-delete" title="Excluir a pré-definição selecionada" ${match ? `data-preset-id="${esc(match.id)}"` : 'disabled'} aria-label=\"Excluir pré-definição\">${ppIcon('trash')}</ui-botao-primario>
-          </div>
-
-          <ui-botao-primario inline id="btn-prop-align-abnt" variante="secundario" class="cm-pp-wide-btn" title="Volta às margens ABNT e ao layout padrão dos elementos (Ctrl+Z desfaz)">
-            ${ppIcon('layout')}Layout padrão
-          </ui-botao-primario>
-        </div>
-      </details>
+      <ui-painel-propriedades
+        id="print-paper-props-panel"
+        class="cm-pp-kit-panel"
+        titulo="Configuração da Folha"
+        filtro
+        densidade="compacta"
+        modo-aplicar="imediato"
+        largura-rotulo="46"
+        storage-key="cm_print_paper_props"
+        data-paper-id="${esc(paper.id)}"
+        data-margins-abnt="${isAbnt ? 'true' : 'false'}"
+      ></ui-painel-propriedades>
     `;
   }
 
   /**
-   * Copia o estado da seção da folha recém-renderizada para a que já está na tela, sem recriar
-   * os controles: um clique em pré-definição ou "↺ ABNT" logo após editar uma margem (o `change`
-   * do campo reconstrói o painel) continua caindo num elemento vivo.
+   * Atualiza categorias e atributos do `<ui-painel-propriedades>` da folha sem recriar o nó no DOM.
    */
-  static syncPaperSection(kept, fresh) {
-    const pick = (root, sel) => root.querySelector(sel);
-    const copyValue = (sel) => {
-      const a = pick(kept, sel);
-      const b = pick(fresh, sel);
-      if (a && b) a.value = b.value;
-    };
-    copyValue('#print-paper-size-select');
-    kept.querySelectorAll('[data-margin-side]').forEach(input => copyValue(`[data-margin-side="${input.dataset.marginSide}"]`));
-    ['#print-margins-abnt-badge', '#btn-margins-abnt'].forEach(sel => {
-      const a = pick(kept, sel);
-      const b = pick(fresh, sel);
-      if (a && b) a.hidden = b.hidden;
-    });
-    const check = pick(kept, '#print-abnt-margins-check');
-    if (check) check.checked = !!pick(fresh, '#print-abnt-margins-check')?.checked;
-    const presets = pick(kept, '#print-preset-select');
-    const freshPresets = pick(fresh, '#print-preset-select');
-    if (presets && freshPresets) {
-      presets.innerHTML = freshPresets.innerHTML;
-      presets.carregarItensFilhos?.();
-      presets.value = freshPresets.value;
+  static syncPaperSection(panelEl, composerOrFresh) {
+    if (!panelEl) return;
+    const composer = composerOrFresh && 'paperSize' in composerOrFresh ? composerOrFresh : null;
+    if (!composer) return;
+    const corpo = panelEl.shadowRoot?.getElementById?.('corpo');
+    const prevScroll = corpo ? corpo.scrollTop : 0;
+
+    panelEl.dataset.paperId = composer.paperSize?.id || 'A4_L';
+    panelEl.dataset.marginsAbnt = PrintItemsManager.isAbntMargins(composer.paperSize) ? 'true' : 'false';
+    panelEl.categorias = this.buildPaperCategories(composer);
+
+    if (panelEl.shadowRoot) {
+      panelEl.shadowRoot.querySelectorAll('#btn-flutuante, #btn-colapsar-horizontal').forEach((btn) => {
+        btn.style.display = 'none';
+      });
     }
-    const del = pick(kept, '#btn-preset-delete');
-    const freshDel = pick(fresh, '#btn-preset-delete');
-    if (del && freshDel) {
-      del.disabled = freshDel.disabled;
-      if (freshDel.dataset.presetId) del.dataset.presetId = freshDel.dataset.presetId;
-      else delete del.dataset.presetId;
-    }
+    if (corpo) corpo.scrollTop = prevScroll;
   }
 
   static LIST_FOCUS_ATTRS = ['data-composer-select', 'data-composer-lock', 'data-composer-vis', 'data-composer-del'];
@@ -1050,29 +1121,92 @@ export class PrintPropertiesPanel {
     return itemTypeIcon(type);
   }
 
-  /** Eventos da seção da folha (ligados uma única vez; os controles sobrevivem às reconstruções) */
+  /** Eventos do `<ui-painel-propriedades>` da folha (ligados uma única vez) */
   static bindPaperEvents(composer) {
-    document.getElementById('print-paper-size-select')?.addEventListener('change', (e) => composer.setPaperSize(e.target.value));
-    document.getElementById('print-abnt-margins-check')?.addEventListener('change', (e) => composer.setAbntMargins(e.target.checked));
+    const panel = document.getElementById('print-paper-props-panel');
+    if (!panel) return;
 
-    // Margens: aplicadas ao confirmar o campo (Enter, setas ou ao sair), um passo no histórico cada
-    document.querySelectorAll('[data-margin-side]').forEach(input => {
-      input.addEventListener('change', () => {
-        if (input.value === '') { composer.updatePropertiesPanel(); return; }
-        composer.setMargins({ [input.dataset.marginSide]: Number(input.value) });
-      });
-    });
-    document.getElementById('btn-margins-abnt')?.addEventListener('click', () => composer.setMargins(null));
+    this.syncPaperSection(panel, composer);
+    if (panel.dataset.bound) return;
+    panel.dataset.bound = '1';
 
-    document.getElementById('print-preset-select')?.addEventListener('change', (e) => {
-      if (e.target.value) composer.applyPagePreset(e.target.value);
+    panel.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) e.stopPropagation();
     });
-    document.getElementById('btn-preset-save')?.addEventListener('click', () => composer.savePagePreset());
-    const presetDel = document.getElementById('btn-preset-delete');
-    presetDel?.addEventListener('click', () => {
-      if (presetDel.dataset.presetId) composer.deletePagePreset(presetDel.dataset.presetId);
+
+    panel.addEventListener('ui-propriedade-alterada', (e) => {
+      const { id, valor } = e.detail || {};
+      switch (id) {
+        case 'paper_size':
+          composer.setPaperSize(valor);
+          break;
+        case 'paper_orientation':
+          composer.setPaperOrientation(valor);
+          break;
+        case 'paper_width':
+          composer.setCustomPaperDimensions(valor, composer.paperSize.height);
+          break;
+        case 'paper_height':
+          composer.setCustomPaperDimensions(composer.paperSize.width, valor);
+          break;
+        case 'margin_top':
+          composer.setMargins({ top: Number(valor) });
+          break;
+        case 'margin_left':
+          composer.setMargins({ left: Number(valor) });
+          break;
+        case 'margin_bottom':
+          composer.setMargins({ bottom: Number(valor) });
+          break;
+        case 'margin_right':
+          composer.setMargins({ right: Number(valor) });
+          break;
+        case 'show_abnt_frame':
+          composer.setAbntMargins(Boolean(valor));
+          break;
+        case 'guides_rows':
+          composer.applyGridGuides({ rows: Number(valor) || 0 });
+          break;
+        case 'guides_cols':
+          composer.applyGridGuides({ cols: Number(valor) || 0 });
+          break;
+        case 'guides_row_gutter':
+        case 'guides_col_gutter':
+        case 'guides_fit':
+        case 'guides_mode': {
+          const map = {
+            guides_row_gutter: { rowGutter: Number(valor) || 0 },
+            guides_col_gutter: { colGutter: Number(valor) || 0 },
+            guides_fit: { fitTo: valor },
+            guides_mode: { mode: valor }
+          };
+          composer.guideGeneratorConfig = { ...(composer.guideGeneratorConfig || {}), ...map[id] };
+          if ((composer.guideGeneratorConfig.rows || 0) > 0 || (composer.guideGeneratorConfig.cols || 0) > 0) {
+            composer.applyGridGuides(map[id]);
+          }
+          break;
+        }
+        case 'guides_replace':
+          composer.guideGeneratorConfig = { ...(composer.guideGeneratorConfig || {}), replace: Boolean(valor) };
+          break;
+        case 'preset_select':
+          if (valor) composer.applyPagePreset(valor);
+          break;
+      }
     });
-    document.getElementById('btn-prop-align-abnt')?.addEventListener('click', () => composer.resetDefaultLayout());
+
+    panel.addEventListener('ui-acao-clique', (e) => {
+      const { id } = e.detail || {};
+      if (id === 'reset_margins_abnt') composer.setMargins(null);
+      else if (id === 'reset_default_layout') composer.resetDefaultLayout();
+      else if (id === 'guides_apply') composer.applyGridGuides({}, { announce: true });
+      else if (id === 'guides_clear') composer.clearManualGuides();
+      else if (id === 'preset_save') composer.savePagePreset();
+      else if (id === 'preset_delete') {
+        const match = composer.sheetsManager?.findMatchingPreset?.(composer.paperSize, composer.showAbntMargins);
+        if (match) composer.deletePagePreset(match.id);
+      }
+    });
   }
 
   static bindEvents(composer) {
@@ -1083,12 +1217,7 @@ export class PrintPropertiesPanel {
       d.addEventListener('toggle', () => { composer.panelSections[d.dataset.section] = d.open; });
     });
 
-    // A seção da folha é mantida entre reconstruções (syncPaperSection): seus eventos são ligados uma vez
-    const paperSection = document.querySelector('#cm-print-props-panel-mount details[data-section="paper"]');
-    if (paperSection && !paperSection.dataset.bound) {
-      paperSection.dataset.bound = '1';
-      this.bindPaperEvents(composer);
-    }
+    this.bindPaperEvents(composer);
 
     // Abas: só alterna a visibilidade, sem reconstruir o painel
     const tabsMount = document.querySelectorAll('#cm-print-props-panel-mount [data-pp-tab]');

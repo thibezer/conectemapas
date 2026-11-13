@@ -208,7 +208,8 @@ assert.ok(!new RegExp(`data-composer-del="${unlocked.id}"[^>]*disabled`).test(ht
 panelComposer.selectedItemId = unlocked.id;
 html = PrintPropertiesPanel.render(panelComposer);
 assert.ok(!/<fieldset class="cm-print-props-fields"\s+disabled/.test(html), 'Item livre continua editável');
-assert.ok(html.includes('Layout padrão'), 'O botão de reset diz o que faz');
+const paperCats = PrintPropertiesPanel.buildPaperCategories(panelComposer);
+assert.ok(JSON.stringify(paperCats).includes('Layout padrão'), 'O botão de reset diz o que faz no painel de propriedades da folha');
 
 // Lista de elementos: seleção, ocultos e estado dos botões
 const rowHtml = (id) => html.match(new RegExp(`<div class="[^"]*cm-pp-item-row[^"]*" data-composer-item-id="${id}">[\\s\\S]*?</div>\\s*</div>`))[0];
@@ -407,15 +408,16 @@ const secComposer = { items: secItems, selectedItemId: secItems[0].id, features:
 const isOpen = (h, key) => new RegExp(`data-section="${key}"\\s+open`).test(h);
 
 html = PrintPropertiesPanel.render(secComposer);
-assert.ok(['paper', 'items', 'item'].every(k => isOpen(html, k)), 'Sem preferência, todas as seções abertas');
+assert.ok(['items', 'item', 'atlas'].every(k => isOpen(html, k)), 'Sem preferência, todas as seções de acordeão abertas');
+assert.ok(html.includes('<ui-painel-propriedades'), 'Folha usa o componente <ui-painel-propriedades>');
 
-secComposer.panelSections = { paper: false };
+secComposer.panelSections = { items: false };
 secComposer.selectedItemId = null; // a seção do item some...
 html = PrintPropertiesPanel.render(secComposer);
-assert.ok(!isOpen(html, 'paper') && isOpen(html, 'items'), '...e a folha continua fechada, a lista aberta');
+assert.ok(!isOpen(html, 'items') && isOpen(html, 'atlas'), '...e elementos continua fechada, atlas aberto');
 secComposer.selectedItemId = secItems[0].id; // ...e volta
 html = PrintPropertiesPanel.render(secComposer);
-assert.ok(!isOpen(html, 'paper') && isOpen(html, 'items') && isOpen(html, 'item'), 'A seção que reaparece não troca o estado das outras');
+assert.ok(!isOpen(html, 'items') && isOpen(html, 'atlas') && isOpen(html, 'item'), 'A seção que reaparece não troca o estado das outras');
 
 for (const it of [...secItems, shapeItem2, PrintItemsManager.createNewItem('image', 'P', 0), PrintItemsManager.createNewItem('label', 'P', 0), PrintItemsManager.createNewItem('table_vertices', 'P', 0), PrintItemsManager.createNewItem('text_block', 'P', 0)]) {
   const h = PrintPropertiesPanel.render({ ...secComposer, items: [it], selectedItemId: it.id });
@@ -579,7 +581,7 @@ tbPanel.find(i => i.type === 'map').scale = 44396;
 html = PrintPropertiesPanel.render({ items: tbPanel, selectedItemId: tbItem2.id, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
 assert.ok(/id="prop-tb-scale" class="cm-vertex-input" value="1:44\.396"/.test(html), 'Campo mostra a escala do mapa');
 assert.ok(/id="prop-tb-scale-auto" checked/.test(html), 'Acompanhar a escala vem marcado');
-assert.ok(html.includes('<ui-campo-texto') && html.includes('<ui-select') && html.includes('<ui-checkbox') && html.includes('<ui-badge') && html.includes('<ui-botao-primario'), 'Painel usa Web Components do @thibezer/ui-components-kit');
+assert.ok(html.includes('<ui-campo-texto') && html.includes('<ui-select') && html.includes('<ui-checkbox') && html.includes('<ui-painel-propriedades') && html.includes('<ui-botao-primario'), 'Painel usa Web Components do @thibezer/ui-components-kit');
 assert.ok(!/<select\b/.test(html) && !/<textarea\b/.test(html), 'Painel não usa <select> ou <textarea> nativos de fallback');
 console.log('✔ Carimbo validado');
 

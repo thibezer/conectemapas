@@ -1179,6 +1179,81 @@ export class PrintItemsManager {
     return ['top', 'right', 'bottom', 'left'].every(k => m[k] === a[k]) ? base : { ...base, margins: m };
   }
 
+  /** Cria definição de folha personalizada (largura/altura em mm entre 50 e 5000). */
+  static customPaper(width, height, basePaper = {}) {
+    const clampDim = (val, fallback) => {
+      const n = Number(val);
+      if (!Number.isFinite(n)) return fallback;
+      const clamped = Math.min(5000, Math.max(50, n));
+      return Math.round(clamped * 2) / 2;
+    };
+    const w = clampDim(width, Number(basePaper?.width) || 297);
+    const h = clampDim(height, Number(basePaper?.height) || 210);
+    const base = {
+      id: 'CUSTOM',
+      name: `Personalizado (${w}×${h})`,
+      width: w,
+      height: h,
+      marginL: 25,
+      marginO: 10
+    };
+    return basePaper?.margins ? this.withMargins(base, basePaper.margins) : base;
+  }
+
+  /**
+   * Gera guias de grade estilo InDesign ("Create Guides"): linhas/colunas com espaçamento (calha/gutter)
+   * ajustadas às margens ou à folha inteira, ou por passo fixo. Retorna { x: number[], y: number[] }.
+   */
+  static computeGridGuides(paperSize = {}, config = {}) {
+    const w = Number(paperSize?.width) || 297;
+    const h = Number(paperSize?.height) || 210;
+    const fitTo = config.fitTo === 'page' ? 'page' : 'margins';
+    const mode = config.mode === 'step' ? 'step' : 'grid';
+    const m = fitTo === 'margins' ? this.sheetMargins(paperSize) : { top: 0, right: 0, bottom: 0, left: 0 };
+    const startX = m.left;
+    const spanX = Math.max(0, w - m.left - m.right);
+    const startY = m.top;
+    const spanY = Math.max(0, h - m.top - m.bottom);
+    const round = (v) => Math.round(v * 10) / 10;
+
+    const buildAxis = (start, span, countRaw, gutterRaw) => {
+      const count = Math.max(0, Math.min(50, Math.round(Number(countRaw) || 0)));
+      const gutter = Math.max(0, Number(gutterRaw) || 0);
+      if (count <= 0 || span <= 0) return [];
+      const pts = [];
+      if (mode === 'step') {
+        const step = gutter > 0 ? gutter : span / (count + 1);
+        if (!(step > 0)) return [];
+        for (let i = 1; i <= count; i++) {
+          const pos = start + i * step;
+          if (pos > start + span + 1e-6) break;
+          pts.push(round(pos));
+        }
+      } else if (count === 1) {
+        const mid = start + span / 2;
+        if (gutter > 0 && gutter < span) {
+          pts.push(round(mid - gutter / 2), round(mid + gutter / 2));
+        } else {
+          pts.push(round(mid));
+        }
+      } else {
+        const effectiveGutter = (count - 1) * gutter < span ? gutter : 0;
+        const cell = (span - (count - 1) * effectiveGutter) / count;
+        for (let i = 1; i < count; i++) {
+          const p1 = start + i * cell + (i - 1) * effectiveGutter;
+          pts.push(round(p1));
+          if (effectiveGutter > 0) pts.push(round(p1 + effectiveGutter));
+        }
+      }
+      return [...new Set(pts)].sort((a, b) => a - b);
+    };
+
+    return {
+      x: buildAxis(startX, spanX, config.cols, config.colGutter),
+      y: buildAxis(startY, spanY, config.rows, config.rowGutter)
+    };
+  }
+
   /** Itens de tamanho físico fixo: não esticam com a folha (o texto interno tem tamanho fixo em pt) */
   static FIXED_SIZE_TYPES = new Set(['north_arrow', 'scale_bar', 'title_block', 'label']);
 
