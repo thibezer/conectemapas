@@ -619,15 +619,16 @@ export class PrintCanvasEngine {
           const end = clientToSheetMm(e.clientX, e.clientY);
           const rw = Math.abs(end.x - start.x);
           const rh = Math.abs(end.y - start.y);
-          const rect = rw >= 6 && rh >= 6
-            ? {
-                x: Math.round(Math.min(start.x, end.x) * 10) / 10,
-                y: Math.round(Math.min(start.y, end.y) * 10) / 10,
-                width: Math.round(rw * 10) / 10,
-                height: Math.round(rh * 10) / 10
-              }
-            : null;
-          this.composer.insertItem(type, rect);
+          // Inserção exclusivamente por desenho: exige arrastar um retângulo mínimo
+          if (rw >= 4 && rh >= 4) {
+            const rect = {
+              x: Math.round(Math.min(start.x, end.x) * 10) / 10,
+              y: Math.round(Math.min(start.y, end.y) * 10) / 10,
+              width: Math.round(rw * 10) / 10,
+              height: Math.round(rh * 10) / 10
+            };
+            this.composer.insertItem(type, rect);
+          }
         }
         return;
       }

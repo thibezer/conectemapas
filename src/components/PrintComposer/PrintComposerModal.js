@@ -1382,9 +1382,16 @@ export class PrintComposerModal {
   /** Ativa modo de desenho-criação na folha (arrastar retângulo) ou limpa para seleção normal */
   setPlacementTool(type = null) {
     const next = this.readOnly ? null : (type || null);
-    this.canvasEngine.placementType = next;
-    const paper = document.getElementById('cm-paper-sheet');
-    if (paper) paper.classList.toggle('cm-placement-active', !!next);
+    if (next && this.interactionMode === 'content_pan') this.setInteractionMode?.('layout');
+    if (this.canvasEngine) this.canvasEngine.placementType = next;
+    if (typeof document !== 'undefined') {
+      document.getElementById?.('cm-print-paper-sheet')?.classList.toggle('cm-placement-active', !!next);
+      document.getElementById?.('cm-print-items-layer')?.classList.toggle('cm-placement-active', !!next);
+      document.querySelectorAll?.('[data-ptb-action^="insert:"]')?.forEach(btn => {
+        const targetType = btn.dataset.ptbAction?.slice('insert:'.length);
+        btn.classList.toggle('is-placing', Boolean(next && targetType === next));
+      });
+    }
     PrintSideToolbox.updateActivePlacementTool?.(this);
   }
 
@@ -1498,9 +1505,8 @@ export class PrintComposerModal {
     cont.x = (src.x || 10) + (src.width || 80) + 5;
     cont.y = src.y || 10;
     if (cont.x + cont.width > this.paperSize.width - 5) {
-      const smart = PrintItemsManager.findSmartPosition(cont, this.items, this.paperSize);
-      cont.x = smart.x;
-      cont.y = smart.y;
+      cont.x = (src.x || 10) + 8;
+      cont.y = (src.y || 10) + 8;
     }
     PrintItemsManager.clampItemToPaper(cont, this.paperSize);
     this.items.splice(this.items.indexOf(src) + 1, 0, cont);
@@ -1520,10 +1526,6 @@ export class PrintComposerModal {
       item.y = customRect.y;
       item.width = customRect.width;
       item.height = customRect.height;
-    } else {
-      const pos = PrintItemsManager.findSmartPosition(item, this.items, this.paperSize);
-      item.x = pos.x;
-      item.y = pos.y;
     }
     PrintItemsManager.clampItemToPaper(item, this.paperSize);
     this.items.splice(PrintItemsManager.insertionIndex(this.items, item.type), 0, item);

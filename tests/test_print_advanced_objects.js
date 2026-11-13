@@ -9,7 +9,7 @@
    - Legenda (contagem de feições, soma de áreas, cabeçalho/borda/opacidade)
    - Selo ABNT (campos personalizados)
    - PrintAlignmentHelper (matchWidth/Height/Size, packVertical/Horizontal, fitToMargins)
-   - Inserção inteligente (findSmartPosition), clipboard & copiar/colar estilo
+   - Inserção exclusivamente por desenho (setPlacementTool + insertItem com retângulo), clipboard & copiar/colar estilo
    - Paridade em PDF vetorial real (PdfVectorContext + jsPDF) e validação do Painel
    ========================================================================== */
 import assert from 'assert';
@@ -185,7 +185,7 @@ const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f
   console.log('✔ Rótulo, Bloco 2 colunas, Legenda c/ área+contagem e Carimbo c/ campos personalizados');
 }
 
-// 5. PrintAlignmentHelper (match/pack/fitToMargins), findSmartPosition, Clipboard, Copy Style e Split Table
+// 5. PrintAlignmentHelper (match/pack/fitToMargins), Desenho-criação, Clipboard, Copy Style e Split Table
 {
   const makeComposer = (items) => ({
     paperSize: { width: 297, height: 210 },
@@ -219,10 +219,7 @@ const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f
   assert.strictEqual(single.x, margins.left);
   assert.strictEqual(single.width, 297 - margins.left - margins.right);
 
-  const pos = PrintItemsManager.findSmartPosition({ x: 25, y: 20, width: 50, height: 30 }, [
-    { id: 'ex1', x: 25, y: 20, width: 50, height: 30 }
-  ], { width: 297, height: 210 });
-  assert.ok(pos.x !== 25 || pos.y !== 20, 'findSmartPosition evita empilhamento exato no mesmo lugar');
+  assert.strictEqual(PrintItemsManager.findSmartPosition, undefined, 'Posicionamento automático removido em favor da inserção por desenho');
 
   // Clipboard, copiar/colar estilo e divisão de tabela via métodos reais de PrintComposerModal
   const proto = PrintComposerModal.prototype;
@@ -270,7 +267,23 @@ const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f
   mockModal.items.push({ id: 'tbl1', type: 'table_vertices', name: 'Tabela', x: 15, y: 15, width: 85, height: 32, targetFeatureId: 'big' });
   const cont = proto.splitVerticesTableContinuation.call(mockModal, 'tbl1');
   assert.ok(cont && cont.startVertex > 1, 'splitVerticesTableContinuation cria tabela de continuação com vértices seguintes');
-  console.log('✔ Alinhamento avançado, smart position, clipboard, copiar estilo e split de tabela');
+
+  // Inserção por desenho: setPlacementTool + insertItem com retângulo desenhado
+  mockModal.canvasEngine = { placementType: null };
+  mockModal.interactionMode = 'content_pan';
+  mockModal.setInteractionMode = function (m) { this.interactionMode = m; };
+  mockModal.setPlacementTool = proto.setPlacementTool;
+  mockModal.projectName = 'Fazenda';
+  proto.setPlacementTool.call(mockModal, 'label');
+  assert.strictEqual(mockModal.canvasEngine.placementType, 'label');
+  assert.strictEqual(mockModal.interactionMode, 'layout', 'Ativar desenho sai do pan de conteúdo');
+  const drawn = proto.insertItem.call(mockModal, 'label', { x: 42, y: 38, width: 65, height: 18 });
+  assert.strictEqual(drawn.x, 42);
+  assert.strictEqual(drawn.y, 38);
+  assert.strictEqual(drawn.width, 65);
+  assert.strictEqual(drawn.height, 18);
+  assert.strictEqual(mockModal.canvasEngine.placementType, null, 'Limpa modo de desenho após concluir inserção');
+  console.log('✔ Alinhamento avançado, desenho-criação, clipboard, copiar estilo e split de tabela');
 }
 
 // 6. Validação do HTML gerado pelo PrintPropertiesPanel para todos os novos painéis

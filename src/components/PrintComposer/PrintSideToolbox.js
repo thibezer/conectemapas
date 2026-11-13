@@ -50,8 +50,8 @@ export class PrintSideToolbox {
             <button type="button"
               class="cm-stb-btn"
               data-stb-insert="${it.type}"
-              title="Inserir ${it.label}"
-              aria-label="Inserir ${it.label}">
+              title="Desenhar ${it.label} na folha"
+              aria-label="Desenhar ${it.label} na folha">
               ${PRINT_ICONS[it.icon] || ''}
             </button>
           `).join('')}
@@ -101,18 +101,18 @@ export class PrintSideToolbox {
 
       const insertType = btn.dataset.stbInsert;
       if (insertType) {
-        if (e.shiftKey && typeof composer.setPlacementTool === 'function') {
+        if (typeof composer.setPlacementTool === 'function') {
           const next = composer.canvasEngine?.placementType === insertType ? null : insertType;
           composer.setPlacementTool(next);
         } else {
-          composer.insertItem(insertType);
+          composer.insertItem?.(insertType);
         }
       }
     });
   }
 
   static updateActivePlacementTool(composer) {
-    const toolbox = document.getElementById('cm-print-side-toolbox');
+    const toolbox = typeof document !== 'undefined' ? document.getElementById?.('cm-print-side-toolbox') : null;
     if (!toolbox) return;
     const active = composer.canvasEngine?.placementType || null;
     toolbox.querySelectorAll('[data-stb-insert]').forEach(btn => {

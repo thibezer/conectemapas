@@ -73,53 +73,6 @@ export class PrintItemsManager {
   }
 
   /**
-   * Posiciona um novo item de forma inteligente dentro das margens úteis evitando
-   * sobreposição exata com itens existentes do mesmo tipo ou na posição padrão.
-   */
-  static findSmartPosition(item, existingItems = [], paper = { width: 297, height: 210 }) {
-    const margin = 12;
-    const pw = Math.max(50, Number(paper?.width) || 297);
-    const ph = Math.max(50, Number(paper?.height) || 210);
-    const w = Math.min(pw - margin * 2, Math.max(this.MIN_ITEM_MM, Number(item.width) || 40));
-    const h = Math.min(ph - margin * 2, Math.max(this.MIN_ITEM_MM, Number(item.height) || 25));
-
-    const overlaps = (cx, cy) => existingItems.some(ex => {
-      if (!ex || ex.visible === false || ex.type === 'map' || ex.type === 'inset_map') return false;
-      const dx = Math.abs((ex.x || 0) - cx);
-      const dy = Math.abs((ex.y || 0) - cy);
-      return dx < 8 && dy < 8;
-    });
-
-    const baseX = Math.min(pw - w - margin, Math.max(margin, Number(item.x) || margin));
-    const baseY = Math.min(ph - h - margin, Math.max(margin, Number(item.y) || margin));
-    if (!overlaps(baseX, baseY)) return { x: baseX, y: baseY };
-
-    for (let step = 1; step <= 12; step++) {
-      const cx = baseX + step * 10;
-      const cy = baseY + step * 10;
-      if (cx + w <= pw - margin && cy + h <= ph - margin && !overlaps(cx, cy)) {
-        return { x: Math.round(cx * 10) / 10, y: Math.round(cy * 10) / 10 };
-      }
-    }
-
-    const cols = Math.max(1, Math.floor((pw - margin * 2) / Math.max(20, w + 5)));
-    for (let r = 0; r < 6; r++) {
-      for (let c = 0; c < cols; c++) {
-        const cx = margin + c * (w + 6);
-        const cy = margin + r * (h + 6);
-        if (cx + w <= pw - margin && cy + h <= ph - margin && !overlaps(cx, cy)) {
-          return { x: Math.round(cx * 10) / 10, y: Math.round(cy * 10) / 10 };
-        }
-      }
-    }
-
-    return {
-      x: Math.min(pw - w - 5, Math.max(5, baseX + 8)),
-      y: Math.min(ph - h - 5, Math.max(5, baseY + 8))
-    };
-  }
-
-  /**
    * Arredonda para baixo a um valor "redondo" de cartografia (1, 2, 2,5 ou 5 × 10ⁿ)
    */
   static niceFloor(value) {

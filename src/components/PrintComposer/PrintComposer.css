@@ -1007,8 +1007,15 @@ body.cm-modo-pranchas #cm-ptb-menu-sheets .cm-ptb-menu-divider {
 /* ==========================================================================
    Modo Desenho-Criação na folha, Editor Inline e Barra de Escala Avançada
    ========================================================================== */
-#cm-paper-sheet.cm-placement-active {
-  cursor: crosshair;
+#cm-print-paper-sheet.cm-placement-active,
+#cm-print-items-layer.cm-placement-active,
+#cm-print-items-layer.cm-placement-active .cm-print-item {
+  cursor: crosshair !important;
+}
+
+[data-ptb-action^="insert:"].is-placing {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
 }
 
 .cm-placement-ghost {

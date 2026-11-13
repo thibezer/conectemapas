@@ -173,7 +173,14 @@ export class PrintToolbar {
     const value = action.slice(sep + 1);
     const engine = composer.canvasEngine;
     switch (kind) {
-      case 'insert': composer.insertItem(value); return true;
+      case 'insert':
+        if (typeof composer.setPlacementTool === 'function') {
+          const next = composer.canvasEngine?.placementType === value ? null : value;
+          composer.setPlacementTool(next);
+        } else {
+          composer.insertItem(value);
+        }
+        return true;
       case 'zoom':
         if (value === 'in') engine.zoomIn();
         else if (value === 'out') engine.zoomOut();
