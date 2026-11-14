@@ -324,7 +324,7 @@ export class PrintCanvasEngine {
   }
 
   addManualGuide(axis, valMm) {
-    if (this.composer.readOnly) return;
+    if (this.composer.readOnly || this.composer.guidesLocked) return;
     this.composer.manualGuides = this.composer.manualGuides || { x: [], y: [] };
     const list = this.composer.manualGuides[axis] || [];
     const rounded = Math.round(valMm * 2) / 2;
@@ -332,58 +332,52 @@ export class PrintCanvasEngine {
       list.push(rounded);
       list.sort((a, b) => a - b);
       this.composer.manualGuides[axis] = list;
-      this.renderManualGuides();
+      this.composer.selectGuide(axis, rounded);
       this.composer.pushHistoryState(`Criar Guia ${axis.toUpperCase()} ${rounded}mm`);
-      UIToast.notificar({
-        tipo: 'sucesso',
-        titulo: 'Guia Criada',
-        mensagem: `Guia em ${rounded} mm adicionada. (Snap magnético ativo)`,
-        duracao: 1500
-      });
     }
   }
 
   removeManualGuide(axis, valMm) {
-    if (this.composer.readOnly) return;
+    if (this.composer.readOnly || this.composer.guidesLocked) return;
     if (!this.composer.manualGuides || !this.composer.manualGuides[axis]) return;
     this.composer.manualGuides[axis] = this.composer.manualGuides[axis].filter(v => Math.abs(v - valMm) > 0.1);
+    const sel = this.composer.selectedGuide;
+    if (sel && sel.axis === axis && Math.abs(sel.val - valMm) <= 0.1) this.composer.selectedGuide = null;
     this.renderManualGuides();
+    this.composer.updatePropertiesPanel?.();
     this.composer.pushHistoryState(`Remover Guia ${axis.toUpperCase()}`);
   }
 
-  /** Arrasta uma guia existente (mouse ou toque); solta dentro da folha move, fora dela não muda nada */
+  /** Clique seleciona a guia (posição no painel do item); arrastar a move, salvo se as guias estiverem travadas */
   startGuideMove(axis, fromMm, el, downEvent) {
     if (this.composer.readOnly || downEvent.button > 0) return;
     downEvent.preventDefault();
     const sheet = document.getElementById('cm-print-paper-sheet');
     if (!sheet) return;
     const isX = axis === 'x';
+    const locked = Boolean(this.composer.guidesLocked);
     const limit = isX ? (this.composer.paperSize?.width || 297) : (this.composer.paperSize?.height || 210);
+    const startPx = isX ? downEvent.clientX : downEvent.clientY;
     const toMm = (e) => {
       const r = sheet.getBoundingClientRect();
       const raw = ((isX ? e.clientX - r.left : e.clientY - r.top) / this.mmToPx);
       return Math.min(limit, Math.max(0, Math.round(raw * 2) / 2));
     };
     let current = fromMm;
-    const tag = el.querySelector('.cm-manual-guide-tag span');
+    let moved = false;
     const onMove = (e) => {
+      if (locked) return;
+      if (!moved && Math.abs((isX ? e.clientX : e.clientY) - startPx) < 3) return;
+      moved = true;
       current = toMm(e);
       el.style[isX ? 'left' : 'top'] = `${current * this.mmToPx}px`;
-      if (tag) tag.textContent = `${current} mm`;
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
-      const list = this.composer.manualGuides?.[axis];
-      if (!list || Math.abs(current - fromMm) < 0.01) { this.renderManualGuides(); return; }
-      const idx = list.findIndex(v => Math.abs(v - fromMm) < 0.01);
-      if (idx >= 0) list.splice(idx, 1);
-      if (!list.some(v => Math.abs(v - current) < 0.01)) list.push(current);
-      list.sort((a, b) => a - b);
-      this.renderManualGuides();
-      this.composer.updatePropertiesPanel?.();
-      this.composer.pushHistoryState(`Mover Guia ${axis.toUpperCase()} ${current}mm`);
+      if (moved && Math.abs(current - fromMm) >= 0.01) this.composer.moveGuide(axis, fromMm, current);
+      else this.composer.selectGuide(axis, fromMm);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -398,35 +392,16 @@ export class PrintCanvasEngine {
     const guides = this.composer.manualGuides || { x: [], y: [] };
     const pxPerMm = this.mmToPx;
 
+    const sel = this.composer.selectedGuide;
+    const cls = (axis, v) => `cm-manual-guide cm-manual-guide-${axis === 'x' ? 'v' : 'h'}${sel && sel.axis === axis && Math.abs(sel.val - v) < 0.01 ? ' is-selected' : ''}`;
+    layer.classList.toggle('is-locked', Boolean(this.composer.guidesLocked));
     layer.innerHTML = `
-      ${(guides.x || []).map(x => `
-        <div class="cm-manual-guide cm-manual-guide-v" style="left: ${x * pxPerMm}px;" title="Guia vertical ${x} mm (arraste para mover; duplo clique para excluir)" data-guide-axis="x" data-guide-val="${x}">
-          <div class="cm-manual-guide-tag" data-guide-axis="x" data-guide-val="${x}">
-            <span>${x} mm</span>
-            <button type="button" class="cm-manual-guide-del" data-del-guide="x" data-guide-val="${x}" title="Excluir guia">✕</button>
-          </div>
-        </div>
-      `).join('')}
-      ${(guides.y || []).map(y => `
-        <div class="cm-manual-guide cm-manual-guide-h" style="top: ${y * pxPerMm}px;" title="Guia horizontal ${y} mm (arraste para mover; duplo clique para excluir)" data-guide-axis="y" data-guide-val="${y}">
-          <div class="cm-manual-guide-tag" data-guide-axis="y" data-guide-val="${y}">
-            <span>${y} mm</span>
-            <button type="button" class="cm-manual-guide-del" data-del-guide="y" data-guide-val="${y}" title="Excluir guia">✕</button>
-          </div>
-        </div>
-      `).join('')}
+      ${(guides.x || []).map(x => `<div class="${cls('x', x)}" style="left: ${x * pxPerMm}px;" title="Guia vertical" data-guide-axis="x" data-guide-val="${x}"></div>`).join('')}
+      ${(guides.y || []).map(y => `<div class="${cls('y', y)}" style="top: ${y * pxPerMm}px;" title="Guia horizontal" data-guide-axis="y" data-guide-val="${y}"></div>`).join('')}
     `;
-
-    layer.querySelectorAll('[data-del-guide]').forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        this.removeManualGuide(btn.dataset.delGuide, parseFloat(btn.dataset.guideVal));
-      };
-    });
 
     layer.querySelectorAll('.cm-manual-guide').forEach(el => {
       el.onpointerdown = (e) => {
-        if (e.target.closest('[data-del-guide]')) return;
         this.startGuideMove(el.dataset.guideAxis, parseFloat(el.dataset.guideVal), el, e);
       };
       el.ondblclick = (e) => {
@@ -927,6 +902,12 @@ export class PrintCanvasEngine {
       if (e.key === '0') { e.preventDefault(); this.zoomFit(); return; }
       if (e.key === '+' || e.key === '=') { e.preventDefault(); this.zoomIn(); return; }
       if (e.key === '-' || e.key === '_') { e.preventDefault(); this.zoomOut(); return; }
+
+      if (this.composer.selectedGuide && (e.key === 'Delete' || e.key === 'Backspace')) {
+        e.preventDefault();
+        this.composer.deleteSelectedGuide();
+        return;
+      }
 
       const selectedId = this.composer.selectedItemId;
       if (!selectedId) return;

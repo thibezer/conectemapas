@@ -86,6 +86,8 @@ export class PrintComposerModal {
     this.resolveCache = new Map(); // Filtros casados por mapa, refeitos só quando a vista ou as feições mudam
     this.library = { filters: [], viewTemplates: [] }; // Filtros e modelos de vista do projeto
     this.manualGuides = { x: [], y: [] }; // Guias manuais puxadas da régua (mm)
+    this.selectedGuide = null; // { axis: 'x'|'y', val } da guia selecionada (propriedades no painel do item)
+    this.guidesLocked = false; // Guias travadas: não movem, não excluem nem são criadas
     this.tempViews = new Map(); // Isolar/ocultar temporário por mapa (só na tela)
     this.revealHidden = new Set(); // Mapas com "Revelar ocultos" ligado
     this._pick = null; // Escolha de feição no mapa em andamento
@@ -203,8 +205,9 @@ export class PrintComposerModal {
     this.items = JSON.parse(JSON.stringify(state.items || []));
     if (state.manualGuides) {
       this.manualGuides = JSON.parse(JSON.stringify(state.manualGuides));
-      this.canvasEngine?.renderManualGuides();
     }
+    this.selectedGuide = null;
+    this.canvasEngine?.renderManualGuides();
     if (this.selectedItemId && !this.items.some(i => i.id === this.selectedItemId)) this.selectedItemId = null;
     this.updatePaperSheetDOM();
     this.renderAllItems();
@@ -612,7 +615,7 @@ export class PrintComposerModal {
   applyPageSetup(paper, showFrame, actionName, { coalesceKey = null } = {}) {
     const sizeChanged = paper.width !== this.paperSize.width || paper.height !== this.paperSize.height;
     this.items = PrintItemsManager.fitItemsToPaper(this.items, this.paperSize, paper);
-    const guidesFollowPaper = this.guidesMatchGeneratorConfig(this.paperSize);
+    const guidesFollowPaper = !this.guidesLocked && this.guidesMatchGeneratorConfig(this.paperSize);
     this.paperSize = paper;
     this.showAbntMargins = showFrame !== false;
     // Guias geradas pelo painel (linhas/colunas) acompanham o novo papel e margens; guias movidas ou criadas à mão ficam como estão
@@ -679,6 +682,7 @@ export class PrintComposerModal {
   /** Cria guias estilo InDesign a partir da quantidade de linhas/colunas e espaçamento */
   applyGridGuides(partial = {}, { announce = false } = {}) {
     if (this.readOnly) return;
+    if (this.guidesLocked) { this.notifyGuidesLocked(); this.updatePropertiesPanel(); return; }
     this.guideGeneratorConfig = { ...(this.guideGeneratorConfig || {}), ...partial };
     const cfg = this.guideGeneratorConfig;
     const generated = PrintItemsManager.computeGridGuides(this.paperSize, cfg);
@@ -705,9 +709,53 @@ export class PrintComposerModal {
     }
   }
 
+  notifyGuidesLocked() {
+    UIToast.notificar({ tipo: 'alerta', titulo: 'Guias travadas', mensagem: 'Destrave as guias para alterá-las.', duracao: 2000 });
+  }
+
+  setGuidesLocked(locked) {
+    this.guidesLocked = Boolean(locked);
+    this.canvasEngine?.renderManualGuides?.();
+    this.updatePropertiesPanel();
+  }
+
+  /** Seleciona uma guia (ou limpa com null): as propriedades aparecem na aba Item */
+  selectGuide(axis, val) {
+    this.selectItem(null);
+    this.selectedGuide = axis ? { axis, val } : null;
+    if (this.selectedGuide) this.panelTab = 'item';
+    this.canvasEngine?.renderManualGuides?.();
+    this.updatePropertiesPanel();
+  }
+
+  /** Move a guia `from` para `to` (mm), dentro da folha e sem duplicar outra */
+  moveGuide(axis, from, to) {
+    if (this.readOnly || (axis !== 'x' && axis !== 'y')) return false;
+    if (this.guidesLocked) { this.notifyGuidesLocked(); this.canvasEngine?.renderManualGuides?.(); return false; }
+    const limit = axis === 'x' ? this.paperSize.width : this.paperSize.height;
+    const target = Math.min(limit, Math.max(0, Math.round((Number(to) || 0) * 10) / 10));
+    const list = this.manualGuides?.[axis];
+    const idx = list ? list.findIndex(v => Math.abs(v - from) < 0.01) : -1;
+    if (idx < 0 || Math.abs(target - from) < 0.01) { this.selectGuide(axis, from); return false; }
+    list.splice(idx, 1);
+    if (!list.some(v => Math.abs(v - target) < 0.01)) list.push(target);
+    list.sort((a, b) => a - b);
+    this.selectGuide(axis, target);
+    this.pushHistoryState(`Mover Guia ${axis.toUpperCase()} ${target}mm`, { coalesceKey: `guide-move:${axis}` });
+    return true;
+  }
+
+  deleteSelectedGuide() {
+    const g = this.selectedGuide;
+    if (!g) return;
+    this.canvasEngine?.removeManualGuide(g.axis, g.val);
+  }
+
   /** Remove todas as guias manuais da folha */
   clearManualGuides() {
     if (this.readOnly) return;
+    if (this.guidesLocked) { this.notifyGuidesLocked(); return; }
+    this.selectedGuide = null;
     this.manualGuides = { x: [], y: [] };
     this.guideGeneratorConfig = { ...(this.guideGeneratorConfig || {}), rows: 0, cols: 0 };
     this.canvasEngine?.renderManualGuides?.();
@@ -883,6 +931,7 @@ export class PrintComposerModal {
    * Seleciona um item SEM recriar os mapas Leaflet (preservação de zoom e pan)
    */
   selectItem(itemId, { additive = false, fromPanel = false } = {}) {
+    this.selectedGuide = null;
     // Selecionar no desenho leva o painel à aba do item; pela lista, ele fica onde está
     if (itemId && !fromPanel) this.panelTab = 'item';
     if (!itemId) {

@@ -93,7 +93,7 @@ export class PrintPropertiesPanel {
 
           <!-- Aba Item: elemento selecionado ou seleção múltipla -->
           <div class="cm-pp-pane" data-pp-pane="item" ${tab === 'item' ? '' : 'hidden'}>
-          ${(composer.selectedItemIds && composer.selectedItemIds.size > 1) ? `
+          ${composer.selectedGuide ? this.renderGuideSection(composer) : (composer.selectedItemIds && composer.selectedItemIds.size > 1) ? `
             <details class="cm-inspector-accordion" data-section="item" ${openAttr('item')}>
               <summary class="cm-pp-summary cm-pp-summary--active">${ppIcon('target')}${composer.selectedItemIds.size} Itens Selecionados</summary>
               <fieldset class="cm-print-props-fields">
@@ -201,6 +201,30 @@ export class PrintPropertiesPanel {
           </div>
         </div>
       </div>
+    `;
+  }
+
+  /** Propriedades da guia selecionada: posição, trava e exclusão */
+  static renderGuideSection(composer) {
+    const g = composer.selectedGuide;
+    const isX = g.axis === 'x';
+    const locked = Boolean(composer.guidesLocked);
+    const limit = isX ? composer.paperSize.width : composer.paperSize.height;
+    return `
+      <details class="cm-inspector-accordion" data-section="guide" open>
+        <summary class="cm-pp-summary cm-pp-summary--active">${ppIcon('target')}Guia ${isX ? 'vertical' : 'horizontal'}</summary>
+        <fieldset class="cm-print-props-fields">
+          <div class="cm-pp-stack cm-pp-stack--tight">
+            <span class="cm-param-label">Posição ${isX ? 'X' : 'Y'} (mm):</span>
+            <ui-campo-texto type="number" tamanho="sm" id="prop-guide-pos" class="cm-vertex-input cm-pp-full" min="0" max="${limit}" step="0.5" value="${g.val}" ${locked ? 'disabled' : ''}></ui-campo-texto>
+          </div>
+          <div class="cm-param-row">
+            <span class="cm-param-label">Travar guias:</span>
+            <ui-checkbox id="prop-guides-locked" ${locked ? 'checked' : ''}></ui-checkbox>
+          </div>
+          <ui-botao-primario inline variante="secundario" tamanho="sm" id="btn-prop-guide-delete" class="cm-pp-wide-btn" ${locked ? 'disabled' : ''}>${ppIcon('trash')}Excluir guia</ui-botao-primario>
+        </fieldset>
+      </details>
     `;
   }
 
@@ -326,6 +350,7 @@ export class PrintPropertiesPanel {
             opcoes: [{ id: 'grid', rotulo: 'Dividir área (InDesign)' }, { id: 'step', rotulo: 'Passo fixo (mm)' }]
           },
           { id: 'guides_replace', rotulo: 'Substituir guias', tipo: 'booleano', valor: cfg.replace !== false },
+          { id: 'guides_locked', rotulo: 'Travar guias', tipo: 'booleano', valor: Boolean(composer.guidesLocked), dica: 'Impede mover, criar ou excluir guias' },
           { id: 'guides_apply', rotulo: 'Grade', tipo: 'acao', valor: null, rotuloAcao: 'Aplicar guias' },
           { id: 'guides_clear', rotulo: 'Limpeza', tipo: 'acao', valor: null, rotuloAcao: `Limpar guias (${guideCount})` }
         ]
@@ -1201,6 +1226,9 @@ export class PrintPropertiesPanel {
         case 'guides_replace':
           composer.guideGeneratorConfig = { ...(composer.guideGeneratorConfig || {}), replace: Boolean(valor) };
           break;
+        case 'guides_locked':
+          composer.setGuidesLocked(Boolean(valor));
+          break;
         case 'preset_select':
           if (valor) composer.applyPagePreset(valor);
           break;
@@ -1286,6 +1314,17 @@ export class PrintPropertiesPanel {
     document.getElementById('btn-collapse-props-panel')?.addEventListener('click', () => {
       composer.togglePropertiesPanel(true);
     });
+
+    // Guia selecionada: posição, trava e exclusão
+    document.getElementById('prop-guide-pos')?.addEventListener('change', (e) => {
+      const g = composer.selectedGuide;
+      const v = parseFloat(e.target.value);
+      if (!g) return;
+      if (!Number.isFinite(v)) { composer.updatePropertiesPanel(); return; }
+      composer.moveGuide(g.axis, g.val, v);
+    });
+    document.getElementById('prop-guides-locked')?.addEventListener('change', (e) => composer.setGuidesLocked(e.target.checked));
+    document.getElementById('btn-prop-guide-delete')?.addEventListener('click', () => composer.deleteSelectedGuide());
 
     // Eventos do Gerador de Atlas Cartográfico
     const propAtlasEnable = document.getElementById('prop-atlas-enable');

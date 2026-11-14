@@ -749,7 +749,6 @@
   bottom: 0;
   width: 1px;
   background: #0284c7;
-  box-shadow: 0 0 3px rgba(2, 132, 199, 0.8);
 }
 
 .cm-manual-guide-h {
@@ -757,7 +756,6 @@
   right: 0;
   height: 1px;
   background: #0284c7;
-  box-shadow: 0 0 3px rgba(2, 132, 199, 0.8);
 }
 
 /* Área de captura maior que a linha de 1px para facilitar o arraste */
@@ -768,57 +766,12 @@
 }
 .cm-manual-guide-v { cursor: col-resize; touch-action: none; }
 .cm-manual-guide-h { cursor: row-resize; touch-action: none; }
+.cm-print-manual-guides-layer.is-locked .cm-manual-guide { cursor: pointer; }
+.cm-manual-guide.is-selected { background: #f97316; }
+.cm-manual-guide-v.is-selected { width: 2px; margin-left: -0.5px; }
+.cm-manual-guide-h.is-selected { height: 2px; margin-top: -0.5px; }
 .cm-manual-guide-v::before { left: -4px; right: -4px; }
 .cm-manual-guide-h::before { top: -4px; bottom: -4px; }
-
-.cm-manual-guide-tag {
-  position: absolute;
-  background: #0284c7;
-  color: #ffffff;
-  font-family: monospace;
-  font-size: 8.5px;
-  font-weight: 700;
-  padding: 1px 4px;
-  border-radius: 3px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  white-space: nowrap;
-  opacity: 0.85;
-  transition: opacity 0.15s ease;
-  user-select: none;
-}
-
-.cm-manual-guide:hover .cm-manual-guide-tag {
-  opacity: 1;
-  background: #0369a1;
-}
-
-.cm-manual-guide-v .cm-manual-guide-tag {
-  top: 2px;
-  left: 2px;
-}
-
-.cm-manual-guide-h .cm-manual-guide-tag {
-  left: 2px;
-  top: 2px;
-}
-
-.cm-manual-guide-del {
-  border: none;
-  background: transparent;
-  color: #fff;
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 9px;
-  line-height: 1;
-  opacity: 0.7;
-}
-
-.cm-manual-guide-del:hover {
-  opacity: 1;
-  color: #fca5a5;
-}
 
 /* Indicador flutuante durante arraste de régua */
 .cm-ruler-drag-ghost {
