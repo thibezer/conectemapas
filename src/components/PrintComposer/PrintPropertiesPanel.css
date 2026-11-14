@@ -469,6 +469,7 @@
 
 .cm-pp-btn-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
 }
 
@@ -477,9 +478,12 @@
   margin-top: 2px;
 }
 
+/* Largura base = conteúdo (rótulo "Duplicar" não vaza sobre os vizinhos);
+   o que não couber quebra para a linha de baixo */
 .cm-pp-btn-row > button,
 .cm-pp-btn-row > ui-botao-primario {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 26px;
 }
 
 /* Folha: seletores baixos e margens em 2 linhas (rótulo à esquerda do campo) */
