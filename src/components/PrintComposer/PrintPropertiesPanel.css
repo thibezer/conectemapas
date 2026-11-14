@@ -922,6 +922,14 @@
   border-radius: 6px;
 }
 
+/* Painel de Item: segue a altura do conteúdo e dispensa o cabeçalho do kit (o título é o do acordeão) */
+.cm-pp-kit-panel--inline {
+  height: auto;
+  min-height: 0;
+  margin-bottom: 6px;
+}
+.cm-pp-kit-panel--inline::part(cabecalho) { display: none; }
+
 /* Lista de Elementos: busca, dica, tipo, arrastar para reordenar e renomear */
 .cm-pp-items-search {
   width: 100%;

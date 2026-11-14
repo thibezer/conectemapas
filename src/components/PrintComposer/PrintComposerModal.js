@@ -1567,7 +1567,7 @@ export class PrintComposerModal {
     const mount = document.getElementById('cm-print-props-panel-mount');
     // Reconstruir o painel no meio do arraste do rótulo (scrub) destrói o elemento capturado:
     // adia a atualização para o fim do gesto
-    if (mount && PrintPropertiesPanel.isPaperScrubbing(mount.querySelector('#print-paper-props-panel'))) {
+    if (mount && ['#print-paper-props-panel', '#print-item-props-panel'].some(sel => PrintPropertiesPanel.isPaperScrubbing(mount.querySelector(sel)))) {
       if (!this._panelUpdateDeferred) {
         this._panelUpdateDeferred = true;
         const flush = () => {
@@ -1587,6 +1587,7 @@ export class PrintComposerModal {
       // Preserva a rolagem ao reconstruir após cada seleção/arrasto (as seções abertas ficam em this.panelSections)
       const prevScroll = mount.querySelector('.cm-print-props-scroll')?.scrollTop || 0;
       const keptPaper = mount.querySelector('#print-paper-props-panel');
+      const keptItem = mount.querySelector('#print-item-props-panel');
       // Quem usa o teclado não perde o lugar na lista ao bloquear, ocultar ou selecionar
       const focusSel = PrintPropertiesPanel.listFocusSelector(document.activeElement, mount);
       mount.innerHTML = PrintPropertiesPanel.render(this);
@@ -1596,6 +1597,9 @@ export class PrintComposerModal {
         PrintPropertiesPanel.syncPaperSection(keptPaper, this);
         freshPaper.replaceWith(keptPaper);
       }
+      // O painel de Item também continua a mesma instância (foco e arrasto do kit preservados); bindEvents o sincroniza
+      const freshItem = mount.querySelector('#print-item-props-panel');
+      if (keptItem && freshItem) freshItem.replaceWith(keptItem);
       const scroller = mount.querySelector('.cm-print-props-scroll');
       if (scroller) scroller.scrollTop = prevScroll;
       PrintPropertiesPanel.bindEvents(this);

@@ -15,20 +15,6 @@ export class PrintPropertiesPanel {
     const esc = PrintItemsManager.escapeHtml;
     // Seção aberta ou fechada pelo usuário, lembrada pelo nome (não pela posição)
     const tab = this.TABS.some(t => t[0] === composer.panelTab) ? composer.panelTab : 'item';
-    // Valor comum arredondado de uma medida entre os itens selecionados ('' = misto)
-    const multiItems = composer.selectedItemIds && composer.selectedItemIds.size > 1
-      ? composer.items.filter(it => composer.selectedItemIds.has(it.id)) : [];
-    const common = (key) => {
-      const vals = multiItems.map(it => Math.round(it[key]));
-      return vals.every(v => v === vals[0]) ? String(vals[0]) : '';
-    };
-    const multiField = (key, label, max, min = 0) => {
-      const v = common(key);
-      return `<div>
-                    <span class="cm-param-label">${label}</span>
-                    <ui-campo-texto type="number" tamanho="sm" id="prop-multi-${key}" data-multi-key="${key}" class="cm-vertex-input cm-pp-full" min="${min}" max="${max}" value="${v}" placeholder="${v === '' ? 'Misto' : ''}"></ui-campo-texto>
-                  </div>`;
-    };
     const openAttr = (key) => (composer.panelSections?.[key] === false ? '' : 'open');
 
     // Filtra feições poligonais ou de linha para a tabela de vértices
@@ -129,13 +115,7 @@ export class PrintPropertiesPanel {
                     ${composer.copiedStyle ? `<ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-paste-style" title="Colar Estilo Copiado"><span class="cm-pp-btn-lbl">${ppIcon('brush')}<span>Estilo</span></span></ui-botao-primario>` : ''}
                   </div>
                 </div>
-                <div class="cm-pp-subtitle">Posição e tamanho</div>
-                <div class="cm-pp-grid2">
-                  ${multiField('x', 'X (mm)', composer.paperSize.width)}
-                  ${multiField('y', 'Y (mm)', composer.paperSize.height)}
-                  ${multiField('width', 'Largura (mm)', composer.paperSize.width, PrintItemsManager.MIN_ITEM_MM)}
-                  ${multiField('height', 'Altura (mm)', composer.paperSize.height, PrintItemsManager.MIN_ITEM_MM)}
-                </div>
+                ${this.renderItemSection()}
               </fieldset>
             </details>
           ` : selectedItem ? `
@@ -171,36 +151,8 @@ export class PrintPropertiesPanel {
                   </div>
                 </div>
 
-                <!-- Nome do Elemento -->
-                <div class="cm-pp-stack cm-pp-stack--tight">
-                  <span class="cm-param-label">Nome:</span>
-                  <ui-campo-texto type="text" tamanho="sm" id="prop-item-name" class="cm-vertex-input cm-pp-full" value="${esc(selectedItem.name || '')}"></ui-campo-texto>
-                </div>
-
-                <!-- Posição e Dimensão em mm -->
-                <div class="cm-pp-subtitle">Posição e tamanho</div>
-                <div class="cm-pp-grid2">
-                  <div>
-                    <span class="cm-param-label">Posição X (mm):</span>
-                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-x" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.width}" value="${Math.round(selectedItem.x)}"></ui-campo-texto>
-                  </div>
-                  <div>
-                    <span class="cm-param-label">Posição Y (mm):</span>
-                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-y" class="cm-vertex-input cm-pp-full" min="0" max="${composer.paperSize.height}" value="${Math.round(selectedItem.y)}"></ui-campo-texto>
-                  </div>
-                  <div>
-                    <span class="cm-param-label">Largura (mm):</span>
-                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-w" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.width}" value="${Math.round(selectedItem.width)}"></ui-campo-texto>
-                  </div>
-                  <div>
-                    <span class="cm-param-label">Altura (mm):</span>
-                    <ui-campo-texto type="number" tamanho="sm" id="prop-item-h" class="cm-vertex-input cm-pp-full" min="${PrintItemsManager.MIN_ITEM_MM}" max="${composer.paperSize.height}" value="${Math.round(selectedItem.height)}"></ui-campo-texto>
-                  </div>
-                </div>
-                <div class="cm-param-row">
-                  <span class="cm-param-label">Travar proporção ao redimensionar:</span>
-                  <ui-checkbox id="prop-item-lock-aspect" ${selectedItem.lockAspect ? 'checked' : ''}></ui-checkbox>
-                </div>
+                <!-- Nome, posição e tamanho: painel de propriedades do kit -->
+                ${this.renderItemSection()}
 
                 ${this.renderTypeFields(selectedItem, composer, polygonFeatures)}
               </fieldset>
@@ -486,6 +438,142 @@ export class PrintPropertiesPanel {
         data-margins-abnt="${isAbnt ? 'true' : 'false'}"
       ></ui-painel-propriedades>
     `;
+  }
+
+  /** Ids do painel de Item do kit → campo da geometria do item */
+  static ITEM_GEOMETRY_KEYS = { item_x: 'x', item_y: 'y', item_w: 'width', item_h: 'height' };
+
+  /** Valor que o kit usa para "Varia" (Symbol.for: a mesma identidade em qualquer cópia do pacote) */
+  static MIXED_VALUE = Symbol.for('ui-tabela-propriedades:misto');
+
+  /**
+   * Categorias do painel de Item (contrato do kit): nome, posição e tamanho, travar proporção.
+   * Seleção múltipla mostra só posição e tamanho; medida diferente entre os itens vira "Varia".
+   * Item bloqueado fica somente leitura.
+   */
+  static buildItemCategories(composer) {
+    const multi = Boolean(composer.selectedItemIds && composer.selectedItemIds.size > 1);
+    const items = multi
+      ? composer.items.filter(it => composer.selectedItemIds.has(it.id))
+      : composer.items.filter(it => it.id === composer.selectedItemId);
+    if (!items.length) return [];
+    const paper = composer.paperSize;
+    const locked = !multi && Boolean(items[0].locked);
+    const round1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+    const measure = (id, rotulo, key, max, min = 0) => {
+      const vals = items.map(it => round1(it[key]));
+      return {
+        id, rotulo, tipo: 'numero', valor: vals[0], misto: vals.some(v => v !== vals[0]),
+        unidade: 'mm', min, max, passo: 1, casasDecimais: 1, somenteLeitura: locked
+      };
+    };
+    const geometry = [
+      measure('item_x', 'Posição X', 'x', paper.width),
+      measure('item_y', 'Posição Y', 'y', paper.height),
+      measure('item_w', 'Largura', 'width', paper.width, PrintItemsManager.MIN_ITEM_MM),
+      measure('item_h', 'Altura', 'height', paper.height, PrintItemsManager.MIN_ITEM_MM)
+    ];
+    if (multi) {
+      return [{ id: 'item_posicao', titulo: 'Posição e tamanho', aberto: true, propriedades: geometry }];
+    }
+    return [
+      {
+        id: 'item_geral', titulo: 'Elemento', aberto: true,
+        propriedades: [{ id: 'item_name', rotulo: 'Nome', tipo: 'texto', valor: items[0].name || '', somenteLeitura: locked }]
+      },
+      {
+        id: 'item_posicao', titulo: 'Posição e tamanho', aberto: true,
+        propriedades: [
+          ...geometry,
+          {
+            id: 'item_lock_aspect', rotulo: 'Travar proporção', tipo: 'booleano', valor: Boolean(items[0].lockAspect),
+            dica: 'Mantém a proporção ao redimensionar com as alças', somenteLeitura: locked
+          }
+        ]
+      }
+    ];
+  }
+
+  /** Painel de Item com `<ui-painel-propriedades>` do kit (nome, posição e tamanho) */
+  static renderItemSection() {
+    return `
+      <ui-painel-propriedades
+        id="print-item-props-panel"
+        class="cm-pp-kit-panel cm-pp-kit-panel--inline"
+        titulo="Elemento"
+        densidade="compacta"
+        modo-aplicar="imediato"
+        largura-rotulo="46"
+        storage-key="cm_print_item_props"
+      ></ui-painel-propriedades>
+    `;
+  }
+
+  /**
+   * Atualiza o painel de Item sem recriá-lo. Estrutura igual (mesmas linhas, limites e bloqueio):
+   * só os valores mudam, preservando foco e arrasto do kit; senão troca as categorias.
+   */
+  static syncItemSection(panelEl, composer) {
+    if (!panelEl) return;
+    const cats = this.buildItemCategories(composer);
+    const sig = JSON.stringify(cats.map(c => [c.id, c.propriedades.map(p => [p.id, p.min, p.max, p.somenteLeitura])]));
+    if (panelEl._itemSig === sig) {
+      const values = {};
+      cats.forEach(c => c.propriedades.forEach(p => { values[p.id] = p.misto ? this.MIXED_VALUE : p.valor; }));
+      panelEl.valores = values;
+      return;
+    }
+    panelEl._itemSig = sig;
+    panelEl.categorias = cats;
+  }
+
+  /** Eventos do painel de Item (ligados uma vez por instância; `updateCurrent` grava e registra o histórico) */
+  static bindItemPanel(composer, updateCurrent) {
+    const panel = document.getElementById('print-item-props-panel');
+    if (!panel) return;
+    this.syncItemSection(panel, composer);
+    if (panel.dataset.bound) return;
+    panel.dataset.bound = '1';
+
+    // Atalhos do layout não podem agir enquanto se digita no painel (Ctrl/Cmd passam: desfazer etc.)
+    panel.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) e.stopPropagation();
+    });
+
+    panel.addEventListener('ui-propriedade-alterada', (e) => {
+      const { id, valor } = e.detail || {};
+      const key = this.ITEM_GEOMETRY_KEYS[id];
+      if (key) {
+        const v = Number(valor);
+        if (composer.selectedItemIds && composer.selectedItemIds.size > 1) {
+          // Seleção múltipla: o valor vale para todos os itens desbloqueados
+          const targets = composer.items.filter(it => composer.selectedItemIds.has(it.id) && !it.locked);
+          if (Number.isFinite(v) && targets.length) {
+            targets.forEach(it => {
+              it[key] = v;
+              PrintItemsManager.clampItemToPaper(it, composer.paperSize);
+              composer.updateItemPositionDOM(it);
+              if (it.type === 'map' || it.type === 'inset_map') composer.applyMapScaleAndRotation(it);
+              else composer.refreshItemContent(it);
+            });
+            composer.pushHistoryState('Editar Itens', { coalesceKey: `prop:multi:${key}` });
+          }
+        } else {
+          // Valor digitado é limitado à folha e ao tamanho mínimo; o campo mostra o valor aplicado
+          updateCurrent(it => {
+            if (Number.isFinite(v)) it[key] = v;
+            PrintItemsManager.clampItemToPaper(it, composer.paperSize);
+          }, false, true, id);
+        }
+        this.syncItemSection(panel, composer);
+      } else if (id === 'item_name') {
+        const clean = String(valor || '').trim();
+        if (clean) updateCurrent(it => { it.name = clean; }, false, false, id);
+        composer.updatePropertiesPanel();
+      } else if (id === 'item_lock_aspect') {
+        updateCurrent(it => { it.lockAspect = Boolean(valor); }, false, false, id);
+      }
+    });
   }
 
   /** Há um rótulo do painel da folha sendo arrastado (scrub numérico do kit)? */
@@ -1387,25 +1475,6 @@ export class PrintPropertiesPanel {
       });
     });
 
-    // Seleção múltipla: o valor digitado vale para todos os itens desbloqueados
-    document.querySelectorAll('#cm-print-props-panel-mount [data-multi-key]').forEach(input => {
-      input.addEventListener('change', () => {
-        const v = parseFloat(input.value);
-        const key = input.dataset.multiKey;
-        const targets = composer.items.filter(it => composer.selectedItemIds?.has(it.id) && !it.locked);
-        if (!Number.isFinite(v) || !targets.length) { composer.updatePropertiesPanel(); return; }
-        targets.forEach(it => {
-          it[key] = v;
-          PrintItemsManager.clampItemToPaper(it, composer.paperSize);
-          composer.updateItemPositionDOM(it);
-          if (it.type === 'map' || it.type === 'inset_map') composer.applyMapScaleAndRotation(it);
-          else composer.refreshItemContent(it);
-        });
-        composer.pushHistoryState('Editar Itens', { coalesceKey: `prop:multi:${key}` });
-        composer.updatePropertiesPanel();
-      });
-    });
-
     this.bindItemsList(composer);
 
     document.querySelectorAll('[data-composer-item-id]').forEach(el => {
@@ -1490,7 +1559,7 @@ export class PrintPropertiesPanel {
       });
     });
 
-    const updateCurrent = (mutator, shouldUpdateMap = false, isPositionOrSizeChange = false) => {
+    const updateCurrent = (mutator, shouldUpdateMap = false, isPositionOrSizeChange = false, fieldKey = null) => {
       const it = composer.items.find(i => i.id === composer.selectedItemId);
       // Item bloqueado não é editado pelo painel (só o próprio bloqueio muda)
       if (!it || it.locked) return;
@@ -1507,7 +1576,7 @@ export class PrintPropertiesPanel {
         composer.refreshItemContent(it);
       }
       // Digitação seguida no mesmo campo vira um único passo de desfazer
-      const fieldId = document.activeElement?.id || 'campo';
+      const fieldId = fieldKey || document.activeElement?.id || 'campo';
       composer.pushHistoryState(`Editar ${it.name || 'Item'}`, { coalesceKey: `prop:${it.id}:${fieldId}` });
     };
 
@@ -1552,23 +1621,6 @@ export class PrintPropertiesPanel {
       }
     });
     document.getElementById('btn-prop-paste-style')?.addEventListener('click', () => composer.pasteItemStyle?.());
-    document.getElementById('prop-item-lock-aspect')?.addEventListener('change', (e) => {
-      updateCurrent(it => { it.lockAspect = !!e.target.checked; });
-    });
-
-    const propItemName = document.getElementById('prop-item-name');
-    if (propItemName) {
-      propItemName.addEventListener('change', (e) => {
-        const clean = String(e.target.value || '').trim();
-        if (!clean) {
-          composer.updatePropertiesPanel();
-          return;
-        }
-        updateCurrent(it => { it.name = clean; });
-        composer.updatePropertiesPanel();
-      });
-    }
-
     // Eventos de Shape, Image, Label
     const propShapeType = document.getElementById('prop-shape-type');
     const propShapeArrowHead = document.getElementById('prop-shape-arrowhead');
@@ -1659,28 +1711,8 @@ export class PrintPropertiesPanel {
     if (propLabelStroke) propLabelStroke.onchange = (e) => updateCurrent(it => it.strokeColor = e.target.value);
     if (propLabelRot) propLabelRot.onchange = (e) => updateCurrent(it => it.rotation = parseFloat(e.target.value) || 0);
 
-    // Campos de posição e dimensões
-    const propX = document.getElementById('prop-item-x');
-    const propY = document.getElementById('prop-item-y');
-    const propW = document.getElementById('prop-item-w');
-    const propH = document.getElementById('prop-item-h');
-
-    // Valor digitado é limitado à folha e ao tamanho mínimo; o campo mostra o valor aplicado
-    const bindGeometryField = (input, key) => {
-      if (!input) return;
-      input.addEventListener('change', (e) => {
-        const v = parseFloat(e.target.value);
-        updateCurrent(it => {
-          if (Number.isFinite(v)) it[key] = v;
-          PrintItemsManager.clampItemToPaper(it, composer.paperSize);
-          e.target.value = Math.round(it[key]);
-        }, false, true);
-      });
-    };
-    bindGeometryField(propX, 'x');
-    bindGeometryField(propY, 'y');
-    bindGeometryField(propW, 'width');
-    bindGeometryField(propH, 'height');
+    // Nome, posição e tamanho (painel de propriedades do kit)
+    this.bindItemPanel(composer, updateCurrent);
 
     // Propriedades do Mapa
     const propMapBasemap = document.getElementById('prop-map-basemap');

@@ -361,7 +361,8 @@ const pComposer = { items: pItems, features: legFeatures, layers, paperSize: pap
 pComposer.selectedItemId = pItems.find(i => i.type === 'scale_bar').id;
 html = PrintPropertiesPanel.render(pComposer);
 ['prop-sb-segments', 'prop-sb-units', 'prop-sb-text'].forEach(id => assert.ok(html.includes(`id="${id}"`), `Painel da barra deve ter ${id}`));
-assert.ok(html.includes(`min="${PrintItemsManager.MIN_ITEM_MM}"`), 'Campos de tamanho usam o mínimo comum');
+const sbSize = PrintPropertiesPanel.buildItemCategories(pComposer).flatMap(c => c.propriedades).filter(p => p.id === 'item_w' || p.id === 'item_h');
+assert.ok(sbSize.length === 2 && sbSize.every(p => p.min === PrintItemsManager.MIN_ITEM_MM), 'Campos de tamanho usam o mínimo comum');
 pComposer.selectedItemId = pItems.find(i => i.type === 'legend').id;
 html = PrintPropertiesPanel.render(pComposer);
 assert.ok(html.includes('id="prop-legend-title"'), 'Painel da legenda tem o título');
@@ -440,13 +441,31 @@ console.log('✔ Abas validadas');
 const mA = { ...PrintItemsManager.createNewItem('shape', 'P', 0), id: 'm-a', x: 10, y: 20, width: 50, height: 30 };
 const mB = { ...PrintItemsManager.createNewItem('shape', 'P', 1), id: 'm-b', x: 10, y: 40, width: 50, height: 30 };
 html = PrintPropertiesPanel.render({ items: [mA, mB], selectedItemIds: new Set(['m-a', 'm-b']), selectedItemId: null, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
-assert.ok(/data-multi-key="x"[^>]*value="10"/.test(html), 'X igual mostra o valor comum');
-assert.ok(/data-multi-key="y"[^>]*value=""[^>]*placeholder="Misto"/.test(html), 'Y diferente mostra "Misto"');
-assert.ok(/data-multi-key="width"[^>]*value="50"/.test(html), 'Largura comum');
+const multiComposer = { items: [mA, mB], selectedItemIds: new Set(['m-a', 'm-b']), selectedItemId: null, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true };
+assert.ok(html.includes('id="print-item-props-panel"'), 'Seleção múltipla usa o painel de propriedades do kit');
+let itemCats = PrintPropertiesPanel.buildItemCategories(multiComposer);
+assert.deepStrictEqual(itemCats.map(c => c.id), ['item_posicao'], 'Seleção múltipla: só posição e tamanho');
+const multiProp = (id) => itemCats[0].propriedades.find(p => p.id === id);
+assert.ok(!multiProp('item_x').misto && multiProp('item_x').valor === 10, 'X igual mostra o valor comum');
+assert.ok(multiProp('item_y').misto === true, 'Y diferente vira "Varia" (estado misto do kit)');
+assert.ok(!multiProp('item_w').misto && multiProp('item_w').valor === 50, 'Largura comum');
+
+// Item único: nome, medidas e proporção; bloqueado fica somente leitura
+const singleComposer = { items: [{ ...mA, name: 'Quadro', lockAspect: true }], selectedItemId: 'm-a', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true };
+itemCats = PrintPropertiesPanel.buildItemCategories(singleComposer);
+const flat = itemCats.flatMap(c => c.propriedades);
+assert.deepStrictEqual(flat.map(p => p.id), ['item_name', 'item_x', 'item_y', 'item_w', 'item_h', 'item_lock_aspect'], 'Item único: nome, geometria e proporção');
+assert.strictEqual(flat.find(p => p.id === 'item_name').valor, 'Quadro');
+assert.strictEqual(flat.find(p => p.id === 'item_w').min, PrintItemsManager.MIN_ITEM_MM, 'Largura respeita o mínimo');
+assert.strictEqual(flat.find(p => p.id === 'item_x').max, paperSizes.A4_L.width, 'X limitado à folha');
+assert.ok(flat.every(p => !p.somenteLeitura), 'Item livre é editável');
+itemCats = PrintPropertiesPanel.buildItemCategories({ ...singleComposer, items: [{ ...singleComposer.items[0], locked: true }] });
+assert.ok(itemCats.flatMap(c => c.propriedades).every(p => p.somenteLeitura === true), 'Item bloqueado: todas as propriedades somente leitura');
+assert.deepStrictEqual(PrintPropertiesPanel.buildItemCategories({ ...singleComposer, selectedItemId: null }), [], 'Sem seleção: sem categorias');
 
 // Aparência agrupada e ajuda do Atlas recolhida por padrão
 html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
-assert.ok(html.includes('>Aparência<') && html.includes('>Posição e tamanho<'), 'Subtítulos Posição e Aparência');
+assert.ok(html.includes('>Aparência<') && html.includes('id="print-item-props-panel"'), 'Subtítulo Aparência e painel de posição e tamanho do kit');
 assert.ok(/id="pp-atlas-help"\s+hidden/.test(html), 'Ajuda do Atlas começa oculta');
 html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', helpOpen: { 'atlas-help': true }, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
 assert.ok(!/id="pp-atlas-help"\s+hidden/.test(html), 'Ajuda do Atlas aberta quando lembrada');
