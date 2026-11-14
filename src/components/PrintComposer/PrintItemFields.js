@@ -245,13 +245,28 @@ export class PrintItemFields {
           guard: (it, v) => v || activeSet.size > 1 || !activeSet.has(k)
         });
       });
-      const R = 'intervalo', RT = 'Intervalo / paginação';
-      number(R, RT, 'vert_start', 'Vértice inicial', num(item.startVertex, 1), { min: 1 }, (it, v) => { it.startVertex = Math.max(1, parseInt(v, 10) || 1); });
-      number(R, RT, 'vert_end', 'Vértice final (0 = fim)', num(item.endVertex, 0), { min: 0 }, (it, v) => { it.endVertex = Math.max(0, parseInt(v, 10) || 0); });
-      action(R, RT, 'vert_split', 'Continuação', 'Dividir em tabela de continuação', (c) => {
-        const created = c.splitVerticesTableContinuation?.(c.selectedItemId);
-        if (!created) UIToast.notificar({ tipo: 'info', titulo: 'Tabela já completa', mensagem: 'Todos os vértices exibidos já cabem na tabela atual.', duracao: 2500 });
-      }, 'Cria uma segunda tabela ao lado com os vértices que não couberam');
+    }
+    // Intervalo e continuação valem para vértices e para o quadro de áreas (linhas = feições)
+    const unit = mode === 'areas' ? 'Linha' : 'Vértice';
+    const R = 'intervalo', RT = 'Intervalo / paginação';
+    const ctx = { items: composer.items || [], features: composer.features || [], layers: composer.layers || [] };
+    const linked = Boolean(item.continuesFrom) && (composer.items || []).some(i => i.id === item.continuesFrom);
+    // Continuação: o início é decidido pela tabela anterior (mostra o valor atual, sem edição)
+    const startValue = linked ? PrintItemsManager.verticesTableRange(item, ctx).start : num(item.startVertex, 1);
+    number(R, RT, 'vert_start', `${unit} inicial`, startValue, { min: 1, ...(linked ? { somenteLeitura: true, dica: 'Definido pela tabela anterior' } : {}) },
+      (it, v) => { it.startVertex = Math.max(1, parseInt(v, 10) || 1); });
+    number(R, RT, 'vert_end', `${unit} final (0 = fim)`, num(item.endVertex, 0), { min: 0 }, (it, v) => { it.endVertex = Math.max(0, parseInt(v, 10) || 0); });
+    action(R, RT, 'vert_split', 'Continuação', 'Dividir em tabela de continuação', (c) => {
+      const created = c.splitVerticesTableContinuation?.(c.selectedItemId);
+      if (!created) UIToast.notificar({ tipo: 'info', titulo: 'Tabela já completa', mensagem: 'Todas as linhas exibidas já cabem na tabela atual.', duracao: 2500 });
+    }, 'Cria uma tabela ao lado com as linhas que não couberam; ela acompanha o tamanho desta');
+    if (linked) {
+      action(R, RT, 'vert_unlink', 'Vínculo', 'Desvincular da tabela anterior', (c, { updateCurrent }) => {
+        const cur = c.items.find(i => i.id === c.selectedItemId);
+        const start = cur ? PrintItemsManager.verticesTableRange(cur, { items: c.items, features: c.features, layers: c.layers }).start : 1;
+        updateCurrent(it => { it.startVertex = start; delete it.continuesFrom; }, false, false, 'vert_unlink');
+        c.updatePropertiesPanel();
+      }, 'Fixa o intervalo atual: a tabela deixa de seguir a anterior');
     }
     const A = 'tabela_aparencia', AT = 'Aparência da tabela';
     color(A, AT, 'vert_hdr_color', 'Cor do cabeçalho', colorHex(item.headerBgColor, '#000000'), (it, v) => { it.headerBgColor = v; });

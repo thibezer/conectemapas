@@ -114,6 +114,23 @@ const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f
     assert.ok(model.text.y - model.text.size * 0.75 >= 0, `Seta ${st}: o N cabe no topo do viewBox`);
     assert.ok(Math.max(...model.polys.flatMap(p => p.pts.map(q => q[1])), ...model.circles.map(c => c.cy + c.r)) <= 100, `Seta ${st}: desenho dentro do viewBox`);
   }
+  // Mapa girado: o contêiner cobre o quadro inteiro (sem cantos vazios) com o menor tamanho possível
+  assert.strictEqual(PrintItemsManager.rotatedMapSize(400, 300, 0), null, 'Sem rotação o contêiner é o quadro');
+  assert.strictEqual(PrintItemsManager.rotatedMapSize(400, 300, 360), null);
+  const r90 = PrintItemsManager.rotatedMapSize(400, 300, 90);
+  assert.ok(r90.width >= 300 && r90.width <= 302 && r90.height >= 400 && r90.height <= 402, 'Girado 90° troca largura e altura');
+  const r45 = PrintItemsManager.rotatedMapSize(400, 300, 45);
+  assert.ok(Math.abs(r45.width - 495) <= 2 && Math.abs(r45.height - 495) <= 2, 'Girado 45° cobre a diagonal');
+  for (const deg of [10, 30, 45, 77, 135, -20]) {
+    // Os 4 cantos do quadro, girados de volta, ficam dentro do contêiner
+    const { width, height } = PrintItemsManager.rotatedMapSize(400, 300, deg);
+    const a = (-deg * Math.PI) / 180;
+    for (const [px, py] of [[-200, -150], [200, -150], [200, 150], [-200, 150]]) {
+      const x = px * Math.cos(a) - py * Math.sin(a);
+      const y = px * Math.sin(a) + py * Math.cos(a);
+      assert.ok(Math.abs(x) <= width / 2 + 1e-6 && Math.abs(y) <= height / 2 + 1e-6, `Mapa girado ${deg}° cobre os cantos do quadro`);
+    }
+  }
   for (const barStyle of ['alternating', 'double', 'line_ticks']) {
     const html = PrintItemsManager.renderScaleBar({ width: 60, segments: 4, barStyle, showBox: false, barColor: '#1e293b' }, 5000);
     assert.ok(html.includes(`cm-item-scale-bar--${barStyle}`) && html.includes('cm-item-scale-bar--nobox'), `renderScaleBar suporta ${barStyle} sem caixa`);
@@ -274,8 +291,33 @@ const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f
   bigVerts.push(bigVerts[0]);
   mockModal.features = [{ id: 'big', name: 'Poligono 12V', type: 'polygon', coordinates: [bigVerts] }];
   mockModal.items.push({ id: 'tbl1', type: 'table_vertices', name: 'Tabela', x: 15, y: 15, width: 85, height: 32, targetFeatureId: 'big' });
+  mockModal.tableRangeContext = proto.tableRangeContext;
   const cont = proto.splitVerticesTableContinuation.call(mockModal, 'tbl1');
-  assert.ok(cont && cont.startVertex > 1, 'splitVerticesTableContinuation cria tabela de continuação com vértices seguintes');
+  assert.ok(cont && cont.continuesFrom === 'tbl1', 'splitVerticesTableContinuation cria tabela de continuação vinculada');
+  const tctx = proto.tableRangeContext.call(mockModal);
+  const firstFit = PrintItemsManager.verticesTableFit(PrintItemsManager.verticesTableData(mockModal.items.find(i => i.id === 'tbl1'), tctx), 85, 32);
+  const contStart = PrintItemsManager.verticesTableRange(cont, tctx).start;
+  assert.strictEqual(contStart, 1 + firstFit.shown, 'A continuação começa onde a tabela anterior termina');
+  assert.ok(contStart > 1);
+  // Aumentar a tabela anterior adianta o início da continuação (sem espaço vazio nem linhas repetidas)
+  mockModal.items.find(i => i.id === 'tbl1').height = 80;
+  assert.ok(PrintItemsManager.verticesTableRange(cont, tctx).start > contStart, 'Tabela maior: a continuação começa mais adiante');
+  mockModal.items.find(i => i.id === 'tbl1').height = 32;
+  // Segunda divisão entra no fim da cadeia
+  const cont2 = proto.splitVerticesTableContinuation.call(mockModal, 'tbl1');
+  assert.ok(!cont2 || cont2.continuesFrom === cont.id, 'Nova divisão continua a partir da última tabela da cadeia');
+  // Quadro de áreas também divide por linhas
+  const areaFeats = Array.from({ length: 14 }, (_, i) => ({
+    id: `a${i}`, name: `Área ${i + 1}`, type: 'polygon',
+    coordinates: [[[-15.78, -47.92 + i * 0.01], [-15.78, -47.915 + i * 0.01], [-15.775, -47.915 + i * 0.01], [-15.78, -47.92 + i * 0.01]]]
+  }));
+  mockModal.features = areaFeats;
+  mockModal.items.push({ id: 'ar1', type: 'table_vertices', tableMode: 'areas', name: 'Áreas', x: 15, y: 100, width: 85, height: 32 });
+  const aCont = proto.splitVerticesTableContinuation.call(mockModal, 'ar1');
+  assert.ok(aCont && aCont.continuesFrom === 'ar1', 'Quadro de áreas também ganha continuação');
+  const aCtx = proto.tableRangeContext.call(mockModal);
+  const aRows = PrintItemsManager.verticesTableData(aCont, aCtx).vertices;
+  assert.ok(aRows.length > 0 && aRows[0].name !== 'Área 1', 'A continuação do quadro de áreas mostra as linhas seguintes');
 
   // Inserção por desenho: setPlacementTool + insertItem com retângulo desenhado
   mockModal.canvasEngine = { placementType: null };

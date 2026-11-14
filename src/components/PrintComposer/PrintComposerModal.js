@@ -909,7 +909,10 @@ export class PrintComposerModal {
       return PrintItemsManager.renderItemCanvas(item);
     } else if (item.type === 'table_vertices') {
       const targetId = item.targetFeatureId || (this.atlas?.enabled ? this.atlas.getCurrentFeature()?.id : null);
-      return PrintItemsManager.renderVerticesTable({ ...item, targetFeatureId: targetId }, this.features, this.layers);
+      return PrintItemsManager.renderVerticesTable({ ...item, targetFeatureId: targetId }, this.features, this.layers, {
+        items: this.items,
+        atlasFeatureId: this.atlas?.enabled ? this.atlas.getCurrentFeature()?.id : null
+      });
     } else if (item.type === 'text_block') {
       const evalText = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.text) : item.text;
       const evalTitle = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.title) : item.title;
@@ -1008,6 +1011,8 @@ export class PrintComposerModal {
       if ((item.type === 'map' || item.type === 'inset_map') && item.visible !== false) {
         const domEl = document.getElementById(`leaf-map-${item.id}`);
         if (domEl && !this.leafletMaps.has(item.id)) {
+          // Mapa girado: o contêiner já nasce no tamanho que cobre o quadro
+          this.layoutMapRotation(item);
           const map = L.map(domEl, {
             attributionControl: false,
             zoomControl: false,
@@ -1085,7 +1090,7 @@ export class PrintComposerModal {
             const frame = domEl.parentElement;
             frame?.querySelector('.cm-item-grid-border')?.remove();
             if (frame && item.showGrid) {
-              const b = map.getBounds();
+              const b = PrintItemsManager.mapFrameBounds(map);
               frame.insertAdjacentHTML('beforeend', PrintItemsManager.renderMapGridBorder({
                 north: b.getNorth(),
                 south: b.getSouth(),
@@ -1109,10 +1114,6 @@ export class PrintComposerModal {
           }, 150);
           this.mapTimers.add(timer);
           this.mapRefreshers.set(item.id, updateGridAndScale);
-
-          if (item.rotation) {
-            domEl.style.transform = `rotate(${item.rotation}deg)`;
-          }
 
           this.leafletMaps.set(item.id, map);
         }
@@ -1270,10 +1271,15 @@ export class PrintComposerModal {
         e.stopPropagation();
         const el = map.getContainer();
         const rect = el.getBoundingClientRect();
-        // O mapa é montado a 100% e escalado pela prancheta: converte para px do contêiner
+        // O mapa é escalado pela prancheta e pode estar girado: do clique (tela) para px do contêiner,
+        // desfazendo a rotação em torno do centro
+        const k = frame.getBoundingClientRect().width / (frame.offsetWidth || 1) || 1;
+        const a = -((Number(item.rotation) || 0) * Math.PI) / 180;
+        const dx = (e.clientX - (rect.left + rect.width / 2)) / k;
+        const dy = (e.clientY - (rect.top + rect.height / 2)) / k;
         const point = {
-          x: (e.clientX - rect.left) * (el.offsetWidth / rect.width),
-          y: (e.clientY - rect.top) * (el.offsetHeight / rect.height)
+          x: el.offsetWidth / 2 + dx * Math.cos(a) - dy * Math.sin(a),
+          y: el.offsetHeight / 2 + dx * Math.sin(a) + dy * Math.cos(a)
         };
         const state = this.vectorStateFor(item, map);
         const feat = state && PrintMapRenderer.hitTest({ ...state, project: (ll) => map.latLngToContainerPoint(ll), point });
@@ -1317,7 +1323,7 @@ export class PrintComposerModal {
     const insetMap = this.leafletMaps.get(insetItem.id);
     if (!mainMap || !insetMap) return;
 
-    const b = mainMap.getBounds();
+    const b = PrintItemsManager.mapFrameBounds(mainMap);
     const bounds = [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]];
     const style = { color: '#ff2244', weight: 1.5, fillColor: '#ff2244', fillOpacity: 0.25 };
 
@@ -1347,8 +1353,35 @@ export class PrintComposerModal {
       const targetZoom = PrintItemsManager.calculateZoom(item.scale, center.lat);
       // Sem animação: a escala digitada vale na hora (e os eventos de grade/escala disparam já)
       map.setZoom(targetZoom, { animate: false });
-      domEl.style.transform = `rotate(${item.rotation || 0}deg)`;
+      this.layoutMapRotation(item);
     }
+  }
+
+  /**
+   * Gira o mapa dentro do quadro sem cantos vazios: com rotação, o contêiner do Leaflet cresce só o
+   * suficiente para cobrir o quadro (centrado nele, cortado pelo quadro); sem rotação volta ao tamanho do quadro.
+   * O centro e a escala do mapa não mudam (o aumento é simétrico).
+   */
+  layoutMapRotation(item) {
+    const domEl = document.getElementById(`leaf-map-${item.id}`);
+    const frame = domEl?.parentElement;
+    if (!domEl || !frame) return;
+    const rot = Number(item.rotation) || 0;
+    const size = PrintItemsManager.rotatedMapSize(frame.clientWidth, frame.clientHeight, rot);
+    const props = ['position', 'left', 'top', 'width', 'height', 'transform'];
+    if (!size) {
+      props.forEach(p => domEl.style.removeProperty(p));
+    } else {
+      const set = (p, v) => domEl.style.setProperty(p, v, 'important');
+      set('position', 'absolute');
+      set('width', `${size.width}px`);
+      set('height', `${size.height}px`);
+      set('left', `${(frame.clientWidth - size.width) / 2}px`);
+      set('top', `${(frame.clientHeight - size.height) / 2}px`);
+      set('transform', `rotate(${rot}deg)`);
+    }
+    // Centro preservado: o Leaflet reposiciona o mapa quando o contêiner muda de tamanho
+    this.leafletMaps.get(item.id)?.invalidateSize({ animate: false });
   }
 
   destroyLeafletMaps() {
@@ -1379,9 +1412,20 @@ export class PrintComposerModal {
       el.style.height = `${item.height * this.canvasEngine.mmToPx}px`;
       const scaler = el.querySelector(':scope > .cm-item-scaler');
       if (scaler) scaler.style.cssText = this.getScalerStyle(item);
+      // As linhas da tabela dependem da altura: ao mudar o tamanho refaz a tabela e as continuações dela
+      if (item.type === 'table_vertices') {
+        const size = `${item.width}x${item.height}`;
+        if (el.dataset.tableSize !== size) {
+          el.dataset.tableSize = size;
+          if (scaler) scaler.innerHTML = this.getItemInnerContent(item);
+          this.refreshTableContinuations(item.id);
+        }
+      }
     }
     const map = this.leafletMaps.get(item.id);
-    if (map && invalidateMap) map.invalidateSize();
+    // Mapa girado: o contêiner acompanha o novo tamanho do quadro (e já reavalia o tamanho do Leaflet)
+    if (map && invalidateMap && Number(item.rotation)) this.layoutMapRotation(item);
+    else if (map && invalidateMap) map.invalidateSize();
     if (PrintItemsManager.CANVAS_ITEM_TYPES.has(item.type)) this.drawItemCanvas(item);
   }
 
@@ -1395,6 +1439,17 @@ export class PrintComposerModal {
     const scaler = document.querySelector(`[data-item-id="${item.id}"] > .cm-item-scaler`);
     if (scaler) scaler.innerHTML = this.getItemInnerContent(item);
     if (PrintItemsManager.CANVAS_ITEM_TYPES.has(item.type)) this.drawItemCanvas(item);
+    if (item.type === 'table_vertices') this.refreshTableContinuations(item.id);
+  }
+
+  /** Refaz as tabelas de continuação (em cadeia) de uma tabela: o início delas depende do que cabe nela */
+  refreshTableContinuations(itemId, seen = new Set([itemId])) {
+    this.items.filter(i => i.type === 'table_vertices' && i.continuesFrom === itemId && !seen.has(i.id)).forEach((dep) => {
+      seen.add(dep.id);
+      const scaler = document.querySelector(`[data-item-id="${dep.id}"] > .cm-item-scaler`);
+      if (scaler) scaler.innerHTML = this.getItemInnerContent(dep);
+      this.refreshTableContinuations(dep.id, seen);
+    });
   }
 
   /** Entradas da legenda: camadas e filtros que aparecem na vista do mapa vinculado */
@@ -1703,38 +1758,46 @@ export class PrintComposerModal {
     return true;
   }
 
-  /** Divide uma Tabela de Vértices que não cabe na altura atual criando uma tabela de continuação */
+  /** Contexto para resolver o intervalo de uma tabela de vértices / quadro de áreas */
+  tableRangeContext() {
+    return {
+      items: this.items,
+      features: this.features,
+      layers: this.layers,
+      atlasFeatureId: this.atlas?.enabled ? this.atlas.getCurrentFeature()?.id : null
+    };
+  }
+
+  /**
+   * Divide uma tabela (vértices ou quadro de áreas) que não cabe na altura atual criando uma tabela de
+   * continuação vinculada: ela começa onde a anterior termina e acompanha o tamanho e as colunas dela.
+   * Se a tabela já tem continuação, a nova entra no fim da cadeia.
+   */
   splitVerticesTableContinuation(itemId) {
     if (this.readOnly) return null;
-    const src = this.items.find(i => i.id === itemId && i.type === 'table_vertices');
-    if (!src || src.tableMode === 'areas') return null;
+    let src = this.items.find(i => i.id === itemId && i.type === 'table_vertices');
+    if (!src) return null;
+    // Vai para o fim da cadeia (a continuação mais adiante)
+    for (let guard = 0; guard < 20; guard++) {
+      const next = this.items.find(i => i.type === 'table_vertices' && i.continuesFrom === src.id);
+      if (!next) break;
+      src = next;
+    }
 
-    const targetId = src.targetFeatureId || (this.atlas?.enabled ? this.atlas.getCurrentFeature()?.id : null);
-    const baseOpts = {
-      crs: src.crs || 'utm',
-      segmentFormat: src.segmentFormat || 'vertex',
-      vertexPrefix: src.vertexPrefix,
-      startVertex: src.startVertex,
-      endVertex: src.endVertex
-    };
-    const data = PrintItemsManager.extractVerticesData(this.features, targetId, baseOpts);
-    const cols = PrintItemsManager.resolveVerticesTableColumns(src);
-    const fit = PrintItemsManager.verticesTableFit(data, src.width || 80, src.height || 60, cols, {
+    const ctx = this.tableRangeContext();
+    const range = PrintItemsManager.verticesTableRange(src, ctx);
+    const data = PrintItemsManager.verticesTableData(src, ctx, range);
+    const fit = PrintItemsManager.verticesTableFit(data, src.width || 80, src.height || 60, PrintItemsManager.resolveVerticesTableColumns(src), {
       showFooter: src.showFooter !== false
     });
     if (fit.hidden <= 0 || fit.shown <= 0) return null;
 
-    const firstStart = Math.max(1, Number(src.startVertex) || 1);
-    const splitEnd = firstStart + fit.shown - 1;
-    const totalEnd = Number(src.endVertex) || (firstStart + data.vertices.length - 1);
-
-    src.endVertex = splitEnd;
-
     const cont = JSON.parse(JSON.stringify(src));
     cont.id = `item-vert-cont-${Date.now()}`;
-    cont.name = `${src.name || 'Tabela'} (Cont.)`;
-    cont.startVertex = splitEnd + 1;
-    cont.endVertex = totalEnd;
+    cont.name = `${(src.name || 'Tabela').replace(/ \(Cont\.\)$/, '')} (Cont.)`;
+    cont.continuesFrom = src.id;
+    cont.startVertex = 1; // o início real vem da tabela anterior
+    cont.endVertex = Number(src.endVertex) || 0;
     cont.locked = false;
     cont.x = (src.x || 10) + (src.width || 80) + 5;
     cont.y = src.y || 10;

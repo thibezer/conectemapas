@@ -309,80 +309,92 @@ export class PrintExporter {
     const map = composer.leafletMaps.get(item.id);
 
     if (domEl && map) {
-      const mapRect = domEl.getBoundingClientRect();
-      const scaleX = w / mapRect.width;
-      const scaleY = h / mapRect.height;
+      // Contêiner do Leaflet em px CSS (offsetWidth ignora transformações). Mapa girado: é maior que o
+      // quadro (PrintComposerModal.layoutMapRotation), centrado nele e girado por CSS.
+      const cw = domEl.offsetWidth || w;
+      const ch = domEl.offsetHeight || h;
+      const frameW = domEl.parentElement?.clientWidth || cw;
+      // px de exportação por px CSS (a escala do item na prancheta não conta: o contêiner é medido sem ela)
+      const s = w / frameW;
+      const rot = ((Number(item.rotation) || 0) * Math.PI) / 180;
+      // Desenha em px CSS do contêiner, centrado no item e girado como na tela
+      const inMapSpace = (draw) => {
+        ctx.save();
+        ctx.translate(x + w / 2, y + h / 2);
+        ctx.rotate(rot);
+        ctx.scale(s, s);
+        ctx.translate(-cw / 2, -ch / 2);
+        try { draw(); } finally { ctx.restore(); }
+      };
 
       // 1. Renderiza Tiles de Imagem (se habilitado)
       if (includeTiles && BasemapCatalog.get(basemapId).tiles.length) {
-        const tiles = Array.from(domEl.querySelectorAll('.leaflet-tile-pane img'));
+        // Posições dos tiles com o contêiner sem rotação (o retângulo de um elemento girado é a caixa envolvente)
+        const spun = domEl.style.transform;
+        domEl.style.transform = 'none';
+        const mapRect = domEl.getBoundingClientRect();
+        const screenPerCss = mapRect.width / cw || 1;
+        const tiles = Array.from(domEl.querySelectorAll('.leaflet-tile-pane img'))
+          .filter(img => img.complete && img.naturalWidth > 0)
+          .map((img) => {
+            const r = img.getBoundingClientRect();
+            return {
+              img,
+              left: (r.left - mapRect.left) / screenPerCss,
+              top: (r.top - mapRect.top) / screenPerCss,
+              width: r.width / screenPerCss,
+              height: r.height / screenPerCss
+            };
+          });
+        domEl.style.transform = spun;
+
         // No PDF vetorial os tiles são juntados num único raster (sem emendas nem centenas de imagens)
         const vector = ctx.isVector === true;
-        const k = vector ? Math.min(1, 4096 / Math.max(w, h)) : 1;
-        let tileCanvas = null;
-        let tileCtx = ctx;
-        let ox = x;
-        let oy = y;
-        if (vector) {
-          tileCanvas = document.createElement('canvas');
-          tileCanvas.width = Math.max(1, Math.round(w * k));
-          tileCanvas.height = Math.max(1, Math.round(h * k));
-          tileCanvas._opaque = true;
-          tileCtx = tileCanvas.getContext('2d');
-          tileCtx.fillStyle = BasemapCatalog.backgroundOf(basemapId);
-          tileCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
-          ox = 0;
-          oy = 0;
-        }
-        tiles.forEach((img) => {
-          if (!img.complete || img.naturalWidth === 0) return;
-          const imgRect = img.getBoundingClientRect();
-          const destX = ox + (imgRect.left - mapRect.left) * scaleX * k;
-          const destY = oy + (imgRect.top - mapRect.top) * scaleY * k;
-          const destW = imgRect.width * scaleX * k;
-          const destH = imgRect.height * scaleY * k;
-
+        const k = vector ? Math.min(1, 4096 / Math.max(cw * s, ch * s)) : 1;
+        const drawTiles = (target) => tiles.forEach((t) => {
           try {
-            tileCtx.drawImage(img, destX, destY, destW, destH);
+            target.drawImage(t.img, t.left, t.top, t.width, t.height);
           } catch (e) {
             // Ignora falha em tile específico
           }
         });
         if (vector) {
+          const tileCanvas = document.createElement('canvas');
+          tileCanvas.width = Math.max(1, Math.round(cw * s * k));
+          tileCanvas.height = Math.max(1, Math.round(ch * s * k));
+          tileCanvas._opaque = true;
+          const tileCtx = tileCanvas.getContext('2d');
+          tileCtx.fillStyle = BasemapCatalog.backgroundOf(basemapId);
+          tileCtx.fillRect(0, 0, tileCanvas.width, tileCanvas.height);
+          tileCtx.scale(tileCanvas.width / cw, tileCanvas.height / ch);
+          drawTiles(tileCtx);
           try {
-            ctx.drawImage(tileCanvas, x, y, w, h);
+            inMapSpace(() => ctx.drawImage(tileCanvas, 0, 0, cw, ch));
           } catch (e) {
             // CORS (canvas "sujo") ou falha ao codificar o fundo: o mapa segue em fundo técnico, com todos os vetores
             console.warn('[PrintExporter] Fundo raster do mapa dispensado no PDF:', e);
             ctx.rasterBlocked = true;
           }
+        } else {
+          inMapSpace(() => drawTiles(ctx));
         }
       }
-
-      // Coordenadas de contêiner do Leaflet (latLngToContainerPoint) são em px CSS sem o zoom da prancheta
-      // (o item é escalado por transform), então a razão para a folha usa offsetWidth/offsetHeight.
-      const cssScaleX = w / (domEl.offsetWidth || mapRect.width);
-      const cssScaleY = h / (domEl.offsetHeight || mapRect.height);
 
       // 2. Feições pela vista do mapa: o mesmo desenho da tela (PrintMapRenderer), em px CSS escalados
       if (item.type === 'map') {
         const state = composer.vectorStateFor(item, map, { forExport: true });
         if (state) {
-          ctx.save();
-          ctx.translate(x, y);
-          ctx.scale(cssScaleX, cssScaleY);
-          PrintMapRenderer.draw(ctx, {
+          inMapSpace(() => PrintMapRenderer.draw(ctx, {
             ...state,
             pxPerMm: PrintCanvasEngine.BASE_PX_PER_MM,
             project: (ll) => map.latLngToContainerPoint(ll)
-          });
-          ctx.restore();
+          }));
         }
       }
 
       // 3. Se for Inset Map, desenha o Retângulo de Abrangência (Extent Box) do mapa principal
       if (item.type === 'inset_map') {
-        this.drawInsetMapExtentBox(ctx, map, mapRect, composer, x, y, cssScaleX, cssScaleY);
+        inMapSpace(() => this.drawInsetMapExtentBox(ctx, map, composer, 2 / s));
       }
     }
 
@@ -400,15 +412,16 @@ export class PrintExporter {
   }
 
   /**
-   * Desenha o Retângulo de Abrangência no Inset Map
+   * Desenha o Retângulo de Abrangência no Inset Map, em px CSS do contêiner do mapa
+   * (o chamador já posicionou e girou o contexto); `lineWidth` na mesma unidade.
    */
-  static drawInsetMapExtentBox(ctx, insetMap, mapRect, composer, originX, originY, scaleX, scaleY) {
+  static drawInsetMapExtentBox(ctx, insetMap, composer, lineWidth = 2) {
     const mainMapItem = composer.items.find(i => i.type === 'map');
     if (!mainMapItem) return;
     const mainMap = composer.leafletMaps.get(mainMapItem.id);
     if (!mainMap) return;
 
-    const b = mainMap.getBounds();
+    const b = PrintItemsManager.mapFrameBounds(mainMap);
     const nw = insetMap.latLngToContainerPoint([b.getNorth(), b.getWest()]);
     const se = insetMap.latLngToContainerPoint([b.getSouth(), b.getEast()]);
 
@@ -417,17 +430,15 @@ export class PrintExporter {
 
     ctx.save();
     ctx.strokeStyle = '#ff2244';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = lineWidth;
     if (locator.type === 'rect') {
-      const boxX = originX + locator.x * scaleX;
-      const boxY = originY + locator.y * scaleY;
       ctx.fillStyle = 'rgba(255, 34, 68, 0.25)';
-      ctx.fillRect(boxX, boxY, locator.w * scaleX, locator.h * scaleY);
-      ctx.strokeRect(boxX, boxY, locator.w * scaleX, locator.h * scaleY);
+      ctx.fillRect(locator.x, locator.y, locator.w, locator.h);
+      ctx.strokeRect(locator.x, locator.y, locator.w, locator.h);
     } else {
       ctx.fillStyle = 'rgba(255, 34, 68, 0.85)';
       ctx.beginPath();
-      ctx.arc(originX + locator.x * scaleX, originY + locator.y * scaleY, 4 * scaleX, 0, Math.PI * 2);
+      ctx.arc(locator.x, locator.y, 4, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -438,7 +449,7 @@ export class PrintExporter {
    * Desenha a Grade Cartográfica Real (Cruzetas e Rótulos Perimetrais)
    */
   static drawMapGraticule(ctx, item, map, x, y, w, h, scaleFactor) {
-    const b = map.getBounds();
+    const b = PrintItemsManager.mapFrameBounds(map);
     // Mesma grade da prancheta: intervalos redondos em DMS ou UTM
     const { xs, ys } = PrintItemsManager.graticuleModel(
       { north: b.getNorth(), south: b.getSouth(), west: b.getWest(), east: b.getEast() },
@@ -671,15 +682,12 @@ export class PrintExporter {
     const k = scaleFactor / T.PX_PER_MM;
     const isAreas = item.tableMode === 'areas';
     const targetId = item.targetFeatureId || (composer?.atlas?.enabled ? composer.atlas.getCurrentFeature()?.id : null);
-    const data = isAreas
-      ? PrintItemsManager.extractAreasSummaryData(composer?.features || [], composer?.layers || [])
-      : PrintItemsManager.extractVerticesData(composer?.features || [], targetId, {
-          crs: item.crs || 'utm',
-          segmentFormat: item.segmentFormat || 'vertex',
-          vertexPrefix: item.vertexPrefix,
-          startVertex: item.startVertex,
-          endVertex: item.endVertex
-        });
+    const data = PrintItemsManager.verticesTableData({ ...item, targetFeatureId: targetId }, {
+      features: composer?.features || [],
+      layers: composer?.layers || [],
+      items: composer?.items || [],
+      atlasFeatureId: composer?.atlas?.enabled ? composer.atlas.getCurrentFeature()?.id : null
+    });
     const baseCols = PrintItemsManager.resolveVerticesTableColumns(item);
     const showFooter = item.showFooter !== false;
     const fit = PrintItemsManager.verticesTableFit(data, item.width, item.height, baseCols, { showFooter });
@@ -747,7 +755,7 @@ export class PrintExporter {
     if (!data.vertices.length) {
       ctx.fillStyle = '#888888';
       ctx.font = `${px}px Arial, sans-serif`;
-      ctx.fillText(fitText(isAreas ? 'Nenhuma feição medida na prancha' : 'Nenhum polígono selecionado', iw - pad * 2), ix + iw / 2, rowsY + rowH / 2);
+      ctx.fillText(fitText(PrintItemsManager.verticesTableEmptyMessage(item, data), iw - pad * 2), ix + iw / 2, rowsY + rowH / 2);
     }
     data.vertices.slice(0, fit.shown).forEach((v, i) => {
       const ry = rowsY + rowH * i;

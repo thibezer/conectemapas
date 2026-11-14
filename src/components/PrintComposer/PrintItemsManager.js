@@ -432,6 +432,51 @@ export class PrintItemsManager {
   }
 
   /**
+   * Tamanho (px CSS) do contêiner do mapa quando o mapa é girado: o menor retângulo alinhado ao mapa
+   * que ainda cobre o quadro inteiro depois da rotação (sem cantos vazios). Sem rotação, `null`
+   * (o contêiner é do tamanho do quadro).
+   */
+  static rotatedMapSize(frameW, frameH, rotationDeg) {
+    const rot = Number(rotationDeg) || 0;
+    if (!(frameW > 0) || !(frameH > 0) || Math.abs(rot % 360) < 0.01) return null;
+    const a = (rot * Math.PI) / 180;
+    const c = Math.abs(Math.cos(a));
+    const s = Math.abs(Math.sin(a));
+    // +1 px: evita a linha de fundo na borda por arredondamento da rotação
+    return {
+      width: Math.ceil(frameW * c + frameH * s) + 1,
+      height: Math.ceil(frameW * s + frameH * c) + 1
+    };
+  }
+
+  /**
+   * Limites geográficos do quadro do mapa (a parte central do contêiner). Mapa sem rotação:
+   * os limites do próprio Leaflet. Girado, o contêiner é maior que o quadro e os limites
+   * dele incluiriam área que não aparece.
+   */
+  static mapFrameBounds(map) {
+    const el = typeof map.getContainer === 'function' ? map.getContainer() : null;
+    if (!el) return map.getBounds();
+    const frame = el.parentElement;
+    const cw = el.offsetWidth;
+    const ch = el.offsetHeight;
+    const fw = frame?.clientWidth || cw;
+    const fh = frame?.clientHeight || ch;
+    if (Math.abs(cw - fw) < 1.5 && Math.abs(ch - fh) < 1.5) return map.getBounds();
+    const ox = (cw - fw) / 2;
+    const oy = (ch - fh) / 2;
+    const nw = map.containerPointToLatLng([ox, oy]);
+    const se = map.containerPointToLatLng([ox + fw, oy + fh]);
+    return {
+      getNorth: () => nw.lat,
+      getSouth: () => se.lat,
+      getWest: () => nw.lng,
+      getEast: () => se.lng,
+      getCenter: () => map.getCenter()
+    };
+  }
+
+  /**
    * Modelo único da seta norte (viewBox 0–100): a tela monta o SVG e o exportador desenha os
    * mesmos polígonos/círculos/letra no canvas/PDF. Mexer aqui muda os dois.
    * @returns {{ circles: Array, polys: Array, text: object }}
@@ -881,20 +926,60 @@ export class PrintItemsManager {
   }
 
   /**
-   * Renderiza a Tabela de Vértices Topográfica (ou Quadro de Áreas) em HTML para a folha
+   * Intervalo de linhas (vértices ou feições do quadro de áreas) que a tabela mostra. Tabela de
+   * continuação (`continuesFrom`) começa onde a anterior termina: o que couber na anterior (altura,
+   * fonte, colunas) decide o início desta, e o intervalo acompanha qualquer mudança nela.
+   * `ctx`: { items, features, layers, atlasFeatureId }.
+   * @returns {{ start: number, end: number }} start a partir de 1; end 0 = até o fim
    */
-  static renderVerticesTable(item, features = [], layers = []) {
+  static verticesTableRange(item, ctx = {}, depth = 0) {
+    const own = { start: Math.max(1, Number(item.startVertex) || 1), end: Math.max(0, Number(item.endVertex) || 0) };
+    const prev = item.continuesFrom
+      ? (ctx.items || []).find(i => i.id === item.continuesFrom && i.type === 'table_vertices' && i.id !== item.id)
+      : null;
+    // Sem anterior (apagada), de outro modo ou em ciclo: vale o intervalo do próprio item
+    if (!prev || depth > 20 || (prev.tableMode === 'areas') !== (item.tableMode === 'areas')) return own;
+    const prevRange = this.verticesTableRange(prev, ctx, depth + 1);
+    const data = this.verticesTableData(prev, ctx, prevRange);
+    const fit = this.verticesTableFit(data, prev.width || 80, prev.height || 60, this.resolveVerticesTableColumns(prev), {
+      showFooter: prev.showFooter !== false
+    });
+    return { start: prevRange.start + fit.shown, end: own.end };
+  }
+
+  /** Dados da tabela já no intervalo efetivo (vértices da feição ou linhas do quadro de áreas) */
+  static verticesTableData(item, ctx = {}, range = null) {
+    const r = range || this.verticesTableRange(item, ctx);
+    if (item.tableMode === 'areas') {
+      const all = this.extractAreasSummaryData(ctx.features || [], ctx.layers || []);
+      const rows = all.vertices;
+      const from = r.start - 1;
+      const to = r.end > 0 ? Math.min(rows.length, r.end) : rows.length;
+      return from > 0 || to < rows.length ? { ...all, vertices: rows.slice(from, Math.max(from, to)) } : all;
+    }
+    return this.extractVerticesData(ctx.features || [], item.targetFeatureId || ctx.atlasFeatureId || null, {
+      crs: item.crs || 'utm',
+      segmentFormat: item.segmentFormat || 'vertex',
+      vertexPrefix: item.vertexPrefix,
+      startVertex: r.start,
+      endVertex: r.end
+    });
+  }
+
+  /** Texto da tabela sem linhas (continuação que não tem mais o que mostrar, sem polígono, sem feições) */
+  static verticesTableEmptyMessage(item, data) {
+    if (item.continuesFrom && (data?.allVerticesCount || 0) > 0) return 'Todas as linhas já cabem na tabela anterior';
+    return item.tableMode === 'areas' ? 'Nenhuma feição medida na prancha' : 'Nenhum polígono selecionado';
+  }
+
+  /**
+   * Renderiza a Tabela de Vértices Topográfica (ou Quadro de Áreas) em HTML para a folha
+   * `ctx` (opcional): { items, atlasFeatureId } para resolver a tabela de continuação.
+   */
+  static renderVerticesTable(item, features = [], layers = [], ctx = {}) {
     const esc = this.escapeHtml.bind(this);
     const isAreas = item.tableMode === 'areas';
-    const data = isAreas
-      ? this.extractAreasSummaryData(features, layers)
-      : this.extractVerticesData(features, item.targetFeatureId, {
-          crs: item.crs || 'utm',
-          segmentFormat: item.segmentFormat || 'vertex',
-          vertexPrefix: item.vertexPrefix,
-          startVertex: item.startVertex,
-          endVertex: item.endVertex
-        });
+    const data = this.verticesTableData(item, { ...ctx, features, layers });
     const cols = this.resolveVerticesTableColumns(item);
     const showFooter = item.showFooter !== false;
     const fit = this.verticesTableFit(data, item.width || 80, item.height || 60, cols, { showFooter });
@@ -903,7 +988,7 @@ export class PrintItemsManager {
     const defaultTitle = isAreas ? 'QUADRO DE ÁREAS E PERÍMETROS' : 'TABELA DE COORDENADAS E CONFRONTAÇÕES';
     const headerTitle = item.title || defaultTitle;
     const headerBg = item.headerBgColor ? ` style="background: ${this.sanitizeColor(item.headerBgColor, '#1a2332')};"` : '';
-    const emptyMsg = isAreas ? 'Nenhuma feição medida na prancha' : 'Nenhum polígono selecionado';
+    const emptyMsg = this.verticesTableEmptyMessage(item, data);
 
     return `
       <div class="cm-item-vertices-table" style="--vt-s: ${fit.scale.toFixed(3)};">
