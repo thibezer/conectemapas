@@ -647,12 +647,48 @@
   box-sizing: border-box;
 }
 
-.cm-psb-left,
-.cm-psb-center,
 .cm-psb-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+/* Dicas da ferramenta em uso (lado esquerdo): corta o excesso em vez de quebrar a linha */
+.cm-psb-hints {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.cm-psb-tool {
+  flex-shrink: 0;
+  color: var(--cm-primary, #00E08A);
+  background: rgba(0, 224, 138, 0.1);
+  border: 1px solid rgba(0, 224, 138, 0.25);
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-weight: 600;
+}
+
+.cm-psb-hint {
+  flex-shrink: 0;
+  color: #9090a0;
+}
+
+.cm-psb-hint kbd {
+  font: 600 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  padding: 0 5px;
+  margin-right: 5px;
 }
 
 .cm-psb-item strong {

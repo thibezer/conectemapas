@@ -577,6 +577,7 @@ export class PrintComposerModal {
   setInteractionMode(mode) {
     this.interactionMode = mode;
     PrintSideToolbox.updateActiveMode(this);
+    PrintStatusBar.updateHints(this);
     const banner = document.getElementById('cm-print-pan-alert-banner');
     const mapFrames = document.querySelectorAll('.cm-item-map-frame');
 
@@ -1260,6 +1261,7 @@ export class PrintComposerModal {
         frame.classList.remove('cm-picking');
         banner?.classList.add('hidden');
         this._pick = null;
+        PrintStatusBar.updateHints(this);
         resolve(feat);
       };
       const onDown = (e) => {
@@ -1286,6 +1288,7 @@ export class PrintComposerModal {
       frame.addEventListener('mousedown', onDown, true);
       window.addEventListener('keydown', onKey, true);
       this._pick = { finish };
+      PrintStatusBar.updateHints(this);
     });
   }
 
@@ -1560,6 +1563,7 @@ export class PrintComposerModal {
   }
 
   updatePropertiesPanel() {
+    PrintStatusBar.updateHints(this); // seleção, guia ou travas mudaram: a dica do rodapé acompanha
     const mount = document.getElementById('cm-print-props-panel-mount');
     // Reconstruir o painel no meio do arraste do rótulo (scrub) destrói o elemento capturado:
     // adia a atualização para o fim do gesto
@@ -1613,6 +1617,7 @@ export class PrintComposerModal {
       });
     }
     PrintSideToolbox.updateActivePlacementTool?.(this);
+    PrintStatusBar.updateHints(this);
   }
 
   /** Copia itens selecionados para a área de transferência interna da prancha */

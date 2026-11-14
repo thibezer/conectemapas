@@ -60,4 +60,21 @@ assert.ok(!xssStatusHtml.includes('<img src=x'), 'Nome da prancha deve ser escap
 assert.ok(xssStatusHtml.includes('&lt;img src=x'), 'Entidades HTML escapadas corretamente');
 console.log('✔ PrintStatusBar validada!');
 
+// 3. PrintToolHints: dica acompanha a ferramenta em uso
+console.log('3. PrintToolHints...');
+import { PrintToolHints } from '../src/components/PrintComposer/PrintToolHints.js';
+const hintsOf = (over) => PrintToolHints.resolve({ ...mockComposer, getSelectedItems: () => [], ...over });
+assert.strictEqual(hintsOf({}).tool, 'Selecionar', 'Sem seleção: ferramenta Selecionar');
+assert.strictEqual(hintsOf({ interactionMode: 'content_pan' }).tool, 'Navegar no mapa', 'Modo pan');
+assert.ok(hintsOf({ canvasEngine: { placementType: 'legend' } }).tool.includes('Legenda'), 'Inserção mostra o item');
+assert.strictEqual(hintsOf({ _pick: {} }).tool, 'Escolher feição', 'Escolha de feição');
+assert.strictEqual(hintsOf({ readOnly: true }).tool, 'Somente leitura', 'Somente leitura');
+assert.strictEqual(hintsOf({ selectedGuide: { axis: 'x', val: 10 } }).tool, 'Guia vertical', 'Guia selecionada');
+assert.strictEqual(hintsOf({ getSelectedItems: () => [{ type: 'map' }, { type: 'legend' }] }).tool, '2 itens selecionados', 'Seleção múltipla');
+const mapHints = hintsOf({ getSelectedItems: () => [{ type: 'map' }] });
+assert.strictEqual(mapHints.tool, 'Mapa principal', 'Item único usa o nome do tipo');
+assert.ok(mapHints.hints.some(h => h.t === 'navega no mapa'), 'Mapa sugere navegar');
+assert.ok(statusHtml.includes('cm-psb-hints'), 'Rodapé mostra as dicas');
+console.log('✔ PrintToolHints validado!');
+
 console.log('🎉 Todos os testes de Toolbox e Status Bar passaram!');
