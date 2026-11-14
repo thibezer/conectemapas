@@ -790,8 +790,8 @@
 
 /* Melhoria ergonômica: lista de elementos com rolagem dedicada quando longa */
 .cm-pp-body--list {
-  max-height: 230px;
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
@@ -940,3 +940,9 @@
   background: #1b1b22; border: 1px solid var(--cm-primary, #00E08A); border-radius: 3px;
   color: #fff; font: inherit; font-size: 11px;
 }
+
+/* Lista de Elementos compacta: ocupa a altura do painel e usa botões pequenos */
+.cm-print-props-panel .cm-pp-item-row { height: 22px; min-height: 22px; max-height: 22px; }
+.cm-print-props-panel .cm-pp-item-btn { width: 18px; height: 18px; min-height: 18px; min-width: 18px; border-radius: 3px; }
+.cm-print-props-panel .cm-pp-item-btn svg { width: 11px; height: 11px; }
+.cm-pp-item-actions { gap: 1px; }
