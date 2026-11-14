@@ -31,7 +31,10 @@ import { PrintSideToolbox } from './PrintSideToolbox.js';
 import { PrintStatusBar } from './PrintStatusBar.js';
 import { PrintAtlasEngine } from './PrintAtlasEngine.js';
 import { PrintAtlasBar } from './PrintAtlasBar.js';
+import { PrintShortcutsDialog } from './PrintShortcutsDialog.js';
+import { PrintShortcuts } from './PrintShortcuts.js';
 import './PrintVisibilityDialog.css';
+import './PrintShortcutsDialog.css';
 
 export class PrintComposerModal {
   constructor(options = {}) {
@@ -95,6 +98,7 @@ export class PrintComposerModal {
     this.copiedStyle = null; // Estilo copiado de um objeto para colar em outros
     this.canvasEngine = new PrintCanvasEngine(this);
     this.visibilityDialog = new PrintVisibilityDialog(this);
+    this.shortcutsDialog = new PrintShortcutsDialog(this);
     this.atlas = new PrintAtlasEngine(this);
 
     // Ao recarregar/sair da página com o compositor aberto, grava a edição que ainda aguarda o salvamento automático
@@ -237,6 +241,11 @@ export class PrintComposerModal {
   }
 
   /** Abre a janela Visibilidade/Gráficos (V V) do mapa selecionado ou do primeiro mapa */
+  /** Janela onde o usuário troca os atalhos do layout */
+  openShortcutsDialog() {
+    return this.shortcutsDialog.open();
+  }
+
   openVisibilityDialog(itemId = null) {
     return this.visibilityDialog.open(itemId);
   }
@@ -306,7 +315,7 @@ export class PrintComposerModal {
           </div>
 
           <!-- Botão para reabrir painel quando colapsado -->
-          <button type="button" id="btn-expand-props-panel" class="cm-pp-expand-tab hidden" title="Expandir painel de propriedades (atalho [)" aria-label="Expandir painel de propriedades">${ppIcon('settings')}${ppIcon('expand')}</button>
+          <button type="button" id="btn-expand-props-panel" class="cm-pp-expand-tab hidden" ${PrintShortcuts.attrs('propertiesPanel', 'Expandir painel de propriedades')} aria-label="Expandir painel de propriedades">${ppIcon('settings')}${ppIcon('expand')}</button>
 
           <!-- Painel Lateral de Propriedades e Elementos -->
           <div id="cm-print-props-panel-mount">
@@ -555,6 +564,7 @@ export class PrintComposerModal {
     if (this.presentationMode) return;
     this.clearTempStates();
     this.visibilityDialog?.close();
+    this.shortcutsDialog?.close();
     this.cloud?.stop();
     if (this.sheetsManager) this.sheetsManager.saveCurrentStateFromComposer();
     this.destroyLeafletMaps();

@@ -347,6 +347,7 @@ export class ShortcutsController {
     // tratado na fase de captura, antes de chegar ao Leaflet.
     window.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (app.printComposerModal?.isOpen) return; // o Layout de Impressão trata as próprias teclas
       if (this.isTypingTarget(e)) return;
       // Menu suspenso do HUD de seleção aberto: o Esc só o fecha (tratado pelo próprio HUD)
       if (e.target?.closest?.('.cm-sel-menu')) return;
@@ -364,6 +365,9 @@ export class ShortcutsController {
 
     window.addEventListener('keydown', (e) => {
       if (this.isTypingTarget(e)) return;
+      // Com o Layout de Impressão aberto, as teclas são dele (atalhos configuráveis, Ctrl+Z da prancha);
+      // só o salvar do projeto continua valendo
+      if (app.printComposerModal?.isOpen && !((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's')) return;
 
       // Undo: Ctrl+Z / Cmd+Z
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {

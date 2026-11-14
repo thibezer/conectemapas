@@ -8,6 +8,7 @@
 
 import { PrintExporter } from './PrintExporter.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintShortcuts } from './PrintShortcuts.js';
 
 const svg = (paths) =>
   `<svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -42,6 +43,7 @@ export const PRINT_ICONS = {
   copy: svg('<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h11"/>'),
   pencil: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
   trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/>'),
+  keyboard: svg('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M18 13h.01M9 16h6"/>'),
   close: svg('<path d="M18 6 6 18M6 6l12 12"/>')
 };
 
@@ -84,7 +86,11 @@ export const PRINT_EXPORT_DPIS = [
 const menuItem = (action, icon, label, extra = '') =>
   `<button type="button" class="cm-ptb-menu-item" role="menuitem" data-ptb-action="${action}">${icon ? PRINT_ICONS[icon] : '<span class="cm-ptb-icon"></span>'}<span class="cm-ptb-menu-label">${label}</span>${extra}</button>`;
 
-const shortcut = (key) => `<kbd class="cm-ptb-kbd">${key}</kbd>`;
+/** Tecla da ação em vigor (o usuário pode mudá-la; PrintShortcutsDialog.applyHints atualiza o texto). */
+const shortcut = (actionId) => {
+  const first = PrintShortcuts.keysFor(actionId)[0];
+  return `<kbd class="cm-ptb-kbd" data-sc-kbd="${actionId}">${first ? PrintShortcuts.prettyCombo(first) : ''}</kbd>`;
+};
 
 export class PrintToolbar {
   /** Menu suspenso: botão + lista. O conteúdo da lista pode ser reescrito sem perder o estado de aberto. */
@@ -102,15 +108,15 @@ export class PrintToolbar {
   static renderInsertMenu() {
     return PRINT_INSERT_GROUPS.map(g => `
       <div class="cm-ptb-menu-heading">${g.label}</div>
-      ${g.items.map(it => menuItem(`insert:${it.type}`, it.icon, it.label)).join('')}
+      ${g.items.map(it => menuItem(`insert:${it.type}`, it.icon, it.label, shortcut(`insert:${it.type}`))).join('')}
     `).join('');
   }
 
   static renderZoomMenu() {
     return `
-      ${menuItem('zoom:in', 'zoomIn', 'Aproximar', shortcut('+'))}
-      ${menuItem('zoom:out', 'zoomOut', 'Afastar', shortcut('−'))}
-      ${menuItem('zoom:fit', 'fit', 'Enquadrar folha', shortcut('0'))}
+      ${menuItem('zoom:in', 'zoomIn', 'Aproximar', shortcut('zoomIn'))}
+      ${menuItem('zoom:out', 'zoomOut', 'Afastar', shortcut('zoomOut'))}
+      ${menuItem('zoom:fit', 'fit', 'Enquadrar folha', shortcut('zoomFit'))}
       <div class="cm-ptb-menu-divider"></div>
       ${PRINT_ZOOM_PRESETS.map(z => menuItem(`zoom:${z}`, null, `${Math.round(z * 100)}%`)).join('')}
     `;
@@ -146,21 +152,22 @@ export class PrintToolbar {
         <div class="cm-ptb-group" role="group" aria-label="Inserir elemento">
           ${this.dropdown('insert', `${PRINT_ICONS.plus}<span class="cm-tb-label">Inserir</span>`, this.renderInsertMenu(), { triggerClass: 'cm-ptb-outline', title: 'Inserir elemento na prancha' })}
           <span class="cm-ptb-quick">
-            ${quick.map(it => `<button type="button" class="cm-print-tool-btn cm-print-icon-btn" data-ptb-action="insert:${it.type}" title="Inserir ${it.label.toLowerCase()}" aria-label="Inserir ${it.label.toLowerCase()}">${PRINT_ICONS[it.icon]}</button>`).join('')}
+            ${quick.map(it => `<button type="button" class="cm-print-tool-btn cm-print-icon-btn" data-ptb-action="insert:${it.type}" ${PrintShortcuts.attrs(`insert:${it.type}`, `Inserir ${it.label.toLowerCase()}`)} aria-label="Inserir ${it.label.toLowerCase()}">${PRINT_ICONS[it.icon]}</button>`).join('')}
           </span>
         </div>
         <span class="cm-ptb-sep"></span>
 
         <div class="cm-ptb-group" role="group" aria-label="Histórico e guias">
-          <button type="button" class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-undo" title="Desfazer (Ctrl+Z)" aria-label="Desfazer">${PRINT_ICONS.undo}</button>
-          <button type="button" class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-redo" title="Refazer (Ctrl+Y)" aria-label="Refazer">${PRINT_ICONS.redo}</button>
-          <button type="button" class="cm-print-tool-btn cm-print-icon-btn active" id="btn-toggle-smart-guides" title="Guias inteligentes (U)" aria-label="Guias inteligentes" aria-pressed="true">${PRINT_ICONS.magnet}</button>
+          <button type="button" class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-undo" ${PrintShortcuts.attrs('undo', 'Desfazer')} aria-label="Desfazer">${PRINT_ICONS.undo}</button>
+          <button type="button" class="cm-print-tool-btn cm-print-icon-btn" id="btn-print-redo" ${PrintShortcuts.attrs('redo', 'Refazer')} aria-label="Refazer">${PRINT_ICONS.redo}</button>
+          <button type="button" class="cm-print-tool-btn cm-print-icon-btn active" id="btn-toggle-smart-guides" ${PrintShortcuts.attrs('smartGuides', 'Guias inteligentes')} aria-label="Guias inteligentes" aria-pressed="true">${PRINT_ICONS.magnet}</button>
         </div>
 
         <div class="cm-ptb-spacer"></div>
 
         ${this.dropdown('zoom', `<span id="cm-print-zoom-val">100%</span>`, this.renderZoomMenu(), { triggerClass: 'cm-ptb-outline cm-ptb-zoom', align: 'right', title: 'Zoom da prancheta (roda do mouse)' })}
         ${this.dropdown('export', `${PRINT_ICONS.download}<span>Exportar</span>`, this.renderExportMenu(composer), { triggerClass: 'cm-ptb-primary', align: 'right', title: 'Exportar em PDF ou PNG' })}
+        <button type="button" id="btn-print-shortcuts" class="cm-print-tool-btn cm-print-icon-btn" ${PrintShortcuts.attrs('openShortcuts', 'Atalhos do layout (personalizar)')} aria-label="Atalhos do layout">${PRINT_ICONS.keyboard}</button>
         <button type="button" id="btn-close-print-composer" class="cm-print-tool-btn cm-print-icon-btn cm-print-close-btn" title="Fechar layout" aria-label="Fechar layout">${PRINT_ICONS.close}</button>
       </header>
     `;
@@ -241,6 +248,7 @@ export class PrintToolbar {
     });
 
     document.getElementById('btn-close-print-composer')?.addEventListener('click', () => composer.close());
+    document.getElementById('btn-print-shortcuts')?.addEventListener('click', () => composer.openShortcutsDialog?.());
     document.getElementById('btn-print-undo')?.addEventListener('click', () => composer.undo());
     document.getElementById('btn-print-redo')?.addEventListener('click', () => composer.redo());
     document.getElementById('btn-toggle-smart-guides')?.addEventListener('click', () => composer.canvasEngine.toggleSmartGuides());

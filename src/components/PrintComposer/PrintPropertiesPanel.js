@@ -1,6 +1,7 @@
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
 import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
+import { PrintShortcuts } from './PrintShortcuts.js';
 import { PrintImageUtils } from './PrintImageUtils.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { BasemapCatalog } from '../../services/BasemapCatalog.js';
@@ -43,7 +44,7 @@ export class PrintPropertiesPanel {
             <span class="cm-pp-title-ico">${ppIcon('settings')}PROPRIEDADES</span>
             <span class="cm-pp-header-paper">${esc(composer.paperSize.name)}</span>
           </div>
-          <button type="button" class="cm-pp-collapse-btn" id="btn-collapse-props-panel" title="Recolher painel (atalho [)" aria-label="Recolher painel">${ppIcon('collapse')}</button>
+          <button type="button" class="cm-pp-collapse-btn" id="btn-collapse-props-panel" ${PrintShortcuts.attrs('propertiesPanel', 'Recolher painel')} aria-label="Recolher painel">${ppIcon('collapse')}</button>
         </div>
 
         <div class="cm-pp-tabs" role="tablist" aria-label="Seções do painel">

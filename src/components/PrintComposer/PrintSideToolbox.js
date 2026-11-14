@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { PRINT_ICONS, PRINT_INSERT_GROUPS } from './PrintToolbar.js';
+import { PrintShortcuts } from './PrintShortcuts.js';
 
 export class PrintSideToolbox {
   static render(composer) {
@@ -20,25 +21,25 @@ export class PrintSideToolbox {
           <button type="button"
             class="cm-stb-btn ${!isPan ? 'is-active' : ''}"
             data-stb-mode="layout"
-            title="Selecionar e mover elementos (atalho V)"
+            ${PrintShortcuts.attrs('modeLayout', 'Selecionar e mover elementos')}
             aria-label="Modo Layout (Selecionar e mover)"
             aria-pressed="${!isPan ? 'true' : 'false'}">
             <svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="m3 3 7 18 3-7 7-3z"/>
             </svg>
-            <span class="cm-stb-shortcut">V</span>
+            <span class="cm-stb-shortcut" data-sc-kbd="modeLayout">${PrintShortcuts.prettyCombo(PrintShortcuts.keysFor('modeLayout')[0])}</span>
           </button>
 
           <button type="button"
             class="cm-stb-btn ${isPan ? 'is-active' : ''}"
             data-stb-mode="content_pan"
-            title="Navegar no mapa selecionado (pan e zoom no terreno - atalho C)"
+            ${PrintShortcuts.attrs('modeContent', 'Navegar no mapa selecionado (pan e zoom no terreno)')}
             aria-label="Modo Navegar Terreno no Mapa"
             aria-pressed="${isPan ? 'true' : 'false'}">
             <svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V3.5a1.5 1.5 0 0 1 3 0V11M14 10.5V5a1.5 1.5 0 0 1 3 0v8M8 13l-1.6-2.4a1.5 1.5 0 0 0-2.5 1.6L7 18a6 6 0 0 0 5 3h1a6 6 0 0 0 6-6v-2"/>
             </svg>
-            <span class="cm-stb-shortcut">C</span>
+            <span class="cm-stb-shortcut" data-sc-kbd="modeContent">${PrintShortcuts.prettyCombo(PrintShortcuts.keysFor('modeContent')[0])}</span>
           </button>
         </div>
 
@@ -50,7 +51,7 @@ export class PrintSideToolbox {
             <button type="button"
               class="cm-stb-btn"
               data-stb-insert="${it.type}"
-              title="Desenhar ${it.label} na folha"
+              ${PrintShortcuts.attrs(`insert:${it.type}`, `Desenhar ${it.label} na folha`)}
               aria-label="Desenhar ${it.label} na folha">
               ${PRINT_ICONS[it.icon] || ''}
             </button>
@@ -64,7 +65,7 @@ export class PrintSideToolbox {
           <button type="button"
             class="cm-stb-btn ${composer.atlas?.enabled ? 'is-active' : ''}"
             data-stb-action="toggle-atlas"
-            title="Gerador de Atlas Cartográfico (Automação em Lote)"
+            ${PrintShortcuts.attrs('atlas', 'Gerador de Atlas Cartográfico (Automação em Lote)')}
             aria-label="Gerador de Atlas Cartográfico"
             aria-pressed="${composer.atlas?.enabled ? 'true' : 'false'}">
             <svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

@@ -5,7 +5,7 @@
    ========================================================================== */
 
 import { PrintSmartGuides } from './PrintSmartGuides.js';
-import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
+import { PrintShortcutActions } from './PrintShortcutActions.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
@@ -812,100 +812,26 @@ export class PrintCanvasEngine {
       });
       if (isInput) return;
 
-      // Atalhos com modificadores (Desfazer, Refazer, Duplicar)
-      if (e.ctrlKey || e.metaKey) {
-        if ((e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
-          e.preventDefault();
-          this.composer.undo();
-          return;
-        }
-        if ((e.key === 'y' || e.key === 'Y') || ((e.key === 'z' || e.key === 'Z') && e.shiftKey)) {
-          e.preventDefault();
-          this.composer.redo();
-          return;
-        }
-        if (e.key === 'd' || e.key === 'D') {
-          e.preventDefault();
-          PrintAlignmentHelper.duplicateItem(this.composer);
-          return;
-        }
-        if ((e.key === 'c' || e.key === 'C') && !e.shiftKey) {
-          if (this.composer.copySelectedItems?.()) e.preventDefault();
-          return;
-        }
-        if ((e.key === 'x' || e.key === 'X') && !e.shiftKey) {
-          if (this.composer.cutSelectedItems?.()) e.preventDefault();
-          return;
-        }
-        if ((e.key === 'v' || e.key === 'V') && !e.shiftKey) {
-          if (this.composer.clipboardItems?.length) {
-            e.preventDefault();
-            this.composer.pasteItems?.();
-          }
-          return;
-        }
-        return; // Preserva outros atalhos com Ctrl
-      }
-      if (e.altKey) return;
+      // Janela de atalhos aberta (gravando uma tecla): a prancheta não recebe teclas
+      if (this.composer.shortcutsDialog?.isOpen?.()) return;
 
-      // Com a janela Visibilidade/Gráficos aberta, a prancheta não recebe teclas (só desfazer/refazer, acima)
-      if (this.composer.visibilityDialog?.isOpen()) return;
+      // Atalhos configuráveis (PrintShortcuts): ferramentas, inserir, espessura, edição, ordem, alinhar, zoom, pranchas.
+      // Com a janela Visibilidade/Gráficos aberta só desfazer/refazer passam; só visualizando não há edição.
+      const dialogOpen = Boolean(this.composer.visibilityDialog?.isOpen());
+      if (PrintShortcutActions.handleKeyEvent(this.composer, e, { readOnly: this.composer.readOnly, dialogOpen })) return;
 
-      // Só visualizando (outro operador edita a prancha): apenas zoom, painel e Esc
-      if (this.composer.readOnly && !['0', '+', '=', '-', '_', 'Escape', '[', ']'].includes(e.key)) return;
+      // Outras combinações com Ctrl/Alt ficam para o sistema
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (dialogOpen) return;
 
-      // Atalho rápido '[' ou ']' para recolher/expandir o painel de propriedades (independe de seleção)
-      if (e.key === '[' || e.key === ']') {
-        e.preventDefault();
-        this.composer.togglePropertiesPanel();
-        return;
-      }
+      // Só visualizando (outro operador edita a prancha): só o Esc, além dos atalhos acima
+      if (this.composer.readOnly && e.key !== 'Escape') return;
 
-      // V alterna para o modo Layout (se estiver em content_pan); V V abre Visibilidade/Gráficos do mapa (atalho do Revit)
-      if (e.key === 'v' || e.key === 'V') {
-        const now = Date.now();
-        if (this.lastVKeyAt && now - this.lastVKeyAt < 600) {
-          e.preventDefault();
-          this.lastVKeyAt = 0;
-          this.composer.openVisibilityDialog();
-        } else {
-          this.lastVKeyAt = now;
-          if (this.composer.interactionMode === 'content_pan') {
-            e.preventDefault();
-            this.composer.setInteractionMode('layout');
-          }
-        }
-        return;
-      }
-
-      // Atalho 'C' para alternar o Modo Navegação de Conteúdo do Mapa (padrão QGIS)
-      if (e.key === 'c' || e.key === 'C') {
-        e.preventDefault();
-        this.composer.setInteractionMode(this.composer.interactionMode === 'content_pan' ? 'layout' : 'content_pan');
-        return;
-      }
-
-      // Atalho rápido 'U' para ligar/desligar Smart Guides (como Illustrator)
-      if (e.key === 'u' || e.key === 'U') {
-        e.preventDefault();
-        this.toggleSmartGuides();
-        return;
-      }
-
-      // Atalhos da prancheta (independem de haver item selecionado)
+      // Esc (fixo): cancela a inserção, sai do modo navegar ou desmarca
       if (e.key === 'Escape') {
         if (this.placementType) this.composer.setPlacementTool?.(null);
         else if (this.composer.interactionMode === 'content_pan') this.composer.setInteractionMode('layout');
         else this.composer.selectItem(null);
-        return;
-      }
-      if (e.key === '0') { e.preventDefault(); this.zoomFit(); return; }
-      if (e.key === '+' || e.key === '=') { e.preventDefault(); this.zoomIn(); return; }
-      if (e.key === '-' || e.key === '_') { e.preventDefault(); this.zoomOut(); return; }
-
-      if (this.composer.selectedGuide && (e.key === 'Delete' || e.key === 'Backspace')) {
-        e.preventDefault();
-        this.composer.deleteSelectedGuide();
         return;
       }
 
@@ -914,18 +840,6 @@ export class PrintCanvasEngine {
 
       const item = this.composer.items.find(i => i.id === selectedId);
       if (!item || item.locked) return;
-
-      // Excluir com Delete ou Backspace
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault();
-        const ids = [...(this.composer.selectedItemIds || [selectedId])];
-        if (typeof this.composer.deleteItems === 'function' && ids.length > 1) {
-          this.composer.deleteItems(ids);
-        } else {
-          this.composer.deleteItem(selectedId);
-        }
-        return;
-      }
 
       // Mover milímetro a milímetro com as setas (5mm com Shift) para todos os selecionados
       const itemsToMove = (typeof this.composer.getSelectedItems === 'function' ? this.composer.getSelectedItems() : [item]).filter(i => !i.locked);
