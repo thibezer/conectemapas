@@ -116,17 +116,17 @@ export class PrintPropertiesPanel {
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-bottom" title="Alinhar à Base" aria-label="Alinhar à Base">${ppIcon('alignBottom')}</ui-botao-primario>
                   </div>
                   <div class="cm-pp-btn-row">
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-distribute-h" title="Distribuir Horizontalmente (Espaçamento Uniforme)" aria-label="Distribuir Horizontalmente"><span class="cm-pp-btn-lbl">${ppIcon('distributeH')}Dist. H</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-distribute-v" title="Distribuir Verticalmente (Espaçamento Uniforme)" aria-label="Distribuir Verticalmente"><span class="cm-pp-btn-lbl">${ppIcon('distributeV')}Dist. V</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Itens (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}Duplicar</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-delete-multi" title="Excluir Itens (Delete)"><span class="cm-pp-btn-lbl">${ppIcon('trash')}Excluir</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-distribute-h" title="Distribuir Horizontalmente (Espaçamento Uniforme)" aria-label="Distribuir Horizontalmente"><span class="cm-pp-btn-lbl">${ppIcon('distributeH')}<span>Dist. H</span></span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-distribute-v" title="Distribuir Verticalmente (Espaçamento Uniforme)" aria-label="Distribuir Verticalmente"><span class="cm-pp-btn-lbl">${ppIcon('distributeV')}<span>Dist. V</span></span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Itens (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}<span>Duplicar</span></span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-delete-multi" title="Excluir Itens (Delete)"><span class="cm-pp-btn-lbl">${ppIcon('trash')}<span>Excluir</span></span></ui-botao-primario>
                   </div>
                   <div class="cm-pp-btn-row">
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-match-w" title="Igualar Largura pelo 1º item"><span class="cm-pp-btn-lbl">${ppIcon('matchW')}Larg.</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-match-h" title="Igualar Altura pelo 1º item"><span class="cm-pp-btn-lbl">${ppIcon('matchH')}Alt.</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-pack-v" title="Empilhar Verticalmente"><span class="cm-pp-btn-lbl">${ppIcon('packV')}Emp. V</span></ui-botao-primario>
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-pack-h" title="Empilhar Horizontalmente"><span class="cm-pp-btn-lbl">${ppIcon('packH')}Emp. H</span></ui-botao-primario>
-                    ${composer.copiedStyle ? `<ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-paste-style" title="Colar Estilo Copiado"><span class="cm-pp-btn-lbl">${ppIcon('brush')}Estilo</span></ui-botao-primario>` : ''}
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-match-w" title="Igualar Largura pelo 1º item"><span class="cm-pp-btn-lbl">${ppIcon('matchW')}<span>Larg.</span></span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-match-h" title="Igualar Altura pelo 1º item"><span class="cm-pp-btn-lbl">${ppIcon('matchH')}<span>Alt.</span></span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-pack-v" title="Empilhar Verticalmente"><span class="cm-pp-btn-lbl">${ppIcon('packV')}<span>Emp. V</span></span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-pack-h" title="Empilhar Horizontalmente"><span class="cm-pp-btn-lbl">${ppIcon('packH')}<span>Emp. H</span></span></ui-botao-primario>
+                    ${composer.copiedStyle ? `<ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-paste-style" title="Colar Estilo Copiado"><span class="cm-pp-btn-lbl">${ppIcon('brush')}<span>Estilo</span></span></ui-botao-primario>` : ''}
                   </div>
                 </div>
                 <div class="cm-pp-subtitle">Posição e tamanho</div>
@@ -160,7 +160,7 @@ export class PrintPropertiesPanel {
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn cm-pp-align-btn" id="btn-prop-align-bottom" title="Alinhar à Base" aria-label="Alinhar à Base">${ppIcon('alignBottom')}</ui-botao-primario>
                   </div>
                   <div class="cm-pp-btn-row">
-                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}Duplicar</span></ui-botao-primario>
+                    <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-duplicate" title="Duplicar Item (Ctrl+D)"><span class="cm-pp-btn-lbl">${ppIcon('copy')}<span>Duplicar</span></span></ui-botao-primario>
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-fit-margins" title="Ajustar às Margens da Folha" aria-label="Ajustar às Margens">${ppIcon('fitMargins')}</ui-botao-primario>
                     <ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-copy-style" title="Copiar Estilo Visual" aria-label="Copiar Estilo">${ppIcon('brush')}</ui-botao-primario>
                     ${composer.copiedStyle ? `<ui-botao-primario inline variante="ghost" tamanho="sm" class="cm-ai-micro-btn" id="btn-prop-paste-style" title="Aplicar Estilo Copiado"><span class="cm-pp-btn-lbl">Colar</span></ui-botao-primario>` : ''}

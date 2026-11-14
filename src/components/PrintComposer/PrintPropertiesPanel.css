@@ -486,6 +486,12 @@
   min-width: 26px;
 }
 
+/* Botão com texto: o host do kit não propaga a largura do rótulo; fixa no conteúdo */
+.cm-pp-btn-row > ui-botao-primario:has(.cm-pp-btn-lbl) {
+  width: max-content;
+  flex: 1 0 auto;
+}
+
 /* Folha: seletores baixos e margens em 2 linhas (rótulo à esquerda do campo) */
 .cm-print-props-panel .cm-pp-compact-select {
   height: 24px;
