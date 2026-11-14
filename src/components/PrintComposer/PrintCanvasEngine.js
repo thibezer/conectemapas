@@ -351,6 +351,45 @@ export class PrintCanvasEngine {
     this.composer.pushHistoryState(`Remover Guia ${axis.toUpperCase()}`);
   }
 
+  /** Arrasta uma guia existente (mouse ou toque); solta dentro da folha move, fora dela não muda nada */
+  startGuideMove(axis, fromMm, el, downEvent) {
+    if (this.composer.readOnly || downEvent.button > 0) return;
+    downEvent.preventDefault();
+    const sheet = document.getElementById('cm-print-paper-sheet');
+    if (!sheet) return;
+    const isX = axis === 'x';
+    const limit = isX ? (this.composer.paperSize?.width || 297) : (this.composer.paperSize?.height || 210);
+    const toMm = (e) => {
+      const r = sheet.getBoundingClientRect();
+      const raw = ((isX ? e.clientX - r.left : e.clientY - r.top) / this.mmToPx);
+      return Math.min(limit, Math.max(0, Math.round(raw * 2) / 2));
+    };
+    let current = fromMm;
+    const tag = el.querySelector('.cm-manual-guide-tag span');
+    const onMove = (e) => {
+      current = toMm(e);
+      el.style[isX ? 'left' : 'top'] = `${current * this.mmToPx}px`;
+      if (tag) tag.textContent = `${current} mm`;
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      const list = this.composer.manualGuides?.[axis];
+      if (!list || Math.abs(current - fromMm) < 0.01) { this.renderManualGuides(); return; }
+      const idx = list.findIndex(v => Math.abs(v - fromMm) < 0.01);
+      if (idx >= 0) list.splice(idx, 1);
+      if (!list.some(v => Math.abs(v - current) < 0.01)) list.push(current);
+      list.sort((a, b) => a - b);
+      this.renderManualGuides();
+      this.composer.updatePropertiesPanel?.();
+      this.composer.pushHistoryState(`Mover Guia ${axis.toUpperCase()} ${current}mm`);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  }
+
   renderManualGuides() {
     if (typeof document === 'undefined') return;
     const layer = document.getElementById('cm-print-manual-guides-layer');
@@ -361,7 +400,7 @@ export class PrintCanvasEngine {
 
     layer.innerHTML = `
       ${(guides.x || []).map(x => `
-        <div class="cm-manual-guide cm-manual-guide-v" style="left: ${x * pxPerMm}px;" title="Guia vertical ${x} mm (duplo clique para excluir)" data-guide-axis="x" data-guide-val="${x}">
+        <div class="cm-manual-guide cm-manual-guide-v" style="left: ${x * pxPerMm}px;" title="Guia vertical ${x} mm (arraste para mover; duplo clique para excluir)" data-guide-axis="x" data-guide-val="${x}">
           <div class="cm-manual-guide-tag" data-guide-axis="x" data-guide-val="${x}">
             <span>${x} mm</span>
             <button type="button" class="cm-manual-guide-del" data-del-guide="x" data-guide-val="${x}" title="Excluir guia">✕</button>
@@ -369,7 +408,7 @@ export class PrintCanvasEngine {
         </div>
       `).join('')}
       ${(guides.y || []).map(y => `
-        <div class="cm-manual-guide cm-manual-guide-h" style="top: ${y * pxPerMm}px;" title="Guia horizontal ${y} mm (duplo clique para excluir)" data-guide-axis="y" data-guide-val="${y}">
+        <div class="cm-manual-guide cm-manual-guide-h" style="top: ${y * pxPerMm}px;" title="Guia horizontal ${y} mm (arraste para mover; duplo clique para excluir)" data-guide-axis="y" data-guide-val="${y}">
           <div class="cm-manual-guide-tag" data-guide-axis="y" data-guide-val="${y}">
             <span>${y} mm</span>
             <button type="button" class="cm-manual-guide-del" data-del-guide="y" data-guide-val="${y}" title="Excluir guia">✕</button>
@@ -386,6 +425,10 @@ export class PrintCanvasEngine {
     });
 
     layer.querySelectorAll('.cm-manual-guide').forEach(el => {
+      el.onpointerdown = (e) => {
+        if (e.target.closest('[data-del-guide]')) return;
+        this.startGuideMove(el.dataset.guideAxis, parseFloat(el.dataset.guideVal), el, e);
+      };
       el.ondblclick = (e) => {
         e.stopPropagation();
         this.removeManualGuide(el.dataset.guideAxis, parseFloat(el.dataset.guideVal));

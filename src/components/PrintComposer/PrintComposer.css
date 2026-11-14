@@ -760,6 +760,17 @@
   box-shadow: 0 0 3px rgba(2, 132, 199, 0.8);
 }
 
+/* Área de captura maior que a linha de 1px para facilitar o arraste */
+.cm-manual-guide::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.cm-manual-guide-v { cursor: col-resize; touch-action: none; }
+.cm-manual-guide-h { cursor: row-resize; touch-action: none; }
+.cm-manual-guide-v::before { left: -4px; right: -4px; }
+.cm-manual-guide-h::before { top: -4px; bottom: -4px; }
+
 .cm-manual-guide-tag {
   position: absolute;
   background: #0284c7;

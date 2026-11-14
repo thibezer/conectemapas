@@ -612,13 +612,27 @@ export class PrintComposerModal {
   applyPageSetup(paper, showFrame, actionName, { coalesceKey = null } = {}) {
     const sizeChanged = paper.width !== this.paperSize.width || paper.height !== this.paperSize.height;
     this.items = PrintItemsManager.fitItemsToPaper(this.items, this.paperSize, paper);
+    const guidesFollowPaper = this.guidesMatchGeneratorConfig(this.paperSize);
     this.paperSize = paper;
     this.showAbntMargins = showFrame !== false;
+    // Guias geradas pelo painel (linhas/colunas) acompanham o novo papel e margens; guias movidas ou criadas à mão ficam como estão
+    if (guidesFollowPaper) this.manualGuides = PrintItemsManager.computeGridGuides(paper, this.guideGeneratorConfig);
+    this.canvasEngine?.renderManualGuides?.();
     this.updatePaperSheetDOM();
     this.renderAllItems();
     this.updatePropertiesPanel();
     if (sizeChanged) setTimeout(() => this.canvasEngine.zoomFit(), 50);
     this.pushHistoryState(actionName, { coalesceKey });
+  }
+
+  /** As guias atuais são exatamente as geradas pela configuração do painel para este papel (ninguém as mexeu)? */
+  guidesMatchGeneratorConfig(paper) {
+    const cfg = this.guideGeneratorConfig;
+    if (!cfg || !((cfg.rows || 0) > 0 || (cfg.cols || 0) > 0)) return false;
+    const cur = this.manualGuides || { x: [], y: [] };
+    const gen = PrintItemsManager.computeGridGuides(paper, cfg);
+    const same = (a = [], b = []) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) < 0.01);
+    return same(cur.x, gen.x) && same(cur.y, gen.y);
   }
 
   /** Troca a folha mantendo os itens do usuário e as margens personalizadas (pode ser desfeito) */
