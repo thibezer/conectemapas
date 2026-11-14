@@ -438,6 +438,38 @@ export class PrintPropertiesPanel {
   /** Valor que o kit usa para "Varia" (Symbol.for: a mesma identidade em qualquer cópia do pacote) */
   static MIXED_VALUE = Symbol.for('ui-tabela-propriedades:misto');
 
+  /** Linhas X/Y/L/A do painel de Item (medida diferente entre os itens selecionados vira "Varia") */
+  static geometryProps(items, paper, locked) {
+    const round1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+    const measure = (id, rotulo, key, max, min = 0) => {
+      const vals = items.map(it => round1(it[key]));
+      return {
+        id, rotulo, tipo: 'numero', valor: vals[0], misto: vals.some(v => v !== vals[0]),
+        unidade: 'mm', min, max, passo: 1, casasDecimais: 1, somenteLeitura: locked
+      };
+    };
+    return [
+      measure('item_x', 'Posição X', 'x', paper.width),
+      measure('item_y', 'Posição Y', 'y', paper.height),
+      measure('item_w', 'Largura', 'width', paper.width, PrintItemsManager.MIN_ITEM_MM),
+      measure('item_h', 'Altura', 'height', paper.height, PrintItemsManager.MIN_ITEM_MM)
+    ];
+  }
+
+  /** Durante arraste/redimensionamento na folha: só X/Y/L/A do painel acompanham (sem reconstruir nada) */
+  static syncItemGeometry(composer) {
+    const panel = document.getElementById('print-item-props-panel');
+    if (!panel || this.isPaperScrubbing(panel)) return;
+    const multi = Boolean(composer.selectedItemIds && composer.selectedItemIds.size > 1);
+    const items = multi
+      ? composer.items.filter(it => composer.selectedItemIds.has(it.id))
+      : composer.items.filter(it => it.id === composer.selectedItemId);
+    if (!items.length) return;
+    const values = {};
+    this.geometryProps(items, composer.paperSize, false).forEach(p => { values[p.id] = p.misto ? this.MIXED_VALUE : p.valor; });
+    panel.valores = values;
+  }
+
   /**
    * Categorias do painel de Item (contrato do kit): nome, posição e tamanho, travar proporção e os
    * campos do tipo (`PrintItemFields`).
@@ -450,22 +482,8 @@ export class PrintPropertiesPanel {
       ? composer.items.filter(it => composer.selectedItemIds.has(it.id))
       : composer.items.filter(it => it.id === composer.selectedItemId);
     if (!items.length) return [];
-    const paper = composer.paperSize;
     const locked = !multi && Boolean(items[0].locked);
-    const round1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
-    const measure = (id, rotulo, key, max, min = 0) => {
-      const vals = items.map(it => round1(it[key]));
-      return {
-        id, rotulo, tipo: 'numero', valor: vals[0], misto: vals.some(v => v !== vals[0]),
-        unidade: 'mm', min, max, passo: 1, casasDecimais: 1, somenteLeitura: locked
-      };
-    };
-    const geometry = [
-      measure('item_x', 'Posição X', 'x', paper.width),
-      measure('item_y', 'Posição Y', 'y', paper.height),
-      measure('item_w', 'Largura', 'width', paper.width, PrintItemsManager.MIN_ITEM_MM),
-      measure('item_h', 'Altura', 'height', paper.height, PrintItemsManager.MIN_ITEM_MM)
-    ];
+    const geometry = this.geometryProps(items, composer.paperSize, locked);
     if (multi) {
       return [{ id: 'item_posicao', titulo: 'Posição e tamanho', aberto: true, propriedades: geometry }];
     }
@@ -532,6 +550,10 @@ export class PrintPropertiesPanel {
     // Atalhos do layout não podem agir enquanto se digita no painel (Ctrl/Cmd passam: desfazer etc.)
     panel.addEventListener('keydown', (e) => {
       if (!(e.ctrlKey || e.metaKey)) e.stopPropagation();
+      // O kit leva o foco ao próximo editor no Enter; se for um botão (Limpar imagem, Remover campo),
+      // o mesmo Enter o acionaria. Cancelar o padrão do Enter em campos evita o clique indevido.
+      const origin = e.composedPath?.()[0];
+      if (e.key === 'Enter' && origin && ['INPUT', 'SELECT', 'TEXTAREA'].includes(origin.tagName)) e.preventDefault();
     });
 
     panel.addEventListener('ui-propriedade-alterada', (e) => {
@@ -588,7 +610,8 @@ export class PrintPropertiesPanel {
       return;
     }
     if (entry.guard && !entry.guard(item, valor, composer)) {
-      this.syncItemSection(panel, composer);
+      // O kit desenha o valor digitado depois do evento: a reversão tem de vir depois dele
+      setTimeout(() => this.syncItemSection(panel, composer), 0);
       return;
     }
     updateCurrent(it => entry.apply(it, valor, composer), Boolean(entry.map), false, id);

@@ -104,6 +104,15 @@ const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f
   for (const st of ['classic', 'compass', 'star8', 'technical', 'modern']) {
     const svg = PrintItemsManager.getNorthArrowSVG(st, 30, '#0f172a');
     assert.ok(svg.includes('<svg') && svg.includes('rotate(30deg)'), `getNorthArrowSVG suporta estilo ${st}`);
+    // O "N" fica acima de todo o desenho (nada de letra sobre a seta ou o círculo) e dentro do viewBox
+    const model = PrintItemsManager.northArrowModel(st, '#000000');
+    const tops = [
+      ...model.polys.flatMap(p => p.pts.map(q => q[1])),
+      ...model.circles.map(c => c.cy - c.r)
+    ];
+    assert.ok(model.text.y < Math.min(...tops), `Seta ${st}: o N fica acima do desenho`);
+    assert.ok(model.text.y - model.text.size * 0.75 >= 0, `Seta ${st}: o N cabe no topo do viewBox`);
+    assert.ok(Math.max(...model.polys.flatMap(p => p.pts.map(q => q[1])), ...model.circles.map(c => c.cy + c.r)) <= 100, `Seta ${st}: desenho dentro do viewBox`);
   }
   for (const barStyle of ['alternating', 'double', 'line_ticks']) {
     const html = PrintItemsManager.renderScaleBar({ width: 60, segments: 4, barStyle, showBox: false, barColor: '#1e293b' }, 5000);

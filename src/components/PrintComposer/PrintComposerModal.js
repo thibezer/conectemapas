@@ -1562,6 +1562,11 @@ export class PrintComposerModal {
     return true;
   }
 
+  /** X/Y/L/A do painel de Item acompanham o arraste na folha, sem reconstruir o painel */
+  syncItemGeometryPanel() {
+    PrintPropertiesPanel.syncItemGeometry(this);
+  }
+
   updatePropertiesPanel() {
     PrintStatusBar.updateHints(this); // seleção, guia ou travas mudaram: a dica do rodapé acompanha
     const mount = document.getElementById('cm-print-props-panel-mount');

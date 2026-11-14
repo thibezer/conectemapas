@@ -438,6 +438,20 @@ export class PrintItemsManager {
    */
   static northArrowModel(style = 'classic', color = '#000000') {
     const B = this.sanitizeColor(color, '#000000');
+    const raw = this.northArrowRawModel(style, B);
+    // O desenho encolhe e desce para sobrar uma faixa no topo: o "N" fica sempre fora da seta e do círculo
+    const S = 0.8, CY = 57;
+    const mx = (v) => 50 + (v - 50) * S;
+    const my = (v) => CY + (v - 50) * S;
+    return {
+      circles: raw.circles.map(c => ({ ...c, r: c.r * S, w: c.w * S, dash: c.dash ? c.dash.map(d => d * S) : null, cy: CY })),
+      polys: raw.polys.map(p => ({ ...p, pts: p.pts.map(([x, y]) => [mx(x), my(y)]), w: p.w * S })),
+      text: { x: 50, y: 14, size: 13, fill: B }
+    };
+  }
+
+  /** Geometria de cada estilo no viewBox 0–100, sem a letra N (posicionada por `northArrowModel`) */
+  static northArrowRawModel(style, B) {
     const Wt = '#ffffff';
     const poly = (pts, fill, stroke = null, w = 1) => ({ pts, fill, stroke, w });
     if (style === 'compass') {
@@ -474,11 +488,15 @@ export class PrintItemsManager {
           poly([[86, 50], [56, 44], [60, 50]], B),
           poly([[14, 50], [44, 56], [40, 50]], B),
           poly([[14, 50], [44, 44], [40, 50]], Wt, B, 0.75),
-          poly([[74, 26], [57, 46], [54, 43]], B),
-          poly([[74, 26], [54, 43], [50, 47]], Wt, B, 0.6),
-          poly([[74, 74], [57, 54], [54, 57]], B),
-          poly([[26, 74], [43, 54], [46, 57]], B),
-          poly([[26, 26], [43, 46], [46, 43]], B)
+          // Diagonais iguais entre si: metade preta (à direita de quem vai do centro à ponta) e metade branca
+          ...[[1, -1], [1, 1], [-1, 1], [-1, -1]].flatMap(([sx, sy]) => {
+            const k = Math.SQRT1_2;
+            const dx = sx * k, dy = sy * k;          // direção do centro à ponta
+            const px = -dy, py = dx;                 // perpendicular à direita
+            const at = (along, side) => [50 + dx * along + px * side, 50 + dy * along + py * side];
+            const tip = at(32, 0), mid = at(9, 0), right = at(14, 4), left = at(14, -4);
+            return [poly([tip, right, mid], B), poly([tip, left, mid], Wt, B, 0.75)];
+          })
         ],
         text: { x: 50, y: 11, size: 11, fill: B }
       };
@@ -526,7 +544,7 @@ export class PrintItemsManager {
     const cSafe = this.sanitizeColor(color, '#000000');
     const m = this.northArrowModel(style, cSafe);
     const rot = Number(rotation) || 0;
-    const circles = m.circles.map(c => `<circle cx="50" cy="50" r="${c.r}" fill="none" stroke="${cSafe}" stroke-width="${c.w}"${c.dash ? ` stroke-dasharray="${c.dash.join(' ')}"` : ''}/>`).join('');
+    const circles = m.circles.map(c => `<circle cx="50" cy="${c.cy ?? 50}" r="${c.r}" fill="none" stroke="${cSafe}" stroke-width="${c.w}"${c.dash ? ` stroke-dasharray="${c.dash.join(' ')}"` : ''}/>`).join('');
     const polys = m.polys.map(p => `<polygon points="${p.pts.map(q => q.join(',')).join(' ')}" fill="${p.fill === '#000000' ? '#000' : p.fill === '#ffffff' ? '#fff' : p.fill}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.w}"` : ''}/>`).join('');
     const t = m.text;
     return `

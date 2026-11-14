@@ -620,8 +620,10 @@ export class PrintCanvasEngine {
             this.composer.updateItemPositionDOM(it);
           }
         });
+        this.composer.syncItemGeometryPanel?.();
       } else if (this.isResizing && this.itemStartProps) {
         this.handleItemResize(e);
+        this.composer.syncItemGeometryPanel?.();
       }
     };
 

@@ -542,7 +542,7 @@ export class PrintExporter {
       ctx.lineWidth = c.w * u;
       if (typeof ctx.setLineDash === 'function') ctx.setLineDash(c.dash ? c.dash.map(d => d * u) : []);
       ctx.beginPath();
-      ctx.arc(0, 0, c.r * u, 0, Math.PI * 2);
+      ctx.arc(0, px(c.cy ?? 50), c.r * u, 0, Math.PI * 2);
       ctx.stroke();
     });
     if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
