@@ -10,7 +10,41 @@ import { Geodesy } from '../../services/Geodesy.js';
 import { FeatureGeometryUtils } from '../../services/MapEngine/FeatureGeometryUtils.js';
 import { PrintFonts } from './PrintFonts.js';
 
+/** Formatadores pt-BR reutilizados: `toLocaleString` com opções cria um Intl.NumberFormat a cada chamada (~35 µs) */
+const NF_2 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const NF_4 = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+
+/** Assinatura numérica das coordenadas (qualquer aninhamento; [lat,lng] ou {lat,lng}): detecta edição do polígono */
+function coordsSignature(coords) {
+  let h1 = 17;
+  let h2 = 31;
+  let count = 0;
+  const add = (lat, lng) => {
+    const a = Math.round(lat * 1e8);
+    const b = Math.round(lng * 1e8);
+    h1 = (Math.imul(h1, 31) + a) | 0;
+    h1 = (Math.imul(h1, 31) + b) | 0;
+    h2 = (Math.imul(h2, 131) ^ a) | 0;
+    h2 = (Math.imul(h2, 131) ^ b) | 0;
+    count++;
+  };
+  const walk = (c) => {
+    if (!Array.isArray(c)) {
+      if (c && typeof c.lat === 'number' && typeof c.lng === 'number') add(c.lat, c.lng);
+      return;
+    }
+    if (typeof c[0] === 'number') { add(c[0], c[1]); return; }
+    for (let i = 0; i < c.length; i++) walk(c[i]);
+  };
+  walk(coords);
+  return `${count}:${h1}:${h2}`;
+}
+
 export class PrintItemsManager {
+  /** Cache do cálculo completo da tabela de vértices (assinatura da geometria + opções); poucas entradas */
+  static _vertCache = new Map();
+  static VERT_CACHE_MAX = 8;
+
   /** Menor lado de um item, em mm (o mesmo para as alças e para o painel) */
   static MIN_ITEM_MM = 10;
 
@@ -662,6 +696,46 @@ export class PrintItemsManager {
       return { featureName: 'Nenhuma Feição', vertices: [], allVerticesCount: 0, totalAreaM2: 0, totalAreaHa: 0, totalPerimeter: 0 };
     }
 
+    const prefix = typeof options.vertexPrefix === 'string' && options.vertexPrefix.trim()
+      ? options.vertexPrefix.trim().slice(0, 8)
+      : 'V';
+    const segFormat = options.segmentFormat === 'segment' ? 'segment' : 'vertex';
+
+    // Cálculo completo (UTM, geodésia, formatação) só quando a geometria ou as opções mudam:
+    // redimensionar a tabela, continuações e redesenhos reaproveitam o resultado
+    const cacheKey = `${targetFeature.id}|${targetFeature.type}|${targetFeature.name || ''}|${prefix}|${segFormat}|${coordsSignature(targetFeature.coordinates)}`;
+    let full = this._vertCache.get(cacheKey);
+    if (!full) {
+      full = this.computeVerticesFull(targetFeature, prefix, segFormat);
+      if (this._vertCache.size >= this.VERT_CACHE_MAX) this._vertCache.delete(this._vertCache.keys().next().value);
+      this._vertCache.set(cacheKey, full);
+    }
+    if (!full.allVertices.length) {
+      return { featureName: full.featureName, vertices: [], allVerticesCount: 0, totalAreaM2: 0, totalAreaHa: 0, totalPerimeter: 0 };
+    }
+
+    const { allVertices } = full;
+    const startIdx = Math.max(1, Number(options.startVertex) || 1) - 1;
+    const endRaw = Number(options.endVertex) || 0;
+    const endIdx = endRaw > 0 ? Math.min(allVertices.length, endRaw) : allVertices.length;
+    const vertices = (startIdx > 0 || endIdx < allVertices.length)
+      ? allVertices.slice(startIdx, Math.max(startIdx, endIdx))
+      : allVertices;
+
+    return {
+      featureName: full.featureName,
+      utmZone: full.utmZone,
+      utmHemisphere: full.utmHemisphere,
+      vertices,
+      allVerticesCount: allVertices.length,
+      totalAreaM2: full.totalAreaM2,
+      totalAreaHa: full.totalAreaM2 / 10000,
+      totalPerimeter: full.totalPerimeter
+    };
+  }
+
+  /** Vértices, UTM, distâncias e azimutes de TODOS os vértices da feição (custoso: use via extractVerticesData) */
+  static computeVerticesFull(targetFeature, prefix, segFormat) {
     // Anel exterior: o primeiro polígono, mesmo que a feição tenha furos ou várias partes
     const fType = (targetFeature.type || '').toLowerCase();
     const isPolygon = fType === 'polygon' || fType === 'multipolygon';
@@ -679,7 +753,7 @@ export class PrintItemsManager {
     if (isPolygon) points = FeatureGeometryUtils.openRing(points);
 
     if (points.length < 2) {
-      return { featureName: targetFeature.name || 'Feição', vertices: [], allVerticesCount: 0, totalAreaM2: 0, totalAreaHa: 0, totalPerimeter: 0 };
+      return { featureName: targetFeature.name || 'Feição', allVertices: [] };
     }
 
     // Fuso e hemisfério médios; todos os vértices usam o mesmo fuso
@@ -691,10 +765,6 @@ export class PrintItemsManager {
     // Coordenadas UTM (Norte/Leste) de cada vértice
     const utmPoints = points.map(p => this.toUtmCoords(p[0], p[1], utmZone, utmSouth));
 
-    const prefix = typeof options.vertexPrefix === 'string' && options.vertexPrefix.trim()
-      ? options.vertexPrefix.trim().slice(0, 8)
-      : 'V';
-    const segFormat = options.segmentFormat === 'segment' ? 'segment' : 'vertex';
     const fmtLabel = (idx) => `${prefix}${String(idx + 1).padStart(2, '0')}`;
 
     const allVertices = [];
@@ -722,19 +792,12 @@ export class PrintItemsManager {
         lng: points[i][1],
         latDms: this.formatDMS(points[i][0], true),
         lngDms: this.formatDMS(points[i][1], false),
-        northing: curr.northing.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        easting: curr.easting.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        distance: dist > 0 ? dist.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-',
+        northing: NF_2.format(curr.northing),
+        easting: NF_2.format(curr.easting),
+        distance: dist > 0 ? NF_2.format(dist) : '-',
         azimuth: dist > 0 ? this.formatAzimuth(geo.azimuth) : '-'
       });
     }
-
-    const startIdx = Math.max(1, Number(options.startVertex) || 1) - 1;
-    const endRaw = Number(options.endVertex) || 0;
-    const endIdx = endRaw > 0 ? Math.min(allVertices.length, endRaw) : allVertices.length;
-    const vertices = (startIdx > 0 || endIdx < allVertices.length)
-      ? allVertices.slice(startIdx, Math.max(startIdx, endIdx))
-      : allVertices;
 
     // Área elipsoidal (a mesma do inspetor: furos subtraídos, partes somadas)
     const totalAreaM2 = isPolygon
@@ -745,10 +808,8 @@ export class PrintItemsManager {
       featureName: targetFeature.name || 'Polígono Cadastrado',
       utmZone,
       utmHemisphere: utmSouth ? 'S' : 'N',
-      vertices,
-      allVerticesCount: allVertices.length,
+      allVertices,
       totalAreaM2,
-      totalAreaHa: totalAreaM2 / 10000,
       totalPerimeter
     };
   }
@@ -777,9 +838,9 @@ export class PrintItemsManager {
       rows.push({
         name: f.name || `Feição ${idx + 1}`,
         layer: layer?.name || 'Geral',
-        areaHa: areaM2 > 0 ? (areaM2 / 10000).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 }) : '—',
-        areaM2: areaM2 > 0 ? areaM2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—',
-        perimeter: perim > 0 ? perim.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'
+        areaHa: areaM2 > 0 ? NF_4.format(areaM2 / 10000) : '—',
+        areaM2: areaM2 > 0 ? NF_2.format(areaM2) : '—',
+        perimeter: perim > 0 ? NF_2.format(perim) : '—'
       });
     });
 
