@@ -609,7 +609,7 @@ export class PrintComposerModal {
    * Aplica papel, margens e moldura de uma vez, reajustando os itens à nova área útil
    * (mesma regra da troca de papel). Um passo no histórico.
    */
-  applyPageSetup(paper, showFrame, actionName) {
+  applyPageSetup(paper, showFrame, actionName, { coalesceKey = null } = {}) {
     const sizeChanged = paper.width !== this.paperSize.width || paper.height !== this.paperSize.height;
     this.items = PrintItemsManager.fitItemsToPaper(this.items, this.paperSize, paper);
     this.paperSize = paper;
@@ -618,7 +618,7 @@ export class PrintComposerModal {
     this.renderAllItems();
     this.updatePropertiesPanel();
     if (sizeChanged) setTimeout(() => this.canvasEngine.zoomFit(), 50);
-    this.pushHistoryState(actionName);
+    this.pushHistoryState(actionName, { coalesceKey });
   }
 
   /** Troca a folha mantendo os itens do usuário e as margens personalizadas (pode ser desfeito) */
@@ -652,7 +652,7 @@ export class PrintComposerModal {
     const paper = (std && this.paperSize.margins)
       ? PrintItemsManager.withMargins(std, PrintItemsManager.sheetMargins(this.paperSize))
       : base;
-    this.applyPageSetup(paper, this.showAbntMargins, `Folha ${paper.name}`);
+    this.applyPageSetup(paper, this.showAbntMargins, `Folha ${paper.name}`, { coalesceKey: 'paper-dimensions' });
   }
 
   /** Alterna orientação da folha (landscape / portrait) trocando largura e altura */
@@ -713,7 +713,7 @@ export class PrintComposerModal {
       this.updatePropertiesPanel(); // devolve ao campo o valor válido
       return;
     }
-    this.applyPageSetup(paper, this.showAbntMargins, partial ? 'Margens' : 'Margens ABNT');
+    this.applyPageSetup(paper, this.showAbntMargins, partial ? 'Margens' : 'Margens ABNT', { coalesceKey: partial ? 'paper-margins' : null });
   }
 
   setAbntMargins(visible) {

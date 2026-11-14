@@ -1170,11 +1170,16 @@ export class PrintPropertiesPanel {
           composer.setAbntMargins(Boolean(valor));
           break;
         case 'guides_rows':
-          composer.applyGridGuides({ rows: Number(valor) || 0 });
+        case 'guides_cols': {
+          const key = id === 'guides_rows' ? 'rows' : 'cols';
+          const count = Math.max(0, Math.min(50, Math.round(Number(valor) || 0)));
+          if (composer.guideGeneratorConfig?.replace === false) {
+            composer.guideGeneratorConfig = { ...composer.guideGeneratorConfig, [key]: count };
+          } else {
+            composer.applyGridGuides({ [key]: count });
+          }
           break;
-        case 'guides_cols':
-          composer.applyGridGuides({ cols: Number(valor) || 0 });
-          break;
+        }
         case 'guides_row_gutter':
         case 'guides_col_gutter':
         case 'guides_fit':
@@ -1186,7 +1191,9 @@ export class PrintPropertiesPanel {
             guides_mode: { mode: valor }
           };
           composer.guideGeneratorConfig = { ...(composer.guideGeneratorConfig || {}), ...map[id] };
-          if ((composer.guideGeneratorConfig.rows || 0) > 0 || (composer.guideGeneratorConfig.cols || 0) > 0) {
+          // Em "somar às guias" a edição ao vivo acumularia guias a cada ajuste: só o botão "Aplicar guias" gera
+          const cfg = composer.guideGeneratorConfig;
+          if (cfg.replace !== false && ((cfg.rows || 0) > 0 || (cfg.cols || 0) > 0)) {
             composer.applyGridGuides(map[id]);
           }
           break;
