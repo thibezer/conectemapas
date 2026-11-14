@@ -212,7 +212,7 @@ const paperCats = PrintPropertiesPanel.buildPaperCategories(panelComposer);
 assert.ok(JSON.stringify(paperCats).includes('Layout padrão'), 'O botão de reset diz o que faz no painel de propriedades da folha');
 
 // Lista de elementos: seleção, ocultos e estado dos botões
-const rowHtml = (id) => html.match(new RegExp(`<div class="[^"]*cm-pp-item-row[^"]*" data-composer-item-id="${id}">[\\s\\S]*?</div>\\s*</div>`))[0];
+const rowHtml = (id) => html.match(new RegExp(`<div class="[^"]*cm-pp-item-row[^"]*" data-composer-item-id="${id}"[^>]*>[\\s\\S]*?</div>\\s*</div>`))[0];
 assert.ok(rowHtml(unlocked.id).includes('is-selected') && !rowHtml(locked.id).includes('is-selected'),'Linha do item selecionado é destacada');
 assert.ok(rowHtml(unlocked.id).includes('aria-current="true"'), 'Item selecionado é anunciado como atual');
 const noVisible = panelItems.find(i => i.type === 'scale_bar');
@@ -586,3 +586,16 @@ assert.ok(!/<select\b/.test(html) && !/<textarea\b/.test(html), 'Painel não usa
 console.log('✔ Carimbo validado');
 
 console.log('\n🎉 TESTES DO PAINEL LATERAL E HISTÓRICO PASSARAM!');
+
+// Lista de Elementos: ordem exibida = ordem do canvas (topo da lista = frente)
+{
+  const names = (h) => [...h.matchAll(/data-composer-item-id="([^"]+)"/g)].map(m => m[1]);
+  const shown = names(PrintPropertiesPanel.render(panelComposer));
+  assert.deepStrictEqual(shown, panelItems.map(i => i.id).reverse(), 'Lista mostra o item da frente no topo');
+  assert.ok(PrintPropertiesPanel.render(panelComposer).includes('draggable="true"'), 'Linhas são arrastáveis');
+  panelComposer.itemsFilter = 'legenda';
+  const filtered = PrintPropertiesPanel.render(panelComposer);
+  assert.ok(/data-composer-item-id="[^"]+"[^>]* hidden/.test(filtered), 'Filtro esconde linhas que não casam');
+  panelComposer.itemsFilter = '';
+  console.log('✔ Ordem da lista de Elementos validada');
+}

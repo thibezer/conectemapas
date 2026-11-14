@@ -102,6 +102,7 @@ const mockComposer = {
   selectedItemId: null,
   updatePaperSheetDOM: () => {},
   renderAllItems: () => {},
+  applyItemStacking: () => {},
   updatePropertiesPanel: () => {},
   canvasEngine: { zoomFit: () => {}, renderRulers: () => {} },
   updateInsetMapExtent: () => {}
@@ -208,6 +209,7 @@ const alignComposer = {
   updateItemPositionDOM: () => {},
   updatePropertiesPanel: () => {},
   renderAllItems: () => {},
+  applyItemStacking: () => {},
   selectItem: (id) => { alignComposer.selectedItemId = id; }
 };
 

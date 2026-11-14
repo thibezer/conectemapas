@@ -63,16 +63,23 @@ export class PrintPropertiesPanel {
           <details class="cm-inspector-accordion" data-section="items" ${openAttr('items')}>
             <summary class="cm-pp-summary">${ppIcon('layers')}Elementos da Prancha (${composer.items.length})</summary>
             <div class="cm-pp-body cm-pp-body--list">
-              ${composer.items.map((it) => {
+              <input type="search" class="cm-pp-items-search" id="cm-pp-items-search" placeholder="Filtrar elementos…" aria-label="Filtrar elementos" value="${esc(composer.itemsFilter || '')}" autocomplete="off">
+              <div class="cm-pp-items-hint">Topo da lista = frente da prancha. Arraste para reordenar (Alt+↑/↓ no teclado); duplo clique renomeia.</div>
+              ${[...composer.items].reverse().map((it) => {
                 // Sem `visible` gravado o item aparece (mesma regra da prancha e do exportador)
                 const shown = it.visible !== false;
                 const selected = composer.selectedItemIds ? composer.selectedItemIds.has(it.id) : (it.id === composer.selectedItemId);
                 const name = esc(it.name || 'Item');
+                const typeLabel = this.ITEM_TYPE_LABELS[it.type] || it.type || '';
+                const q = String(composer.itemsFilter || '').trim().toLowerCase();
+                const matches = !q || `${it.name || ''} ${typeLabel}`.toLowerCase().includes(q);
                 return `
-                <div class="cm-ai-row cm-pp-item-row ${selected ? 'is-selected' : ''} ${shown ? '' : 'is-hidden'}" data-composer-item-id="${esc(it.id)}">
+                <div class="cm-ai-row cm-pp-item-row ${selected ? 'is-selected' : ''} ${shown ? '' : 'is-hidden'}" data-composer-item-id="${esc(it.id)}" draggable="true" ${matches ? '' : 'hidden'}>
+                  <span class="cm-pp-item-grip" aria-hidden="true" title="Arraste para reordenar">⋮⋮</span>
                   <button type="button" class="cm-pp-item-main" data-composer-select="${esc(it.id)}" ${selected ? 'aria-current="true"' : ''} title="${shown ? name : `${name} (oculto)`}">
                     <span class="cm-pp-item-icon" aria-hidden="true">${this.getItemIcon(it.type)}</span>
                     <span class="cm-pp-item-name">${name}</span>
+                    <span class="cm-pp-item-type">${esc(typeLabel)}</span>
                   </button>
                   <div class="cm-pp-item-actions">
                     <button type="button" class="cm-ai-micro-btn cm-pp-item-btn ${it.locked ? '' : 'is-off'}" data-composer-lock="${esc(it.id)}" aria-pressed="${it.locked ? 'true' : 'false'}" aria-label="Bloquear ${name}" title="${it.locked ? 'Desbloquear' : 'Bloquear'}">${ppIcon(it.locked ? 'lock' : 'unlock')}</button>
@@ -226,6 +233,100 @@ export class PrintPropertiesPanel {
         </fieldset>
       </details>
     `;
+  }
+
+  /** Nome do tipo de cada elemento, mostrado na lista de Elementos */
+  static ITEM_TYPE_LABELS = {
+    map: 'Mapa', inset_map: 'Localização', north_arrow: 'Norte', scale_bar: 'Escala', legend: 'Legenda',
+    title_block: 'Selo', table_vertices: 'Vértices', text_block: 'Notas', shape: 'Moldura', image: 'Imagem', label: 'Título'
+  };
+
+  /** Ordenação, filtro e renomeação da lista de Elementos (lista exibida do topo/frente para o fundo) */
+  static bindItemsList(composer) {
+    const rows = [...document.querySelectorAll('.cm-pp-item-row[data-composer-item-id]')];
+    if (!rows.length) return;
+
+    const search = document.getElementById('cm-pp-items-search');
+    if (search) {
+      search.addEventListener('input', () => {
+        composer.itemsFilter = search.value;
+        const q = search.value.trim().toLowerCase();
+        rows.forEach(row => {
+          const it = composer.items.find(i => i.id === row.getAttribute('data-composer-item-id'));
+          const label = this.ITEM_TYPE_LABELS[it?.type] || it?.type || '';
+          row.hidden = Boolean(q) && !`${it?.name || ''} ${label}`.toLowerCase().includes(q);
+        });
+      });
+    }
+
+    // Arrastar para reordenar: soltar acima de uma linha = ficar na frente dela
+    let dragId = null;
+    const clearMarks = () => rows.forEach(r => r.classList.remove('drop-above', 'drop-below', 'is-dragging'));
+    rows.forEach(row => {
+      const id = row.getAttribute('data-composer-item-id');
+      row.addEventListener('dragstart', (e) => {
+        if (composer.readOnly || e.target.closest?.('input')) { e.preventDefault(); return; }
+        dragId = id;
+        row.classList.add('is-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', id);
+      });
+      row.addEventListener('dragover', (e) => {
+        if (!dragId || dragId === id) return;
+        e.preventDefault();
+        const r = row.getBoundingClientRect();
+        const above = e.clientY < r.top + r.height / 2;
+        rows.forEach(x => x.classList.remove('drop-above', 'drop-below'));
+        row.classList.add(above ? 'drop-above' : 'drop-below');
+      });
+      row.addEventListener('drop', (e) => {
+        if (!dragId || dragId === id) return;
+        e.preventDefault();
+        const r = row.getBoundingClientRect();
+        const above = e.clientY < r.top + r.height / 2;
+        const moving = dragId;
+        dragId = null;
+        clearMarks();
+        composer.moveItemRelative(moving, id, above ? 'above' : 'below');
+      });
+      row.addEventListener('dragend', () => { dragId = null; clearMarks(); });
+
+      row.querySelector('.cm-pp-item-main')?.addEventListener('keydown', (e) => {
+        if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+        e.preventDefault();
+        composer.stepItemInStack(id, e.key === 'ArrowUp' ? 1 : -1);
+      });
+
+      // Duplo clique no nome: renomear na própria lista
+      row.querySelector('.cm-pp-item-name')?.addEventListener('dblclick', (e) => {
+        const it = composer.items.find(i => i.id === id);
+        if (!it || it.locked || composer.readOnly) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const span = e.currentTarget;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'cm-pp-item-rename';
+        input.value = it.name || '';
+        row.draggable = false;
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+        let done = false;
+        const finish = (commit) => {
+          if (done) return;
+          done = true;
+          composer.renameItem(id, commit ? input.value : null);
+        };
+        input.addEventListener('click', ev => ev.stopPropagation());
+        input.addEventListener('keydown', (ev) => {
+          ev.stopPropagation();
+          if (ev.key === 'Enter') finish(true);
+          else if (ev.key === 'Escape') finish(false);
+        });
+        input.addEventListener('blur', () => finish(true));
+      });
+    });
   }
 
   /** Abas do painel: [id, rótulo, ícone] */
@@ -1304,10 +1405,15 @@ export class PrintPropertiesPanel {
       });
     });
 
+    this.bindItemsList(composer);
+
     document.querySelectorAll('[data-composer-item-id]').forEach(el => {
       el.addEventListener('click', (e) => {
         const additive = e.shiftKey || e.ctrlKey || e.metaKey;
-        composer.selectItem(el.getAttribute('data-composer-item-id'), { additive, fromPanel: true });
+        const clickedId = el.getAttribute('data-composer-item-id');
+        // Clique no que já é a única seleção não reconstrói o painel (preserva o duplo clique de renomear)
+        if (!additive && composer.selectedItemIds?.size === 1 && composer.selectedItemIds.has(clickedId)) return;
+        composer.selectItem(clickedId, { additive, fromPanel: true });
       });
     });
 

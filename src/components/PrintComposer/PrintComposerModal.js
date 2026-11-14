@@ -1463,6 +1463,52 @@ export class PrintComposerModal {
     this.redrawMapVectors();
   }
 
+  /** Reaplica a ordem do vetor `items` como empilhamento (z-index) sem recriar os mapas */
+  applyItemStacking() {
+    this.items.forEach((item, index) => {
+      const el = document.querySelector(`.cm-print-item[data-item-id="${item.id}"]`);
+      if (el) el.style.zIndex = String(index + 1);
+    });
+  }
+
+  /** Move `id` para logo acima (frente) ou abaixo (atrás) de `refId` na pilha */
+  moveItemRelative(id, refId, place = 'above') {
+    if (id === refId) return false;
+    const from = this.items.findIndex(i => i.id === id);
+    if (from === -1 || !this.items.some(i => i.id === refId)) return false;
+    const [item] = this.items.splice(from, 1);
+    const refIdx = this.items.findIndex(i => i.id === refId);
+    this.items.splice(place === 'above' ? refIdx + 1 : refIdx, 0, item);
+    this.applyItemStacking();
+    this.updatePropertiesPanel();
+    this.pushHistoryState('Reordenar Elementos');
+    return true;
+  }
+
+  /** Sobe (+1) ou desce (-1) um nível na pilha */
+  stepItemInStack(id, delta) {
+    const idx = this.items.findIndex(i => i.id === id);
+    const to = idx + delta;
+    if (idx === -1 || to < 0 || to >= this.items.length) return false;
+    const [item] = this.items.splice(idx, 1);
+    this.items.splice(to, 0, item);
+    this.applyItemStacking();
+    this.updatePropertiesPanel();
+    this.pushHistoryState('Reordenar Elementos');
+    return true;
+  }
+
+  /** Renomeia um item; `name` nulo ou vazio mantém o nome atual */
+  renameItem(id, name) {
+    const it = this.items.find(i => i.id === id);
+    const clean = typeof name === 'string' ? name.trim().slice(0, 80) : '';
+    if (it && clean && clean !== it.name) {
+      it.name = clean;
+      this.pushHistoryState('Renomear Item');
+    }
+    this.updatePropertiesPanel();
+  }
+
   toggleItemLock(itemId) {
     const it = this.items.find(i => i.id === itemId);
     if (it) {

@@ -173,7 +173,7 @@ export class PrintAlignmentHelper {
 
     const [item] = composer.items.splice(idx, 1);
     composer.items.push(item);
-    composer.renderAllItems();
+    composer.applyItemStacking();
     composer.selectItem(item.id);
     composer.pushHistoryState('Trazer para Frente');
   }
@@ -187,7 +187,7 @@ export class PrintAlignmentHelper {
 
     const [item] = composer.items.splice(idx, 1);
     composer.items.unshift(item);
-    composer.renderAllItems();
+    composer.applyItemStacking();
     composer.selectItem(item.id);
     composer.pushHistoryState('Enviar para Trás');
   }
@@ -202,7 +202,7 @@ export class PrintAlignmentHelper {
     const temp = composer.items[idx];
     composer.items[idx] = composer.items[idx + 1];
     composer.items[idx + 1] = temp;
-    composer.renderAllItems();
+    composer.applyItemStacking();
     composer.selectItem(temp.id);
     composer.pushHistoryState('Avançar Camada');
   }
@@ -217,7 +217,7 @@ export class PrintAlignmentHelper {
     const temp = composer.items[idx];
     composer.items[idx] = composer.items[idx - 1];
     composer.items[idx - 1] = temp;
-    composer.renderAllItems();
+    composer.applyItemStacking();
     composer.selectItem(temp.id);
     composer.pushHistoryState('Recuar Camada');
   }
