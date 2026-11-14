@@ -15,6 +15,7 @@ import { PrintAlignmentHelper } from '../src/components/PrintComposer/PrintAlign
 import { PrintItemsManager } from '../src/components/PrintComposer/PrintItemsManager.js';
 import { PrintSheetsManager } from '../src/components/PrintComposer/PrintSheetsManager.js';
 import { PrintPropertiesPanel } from '../src/components/PrintComposer/PrintPropertiesPanel.js';
+import { PrintItemFields } from '../src/components/PrintComposer/PrintItemFields.js';
 import { PrintTitleBlockRenderer } from '../src/components/PrintComposer/PrintTitleBlockRenderer.js';
 
 console.log('--- Teste do painel lateral e histórico do Layout de Impressão ---');
@@ -318,12 +319,14 @@ const legItem = { id: 'lg', type: 'legend', hiddenLayerIds: ['1'] };
 assert.strictEqual(PrintItemsManager.legendMapItem(legItem, [legItem, legMap]).id, 'm1', 'Sem vínculo, usa o primeiro mapa');
 assert.strictEqual(PrintItemsManager.legendTitle({ title: '' }), '', 'Título vazio = sem título');
 assert.strictEqual(PrintItemsManager.legendTitle({}), PrintItemsManager.DEFAULT_LEGEND_TITLE, 'Sem título definido usa o padrão');
-let legHtml = PrintPropertiesPanel.renderTypeFields(legItem, { items: [legItem, legMap], layers, features: legFeatures, library: null }, []);
+let legHtml = PrintPropertiesPanel.renderLegacyFields(legItem, { items: [legItem, legMap], layers, features: legFeatures, library: null });
 assert.ok(legHtml.includes('data-legend-layer="app"') && legHtml.includes('data-legend-layer="1"'), 'Painel lista o que aparece no mapa vinculado');
 assert.ok(!legHtml.includes('data-legend-layer="oculta"'), 'Camada oculta no mapa (espelhando o projeto) não é candidata');
 assert.ok(/data-legend-layer="1"\s*(?:\/>|>)/.test(legHtml), 'Camada desmarcada na legenda aparece desmarcada');
-legHtml = PrintPropertiesPanel.renderTypeFields({ ...legItem, title: 'CONVENÇÕES <b>' }, { items: [legItem, legMap], layers, features: legFeatures }, []);
-assert.ok(legHtml.includes('CONVENÇÕES &lt;b&gt;'), 'Título personalizado e escapado');
+const legField = (item, id) => PrintItemFields.find(item, { items: [item, legMap], layers, features: legFeatures }, id);
+assert.strictEqual(legField({ ...legItem, title: 'CONVENÇÕES <b>' }, 'legend_title').prop.valor, 'CONVENÇÕES <b>', 'Título personalizado vai cru ao kit (ele escapa)');
+assert.strictEqual(legField(legItem, 'legend_title').prop.valor, PrintItemsManager.DEFAULT_LEGEND_TITLE, 'Sem título definido, o campo mostra o padrão');
+assert.strictEqual(legField({ ...legItem, title: '' }, 'legend_title').prop.valor, '', 'Título vazio = sem título');
 console.log('✔ Legenda validada');
 
 // ============================================================================
@@ -360,12 +363,13 @@ const pItems = PrintItemsManager.createDefaultItems('Projeto', paperSizes.A4_L);
 const pComposer = { items: pItems, features: legFeatures, layers, paperSize: paperSizes.A4_L, showAbntMargins: true };
 pComposer.selectedItemId = pItems.find(i => i.type === 'scale_bar').id;
 html = PrintPropertiesPanel.render(pComposer);
-['prop-sb-segments', 'prop-sb-units', 'prop-sb-text'].forEach(id => assert.ok(html.includes(`id="${id}"`), `Painel da barra deve ter ${id}`));
+const sbItem = pItems.find(i => i.type === 'scale_bar');
+['sb_segments', 'sb_units', 'sb_text'].forEach(id => assert.ok(PrintItemFields.find(sbItem, pComposer, id), `Painel da barra deve ter ${id}`));
 const sbSize = PrintPropertiesPanel.buildItemCategories(pComposer).flatMap(c => c.propriedades).filter(p => p.id === 'item_w' || p.id === 'item_h');
 assert.ok(sbSize.length === 2 && sbSize.every(p => p.min === PrintItemsManager.MIN_ITEM_MM), 'Campos de tamanho usam o mínimo comum');
 pComposer.selectedItemId = pItems.find(i => i.type === 'legend').id;
 html = PrintPropertiesPanel.render(pComposer);
-assert.ok(html.includes('id="prop-legend-title"'), 'Painel da legenda tem o título');
+assert.ok(PrintItemFields.find(pItems.find(i => i.type === 'legend'), pComposer, 'legend_title'), 'Painel da legenda tem o título');
 assert.strictEqual((html.match(/data-legend-layer=/g) || []).length, 2, 'Uma caixa por camada que aparece no mapa');
 console.log('✔ Painel validado');
 
@@ -396,8 +400,15 @@ assert.ok(!evilLabel.includes('position:fixed') && !evilLabel.includes('color:re
 
 const shapeItem2 = { ...PrintItemsManager.createNewItem('shape', 'P', 0), id: 'shape-1' };
 html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
-assert.ok(html.includes('id="prop-shape-fill" class="cm-pp-color" value="#ffffff"'), 'Preenchimento usa o seletor de cor');
-assert.ok(/id="prop-shape-fill-alpha"[^>]*value="40"/.test(html), 'Opacidade separada (0,4 → 40%)');
+const shapeCtx = { items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L };
+assert.strictEqual(PrintItemFields.find(shapeItem2, shapeCtx, 'shape_fill').prop.valor, '#ffffff', 'Preenchimento usa o seletor de cor');
+assert.strictEqual(PrintItemFields.find(shapeItem2, shapeCtx, 'shape_fill_alpha').prop.valor, 40, 'Opacidade separada (0,4 → 40%)');
+// Trocar só a cor mantém a opacidade, e vice-versa; grava rgba()
+const shapeEdit = { ...shapeItem2 };
+PrintItemFields.find(shapeEdit, shapeCtx, 'shape_fill').apply(shapeEdit, '#ff0000');
+assert.strictEqual(shapeEdit.fillColor, 'rgba(255, 0, 0, 0.4)', 'Nova cor mantém a opacidade');
+PrintItemFields.find(shapeEdit, shapeCtx, 'shape_fill_alpha').apply(shapeEdit, 75);
+assert.strictEqual(shapeEdit.fillColor, 'rgba(255, 0, 0, 0.75)', 'Nova opacidade mantém a cor');
 console.log('✔ Cores validadas');
 
 // ============================================================================
@@ -454,18 +465,20 @@ assert.ok(!multiProp('item_w').misto && multiProp('item_w').valor === 50, 'Largu
 const singleComposer = { items: [{ ...mA, name: 'Quadro', lockAspect: true }], selectedItemId: 'm-a', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true };
 itemCats = PrintPropertiesPanel.buildItemCategories(singleComposer);
 const flat = itemCats.flatMap(c => c.propriedades);
-assert.deepStrictEqual(flat.map(p => p.id), ['item_name', 'item_x', 'item_y', 'item_w', 'item_h', 'item_lock_aspect'], 'Item único: nome, geometria e proporção');
+assert.deepStrictEqual(flat.slice(0, 6).map(p => p.id), ['item_name', 'item_x', 'item_y', 'item_w', 'item_h', 'item_lock_aspect'], 'Item único: nome, geometria e proporção primeiro');
+assert.ok(flat.some(p => p.id === 'shape_fill'), 'Depois vêm os campos do tipo (forma)');
 assert.strictEqual(flat.find(p => p.id === 'item_name').valor, 'Quadro');
 assert.strictEqual(flat.find(p => p.id === 'item_w').min, PrintItemsManager.MIN_ITEM_MM, 'Largura respeita o mínimo');
 assert.strictEqual(flat.find(p => p.id === 'item_x').max, paperSizes.A4_L.width, 'X limitado à folha');
 assert.ok(flat.every(p => !p.somenteLeitura), 'Item livre é editável');
 itemCats = PrintPropertiesPanel.buildItemCategories({ ...singleComposer, items: [{ ...singleComposer.items[0], locked: true }] });
 assert.ok(itemCats.flatMap(c => c.propriedades).every(p => p.somenteLeitura === true), 'Item bloqueado: todas as propriedades somente leitura');
+assert.ok(!itemCats.flatMap(c => c.propriedades).some(p => p.tipo === 'acao'), 'Item bloqueado: sem botões de ação');
 assert.deepStrictEqual(PrintPropertiesPanel.buildItemCategories({ ...singleComposer, selectedItemId: null }), [], 'Sem seleção: sem categorias');
 
 // Aparência agrupada e ajuda do Atlas recolhida por padrão
 html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
-assert.ok(html.includes('>Aparência<') && html.includes('id="print-item-props-panel"'), 'Subtítulo Aparência e painel de posição e tamanho do kit');
+assert.ok(html.includes('id="print-item-props-panel"') && PrintItemFields.categories(shapeItem2, { items: [shapeItem2] }).some(c => c.titulo === 'Aparência'), 'Painel do kit com a categoria Aparência');
 assert.ok(/id="pp-atlas-help"\s+hidden/.test(html), 'Ajuda do Atlas começa oculta');
 html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', helpOpen: { 'atlas-help': true }, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
 assert.ok(!/id="pp-atlas-help"\s+hidden/.test(html), 'Ajuda do Atlas aberta quando lembrada');
@@ -598,9 +611,10 @@ const tbPanel = PrintItemsManager.createDefaultItems('P', paperSizes.A4_L);
 const tbItem2 = tbPanel.find(i => i.type === 'title_block');
 tbPanel.find(i => i.type === 'map').scale = 44396;
 html = PrintPropertiesPanel.render({ items: tbPanel, selectedItemId: tbItem2.id, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
-assert.ok(/id="prop-tb-scale" class="cm-vertex-input" value="1:44\.396"/.test(html), 'Campo mostra a escala do mapa');
-assert.ok(/id="prop-tb-scale-auto" checked/.test(html), 'Acompanhar a escala vem marcado');
-assert.ok(html.includes('<ui-campo-texto') && html.includes('<ui-select') && html.includes('<ui-checkbox') && html.includes('<ui-painel-propriedades') && html.includes('<ui-botao-primario'), 'Painel usa Web Components do @thibezer/ui-components-kit');
+const tbCtx = { items: tbPanel, selectedItemId: tbItem2.id, features: [], layers: [], paperSize: paperSizes.A4_L };
+assert.strictEqual(PrintItemFields.find(tbItem2, tbCtx, 'tb_scale').prop.valor, '1:44.396', 'Campo mostra a escala do mapa');
+assert.strictEqual(PrintItemFields.find(tbItem2, tbCtx, 'tb_scale_auto').prop.valor, true, 'Acompanhar a escala vem marcado');
+assert.ok(html.includes('<ui-painel-propriedades') && html.includes('<ui-botao-primario'), 'Painel usa Web Components do @thibezer/ui-components-kit');
 assert.ok(!/<select\b/.test(html) && !/<textarea\b/.test(html), 'Painel não usa <select> ou <textarea> nativos de fallback');
 console.log('✔ Carimbo validado');
 

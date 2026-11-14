@@ -1058,9 +1058,9 @@ export class PrintComposerModal {
             item.scale = PrintItemsManager.calculateScale(map.getZoom(), center.lat);
 
             // Mantém o campo de escala do painel igual à escala real do mapa
-            const scaleInput = document.getElementById('prop-map-scale');
-            if (scaleInput && this.selectedItemId === item.id && document.activeElement !== scaleInput) {
-              scaleInput.value = item.scale;
+            const itemPanel = document.getElementById('print-item-props-panel');
+            if (itemPanel && this.selectedItemId === item.id && document.activeElement !== itemPanel) {
+              PrintPropertiesPanel.syncItemSection(itemPanel, this);
             }
 
             // Sincroniza barra de escala
