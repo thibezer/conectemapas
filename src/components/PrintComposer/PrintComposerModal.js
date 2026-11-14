@@ -1439,6 +1439,24 @@ export class PrintComposerModal {
 
   updatePropertiesPanel() {
     const mount = document.getElementById('cm-print-props-panel-mount');
+    // Reconstruir o painel no meio do arraste do rótulo (scrub) destrói o elemento capturado:
+    // adia a atualização para o fim do gesto
+    if (mount && PrintPropertiesPanel.isPaperScrubbing(mount.querySelector('#print-paper-props-panel'))) {
+      if (!this._panelUpdateDeferred) {
+        this._panelUpdateDeferred = true;
+        const flush = () => {
+          document.removeEventListener('pointerup', flush, true);
+          document.removeEventListener('pointercancel', flush, true);
+          setTimeout(() => {
+            this._panelUpdateDeferred = false;
+            this.updatePropertiesPanel();
+          }, 0);
+        };
+        document.addEventListener('pointerup', flush, true);
+        document.addEventListener('pointercancel', flush, true);
+      }
+      return;
+    }
     if (mount) {
       // Preserva a rolagem ao reconstruir após cada seleção/arrasto (as seções abertas ficam em this.panelSections)
       const prevScroll = mount.querySelector('.cm-print-props-scroll')?.scrollTop || 0;

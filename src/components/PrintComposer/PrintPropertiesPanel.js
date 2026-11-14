@@ -361,6 +361,11 @@ export class PrintPropertiesPanel {
     `;
   }
 
+  /** Há um rótulo do painel da folha sendo arrastado (scrub numérico do kit)? */
+  static isPaperScrubbing(panelEl) {
+    return Boolean(panelEl?.shadowRoot?.querySelector?.('.ui-prop__col-rotulo--arrastando'));
+  }
+
   /**
    * Atualiza categorias e atributos do `<ui-painel-propriedades>` da folha sem recriar o nó no DOM.
    */
