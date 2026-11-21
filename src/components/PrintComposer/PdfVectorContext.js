@@ -151,6 +151,7 @@ export class PdfVectorContext {
     // user(px, y p/ baixo) -> pt da página (y p/ cima)
     const s = this.k / pxPerMm;
     this._m = [s, 0, 0, -s, 0, this.pageH * this.k];
+    this._m0 = this._m.slice(); // base do `setTransform` absoluto
     this._alpha = { fill: 1, stroke: 1 };
     this._stack = [];
     this._gsKeys = new Set();
@@ -211,6 +212,16 @@ export class PdfVectorContext {
     this._concat([c, s, -s, c, 0, 0]);
   }
   transform(a, b, c, d, e, f) { this._concat([a, b, c, d, e, f]); }
+
+  /**
+   * Matriz ABSOLUTA em relação ao espaço de exportação (px), como no Canvas 2D. O contrato do pintor do kit
+   * (`ContextoPrancha2D`) exige `setTransform`; sem ele o desenho do kit não sairia no PDF.
+   */
+  setTransform(a, b, c, d, e, f) {
+    const target = mul(this._m0, [a, b, c, d, e, f]);
+    if (!target.every(Number.isFinite)) return;
+    this._concat(mul(invert(this._m), target));
+  }
 
   // ----- Caminhos ---------------------------------------------------------
 

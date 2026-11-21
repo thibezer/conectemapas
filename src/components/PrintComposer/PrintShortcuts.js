@@ -40,7 +40,7 @@ export const SHORTCUT_ACTIONS = [
   { id: 'insert:label', group: 'insert', label: 'Título', keys: ['T'], edit: true },
   { id: 'insert:text_block', group: 'insert', label: 'Notas', keys: ['Shift+T'], edit: true },
   { id: 'insert:title_block', group: 'insert', label: 'Selo ABNT', keys: ['S'], edit: true },
-  { id: 'insert:shape', group: 'insert', label: 'Moldura', keys: ['F'], edit: true },
+  { id: 'insert:drawing', group: 'insert', label: 'Desenho / moldura', keys: ['F'], edit: true },
   { id: 'insert:image', group: 'insert', label: 'Logo / imagem', keys: ['I'], edit: true },
   { id: 'atlas', group: 'insert', label: 'Gerador de Atlas', keys: ['A'], edit: true },
 

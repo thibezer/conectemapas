@@ -12,6 +12,7 @@ import { PrintSmartGuides } from '../src/components/PrintComposer/PrintSmartGuid
 import { PrintSheetsManager } from '../src/components/PrintComposer/PrintSheetsManager.js';
 import { PrintAlignmentHelper } from '../src/components/PrintComposer/PrintAlignmentHelper.js';
 import { PrintItemsManager } from '../src/components/PrintComposer/PrintItemsManager.js';
+import { PrintDrawing } from '../src/components/PrintComposer/PrintDrawing.js';
 
 console.log('--- Iniciando Teste de Aprimoramentos do Layout de Impressão ---');
 
@@ -256,13 +257,13 @@ console.log('✔ PrintAlignmentHelper validado com sucesso!');
 // ============================================================================
 console.log('4. Testando Novos Itens Cartográficos (Moldura, Imagem, Título)...');
 
-// Criação de Shape
-const shapeItem = PrintItemsManager.createNewItem('shape', 'Projeto Teste', 1);
-assert.ok(shapeItem, 'Deve criar item do tipo shape');
-assert.strictEqual(shapeItem.type, 'shape');
-assert.strictEqual(shapeItem.strokeWidth, 1.5);
-const shapeHtml = PrintItemsManager.renderShape(shapeItem);
-assert.ok(shapeHtml.includes('cm-item-shape-box'), 'HTML do shape deve conter classe cm-item-shape-box');
+// Criação de Desenho (a antiga Moldura): os elementos nascem na medida do item
+const shapeItem = PrintDrawing.fillDefault(PrintItemsManager.createNewItem('drawing', 'Projeto Teste', 1));
+assert.ok(shapeItem, 'Deve criar item do tipo drawing');
+assert.strictEqual(shapeItem.type, 'drawing');
+assert.strictEqual(shapeItem.elements.length, 1, 'Nasce com um retângulo');
+assert.ok(Math.abs(shapeItem.elements[0].aparencia.traco.espessura - 1.5 / 3.78) < 1e-9, 'Traço de 1,5 px da antiga moldura, em mm');
+assert.strictEqual(PrintItemsManager.renderItemCanvas(shapeItem).includes('data-item-canvas'), true, 'O desenho é um canvas na tela');
 
 // Criação de Imagem / Logo
 const imgItem = PrintItemsManager.createNewItem('image', 'Projeto Teste', 2);

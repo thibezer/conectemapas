@@ -183,7 +183,7 @@ export class PrintPropertiesPanel {
   /** Nome do tipo de cada elemento, mostrado na lista de Elementos */
   static ITEM_TYPE_LABELS = {
     map: 'Mapa', inset_map: 'Localização', north_arrow: 'Norte', scale_bar: 'Escala', legend: 'Legenda',
-    title_block: 'Selo', table_vertices: 'Vértices', text_block: 'Notas', shape: 'Moldura', image: 'Imagem', label: 'Título'
+    title_block: 'Selo', table_vertices: 'Vértices', text_block: 'Notas', drawing: 'Desenho', image: 'Imagem', label: 'Título'
   };
 
   /** Ordenação, filtro e renomeação da lista de Elementos (lista exibida do topo/frente para o fundo) */

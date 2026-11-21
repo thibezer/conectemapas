@@ -71,7 +71,7 @@ export function ppIcon(name) {
 export function itemTypeIcon(type) {
   const map = {
     map: 'map', inset_map: 'globe', north_arrow: 'compass', scale_bar: 'ruler', legend: 'legend',
-    title_block: 'stamp', table_vertices: 'table', text_block: 'sheet', shape: 'frame', image: 'image', label: 'title'
+    title_block: 'stamp', table_vertices: 'table', text_block: 'sheet', drawing: 'frame', image: 'image', label: 'title'
   };
   return ppIcon(map[type] || 'frame');
 }

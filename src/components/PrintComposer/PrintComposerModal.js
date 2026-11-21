@@ -9,6 +9,8 @@ import './PrintComposer.css';
 import './PrintPropertiesPanel.css';
 import L from 'leaflet';
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintDrawing } from './PrintDrawing.js';
+import { PrintDrawingEditor } from './PrintDrawingEditor.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
 import { PrintPropertiesPanel } from './PrintPropertiesPanel.js';
 import { PrintSheetsManager } from './PrintSheetsManager.js';
@@ -206,7 +208,7 @@ export class PrintComposerModal {
       this.paperSize = this.paperSizes[state.paperSizeId];
     }
     this.showAbntMargins = state.showAbntMargins !== false;
-    this.items = JSON.parse(JSON.stringify(state.items || []));
+    this.items = PrintDrawing.cloneItems(state.items);
     if (state.manualGuides) {
       this.manualGuides = JSON.parse(JSON.stringify(state.manualGuides));
     }
@@ -349,7 +351,7 @@ export class PrintComposerModal {
     if (currentSheet) {
       this.paperSize = currentSheet.paperSize;
       this.showAbntMargins = currentSheet.showAbntMargins !== false;
-      this.items = JSON.parse(JSON.stringify(currentSheet.items || []));
+      this.items = PrintDrawing.cloneItems(currentSheet.items);
       this.manualGuides = currentSheet.manualGuides ? JSON.parse(JSON.stringify(currentSheet.manualGuides)) : { x: [], y: [] };
     }
 
@@ -384,7 +386,7 @@ export class PrintComposerModal {
   async mountSheetForExport(sheet) {
     this.paperSize = sheet.paperSize;
     this.showAbntMargins = sheet.showAbntMargins !== false;
-    this.items = JSON.parse(JSON.stringify(sheet.items || []));
+    this.items = PrintDrawing.cloneItems(sheet.items);
     this.manualGuides = sheet.manualGuides ? JSON.parse(JSON.stringify(sheet.manualGuides)) : { x: [], y: [] };
     this.updatePaperSheetDOM();
     this.canvasEngine?.renderManualGuides?.();
@@ -417,7 +419,7 @@ export class PrintComposerModal {
     this.clearTempStates();
     this.paperSize = sheet.paperSize;
     this.showAbntMargins = sheet.showAbntMargins !== false;
-    this.items = JSON.parse(JSON.stringify(sheet.items || []));
+    this.items = PrintDrawing.cloneItems(sheet.items);
     this.manualGuides = sheet.manualGuides ? JSON.parse(JSON.stringify(sheet.manualGuides)) : { x: [], y: [] };
     if (!keepSelection || !this.items.some(i => i.id === this.selectedItemId)) {
       this.selectedItemId = (this.items.find(i => i.type === 'map') || this.items[0])?.id || null;
@@ -917,8 +919,8 @@ export class PrintComposerModal {
       const evalText = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.text) : item.text;
       const evalTitle = this.atlas?.enabled ? this.atlas.evaluateExpressions(item.title) : item.title;
       return PrintItemsManager.renderTextBlock({ ...item, text: evalText, title: evalTitle });
-    } else if (item.type === 'shape') {
-      return PrintItemsManager.renderShape(item);
+    } else if (item.type === 'drawing') {
+      return PrintItemsManager.renderItemCanvas(item);
     } else if (item.type === 'image') {
       return PrintItemsManager.renderImage(item);
     } else if (item.type === 'label') {
@@ -1501,6 +1503,8 @@ export class PrintComposerModal {
         showBorder: item.showBorder !== false,
         bgOpacity: item.bgOpacity ?? 0.95
       });
+    } else if (item.type === 'drawing') {
+      PrintDrawing.paint(ctx, item, pxPerMm);
     } else if (item.type === 'title_block') {
       PrintTitleBlockRenderer.draw(ctx, {
         item,
@@ -1667,6 +1671,12 @@ export class PrintComposerModal {
     }
   }
 
+  /** Abre o editor do kit (<ui-canvas-prancha>) para o item Desenho */
+  openDrawingEditor(itemId) {
+    const item = this.items.find(i => i.id === itemId);
+    return item ? PrintDrawingEditor.open(this, item) : null;
+  }
+
   /** Ativa modo de desenho-criação na folha (arrastar retângulo) ou limpa para seleção normal */
   setPlacementTool(type = null) {
     const next = this.readOnly ? null : (type || null);
@@ -1825,6 +1835,7 @@ export class PrintComposerModal {
       item.height = customRect.height;
     }
     PrintItemsManager.clampItemToPaper(item, this.paperSize);
+    if (item.type === 'drawing') PrintDrawing.fillDefault(item);
     this.items.splice(PrintItemsManager.insertionIndex(this.items, item.type), 0, item);
     if (this.canvasEngine?.placementType) this.setPlacementTool(null);
     this.renderAllItems();

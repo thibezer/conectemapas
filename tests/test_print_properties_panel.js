@@ -13,6 +13,7 @@ import assert from 'assert';
 import { PrintHistory } from '../src/components/PrintComposer/PrintHistory.js';
 import { PrintAlignmentHelper } from '../src/components/PrintComposer/PrintAlignmentHelper.js';
 import { PrintItemsManager } from '../src/components/PrintComposer/PrintItemsManager.js';
+import { PrintDrawing } from '../src/components/PrintComposer/PrintDrawing.js';
 import { PrintSheetsManager } from '../src/components/PrintComposer/PrintSheetsManager.js';
 import { PrintPropertiesPanel } from '../src/components/PrintComposer/PrintPropertiesPanel.js';
 import { PrintItemFields } from '../src/components/PrintComposer/PrintItemFields.js';
@@ -243,9 +244,9 @@ console.log('✔ Painel validado');
 console.log('6. insertionIndex...');
 const stack = PrintItemsManager.createDefaultItems('Projeto', paperSizes.A4_L);
 const lastMapIdx = stack.map(i => i.type).lastIndexOf('inset_map');
-assert.strictEqual(PrintItemsManager.insertionIndex(stack, 'shape'), lastMapIdx + 1, 'Moldura entra logo acima dos mapas');
+assert.strictEqual(PrintItemsManager.insertionIndex(stack, 'drawing'), lastMapIdx + 1, 'Desenho entra logo acima dos mapas');
 assert.strictEqual(PrintItemsManager.insertionIndex(stack, 'label'), stack.length, 'Demais elementos vão para a frente');
-assert.strictEqual(PrintItemsManager.insertionIndex([], 'shape'), 0);
+assert.strictEqual(PrintItemsManager.insertionIndex([], 'drawing'), 0);
 console.log('✔ insertionIndex validado');
 
 // ============================================================================
@@ -392,23 +393,24 @@ assert.strictEqual(PrintItemsManager.parseColor('blue'), null);
 assert.strictEqual(PrintItemsManager.toRgba('#ff8000', 0.25), 'rgba(255, 128, 0, 0.25)');
 assert.strictEqual(PrintItemsManager.toRgba('#ff8000', 7), 'rgba(255, 128, 0, 1)', 'Opacidade limitada a 1');
 
-const evilShape = PrintItemsManager.renderShape({ fillColor: 'red;"><img src=x onerror=alert(1)>', strokeColor: '#00f', strokeWidth: '2' });
-assert.ok(!evilShape.includes('onerror') && !evilShape.includes('<img'), 'Forma não injeta HTML pela cor');
-assert.ok(evilShape.includes('border: 2px solid #00f'));
+const evilShape = PrintDrawing.migrateShape({ id: 'ev', type: 'shape', fillColor: 'red;"><img src=x onerror=alert(1)>', strokeColor: '#00f', strokeWidth: '2', x: 0, y: 0, width: 40, height: 30 });
+const evilJson = JSON.stringify(evilShape.elements);
+assert.ok(!evilJson.includes('onerror') && !evilJson.includes('<img'), 'A migração não leva HTML pela cor');
+assert.strictEqual(evilShape.elements[0].aparencia.traco.cor, '#0000ff', 'A cor do contorno é preservada (#00f)');
 const evilLabel = PrintItemsManager.renderLabel({ text: 'X', textColor: 'x;position:fixed', textAlign: 'left;color:red', fontWeight: 'bold;x' });
 assert.ok(!evilLabel.includes('position:fixed') && !evilLabel.includes('color:red'), 'Rótulo não injeta estilo');
 
-const shapeItem2 = { ...PrintItemsManager.createNewItem('shape', 'P', 0), id: 'shape-1' };
+const shapeItem2 = PrintDrawing.fillDefault({ ...PrintItemsManager.createNewItem('drawing', 'P', 0), id: 'shape-1' });
 html = PrintPropertiesPanel.render({ items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
 const shapeCtx = { items: [shapeItem2], selectedItemId: 'shape-1', features: [], layers: [], paperSize: paperSizes.A4_L };
-assert.strictEqual(PrintItemFields.find(shapeItem2, shapeCtx, 'shape_fill').prop.valor, '#ffffff', 'Preenchimento usa o seletor de cor');
-assert.strictEqual(PrintItemFields.find(shapeItem2, shapeCtx, 'shape_fill_alpha').prop.valor, 40, 'Opacidade separada (0,4 → 40%)');
-// Trocar só a cor mantém a opacidade, e vice-versa; grava rgba()
-const shapeEdit = { ...shapeItem2 };
-PrintItemFields.find(shapeEdit, shapeCtx, 'shape_fill').apply(shapeEdit, '#ff0000');
-assert.strictEqual(shapeEdit.fillColor, 'rgba(255, 0, 0, 0.4)', 'Nova cor mantém a opacidade');
-PrintItemFields.find(shapeEdit, shapeCtx, 'shape_fill_alpha').apply(shapeEdit, 75);
-assert.strictEqual(shapeEdit.fillColor, 'rgba(255, 0, 0, 0.75)', 'Nova opacidade mantém a cor');
+assert.strictEqual(PrintItemFields.find(shapeItem2, shapeCtx, 'drawing_fill').prop.valor, '#ffffff', 'Preenchimento usa o seletor de cor');
+assert.strictEqual(PrintItemFields.find(shapeItem2, shapeCtx, 'drawing_fill_alpha').prop.valor, 40, 'Opacidade separada (0,4 → 40%)');
+// Trocar só a cor mantém a opacidade, e vice-versa (cor + opacidade nos elementos do kit)
+const shapeEdit = JSON.parse(JSON.stringify(shapeItem2));
+PrintItemFields.find(shapeEdit, shapeCtx, 'drawing_fill').apply(shapeEdit, '#ff0000');
+assert.deepStrictEqual([shapeEdit.elements[0].aparencia.preenchimento.cor, shapeEdit.elements[0].aparencia.preenchimento.opacidade], ['#ff0000', 0.4], 'Nova cor mantém a opacidade');
+PrintItemFields.find(shapeEdit, shapeCtx, 'drawing_fill_alpha').apply(shapeEdit, 75);
+assert.deepStrictEqual([shapeEdit.elements[0].aparencia.preenchimento.cor, shapeEdit.elements[0].aparencia.preenchimento.opacidade], ['#ff0000', 0.75], 'Nova opacidade mantém a cor');
 console.log('✔ Cores validadas');
 
 // ============================================================================
@@ -449,8 +451,8 @@ assert.ok(!paneHidden(html, 'item'), 'Aba inválida cai em Item');
 console.log('✔ Abas validadas');
 
 // Multisseleção: valor comum aparece, valores diferentes viram "Misto"
-const mA = { ...PrintItemsManager.createNewItem('shape', 'P', 0), id: 'm-a', x: 10, y: 20, width: 50, height: 30 };
-const mB = { ...PrintItemsManager.createNewItem('shape', 'P', 1), id: 'm-b', x: 10, y: 40, width: 50, height: 30 };
+const mA = PrintDrawing.fillDefault({ ...PrintItemsManager.createNewItem('drawing', 'P', 0), id: 'm-a', x: 10, y: 20, width: 50, height: 30 });
+const mB = PrintDrawing.fillDefault({ ...PrintItemsManager.createNewItem('drawing', 'P', 1), id: 'm-b', x: 10, y: 40, width: 50, height: 30 });
 html = PrintPropertiesPanel.render({ items: [mA, mB], selectedItemIds: new Set(['m-a', 'm-b']), selectedItemId: null, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true });
 const multiComposer = { items: [mA, mB], selectedItemIds: new Set(['m-a', 'm-b']), selectedItemId: null, features: [], layers: [], paperSize: paperSizes.A4_L, showAbntMargins: true };
 assert.ok(html.includes('id="print-item-props-panel"'), 'Seleção múltipla usa o painel de propriedades do kit');
@@ -466,7 +468,7 @@ const singleComposer = { items: [{ ...mA, name: 'Quadro', lockAspect: true }], s
 itemCats = PrintPropertiesPanel.buildItemCategories(singleComposer);
 const flat = itemCats.flatMap(c => c.propriedades);
 assert.deepStrictEqual(flat.slice(0, 6).map(p => p.id), ['item_name', 'item_x', 'item_y', 'item_w', 'item_h', 'item_lock_aspect'], 'Item único: nome, geometria e proporção primeiro');
-assert.ok(flat.some(p => p.id === 'shape_fill'), 'Depois vêm os campos do tipo (forma)');
+assert.ok(flat.some(p => p.id === 'drawing_fill'), 'Depois vêm os campos do tipo (desenho)');
 assert.strictEqual(flat.find(p => p.id === 'item_name').valor, 'Quadro');
 assert.strictEqual(flat.find(p => p.id === 'item_w').min, PrintItemsManager.MIN_ITEM_MM, 'Largura respeita o mínimo');
 assert.strictEqual(flat.find(p => p.id === 'item_x').max, paperSizes.A4_L.width, 'X limitado à folha');

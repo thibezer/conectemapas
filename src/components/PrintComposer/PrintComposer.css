@@ -500,12 +500,6 @@
   z-index: 95;
 }
 
-.cm-item-shape-box {
-  width: 100%;
-  height: 100%;
-  box-sizing: border-box;
-}
-
 .cm-item-image-box {
   width: 100%;
   height: 100%;

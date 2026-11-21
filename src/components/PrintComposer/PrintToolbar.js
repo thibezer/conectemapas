@@ -71,7 +71,7 @@ export const PRINT_INSERT_GROUPS = [
       { type: 'label', label: 'Título', icon: 'title', quick: true },
       { type: 'text_block', label: 'Notas', icon: 'notes' },
       { type: 'title_block', label: 'Selo ABNT', icon: 'stamp' },
-      { type: 'shape', label: 'Moldura', icon: 'frame' },
+      { type: 'drawing', label: 'Desenho / moldura', icon: 'frame' },
       { type: 'image', label: 'Logo', icon: 'image' }
     ]
   }

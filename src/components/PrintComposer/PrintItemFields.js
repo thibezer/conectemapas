@@ -16,6 +16,7 @@
    ========================================================================== */
 
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintDrawing } from './PrintDrawing.js';
 import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
 import { PrintViewResolver } from './PrintViewResolver.js';
 import { PrintFonts } from './PrintFonts.js';
@@ -74,7 +75,7 @@ export class PrintItemFields {
     } else if (type === 'legend') this.legendFields(item, composer, { text, check, color, select, number, font });
     else if (type === 'table_vertices') this.verticesFields(item, composer, { text, check, color, select, number, action });
     else if (type === 'text_block') this.textBlockFields(item, { text, check, color, select, number, font, action });
-    else if (type === 'shape') this.shapeFields(item, { color, select, number });
+    else if (type === 'drawing') this.drawingFields(item, composer, { color, select, number, action });
     else if (type === 'image') {
       const C = 'imagem', T = 'Imagem';
       select(C, T, 'image_fit', 'Enquadramento', item.objectFit || 'contain', options([['contain', 'Conter (manter proporção)'], ['cover', 'Preencher (cortar excesso)']]), (it, v) => { it.objectFit = v; });
@@ -295,25 +296,28 @@ export class PrintItemFields {
     check(K, KT, 'text_border', 'Borda ao redor', item.showBorder !== false, (it, v) => { it.showBorder = Boolean(v); });
   }
 
-  // --- Forma ------------------------------------------------------------------------------------
-  static shapeFields(item, { color, select, number }) {
-    const C = 'forma', T = 'Forma';
-    const stype = item.shapeType || 'rect';
-    select(C, T, 'shape_type', 'Tipo de forma', stype, PrintItemsManager.SHAPE_TYPES.map(t => ({ id: t.value, rotulo: t.label })), (it, v) => { it.shapeType = v; });
-    if (stype === 'arrow') {
-      select(C, T, 'shape_arrowhead', 'Pontas da seta', item.arrowHead || 'end', options([['end', 'Ponta única (→)'], ['both', 'Dupla (↔)']]), (it, v) => { it.arrowHead = v; });
-    }
-    number(C, T, 'shape_rot', 'Rotação', num(item.rotation, 0), { min: -360, max: 360, unidade: '°' }, (it, v) => { it.rotation = num(v, 0); });
-    const A = 'forma_aparencia', AT = 'Aparência';
-    const fill = PrintItemsManager.parseColor(item.fillColor) || { hex: '#ffffff', alpha: 0.4 };
-    const curFill = (it) => PrintItemsManager.parseColor(it.fillColor) || { hex: '#ffffff', alpha: 0.4 };
-    color(A, AT, 'shape_fill', 'Cor de preenchimento', fill.hex, (it, v) => { it.fillColor = PrintItemsManager.toRgba(v, curFill(it).alpha); });
-    number(A, AT, 'shape_fill_alpha', 'Opacidade do preenchimento', Math.round(fill.alpha * 100), { min: 0, max: 100, passo: 5, unidade: '%' },
-      (it, v) => { it.fillColor = PrintItemsManager.toRgba(curFill(it).hex, Math.max(0, Math.min(100, num(v, 0))) / 100); });
-    color(A, AT, 'shape_stroke', 'Cor do contorno', colorHex(item.strokeColor, '#000000'), (it, v) => { it.strokeColor = v; });
-    select(A, AT, 'shape_strokestyle', 'Estilo do traço', item.strokeStyle || 'solid', PrintItemsManager.STROKE_STYLES.map(s => ({ id: s.value, rotulo: s.label })), (it, v) => { it.strokeStyle = v; });
-    number(A, AT, 'shape_strokew', 'Espessura', item.strokeWidth == null ? 1.5 : num(item.strokeWidth, 0), { min: 0, max: 15, passo: 0.5, casasDecimais: 1, unidade: 'px' }, (it, v) => { it.strokeWidth = num(v, 0); });
-    number(A, AT, 'shape_radius', 'Raio dos cantos', num(item.borderRadius, 0), { min: 0, max: 60, unidade: 'px' }, (it, v) => { it.borderRadius = Math.max(0, num(v, 0)); });
+  // --- Desenho -----------------------------------------------------------------------------------
+  /**
+   * Desenho (elementos do kit): o editor do kit faz o trabalho pesado; aqui ficam a ação de abri-lo, a troca por uma
+   * pré-definição e a aparência em lote (vale para todos os elementos; a espessura muda por proporção).
+   */
+  static drawingFields(item, composer, { color, select, number, action }) {
+    const C = 'desenho', T = 'Desenho';
+    action(C, T, 'drawing_edit', 'Elementos do desenho', 'Editar desenho…', (c) => c.openDrawingEditor(item.id),
+      `${Array.isArray(item.elements) ? item.elements.length : 0} elemento(s) · duplo clique na folha também abre`);
+    select(C, T, 'drawing_preset', 'Substituir por forma pronta', '', [{ id: '', rotulo: '— escolher —' }, ...PrintDrawing.PRESETS.map(p => ({ id: p.value, rotulo: p.label }))],
+      (it, v) => { if (v) PrintDrawing.applyPreset(it, v); }, { transient: true });
+    const A = 'desenho_aparencia', AT = 'Aparência';
+    const st = PrintDrawing.styleOf(item);
+    color(A, AT, 'drawing_fill', 'Cor de preenchimento', st.fillHex, (it, v) => { PrintDrawing.applyStyle(it, PrintDrawing.styleOf(it).hasFill ? { fillHex: v } : { fillHex: v, fillAlpha: 0.4 }); });
+    number(A, AT, 'drawing_fill_alpha', 'Opacidade do preenchimento', Math.round(st.fillAlpha * 100), { min: 0, max: 100, passo: 5, unidade: '%' },
+      (it, v) => { PrintDrawing.applyStyle(it, { fillAlpha: Math.max(0, Math.min(100, num(v, 0))) / 100 }); });
+    color(A, AT, 'drawing_stroke', 'Cor do contorno', st.strokeColor, (it, v) => { PrintDrawing.applyStyle(it, { strokeColor: v }); });
+    select(A, AT, 'drawing_strokestyle', 'Estilo do traço', st.strokeStyle, options([
+      ['continuo', 'Contínua'], ['tracejado', 'Tracejada'], ['pontilhado', 'Pontilhada'], ['traco-ponto', 'Traço-ponto']
+    ]), (it, v) => { PrintDrawing.applyStyle(it, { strokeStyle: v }); });
+    number(A, AT, 'drawing_strokew', 'Espessura', Math.round(st.strokeMm * 100) / 100, { min: 0, max: 5, passo: 0.05, casasDecimais: 2, unidade: 'mm' },
+      (it, v) => { PrintDrawing.applyStyle(it, { strokeMm: Math.max(0, num(v, 0)), strokeColor: PrintDrawing.styleOf(it).strokeColor }); });
   }
 
   // --- Rótulo -----------------------------------------------------------------------------------

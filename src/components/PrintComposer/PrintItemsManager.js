@@ -52,11 +52,11 @@ export class PrintItemsManager {
   static DEFAULT_LEGEND_TITLE = 'LEGENDA CONVENCIONAL';
 
   /**
-   * Posição de inserção na pilha (fim = frente). Moldura entra logo acima dos mapas,
+   * Posição de inserção na pilha (fim = frente). O desenho entra logo acima dos mapas,
    * para não cobrir os demais elementos; o resto vai para a frente.
    */
   static insertionIndex(items = [], type) {
-    if (type !== 'shape') return items.length;
+    if (type !== 'drawing') return items.length;
     let lastMap = -1;
     items.forEach((it, i) => { if (it.type === 'map' || it.type === 'inset_map') lastMap = i; });
     return lastMap + 1;
@@ -73,37 +73,6 @@ export class PrintItemsManager {
     item.x = Math.min(paper.width - item.width, Math.max(0, num(item.x, 0)));
     item.y = Math.min(paper.height - item.height, Math.max(0, num(item.y, 0)));
     return item;
-  }
-
-  /** Catálogo de formas geométricas suportadas no item `shape` */
-  static SHAPE_TYPES = [
-    { value: 'rect', label: 'Retângulo' },
-    { value: 'rounded_rect', label: 'Retângulo arredondado' },
-    { value: 'double_frame', label: 'Moldura dupla (ABNT)' },
-    { value: 'ellipse', label: 'Elipse / Círculo' },
-    { value: 'triangle', label: 'Triângulo' },
-    { value: 'diamond', label: 'Losango' },
-    { value: 'line_h', label: 'Linha horizontal' },
-    { value: 'line_v', label: 'Linha vertical' },
-    { value: 'line_diag', label: 'Linha diagonal' },
-    { value: 'arrow', label: 'Seta indicativa / Chamada' }
-  ];
-
-  /** Estilos de traço suportados em formas e contornos */
-  static STROKE_STYLES = [
-    { value: 'solid', label: 'Contínua' },
-    { value: 'dashed', label: 'Tracejada' },
-    { value: 'dotted', label: 'Pontilhada' },
-    { value: 'dash_dot', label: 'Traço-ponto' }
-  ];
-
-  /** Padrão de tracejado (em px) proporcional à espessura da linha */
-  static strokeDashArray(style = 'solid', strokeWidth = 1.5) {
-    const w = Math.max(1, Number(strokeWidth) || 1);
-    if (style === 'dashed') return [w * 4.5, w * 2.5];
-    if (style === 'dotted') return [w * 1.1, w * 2];
-    if (style === 'dash_dot') return [w * 5, w * 2, w * 1.1, w * 2];
-    return [];
   }
 
   /**
@@ -666,8 +635,8 @@ export class PrintItemsManager {
     `;
   }
 
-  /** Itens desenhados em canvas pelo mesmo código da exportação (legenda e carimbo) */
-  static CANVAS_ITEM_TYPES = new Set(['legend', 'title_block']);
+  /** Itens desenhados em canvas pelo mesmo código da exportação (legenda, carimbo e desenho) */
+  static CANVAS_ITEM_TYPES = new Set(['legend', 'title_block', 'drawing']);
 
   /** Legenda e carimbo na tela: um canvas (desenhado pelo compositor, igual à exportação) */
   static renderItemCanvas(item) {
@@ -1079,82 +1048,6 @@ export class PrintItemsManager {
           </div>
         ` : ''}
       </div>
-    `;
-  }
-
-  /**
-   * Renderiza a Moldura / Forma Geométrica Técnica (retângulo, moldura dupla, elipse, triângulo, losango, linhas e setas)
-   */
-  static renderShape(item) {
-    const fill = this.sanitizeColor(item.fillColor, 'rgba(255, 255, 255, 0.5)');
-    const stroke = this.sanitizeColor(item.strokeColor, '#000000');
-    const strokeW = item.strokeWidth == null || item.strokeWidth === '' ? 1.5 : (Number(item.strokeWidth) || 0);
-    const radius = Number(item.borderRadius) || 0;
-    const shapeType = item.shapeType || 'rect';
-    const strokeStyle = item.strokeStyle || 'solid';
-    const rot = Number(item.rotation) || 0;
-    const rotCss = rot ? `transform: rotate(${rot}deg); ` : '';
-
-    if ((shapeType === 'rect' || shapeType === 'rounded_rect') && strokeStyle !== 'dash_dot') {
-      const effRadius = shapeType === 'rounded_rect' && radius === 0 ? 8 : radius;
-      const cssStyle = strokeStyle === 'dashed' ? 'dashed' : strokeStyle === 'dotted' ? 'dotted' : 'solid';
-      return `
-      <div class="cm-item-shape-box" style="${rotCss}width: 100%; height: 100%; background: ${fill}; border: ${strokeW}px ${cssStyle} ${stroke}; border-radius: ${effRadius}px; box-sizing: border-box;"></div>
-    `;
-    }
-
-    if (shapeType === 'double_frame') {
-      const gap = Math.max(2, strokeW * 2);
-      const cssStyle = strokeStyle === 'dashed' ? 'dashed' : strokeStyle === 'dotted' ? 'dotted' : 'solid';
-      return `
-        <div class="cm-item-shape-box cm-item-shape-double" style="${rotCss}width: 100%; height: 100%; background: ${fill}; border: ${strokeW}px ${cssStyle} ${stroke}; border-radius: ${radius}px; padding: ${gap}px; box-sizing: border-box;">
-          <div style="width: 100%; height: 100%; border: ${Math.max(0.75, strokeW * 0.55)}px ${cssStyle} ${stroke}; border-radius: ${Math.max(0, radius - gap)}px; box-sizing: border-box;"></div>
-        </div>
-      `;
-    }
-
-    const wPx = Math.max(10, (Number(item.width) || 40) * 3.78);
-    const hPx = Math.max(10, (Number(item.height) || 30) * 3.78);
-    const pad = Math.max(1, strokeW);
-    const dashArr = this.strokeDashArray(strokeStyle, strokeW);
-    const dashAttr = dashArr.length ? ` stroke-dasharray="${dashArr.join(' ')}"` : '';
-    const strokeAttrs = `stroke="${stroke}" stroke-width="${strokeW}" stroke-linecap="round" stroke-linejoin="round"${dashAttr}`;
-    let innerSvg = '';
-
-    if (shapeType === 'rect' || shapeType === 'rounded_rect') {
-      const r = shapeType === 'rounded_rect' && radius === 0 ? 8 : radius;
-      innerSvg = `<rect x="${pad / 2}" y="${pad / 2}" width="${wPx - pad}" height="${hPx - pad}" rx="${r}" ry="${r}" fill="${fill}" ${strokeAttrs}/>`;
-    } else if (shapeType === 'ellipse') {
-      innerSvg = `<ellipse cx="${wPx / 2}" cy="${hPx / 2}" rx="${Math.max(1, (wPx - pad) / 2)}" ry="${Math.max(1, (hPx - pad) / 2)}" fill="${fill}" ${strokeAttrs}/>`;
-    } else if (shapeType === 'triangle') {
-      const pts = `${wPx / 2},${pad} ${wPx - pad},${hPx - pad} ${pad},${hPx - pad}`;
-      innerSvg = `<polygon points="${pts}" fill="${fill}" ${strokeAttrs}/>`;
-    } else if (shapeType === 'diamond') {
-      const pts = `${wPx / 2},${pad} ${wPx - pad},${hPx / 2} ${wPx / 2},${hPx - pad} ${pad},${hPx / 2}`;
-      innerSvg = `<polygon points="${pts}" fill="${fill}" ${strokeAttrs}/>`;
-    } else if (shapeType === 'line_h') {
-      innerSvg = `<line x1="${pad}" y1="${hPx / 2}" x2="${wPx - pad}" y2="${hPx / 2}" ${strokeAttrs}/>`;
-    } else if (shapeType === 'line_v') {
-      innerSvg = `<line x1="${wPx / 2}" y1="${pad}" x2="${wPx / 2}" y2="${hPx - pad}" ${strokeAttrs}/>`;
-    } else if (shapeType === 'line_diag') {
-      innerSvg = `<line x1="${pad}" y1="${hPx - pad}" x2="${wPx - pad}" y2="${pad}" ${strokeAttrs}/>`;
-    } else if (shapeType === 'arrow') {
-      const head = Math.min(Math.min(wPx, hPx) * 0.45, Math.max(8, strokeW * 4.5));
-      const cy = hPx / 2;
-      const x1 = pad;
-      const x2 = Math.max(pad + head + 2, wPx - pad);
-      const wingY = Math.min(cy - pad * 0.5, head * 0.65);
-      innerSvg = `<line x1="${x1}" y1="${cy}" x2="${x2 - head * 0.6}" y2="${cy}" ${strokeAttrs}/>`
-        + `<polygon points="${x2},${cy} ${x2 - head},${cy - wingY} ${x2 - head},${cy + wingY}" fill="${stroke}" stroke="${stroke}" stroke-width="0.5"/>`
-        + (item.arrowHead === 'both'
-          ? `<polygon points="${x1},${cy} ${x1 + head},${cy - wingY} ${x1 + head},${cy + wingY}" fill="${stroke}" stroke="${stroke}" stroke-width="0.5"/>`
-          : '');
-    }
-
-    return `
-      <svg class="cm-item-shape-svg" viewBox="0 0 ${wPx.toFixed(1)} ${hPx.toFixed(1)}" width="100%" height="100%" style="${rotCss}overflow: visible; display: block;">
-        ${innerSvg}
-      </svg>
     `;
   }
 
@@ -1833,21 +1726,20 @@ export class PrintItemsManager {
           visible: true,
           targetFeatureId: null
         };
-      case 'shape':
+      case 'drawing':
+        // Os elementos (kit) nascem em `PrintDrawing.fillDefault`, já na medida final do item
         return {
-          id: `item-shape-${ts}`,
-          type: 'shape',
-          name: 'Moldura Técnica',
+          id: `item-drawing-${ts}`,
+          type: 'drawing',
+          name: 'Desenho',
           x: 25,
           y: 20,
           width: 70,
           height: 45,
           locked: false,
           visible: true,
-          fillColor: 'rgba(255, 255, 255, 0.4)',
-          strokeColor: '#000000',
-          strokeWidth: 1.5,
-          borderRadius: 0
+          elements: [],
+          base: { width: 70, height: 45 }
         };
       case 'image':
         return {

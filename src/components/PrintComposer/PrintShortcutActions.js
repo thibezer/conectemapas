@@ -8,25 +8,35 @@
 import { PrintAlignmentHelper } from './PrintAlignmentHelper.js';
 import { PrintToolbar } from './PrintToolbar.js';
 import { PrintShortcuts } from './PrintShortcuts.js';
+import { PrintDrawing } from './PrintDrawing.js';
 
 /** Itens com traço personalizável: espessura padrão quando vazia e limite (mesmos do painel). */
 const STROKE_RULES = {
-  shape: { fallback: 1.5, max: 15 },
+  drawing: { mm: true },
   image: { fallback: 0, max: 10 },
   label: { fallback: 0, max: 8 }
 };
 export const STROKE_STEP = 0.5;
+const STROKE_MM_STEP = 0.1;
 const DOUBLE_TAP_MS = 600;
 
 let lastLayoutKeyAt = 0;
 
 export class PrintShortcutActions {
-  /** Aumenta/diminui a espessura da linha dos itens selecionados (shape, imagem, título). */
+  /** Aumenta/diminui a espessura da linha dos itens selecionados (desenho, imagem, título). */
   static changeStroke(composer, direction) {
     const targets = (composer.getSelectedItems?.() || []).filter(i => !i.locked && STROKE_RULES[i.type]);
     if (!targets.length) return false;
     let changed = false;
     targets.forEach(it => {
+      // Desenho: espessura em mm nos elementos (0,1 mm por toque), não em px do item
+      if (it.type === 'drawing') {
+        if (PrintDrawing.nudgeStroke(it, direction * STROKE_MM_STEP)) {
+          composer.refreshItemContent?.(it);
+          changed = true;
+        }
+        return;
+      }
       const rule = STROKE_RULES[it.type];
       const raw = it.strokeWidth;
       const current = raw == null || raw === '' ? rule.fallback : (Number(raw) || 0);

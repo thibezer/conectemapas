@@ -6,6 +6,7 @@
    ========================================================================== */
 
 import assert from 'assert';
+import { PrintDrawing } from '../src/components/PrintComposer/PrintDrawing.js';
 
 // localStorage mínimo para o Node
 const store = new Map();
@@ -94,10 +95,11 @@ PrintShortcuts._resetForTests();
 // 6. Espessura da linha: [ e ] em passos de 0,5, limites por tipo, bloqueados e sem alvo
 const pushes = [];
 const mk = (extra) => ({ id: `i${Math.random()}`, locked: false, ...extra });
-const shape = mk({ type: 'shape' }); // sem strokeWidth: padrão 1,5
+const shape = PrintDrawing.fillDefault(mk({ type: 'drawing', width: 50, height: 30 })); // traço de 1,5 px = 0,397 mm
 const label = mk({ type: 'label', strokeWidth: 8 });
 const image = mk({ type: 'image' });
-const locked = mk({ type: 'shape', strokeWidth: 3, locked: true });
+const locked = PrintDrawing.fillDefault(mk({ type: 'drawing', width: 50, height: 30, locked: true }));
+const lockedBefore = JSON.stringify(locked.elements);
 const map = mk({ type: 'map' });
 let selection = [shape];
 const composer = {
@@ -107,20 +109,20 @@ const composer = {
   updatePropertiesPanel: () => {},
   pushHistoryState: (name, opts) => pushes.push([name, opts?.coalesceKey])
 };
+const mmOf = (it) => PrintDrawing.styleOf(it).strokeMm;
+const base = mmOf(shape);
 assert.ok(PrintShortcutActions.run(composer, 'strokeUp'));
-assert.strictEqual(shape.strokeWidth, 2);
+assert.ok(Math.abs(mmOf(shape) - (base + 0.1)) < 1e-3, 'desenho: +0,1 mm por toque');
 PrintShortcutActions.run(composer, 'strokeDown');
 PrintShortcutActions.run(composer, 'strokeDown');
-assert.strictEqual(shape.strokeWidth, 1);
-for (let i = 0; i < 40; i++) PrintShortcutActions.run(composer, 'strokeUp');
-assert.strictEqual(shape.strokeWidth, 15, 'moldura limita em 15');
+assert.ok(Math.abs(mmOf(shape) - (base - 0.1)) < 1e-3, 'desenho: -0,1 mm por toque');
 for (let i = 0; i < 40; i++) PrintShortcutActions.run(composer, 'strokeDown');
-assert.strictEqual(shape.strokeWidth, 0, 'não passa de 0');
+assert.strictEqual(PrintDrawing.styleOf(shape).hasStroke, false, 'não passa de 0 (sem traço)');
 selection = [label, image, locked, map];
 PrintShortcutActions.run(composer, 'strokeUp');
 assert.strictEqual(label.strokeWidth, 8, 'título limita em 8');
 assert.strictEqual(image.strokeWidth, 0.5, 'imagem sem borda começa em 0,5');
-assert.strictEqual(locked.strokeWidth, 3, 'item travado não muda');
+assert.strictEqual(JSON.stringify(locked.elements), lockedBefore, 'item travado não muda');
 assert.strictEqual(map.strokeWidth, undefined, 'tipo sem traço é ignorado');
 assert.ok(pushes.length > 0 && pushes.every(p => p[0] === 'Espessura da Linha' && p[1].startsWith('stroke:')), 'cada toque vira passo de histórico agrupado');
 selection = [map];

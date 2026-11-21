@@ -9,6 +9,7 @@ import { jsPDF } from 'jspdf';
 import { UIToast } from '@thibezer/ui-components-kit';
 import { notifyProgress } from '../../utils/toastHelpers.js';
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintDrawing } from './PrintDrawing.js';
 import { PrintMapRenderer } from './PrintMapRenderer.js';
 import { PrintCanvasEngine } from './PrintCanvasEngine.js';
 import { PrintTitleBlockRenderer } from './PrintTitleBlockRenderer.js';
@@ -253,8 +254,8 @@ export class PrintExporter {
         this.drawTextBlockItem(ctx, item, x, y, w, h, composer, scaleFactor);
       } else if (item.type === 'legend') {
         this.drawLegendItem(ctx, item, x, y, w, h, composer, scaleFactor);
-      } else if (item.type === 'shape') {
-        this.drawShapeItem(ctx, item, x, y, w, h, scaleFactor);
+      } else if (item.type === 'drawing') {
+        this.drawDrawingItem(ctx, item, x, y, scaleFactor);
       } else if (item.type === 'image') {
         await this.drawImageItem(ctx, item, x, y, w, h, scaleFactor);
       } else if (item.type === 'label') {
@@ -957,149 +958,17 @@ export class PrintExporter {
     ctx.restore();
   }
 
-  /** Traça caminho de retângulo arredondado compatível com Canvas 2D e PdfVectorContext */
-  static _traceRoundedRect(ctx, x, y, w, h, r) {
-    const rad = Math.max(0, Math.min(r, w / 2, h / 2));
-    if (rad <= 0 || typeof ctx.quadraticCurveTo !== 'function') {
-      ctx.rect(x, y, w, h);
-      return;
-    }
-    ctx.moveTo(x + rad, y);
-    ctx.lineTo(x + w - rad, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
-    ctx.lineTo(x + w, y + h - rad);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
-    ctx.lineTo(x + rad, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
-    ctx.lineTo(x, y + rad);
-    ctx.quadraticCurveTo(x, y, x + rad, y);
-    ctx.closePath();
-  }
-
-  /** Traça caminho de elipse com 4 curvas Bézier cúbicas (sem depender de ctx.ellipse) */
-  static _traceEllipse(ctx, cx, cy, rx, ry) {
-    if (typeof ctx.bezierCurveTo !== 'function') {
-      ctx.arc(cx, cy, Math.min(rx, ry), 0, Math.PI * 2);
-      return;
-    }
-    const ox = rx * 0.5522848;
-    const oy = ry * 0.5522848;
-    ctx.moveTo(cx - rx, cy);
-    ctx.bezierCurveTo(cx - rx, cy - oy, cx - ox, cy - ry, cx, cy - ry);
-    ctx.bezierCurveTo(cx + ox, cy - ry, cx + rx, cy - oy, cx + rx, cy);
-    ctx.bezierCurveTo(cx + rx, cy + oy, cx + ox, cy + ry, cx, cy + ry);
-    ctx.bezierCurveTo(cx - ox, cy + ry, cx - rx, cy + oy, cx - rx, cy);
-    ctx.closePath();
-  }
-
   /**
-   * Renderiza Forma Geométrica / Moldura Técnica
+   * Desenho (elementos do kit): o MESMO pintor da tela, no contexto do PDF/PNG. O pintor define a própria matriz
+   * (`setTransform`, relativa ao espaço de exportação), então não depende do `translate` do contexto.
    */
-  static drawShapeItem(ctx, item, x, y, w, h, scaleFactor = PrintCanvasEngine.BASE_PX_PER_MM) {
-    const k = (Number(scaleFactor) || PrintCanvasEngine.BASE_PX_PER_MM) / PrintCanvasEngine.BASE_PX_PER_MM;
-    const fill = PrintItemsManager.sanitizeColor(item.fillColor, 'rgba(255, 255, 255, 0.5)');
-    const stroke = PrintItemsManager.sanitizeColor(item.strokeColor, '#000000');
-    const rawW = item.strokeWidth == null || item.strokeWidth === '' ? 1.5 : (Number(item.strokeWidth) || 0);
-    const lw = rawW * k;
-    const shapeType = item.shapeType || 'rect';
-    const strokeStyle = item.strokeStyle || 'solid';
-    const radius = (Number(item.borderRadius) || (shapeType === 'rounded_rect' ? 8 : 0)) * k;
-    const rot = Number(item.rotation) || 0;
-
+  static drawDrawingItem(ctx, item, x, y, scaleFactor) {
     ctx.save();
-    if (rot) {
-      ctx.translate(x + w / 2, y + h / 2);
-      ctx.rotate((rot * Math.PI) / 180);
-      ctx.translate(-(x + w / 2), -(y + h / 2));
-    }
-
-    ctx.fillStyle = fill;
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = lw;
-
-    if (shapeType === 'rect' && strokeStyle === 'solid' && radius <= 0 && !rot) {
-      ctx.fillRect(x, y, w, h);
-      if (lw > 0) ctx.strokeRect(x, y, w, h);
+    try {
+      PrintDrawing.paint(ctx, item, scaleFactor, { x, y });
+    } finally {
       ctx.restore();
-      return;
     }
-
-    const dash = PrintItemsManager.strokeDashArray(strokeStyle, lw);
-    if (typeof ctx.setLineDash === 'function') ctx.setLineDash(dash);
-
-    if (shapeType === 'rect' || shapeType === 'rounded_rect' || shapeType === 'double_frame') {
-      ctx.beginPath();
-      this._traceRoundedRect(ctx, x, y, w, h, radius);
-      ctx.fill();
-      if (lw > 0) ctx.stroke();
-      if (shapeType === 'double_frame' && lw > 0) {
-        const gap = Math.max(2 * k, lw * 2);
-        const ix = x + gap;
-        const iy = y + gap;
-        const iw = w - gap * 2;
-        const ih = h - gap * 2;
-        if (iw > 2 && ih > 2) {
-          ctx.beginPath();
-          ctx.lineWidth = Math.max(0.75 * k, lw * 0.55);
-          this._traceRoundedRect(ctx, ix, iy, iw, ih, Math.max(0, radius - gap));
-          ctx.stroke();
-        }
-      }
-    } else if (shapeType === 'ellipse') {
-      ctx.beginPath();
-      this._traceEllipse(ctx, x + w / 2, y + h / 2, Math.max(1, (w - lw) / 2), Math.max(1, (h - lw) / 2));
-      ctx.fill();
-      if (lw > 0) ctx.stroke();
-    } else if (shapeType === 'triangle' || shapeType === 'diamond') {
-      const pad = Math.max(1, lw);
-      const pts = shapeType === 'triangle'
-        ? [[x + w / 2, y + pad], [x + w - pad, y + h - pad], [x + pad, y + h - pad]]
-        : [[x + w / 2, y + pad], [x + w - pad, y + h / 2], [x + w / 2, y + h - pad], [x + pad, y + h / 2]];
-      ctx.beginPath();
-      pts.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
-      ctx.closePath();
-      ctx.fill();
-      if (lw > 0) ctx.stroke();
-    } else if (shapeType === 'line_h' || shapeType === 'line_v' || shapeType === 'line_diag') {
-      const pad = Math.max(1, lw);
-      const [x1, y1, x2, y2] = shapeType === 'line_h'
-        ? [x + pad, y + h / 2, x + w - pad, y + h / 2]
-        : shapeType === 'line_v'
-          ? [x + w / 2, y + pad, x + w / 2, y + h - pad]
-          : [x + pad, y + h - pad, x + w - pad, y + pad];
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      if (lw > 0) ctx.stroke();
-    } else if (shapeType === 'arrow') {
-      const pad = Math.max(1, lw);
-      const head = Math.min(Math.min(w, h) * 0.45, Math.max(8 * k, lw * 4.5));
-      const cy = y + h / 2;
-      const x1 = x + pad;
-      const x2 = Math.max(x1 + head + 2, x + w - pad);
-      const wingY = Math.min((h / 2) - pad * 0.5, head * 0.65);
-      ctx.beginPath();
-      ctx.moveTo(x1, cy);
-      ctx.lineTo(x2 - head * 0.6, cy);
-      if (lw > 0) ctx.stroke();
-      if (typeof ctx.setLineDash === 'function') ctx.setLineDash([]);
-      ctx.fillStyle = stroke;
-      ctx.beginPath();
-      ctx.moveTo(x2, cy);
-      ctx.lineTo(x2 - head, cy - wingY);
-      ctx.lineTo(x2 - head, cy + wingY);
-      ctx.closePath();
-      ctx.fill();
-      if (item.arrowHead === 'both') {
-        ctx.beginPath();
-        ctx.moveTo(x1, cy);
-        ctx.lineTo(x1 + head, cy - wingY);
-        ctx.lineTo(x1 + head, cy + wingY);
-        ctx.closePath();
-        ctx.fill();
-      }
-    }
-    ctx.restore();
   }
 
   /**

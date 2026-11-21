@@ -5,6 +5,7 @@
    ========================================================================== */
 
 import { PrintItemsManager } from './PrintItemsManager.js';
+import { PrintDrawing } from './PrintDrawing.js';
 import { PrintToolbar } from './PrintToolbar.js';
 import { UIToast } from '@thibezer/ui-components-kit';
 
@@ -62,7 +63,7 @@ export class PrintSheetsManager {
     const cur = this.getCurrentSheet();
     if (cur) {
       if (!this.composer.items || this.composer.items.length === 0) {
-        this.composer.items = JSON.parse(JSON.stringify(cur.items || []));
+        this.composer.items = PrintDrawing.cloneItems(cur.items);
       }
       this.composer.manualGuides = cur.manualGuides ? JSON.parse(JSON.stringify(cur.manualGuides)) : { x: [], y: [] };
     }
@@ -139,7 +140,7 @@ export class PrintSheetsManager {
     // Carrega na UI do compositor
     this.composer.paperSize = target.paperSize;
     this.composer.showAbntMargins = target.showAbntMargins !== false;
-    this.composer.items = JSON.parse(JSON.stringify(target.items || []));
+    this.composer.items = PrintDrawing.cloneItems(target.items);
     this.composer.manualGuides = target.manualGuides ? JSON.parse(JSON.stringify(target.manualGuides)) : { x: [], y: [] };
     this.composer.selectedItemId = (this.composer.items.find(i => i.type === 'map') || this.composer.items[0])?.id || null;
     // O histórico é de cada prancha: desfazer não pode trazer itens da prancha anterior
@@ -324,7 +325,7 @@ export class PrintSheetsManager {
       const target = this.sheets[nextIndex];
       this.composer.paperSize = target.paperSize;
       this.composer.showAbntMargins = target.showAbntMargins !== false;
-      this.composer.items = JSON.parse(JSON.stringify(target.items || []));
+      this.composer.items = PrintDrawing.cloneItems(target.items);
       this.composer.manualGuides = target.manualGuides ? JSON.parse(JSON.stringify(target.manualGuides)) : { x: [], y: [] };
       this.composer.selectedItemId = this.composer.items[0]?.id || null;
       this.composer.resetHistory?.();

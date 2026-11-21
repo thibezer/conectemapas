@@ -559,6 +559,9 @@ export class PrintCanvasEngine {
       } else if (item.type === 'image') {
         this.composer.selectItem(item.id);
         document.getElementById('prop-image-file')?.click();
+      } else if (item.type === 'drawing') {
+        this.composer.selectItem(item.id);
+        this.composer.openDrawingEditor(item.id);
       }
     };
 
@@ -801,6 +804,8 @@ export class PrintCanvasEngine {
 
     this.keyDownHandler = (e) => {
       if (!this.composer.isOpen) return;
+      // Editor de desenho aberto: as teclas são dele (o kit trata Delete, Ctrl+Z, setas...), não da prancheta
+      if (this.composer.drawingEditor?.isOpen?.()) return;
 
       // Salvaguarda: NUNCA intercepta teclas quando o foco estiver em campos de input ou texto (Regra GEMINI.md)
       const path = typeof e.composedPath === 'function' ? e.composedPath() : [e.target];

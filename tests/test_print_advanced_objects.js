@@ -15,6 +15,7 @@
 import assert from 'assert';
 import { register } from 'node:module';
 import { jsPDF } from 'jspdf';
+import { PrintDrawing } from '../src/components/PrintComposer/PrintDrawing.js';
 
 // Stub para imports .css e globals mínimos do Leaflet / ui-kit ao carregar módulos de UI no Node
 globalThis.window = globalThis;
@@ -66,37 +67,29 @@ const samplePolygon = {
 };
 const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f766e' }];
 
-// 1. Todas as 10 formas geométricas e 4 estilos de traço na tela + PDF vetorial
+// 1. Todas as 10 formas antigas (migradas para o Desenho do kit) e 4 estilos de traço: tela × PDF vetorial
 {
   const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [297, 210], compress: false });
   const vctx = new PdfVectorContext(pdf, { pxPerMm: PX });
-  for (const { value: shapeType } of PrintItemsManager.SHAPE_TYPES) {
-    for (const { value: strokeStyle } of PrintItemsManager.STROKE_STYLES) {
-      const item = {
-        id: `s-${shapeType}`,
-        type: 'shape',
-        shapeType,
-        strokeStyle,
+  const shapeTypes = ['rect', 'rounded_rect', 'double_frame', 'ellipse', 'triangle', 'diamond', 'line_h', 'line_v', 'line_diag', 'arrow'];
+  for (const shapeType of shapeTypes) {
+    for (const strokeStyle of ['solid', 'dashed', 'dotted', 'dash_dot']) {
+      const legacy = {
+        id: `s-${shapeType}`, type: 'shape', shapeType, strokeStyle,
         arrowHead: shapeType === 'arrow' ? 'both' : undefined,
-        strokeColor: '#1d4ed8',
-        strokeWidth: 2,
-        fillColor: 'rgba(59, 130, 246, 0.25)',
-        borderRadius: shapeType === 'rounded_rect' ? 8 : 0,
-        rotation: 15,
-        width: 50,
-        height: 30
+        strokeColor: '#1d4ed8', strokeWidth: 2, fillColor: 'rgba(59, 130, 246, 0.25)',
+        borderRadius: shapeType === 'rounded_rect' ? 8 : 0, rotation: 15, x: 10, y: 10, width: 50, height: 30
       };
-      const html = PrintItemsManager.renderShape(item);
-      assert.ok(html.length > 20, `renderShape deve gerar HTML para ${shapeType}/${strokeStyle}`);
-      if (['ellipse', 'triangle', 'diamond', 'line_h', 'line_v', 'line_diag', 'arrow'].includes(shapeType)) {
-        assert.ok(html.includes('<svg'), `shape ${shapeType} usa SVG vetorial na folha`);
-      }
-      PrintExporter.drawShapeItem(vctx, item, 100, 100, Math.round(50 * PX), Math.round(30 * PX), PX);
+      const item = PrintDrawing.migrateShape(legacy);
+      assert.strictEqual(item.type, 'drawing', `${shapeType} vira Desenho`);
+      assert.ok(item.elements.length >= 1 && !('shapeType' in item) && !('strokeWidth' in item), `${shapeType}: campos antigos saem do item`);
+      PrintExporter.drawDrawingItem(vctx, item, 100, 100, PX);
     }
   }
   const pdfStr = pdf.output();
   assert.ok(pdfStr.length > 1000, 'PdfVectorContext gera operadores PDF válidos para todas as formas');
-  console.log('✔ Formas geométricas avançadas (tela × PDF vetorial)');
+  assert.ok(pdfStr.includes(' m') && pdfStr.includes(' l') && pdfStr.includes('RG'), 'o PDF tem traços reais (vetorial)');
+  console.log('✔ Formas migradas para o Desenho (tela × PDF vetorial)');
 }
 
 // 2. Rosa dos ventos (5 estilos + cor) e Barra de escala (3 estilos + caixa)
@@ -340,7 +333,7 @@ const sampleLayers = [{ id: 'lote', name: 'Parcelas', visible: true, color: '#0f
 // 6. Validação do HTML gerado pelo PrintPropertiesPanel para todos os novos painéis
 {
   const panelItems = [
-    { id: '1', type: 'shape', shapeType: 'arrow', arrowHead: 'both', strokeStyle: 'dashed', name: 'Seta', x: 10, y: 10, width: 40, height: 20 },
+    PrintDrawing.migrateShape({ id: '1', type: 'shape', shapeType: 'arrow', arrowHead: 'both', strokeStyle: 'dashed', name: 'Seta', x: 10, y: 10, width: 40, height: 20 }),
     { id: '2', type: 'north_arrow', arrowStyle: 'star8', color: '#111111', name: 'Norte', x: 10, y: 10, width: 25, height: 25 },
     { id: '3', type: 'scale_bar', barStyle: 'double', showBox: true, name: 'Escala', x: 10, y: 10, width: 50, height: 25 },
     { id: '4', type: 'table_vertices', tableMode: 'vertices', crs: 'dms', name: 'Tabela', x: 10, y: 10, width: 80, height: 50 },

@@ -7,6 +7,7 @@
 import assert from 'assert';
 import { PrintItemFields } from '../src/components/PrintComposer/PrintItemFields.js';
 import { PrintItemsManager } from '../src/components/PrintComposer/PrintItemsManager.js';
+import { PrintDrawing } from '../src/components/PrintComposer/PrintDrawing.js';
 
 console.log('--- Teste dos campos por tipo do painel de Item ---');
 
@@ -14,7 +15,10 @@ const paper = { id: 'A4_L', name: 'A4 Paisagem', width: 297, height: 210 };
 const KIT_TYPES = new Set(['texto', 'numero', 'selecao', 'booleano', 'cor', 'acao', 'readonly']);
 const layers = [{ id: 'l1', name: 'Camada 1', visible: true }, { id: 'l2', name: 'Camada 2', visible: false }];
 const defaults = PrintItemsManager.createDefaultItems('Projeto', paper);
-const extra = ['shape', 'image', 'label', 'text_block', 'table_vertices'].map((t, i) => ({ ...PrintItemsManager.createNewItem(t, 'P', i), id: `x-${t}` }));
+const extra = ['drawing', 'image', 'label', 'text_block', 'table_vertices'].map((t, i) => {
+  const it = { ...PrintItemsManager.createNewItem(t, 'P', i), id: `x-${t}` };
+  return t === 'drawing' ? PrintDrawing.fillDefault(it) : it;
+});
 const items = [...defaults, ...extra];
 const composer = { items, layers, features: [], paperSize: paper, library: null, currentBasemap: 'esri_light', leafletMaps: new Map(), selectedItemId: null };
 
@@ -34,7 +38,7 @@ for (const it of items) {
     if (e.prop.tipo === 'cor') assert.match(e.prop.valor, /^#[0-9a-f]{6}$/, `${it.type}/${e.prop.id}: cor em #rrggbb`);
   });
 }
-['map', 'inset_map', 'north_arrow', 'scale_bar', 'legend', 'title_block', 'shape', 'image', 'label', 'text_block', 'table_vertices']
+['map', 'inset_map', 'north_arrow', 'scale_bar', 'legend', 'title_block', 'drawing', 'image', 'label', 'text_block', 'table_vertices']
   .forEach(t => assert.ok(PrintItemFields.build(items.find(i => i.type === t), composer).length > 0, `${t} tem campos`));
 console.log('✔ Contrato validado');
 
