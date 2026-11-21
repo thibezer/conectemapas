@@ -27,20 +27,12 @@
   white-space: nowrap;
 }
 
-.cm-de-bar-gap {
-  flex: 1 1 auto;
-}
-
 .cm-de-hint {
   font-size: 11px;
   opacity: 0.65;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.cm-de-preset {
-  min-width: 190px;
 }
 
 .cm-de-body {
@@ -51,32 +43,13 @@
   padding: 8px;
 }
 
-.cm-de-paleta {
-  flex: 0 0 auto;
-}
-
-.cm-de-canvas {
+.cm-de-editor {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   height: 100%;
 }
 
-.cm-de-side {
-  display: flex;
-  flex: 0 0 300px;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  min-height: 0;
-}
-
-.cm-de-props {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-
 @media (max-width: 900px) {
-  .cm-de-side { flex-basis: 220px; }
   .cm-de-hint { display: none; }
 }

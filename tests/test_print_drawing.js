@@ -9,6 +9,7 @@ import { PrintDrawing } from '../src/components/PrintComposer/PrintDrawing.js';
 import { PrintItemsManager } from '../src/components/PrintComposer/PrintItemsManager.js';
 import { PrintExporter } from '../src/components/PrintComposer/PrintExporter.js';
 import { PdfVectorContext } from '../src/components/PrintComposer/PdfVectorContext.js';
+import { diagnosticarContexto } from '@thibezer/ui-components-kit/prancha/nucleo';
 
 const PX = 3.78;
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -101,7 +102,7 @@ console.log('3. Esticar o item não muda a espessura...');
   const els = PrintDrawing.elementsFor(big);
   assert.ok(near(els[0].aparencia.traco.espessura, w), 'espessura do traço em mm intacta');
   const bb = PrintDrawing.contentBounds(els);
-  assert.ok(near(bb.width, (60 - w) * 2 + w, 0.01), `a geometria acompanha o item (${bb.width.toFixed(2)})`);
+  assert.ok(near(bb.width, 120, 0.01) && near(bb.height, 80, 0.01), `a geometria acompanha o item (${bb.width.toFixed(2)} x ${bb.height.toFixed(2)})`);
   assert.deepStrictEqual(d.elements, JSON.parse(JSON.stringify(d.elements)), 'nada é gravado nos elementos');
   assert.strictEqual(PrintDrawing.elementsFor(d), d.elements, 'sem mudança de tamanho: os mesmos elementos');
   // Item sem elementos / dados ruins não lançam
@@ -203,6 +204,12 @@ console.log('7. Pintura na tela e no PDF...');
   v.restore();
   assert.doesNotThrow(() => v.setTransform(NaN, 0, 0, 1, 0, 0), 'matriz inválida é ignorada');
 
+  // O contexto do PDF cumpre o contrato do pintor do kit (e a pintura não falha)
+  const diag = diagnosticarContexto(v);
+  assert.deepStrictEqual(diag.obrigatorios, [], 'PdfVectorContext tem tudo o que o pintor exige');
+  assert.strictEqual(diag.transformacao, 'absoluta');
+  const stPdf = PrintDrawing.paint(v, it, EXP, { x: 100, y: 100 });
+  assert.strictEqual(stPdf.falhas, 0, 'sem falhas ao pintar no PDF');
   PrintExporter.drawDrawingItem(v, it, 100, 100, EXP);
   v.finish();
   const out = pdf.output();
@@ -228,6 +235,41 @@ console.log('8. Painel do item...');
   PrintItemFields.find(edit, { items: [edit] }, 'drawing_preset').apply(edit, 'losango');
   assert.strictEqual(edit.elements[0].geometria.geometria.tipo, 'Polygon', 'trocar por losango');
   console.log('✔ Painel validado');
+}
+
+console.log('9. Dados vindos de fora e plano de pintura...');
+{
+  // Dado hostil (nuvem, outro operador): elementos inválidos e ids repetidos saem; o item não quebra
+  const good = PrintDrawing.fillDefault({ ...PrintItemsManager.createNewItem('drawing', 'P', 0), id: 'ok' });
+  const hostile = {
+    ...good, id: 'h', width: 50, height: 30, base: { width: 'x', height: -5 },
+    elements: [good.elements[0], good.elements[0], null, 42, { id: 'sem-geometria' }, { id: 'nan', geometria: { tipo: 'retangulo', largura: NaN, altura: 5 } }],
+    layers: 'não é lista'
+  };
+  const warn = console.warn; let warned = 0; console.warn = () => { warned++; };
+  const [clean] = PrintDrawing.migrateItems([hostile]);
+  console.warn = warn;
+  assert.strictEqual(clean.elements.length, 1, 'só o elemento válido, sem id repetido');
+  assert.ok(warned > 0, 'avisa o que foi descartado');
+  assert.deepStrictEqual(clean.base, { width: 50, height: 30 }, 'base inválida volta ao tamanho do item');
+  assert.ok(!('layers' in clean), 'camadas inválidas saem');
+  assert.deepStrictEqual(PrintDrawing.migrateItems([{ ...good, elements: 'x' }])[0].elements, [], 'elements que não é lista = vazio');
+  const many = { ...good, elements: Array.from({ length: 6000 }, (_, i) => ({ ...good.elements[0], id: 'e' + i })) };
+  console.warn = () => {};
+  assert.strictEqual(PrintDrawing.migrateItems([many])[0].elements.length, 5000, 'teto de elementos');
+  console.warn = warn;
+  assert.doesNotThrow(() => PrintDrawing.paint(counting().ctx, clean, 3.78));
+
+  // O plano é calculado uma vez por lista de elementos e tamanho (o zoom não replaneja)
+  const it = PrintDrawing.fillDefault({ ...PrintItemsManager.createNewItem('drawing', 'P', 0), id: 'pl', width: 60, height: 40 });
+  const p1 = PrintDrawing.planFor(it);
+  assert.strictEqual(PrintDrawing.planFor(it), p1, 'mesmo plano em chamadas seguidas (zoom/resolução)');
+  PrintDrawing.paint(counting().ctx, it, 3.78);
+  PrintDrawing.paint(counting().ctx, it, 11.81);
+  assert.strictEqual(PrintDrawing.planFor(it), p1, 'pintar em outra escala não invalida');
+  const resized = { ...it, width: 90 };
+  assert.notStrictEqual(PrintDrawing.planFor(resized), p1, 'mudar o tamanho do item replaneja');
+  console.log('✔ Dados de fora e plano validados');
 }
 
 console.log('🎉 Desenho da prancha: tudo certo');
