@@ -131,9 +131,9 @@ assert.strictEqual(mgr.deletePreset('nao-existe'), false);
 console.log('✔ Pré-definições validadas');
 
 // ============================================================================
-// 4. Painel da folha (<ui-painel-propriedades>), formatos custom e guias InDesign
+// 4. Painel da folha (<ui-tabela-propriedades>), formatos custom e guias InDesign
 // ============================================================================
-console.log('4. Painel da folha (<ui-painel-propriedades>), custom e guias...');
+console.log('4. Painel da folha (<ui-tabela-propriedades>), custom e guias...');
 
 // Formatos padrão e personalizados
 const customPaper = PrintItemsManager.customPaper(700.3, 450, A4);
@@ -186,7 +186,7 @@ const panelComposer = {
 };
 
 const html = PrintPropertiesPanel.render(panelComposer);
-assert.ok(html.includes('<ui-painel-propriedades'), 'Aba da folha renderiza o componente <ui-painel-propriedades> do kit');
+assert.ok(html.includes('<ui-tabela-propriedades'), 'Aba da folha renderiza o componente <ui-tabela-propriedades> do kit');
 assert.ok(html.includes('id="print-paper-props-panel"'), 'Id esperado no componente de propriedades da folha');
 assert.ok(html.includes('data-paper-id="A4_L"'));
 assert.ok(html.includes('data-margins-abnt="true"'));
@@ -216,7 +216,7 @@ assert.strictEqual(propById(cats, 'margin_left').valor, 30);
 assert.ok(propById(cats, 'reset_margins_abnt'), 'Margem personalizada oferece voltar à ABNT');
 assert.strictEqual(propById(cats, 'preset_delete'), null, 'Sem pré-definição correspondente, não exibe excluir');
 
-// syncPaperSection atualiza a instância viva de <ui-painel-propriedades> sem recriá-la
+// syncPaperSection atualiza a instância viva de <ui-tabela-propriedades> sem recriá-la
 const fakePanelEl = { dataset: {}, categorias: null, shadowRoot: null };
 PrintPropertiesPanel.syncPaperSection(fakePanelEl, panelComposer);
 assert.strictEqual(fakePanelEl.dataset.paperId, 'A4_L');

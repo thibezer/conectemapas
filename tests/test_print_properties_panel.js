@@ -423,7 +423,7 @@ const isOpen = (h, key) => new RegExp(`data-section="${key}"\\s+open`).test(h);
 
 html = PrintPropertiesPanel.render(secComposer);
 assert.ok(['items', 'item', 'atlas'].every(k => isOpen(html, k)), 'Sem preferência, todas as seções de acordeão abertas');
-assert.ok(html.includes('<ui-painel-propriedades'), 'Folha usa o componente <ui-painel-propriedades>');
+assert.ok(html.includes('<ui-tabela-propriedades'), 'Folha usa o componente <ui-tabela-propriedades>');
 
 secComposer.panelSections = { items: false };
 secComposer.selectedItemId = null; // a seção do item some...
@@ -616,7 +616,7 @@ html = PrintPropertiesPanel.render({ items: tbPanel, selectedItemId: tbItem2.id,
 const tbCtx = { items: tbPanel, selectedItemId: tbItem2.id, features: [], layers: [], paperSize: paperSizes.A4_L };
 assert.strictEqual(PrintItemFields.find(tbItem2, tbCtx, 'tb_scale').prop.valor, '1:44.396', 'Campo mostra a escala do mapa');
 assert.strictEqual(PrintItemFields.find(tbItem2, tbCtx, 'tb_scale_auto').prop.valor, true, 'Acompanhar a escala vem marcado');
-assert.ok(html.includes('<ui-painel-propriedades') && html.includes('<ui-botao-primario'), 'Painel usa Web Components do @thibezer/ui-components-kit');
+assert.ok(html.includes('<ui-tabela-propriedades') && html.includes('<ui-botao-primario'), 'Painel usa Web Components do @thibezer/ui-components-kit');
 assert.ok(!/<select\b/.test(html) && !/<textarea\b/.test(html), 'Painel não usa <select> ou <textarea> nativos de fallback');
 console.log('✔ Carimbo validado');
 

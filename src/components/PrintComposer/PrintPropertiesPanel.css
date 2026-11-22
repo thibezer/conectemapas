@@ -897,7 +897,7 @@
   align-items: center;
 }
 
-/* Painel da Folha usando <ui-painel-propriedades> do kit */
+/* Painel da Folha usando <ui-tabela-propriedades> do kit */
 .cm-pp-pane[data-pp-pane="paper"]:not([hidden]) {
   flex: 1 1 0;
   flex-shrink: 1;

@@ -1,7 +1,7 @@
 /* ==========================================================================
    ConecteMapas - PrintItemFields
    Campos específicos de cada tipo de elemento da prancha, no contrato do
-   <ui-painel-propriedades> do kit. Sem DOM: cada entrada traz a propriedade
+   <ui-tabela-propriedades> do kit. Sem DOM: cada entrada traz a propriedade
    do kit (`prop`) e o que fazer quando ela muda (`apply`) ou é clicada (`run`).
 
    Entrada = { category, title, prop, apply?, run?, map?, refresh?, rebuild?, guard?, transient? }

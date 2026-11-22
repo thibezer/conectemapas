@@ -1,6 +1,6 @@
 /* ==========================================================================
    ConecteMapas - Campos por tipo do painel de Item (PrintItemFields)
-   Contrato com o <ui-painel-propriedades> do kit: ids únicos, tipos válidos,
+   Contrato com o <ui-tabela-propriedades> do kit: ids únicos, tipos válidos,
    valor de cada seleção entre as opções e gravação de cada campo no item.
    ========================================================================== */
 

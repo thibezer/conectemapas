@@ -286,7 +286,7 @@ export class PrintPropertiesPanel {
     ['CUSTOM', 'Personalizado']
   ];
 
-  /** Categorias no contrato de `<ui-painel-propriedades>` para a aba Folha */
+  /** Categorias no contrato de `<ui-tabela-propriedades>` para a aba Folha */
   static buildPaperCategories(composer) {
     const paper = composer.paperSize || { id: 'A4_L', name: 'A4 Paisagem', width: 297, height: 210 };
     const sizes = composer.paperSizes || {};
@@ -410,14 +410,14 @@ export class PrintPropertiesPanel {
     ];
   }
 
-  /** Seção da folha com `<ui-painel-propriedades>` do kit (papel, dimensões, margens e guias InDesign) */
+  /** Seção da folha com `<ui-tabela-propriedades>` do kit (papel, dimensões, margens e guias InDesign) */
   static renderPaperSection(composer) {
     const esc = PrintItemsManager.escapeHtml;
     const paper = composer.paperSize || { id: 'A4_L', width: 297, height: 210 };
     const isAbnt = PrintItemsManager.isAbntMargins(paper);
 
     return `
-      <ui-painel-propriedades
+      <ui-tabela-propriedades
         id="print-paper-props-panel"
         class="cm-pp-kit-panel"
         titulo="Configuração da Folha"
@@ -428,7 +428,7 @@ export class PrintPropertiesPanel {
         storage-key="cm_print_paper_props"
         data-paper-id="${esc(paper.id)}"
         data-margins-abnt="${isAbnt ? 'true' : 'false'}"
-      ></ui-painel-propriedades>
+      ></ui-tabela-propriedades>
     `;
   }
 
@@ -506,10 +506,10 @@ export class PrintPropertiesPanel {
     ];
   }
 
-  /** Painel de Item com `<ui-painel-propriedades>` do kit (nome, posição e tamanho) */
+  /** Painel de Item com `<ui-tabela-propriedades>` do kit (nome, posição e tamanho) */
   static renderItemSection() {
     return `
-      <ui-painel-propriedades
+      <ui-tabela-propriedades
         id="print-item-props-panel"
         class="cm-pp-kit-panel cm-pp-kit-panel--inline"
         titulo="Elemento"
@@ -517,7 +517,7 @@ export class PrintPropertiesPanel {
         modo-aplicar="imediato"
         largura-rotulo="46"
         storage-key="cm_print_item_props"
-      ></ui-painel-propriedades>
+      ></ui-tabela-propriedades>
     `;
   }
 
@@ -626,7 +626,7 @@ export class PrintPropertiesPanel {
   }
 
   /**
-   * Atualiza categorias e atributos do `<ui-painel-propriedades>` da folha sem recriar o nó no DOM.
+   * Atualiza categorias e atributos do `<ui-tabela-propriedades>` da folha sem recriar o nó no DOM.
    */
   static syncPaperSection(panelEl, composerOrFresh) {
     if (!panelEl) return;
@@ -772,7 +772,7 @@ export class PrintPropertiesPanel {
     return itemTypeIcon(type);
   }
 
-  /** Eventos do `<ui-painel-propriedades>` da folha (ligados uma única vez) */
+  /** Eventos do `<ui-tabela-propriedades>` da folha (ligados uma única vez) */
   static bindPaperEvents(composer) {
     const panel = document.getElementById('print-paper-props-panel');
     if (!panel) return;
