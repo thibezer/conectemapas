@@ -560,3 +560,15 @@ label.cm-vv-chip {
   opacity: 0.35;
   cursor: default;
 }
+
+/* Selects do kit (<ui-select>): o próprio componente desenha a caixa */
+.cm-vv-dialog ui-select.cm-native-select {
+  height: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.cm-vv-dialog ui-select.cm-vv-select {
+  max-width: 110px;
+}

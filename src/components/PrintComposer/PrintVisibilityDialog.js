@@ -112,9 +112,9 @@ export class PrintVisibilityDialog {
           <div class="cm-vv-title">
             <strong>Visibilidade/Gráficos</strong>
             ${tplMode ? `<span class="cm-vv-map-name">Modelo: ${esc(tpl.name)}</span>` : maps.length > 1 ? `
-              <select class="cm-native-select cm-vv-map-select" data-vv-map aria-label="Mapa">
+              <ui-select inline tamanho="sm" class="cm-native-select cm-vv-map-select" data-vv-map aria-label="Mapa">
                 ${maps.map(m => `<option value="${esc(m.id)}" ${m.id === item.id ? 'selected' : ''}>${esc(m.name || 'Mapa')}</option>`).join('')}
-              </select>
+              </ui-select>
             ` : `<span class="cm-vv-map-name">${esc(item.name || 'Mapa')}</span>`}
           </div>
           <button type="button" class="cm-vv-close" data-vv-close aria-label="Fechar" title="Fechar (Esc)">✕</button>
@@ -179,10 +179,10 @@ export class PrintVisibilityDialog {
           <button type="button" class="cm-vv-btn" data-vv-action="tpl-detach" ${dis} title="Mantém a aparência atual, sem vínculo">Desvincular</button>
         ` : '<span>Nenhum</span>'}
         <span class="cm-vv-grow"></span>
-        <select class="cm-native-select" data-vv-tpl-pick aria-label="Modelo" ${dis}>
+        <ui-select inline tamanho="sm" class="cm-native-select" data-vv-tpl-pick aria-label="Modelo" ${dis}>
           ${project.length ? `<optgroup label="Do projeto">${project.map(option).join('')}</optgroup>` : ''}
           <optgroup label="Prontos">${BUILTIN_TEMPLATES.map(option).join('')}</optgroup>
-        </select>
+        </ui-select>
         <button type="button" class="cm-vv-btn" data-vv-action="tpl-assign" ${dis} title="As seções do modelo passam a controlar este mapa">Vincular</button>
         <button type="button" class="cm-vv-btn" data-vv-action="tpl-apply-once" ${dis} title="Copia as configurações do modelo, sem vínculo">Aplicar uma vez</button>
         <button type="button" class="cm-vv-btn" data-vv-action="tpl-save-as" ${composer.readOnly ? 'disabled' : ''}>Salvar como modelo…</button>
@@ -204,9 +204,9 @@ export class PrintVisibilityDialog {
         ${Object.entries(TEMPLATE_SECTIONS).map(([k, label]) => `
           <label class="cm-vv-chip"><input type="checkbox" data-vv-tpl-include="${k}" ${include[k] ? 'checked' : ''} ${dis} /> ${esc(label.split(' (')[0])}</label>
         `).join('')}
-        <select class="cm-native-select" data-vv-tpl-basemap aria-label="Mapa de fundo do modelo" ${dis || (include.basemap ? '' : 'disabled')}>
+        <ui-select inline tamanho="sm" class="cm-native-select" data-vv-tpl-basemap aria-label="Mapa de fundo do modelo" ${dis || (include.basemap ? '' : 'disabled')}>
           ${BasemapCatalog.list().map(b => `<option value="${b.id}" ${b.id === current ? 'selected' : ''}>${b.icon} ${esc(b.name)}</option>`).join('')}
-        </select>
+        </ui-select>
         <span class="cm-vv-grow"></span>
         ${tpl.builtin
           ? `<button type="button" class="cm-vv-btn" data-vv-action="tpl-dup" ${readOnly ? 'disabled' : ''}>Duplicar para editar</button>`
@@ -330,15 +330,15 @@ export class PrintVisibilityDialog {
       <td class="cm-vv-cell ${mark(strokeOv.color || strokeOv.widthMm !== undefined || strokeOv.pattern)}">
         <div class="cm-vv-inline">
           <input type="color" class="cm-vv-color" data-gfx="stroke.color" value="${strokeColor}" ${dis} aria-label="Cor do traço" title="Cor do traço" />
-          <select class="cm-native-select cm-vv-select" data-gfx="stroke.widthMm" ${dis} aria-label="Espessura do traço" title="Pena (atual: ${fmtMm(g.stroke.widthMm)} mm)">${penOptions}</select>
-          <select class="cm-native-select cm-vv-select" data-gfx="stroke.pattern" ${dis} aria-label="Padrão do traço">${patternOptions}</select>
+          <ui-select inline tamanho="sm" class="cm-native-select cm-vv-select" data-gfx="stroke.widthMm" ${dis} aria-label="Espessura do traço" title="Pena (atual: ${fmtMm(g.stroke.widthMm)} mm)">${penOptions}</ui-select>
+          <ui-select inline tamanho="sm" class="cm-native-select cm-vv-select" data-gfx="stroke.pattern" ${dis} aria-label="Padrão do traço">${patternOptions}</ui-select>
         </div>
       </td>
       <td class="cm-vv-cell ${mark(fillOv.color || fillOv.opacity !== undefined || fillOv.pattern)}">
         <div class="cm-vv-inline">
           <input type="color" class="cm-vv-color" data-gfx="fill.color" value="${fillColor}" ${dis} aria-label="Cor do preenchimento" title="Cor do preenchimento" />
           <input type="number" class="cm-vertex-input cm-vv-num" data-gfx="fill.opacity" min="0" max="100" step="5" value="${fillOv.opacity !== undefined ? Math.round(fillOv.opacity * 100) : ''}" placeholder="${Math.round((g.fill.opacity || 0) * 100)}" ${dis} aria-label="Opacidade do preenchimento (%)" title="Opacidade (%)" />
-          <select class="cm-native-select cm-vv-select" data-gfx="fill.pattern" ${dis} aria-label="Padrão do preenchimento">${fillOptions}</select>
+          <ui-select inline tamanho="sm" class="cm-native-select cm-vv-select" data-gfx="fill.pattern" ${dis} aria-label="Padrão do preenchimento">${fillOptions}</ui-select>
         </div>
       </td>
       <td class="cm-vv-cell cm-vv-center ${mark(o.halftone)}">
@@ -375,7 +375,7 @@ export class PrintVisibilityDialog {
           <summary title="Mesclagem, opacidade, hachura, linha composta e ícone">Efeitos${touched ? ' •' : ''}</summary>
           <div class="cm-vv-adv-body">
             <label class="cm-vv-adv-row"><span>Mesclagem</span>
-              <select class="cm-native-select cm-vv-select" data-gfx="blend" ${dis} aria-label="Modo de mesclagem">${opt(BLEND_MODES, o.blend)}</select></label>
+              <ui-select inline tamanho="sm" class="cm-native-select cm-vv-select" data-gfx="blend" ${dis} aria-label="Modo de mesclagem">${opt(BLEND_MODES, o.blend)}</ui-select></label>
             <label class="cm-vv-adv-row"><span>Opacidade geral (%)</span>
               ${num('opacity', o.opacity !== undefined ? Math.round(o.opacity * 100) : '', Math.round((g.opacity ?? 1) * 100), 'min="0" max="100" step="5"', 'Opacidade geral (%)')}</label>
             <div class="cm-vv-adv-title">Linha</div>
@@ -385,7 +385,7 @@ export class PrintVisibilityDialog {
             <div class="cm-vv-adv-row"><span>Cor alternada do tracejado</span><span class="cm-vv-inline">
               ${color('stroke.altColor', strokeOv.altColor, '#ffffff', 'Cor alternada do tracejado')}</span></div>
             <label class="cm-vv-adv-row"><span>Símbolos ao longo</span>
-              <select class="cm-native-select cm-vv-select" data-gfx="stroke.decor" ${dis} aria-label="Símbolos ao longo da linha">${opt(LINE_DECORS, strokeOv.decor)}</select></label>
+              <ui-select inline tamanho="sm" class="cm-native-select cm-vv-select" data-gfx="stroke.decor" ${dis} aria-label="Símbolos ao longo da linha">${opt(LINE_DECORS, strokeOv.decor)}</ui-select></label>
             <div class="cm-vv-adv-title">Hachura</div>
             <div class="cm-vv-adv-row"><span>Ângulo° / espaço mm / pena mm</span><span class="cm-vv-inline">
               ${num('fill.hatchAngle', fillOv.hatchAngle, 'pad.', 'min="0" max="180" step="5"', 'Ângulo da hachura (graus)')}
@@ -398,7 +398,7 @@ export class PrintVisibilityDialog {
               ${num('label.dyMm', o.label?.dyMm, 0, 'min="-200" max="200" step="1"', 'Deslocamento vertical do rótulo (mm)')}</span></div>` : ''}
             <div class="cm-vv-adv-title">Ponto</div>
             <label class="cm-vv-adv-row"><span>Ícone</span>
-              <select class="cm-native-select cm-vv-select" data-gfx="point.icon" ${dis} aria-label="Ícone do ponto">${opt(POINT_ICONS, pointOv.icon)}</select></label>
+              <ui-select inline tamanho="sm" class="cm-native-select cm-vv-select" data-gfx="point.icon" ${dis} aria-label="Ícone do ponto">${opt(POINT_ICONS, pointOv.icon)}</ui-select></label>
             <label class="cm-vv-adv-row"><span>Tamanho (mm)</span>
               ${num('point.sizeMm', pointOv.sizeMm, g.point?.sizeMm ?? 2.2, 'min="0.5" max="20" step="0.2"', 'Tamanho do ponto (mm)')}</label>
           </div>
@@ -561,9 +561,9 @@ export class PrintVisibilityDialog {
     return `
         <td class="cm-vv-cell ${o.font !== undefined || o.bold !== undefined ? 'is-overridden' : ''}">
           <div class="cm-vv-inline">
-            <select class="cm-native-select cm-vv-select" data-gfx="font" ${dis} aria-label="Fonte do rótulo">
+            <ui-select inline tamanho="sm" class="cm-native-select cm-vv-select" data-gfx="font" ${dis} aria-label="Fonte do rótulo">
               ${PrintFonts.list().map(f => `<option value="${f.id}" ${PrintFonts.normalize(lb.font) === f.id ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}
-            </select>
+            </ui-select>
             <label class="cm-vv-chip" title="Negrito"><input type="checkbox" data-gfx="bold" ${lb.bold ? 'checked' : ''} ${dis} aria-label="Negrito" /> N</label>
           </div>
         </td>
@@ -615,9 +615,9 @@ export class PrintVisibilityDialog {
         </table>
       ` : '<div class="cm-vv-empty cm-vv-empty--small">Nenhum filtro nesta vista. Adicione um da biblioteca abaixo.</div>'}
       <div class="cm-vv-toolbar cm-vv-toolbar--spaced">
-        <select class="cm-native-select" data-vv-add-filter aria-label="Filtro da biblioteca" ${dis || (available.length ? '' : 'disabled')}>
+        <ui-select inline tamanho="sm" class="cm-native-select" data-vv-add-filter aria-label="Filtro da biblioteca" ${dis || (available.length ? '' : 'disabled')}>
           ${available.length ? available.map(f => `<option value="${esc(f.id)}">${esc(f.name || 'Filtro')}</option>`).join('') : '<option value="">Todos os filtros já estão na vista</option>'}
-        </select>
+        </ui-select>
         <button type="button" class="cm-vv-btn" data-vv-action="filter-add" ${dis || (available.length ? '' : 'disabled')}>Adicionar à vista</button>
       </div>
 
@@ -655,16 +655,16 @@ export class PrintVisibilityDialog {
     return `
       <div class="cm-vv-section-title">Mapa temático <span class="cm-vv-muted">(um filtro por valor, cada um com uma cor)</span></div>
       <div class="cm-vv-toolbar">
-        <select class="cm-native-select" data-vv-cat="layer" aria-label="Camada" ${dis}>
+        <ui-select inline tamanho="sm" class="cm-native-select" data-vv-cat="layer" aria-label="Camada" ${dis}>
           <option value="">Todas as camadas</option>
           ${(composer.layers || []).map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('')}
-        </select>
-        <select class="cm-native-select" data-vv-cat="field" aria-label="Campo" ${dis}>
+        </ui-select>
+        <ui-select inline tamanho="sm" class="cm-native-select" data-vv-cat="field" aria-label="Campo" ${dis}>
           ${fields.map(([id, label]) => `<option value="${esc(id)}">${esc(label)}</option>`).join('')}
-        </select>
-        <select class="cm-native-select" data-vv-cat="palette" aria-label="Paleta" ${dis}>
+        </ui-select>
+        <ui-select inline tamanho="sm" class="cm-native-select" data-vv-cat="palette" aria-label="Paleta" ${dis}>
           ${Object.entries(CATEGORY_PALETTES).map(([id, p]) => `<option value="${id}">${esc(p.label)}</option>`).join('')}
-        </select>
+        </ui-select>
         <button type="button" class="cm-vv-btn" data-vv-action="filter-categories" ${dis}>Gerar filtros</button>
       </div>
     `;
