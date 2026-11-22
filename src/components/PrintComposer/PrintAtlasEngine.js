@@ -364,10 +364,7 @@ export class PrintAtlasEngine {
       if (lastBtn) lastBtn.disabled = atEnd;
     }
 
-    const toolboxBtn = document.querySelector('[data-stb-action="toggle-atlas"]');
-    if (toolboxBtn) {
-      toolboxBtn.classList.toggle('is-active', this.enabled);
-      toolboxBtn.setAttribute('aria-pressed', String(this.enabled));
-    }
+    // Botão do Atlas na paleta lateral (<ui-paleta-ferramentas> do kit)
+    document.querySelector('#cm-print-side-toolbox ui-paleta-ferramentas')?.atualizarItem?.('action:atlas', { ativo: Boolean(this.enabled) });
   }
 }

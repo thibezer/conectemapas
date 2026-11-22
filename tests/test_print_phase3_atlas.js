@@ -201,8 +201,8 @@ test('Fase 3: UI - Renderização da Barra e Controles do Atlas', () => {
   assert.ok(atlasBarHtml.includes('Exportar Caderno PDF'), 'Barra deve conter botão de exportação');
 
   // 2. Botão do Atlas na Barra Lateral (Toolbox)
-  const toolboxHtml = PrintSideToolbox.render(mockComposer);
-  assert.ok(toolboxHtml.includes('data-stb-action="toggle-atlas"'), 'Toolbox deve conter botão de alternância do Atlas');
+  const atlasTool = PrintSideToolbox.tools(mockComposer).find(t => t.id === 'action:atlas');
+  assert.ok(atlasTool && atlasTool.tipo === 'toggle', 'Toolbox deve conter botão de alternância do Atlas');
 
   // 3. Seção do Atlas no Painel de Propriedades
   const atlasSectionHtml = PrintPropertiesPanel.renderAtlasSection(mockComposer, () => 'open');

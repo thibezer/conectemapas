@@ -27,14 +27,24 @@ const mockComposer = {
 console.log('1. PrintSideToolbox...');
 const toolboxHtml = PrintSideToolbox.render(mockComposer);
 assert.ok(toolboxHtml.includes('id="cm-print-side-toolbox"'), 'Contêiner da toolbox lateral presente');
-assert.ok(toolboxHtml.includes('data-stb-mode="layout"'), 'Botão de modo layout presente');
-assert.ok(toolboxHtml.includes('data-stb-mode="content_pan"'), 'Botão de modo pan presente');
-assert.ok(toolboxHtml.includes('class="cm-stb-btn is-active"'), 'Modo ativo destacado');
+assert.ok(toolboxHtml.includes('<ui-paleta-ferramentas'), 'A caixa lateral é a paleta do kit');
+assert.ok(toolboxHtml.includes('orientacao="vertical"'), 'Paleta vertical');
+
+const tools = PrintSideToolbox.tools(mockComposer);
+const ids = tools.map(t => t.id);
+assert.ok(ids.includes('mode:layout') && ids.includes('mode:content_pan'), 'Modos layout e pan presentes');
+assert.strictEqual(new Set(ids).size, ids.length, 'Ids únicos');
+assert.strictEqual(PrintSideToolbox.currentValue(mockComposer), 'mode:layout', 'Modo ativo marcado');
+assert.strictEqual(PrintSideToolbox.currentValue({ ...mockComposer, interactionMode: 'content_pan' }), 'mode:content_pan');
+assert.strictEqual(PrintSideToolbox.currentValue({ ...mockComposer, canvasEngine: { placementType: 'legend' } }), 'insert:legend', 'Inserção em curso tem prioridade');
 
 const allItems = PRINT_INSERT_GROUPS.flatMap(g => g.items);
 allItems.forEach(it => {
-  assert.ok(toolboxHtml.includes(`data-stb-insert="${it.type}"`), `Botão de inserção para ${it.type} presente`);
+  assert.ok(ids.includes(`insert:${it.type}`), `Ferramenta de inserção para ${it.type} presente`);
 });
+assert.ok(tools.filter(t => t.tipo !== 'separador').every(t => t.icone && t.rotulo), 'Todo item tem ícone e rótulo');
+assert.strictEqual(tools.find(t => t.id === 'action:atlas').tipo, 'toggle', 'Atlas liga e desliga');
+assert.ok(PrintSideToolbox.tools({ ...mockComposer, readOnly: true }).filter(t => t.id.startsWith('insert:')).every(t => t.disabled), 'Somente leitura desabilita a inserção');
 console.log('✔ PrintSideToolbox validada!');
 
 // 2. PrintStatusBar

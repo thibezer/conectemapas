@@ -2,142 +2,138 @@
    ConecteMapas - PrintSideToolbox
    Responsabilidade Única: Barra de ferramentas vertical de inserção rápida e
    alternância de modos na prancheta (padrão QGIS Print Layout / Figma / CAD).
+   O desenho da barra, a navegação por teclado, o tooltip e o excesso de itens
+   (menu "Mais ferramentas") são do <ui-paleta-ferramentas> do kit; aqui ficam só
+   os itens do produto e a cola com o compositor.
    ========================================================================== */
 
 import { PRINT_ICONS, PRINT_INSERT_GROUPS } from './PrintToolbar.js';
 import { PrintShortcuts } from './PrintShortcuts.js';
 
+const ICON_LAYOUT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7 18 3-7 7-3z"/></svg>';
+const ICON_PAN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V3.5a1.5 1.5 0 0 1 3 0V11M14 10.5V5a1.5 1.5 0 0 1 3 0v8M8 13l-1.6-2.4a1.5 1.5 0 0 0-2.5 1.6L7 18a6 6 0 0 0 5 3h1a6 6 0 0 0 6-6v-2"/></svg>';
+const ICON_ATLAS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="13" y2="11"/></svg>';
+
+const ID_MODE = 'mode:';
+const ID_INSERT = 'insert:';
+const ID_ATLAS = 'action:atlas';
+
+/** Tecla em vigor da ação (o usuário pode mudá-la em PrintShortcuts) */
+const keyOf = (actionId) => {
+  const first = PrintShortcuts.keysFor(actionId)[0];
+  return first ? PrintShortcuts.prettyCombo(first) : undefined;
+};
+
 export class PrintSideToolbox {
-  static render(composer) {
-    const isPan = composer.interactionMode === 'content_pan';
-
-    // Itens de inserção agrupados e ordenados
+  /** Itens da paleta do kit (dados puros, sem DOM). `ativo` do Atlas vem do compositor. */
+  static tools(composer) {
     const insertItems = PRINT_INSERT_GROUPS.flatMap(g => g.items);
+    return [
+      { id: `${ID_MODE}layout`, rotulo: 'Selecionar e mover elementos', rotuloAcessivel: 'Modo Layout (Selecionar e mover)', icone: ICON_LAYOUT, atalho: keyOf('modeLayout') },
+      { id: `${ID_MODE}content_pan`, rotulo: 'Navegar no mapa selecionado (pan e zoom no terreno)', rotuloAcessivel: 'Modo Navegar Terreno no Mapa', icone: ICON_PAN, atalho: keyOf('modeContent'), disabled: composer.readOnly === true },
+      { id: 'sep-insert', tipo: 'separador' },
+      ...insertItems.map(it => ({
+        id: `${ID_INSERT}${it.type}`,
+        rotulo: `Desenhar ${it.label} na folha`,
+        rotuloAcessivel: `Desenhar ${it.label} na folha`,
+        icone: PRINT_ICONS[it.icon] || '',
+        atalho: keyOf(`insert:${it.type}`),
+        disabled: composer.readOnly === true
+      })),
+      { id: 'sep-atlas', tipo: 'separador' },
+      {
+        id: ID_ATLAS,
+        tipo: 'toggle',
+        rotulo: 'Gerador de Atlas Cartográfico (Automação em Lote)',
+        rotuloAcessivel: 'Gerador de Atlas Cartográfico',
+        icone: ICON_ATLAS,
+        atalho: keyOf('atlas'),
+        ativo: Boolean(composer.atlas?.enabled),
+        disabled: composer.readOnly === true
+      }
+    ];
+  }
 
+  /** Ferramenta marcada: a de inserção em curso ou, sem ela, o modo de interação */
+  static currentValue(composer) {
+    const placing = composer.canvasEngine?.placementType;
+    return placing ? `${ID_INSERT}${placing}` : `${ID_MODE}${composer.interactionMode === 'content_pan' ? 'content_pan' : 'layout'}`;
+  }
+
+  static render() {
     return `
-      <aside class="cm-print-side-toolbox" id="cm-print-side-toolbox" role="toolbar" aria-label="Ferramentas de Layout">
-        <!-- Modos de Interação -->
-        <div class="cm-stb-group">
-          <button type="button"
-            class="cm-stb-btn ${!isPan ? 'is-active' : ''}"
-            data-stb-mode="layout"
-            ${PrintShortcuts.attrs('modeLayout', 'Selecionar e mover elementos')}
-            aria-label="Modo Layout (Selecionar e mover)"
-            aria-pressed="${!isPan ? 'true' : 'false'}">
-            <svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m3 3 7 18 3-7 7-3z"/>
-            </svg>
-            <span class="cm-stb-shortcut" data-sc-kbd="modeLayout">${PrintShortcuts.prettyCombo(PrintShortcuts.keysFor('modeLayout')[0])}</span>
-          </button>
-
-          <button type="button"
-            class="cm-stb-btn ${isPan ? 'is-active' : ''}"
-            data-stb-mode="content_pan"
-            ${PrintShortcuts.attrs('modeContent', 'Navegar no mapa selecionado (pan e zoom no terreno)')}
-            aria-label="Modo Navegar Terreno no Mapa"
-            aria-pressed="${isPan ? 'true' : 'false'}">
-            <svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M8 13V5a1.5 1.5 0 0 1 3 0v6M11 10V3.5a1.5 1.5 0 0 1 3 0V11M14 10.5V5a1.5 1.5 0 0 1 3 0v8M8 13l-1.6-2.4a1.5 1.5 0 0 0-2.5 1.6L7 18a6 6 0 0 0 5 3h1a6 6 0 0 0 6-6v-2"/>
-            </svg>
-            <span class="cm-stb-shortcut" data-sc-kbd="modeContent">${PrintShortcuts.prettyCombo(PrintShortcuts.keysFor('modeContent')[0])}</span>
-          </button>
-        </div>
-
-        <div class="cm-stb-divider"></div>
-
-        <!-- Inserção de Itens Cartográficos -->
-        <div class="cm-stb-group cm-stb-insert-list">
-          ${insertItems.map(it => `
-            <button type="button"
-              class="cm-stb-btn"
-              data-stb-insert="${it.type}"
-              ${PrintShortcuts.attrs(`insert:${it.type}`, `Desenhar ${it.label} na folha`)}
-              aria-label="Desenhar ${it.label} na folha">
-              ${PRINT_ICONS[it.icon] || ''}
-            </button>
-          `).join('')}
-        </div>
-
-        <div class="cm-stb-divider"></div>
-
-        <!-- Gerador de Atlas (Automação de Mapas estilo QGIS) -->
-        <div class="cm-stb-group">
-          <button type="button"
-            class="cm-stb-btn ${composer.atlas?.enabled ? 'is-active' : ''}"
-            data-stb-action="toggle-atlas"
-            ${PrintShortcuts.attrs('atlas', 'Gerador de Atlas Cartográfico (Automação em Lote)')}
-            aria-label="Gerador de Atlas Cartográfico"
-            aria-pressed="${composer.atlas?.enabled ? 'true' : 'false'}">
-            <svg class="cm-ptb-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-              <line x1="9" y1="7" x2="15" y2="7"/>
-              <line x1="9" y1="11" x2="13" y2="11"/>
-            </svg>
-          </button>
-        </div>
+      <aside class="cm-print-side-toolbox" id="cm-print-side-toolbox">
+        <ui-paleta-ferramentas class="cm-stb-palette" orientacao="vertical" tamanho="sm" excesso="menu" aria-label="Ferramentas de Layout"></ui-paleta-ferramentas>
       </aside>
     `;
   }
 
+  static palette() {
+    return typeof document !== 'undefined' ? document.querySelector('#cm-print-side-toolbox ui-paleta-ferramentas') : null;
+  }
+
+  /** Entrega os itens e o valor atual à paleta (também reaplicado quando um atalho muda) */
+  static refreshTools(composer) {
+    const palette = this.palette();
+    if (!palette) return;
+    palette.ferramentas = this.tools(composer);
+    palette.valor = this.currentValue(composer);
+  }
+
   static bind(composer) {
-    const toolbox = document.getElementById('cm-print-side-toolbox');
-    if (!toolbox) return;
+    const palette = this.palette();
+    if (!palette) return;
+    this.refreshTools(composer);
 
-    toolbox.addEventListener('click', (e) => {
-      const btn = e.target.closest('button[data-stb-mode], button[data-stb-insert], button[data-stb-action]');
-      if (!btn) return;
-
-      if (btn.dataset.stbAction === 'toggle-atlas') {
+    palette.addEventListener('ui-ferramenta', (e) => {
+      const id = e.detail?.id || '';
+      if (id === ID_ATLAS) {
         composer.atlas?.setEnabled(!composer.atlas.enabled);
         return;
       }
-
-      const mode = btn.dataset.stbMode;
-      if (mode) {
-        composer.setInteractionMode(mode);
-        this.updateActiveMode(composer);
+      if (id.startsWith(ID_MODE)) {
+        // Escolher um modo encerra a inserção em curso (a paleta marca uma ferramenta por vez)
+        if (composer.canvasEngine?.placementType) composer.setPlacementTool?.(null);
+        composer.setInteractionMode(id.slice(ID_MODE.length));
         return;
       }
-
-      const insertType = btn.dataset.stbInsert;
-      if (insertType) {
+      if (id.startsWith(ID_INSERT)) {
+        const type = id.slice(ID_INSERT.length);
         if (typeof composer.setPlacementTool === 'function') {
-          const next = composer.canvasEngine?.placementType === insertType ? null : insertType;
+          const next = composer.canvasEngine?.placementType === type ? null : type;
           composer.setPlacementTool(next);
         } else {
-          composer.insertItem?.(insertType);
+          composer.insertItem?.(type);
         }
+        // Segundo clique na mesma ferramenta a solta: a paleta volta ao modo de interação
+        this.updateActivePlacementTool(composer);
       }
     });
+
+    // Tooltips e teclas mostradas acompanham os atalhos personalizados
+    composer._stbUnsubscribe?.();
+    composer._stbUnsubscribe = PrintShortcuts.onChange(() => this.refreshTools(composer));
   }
 
   static updateActivePlacementTool(composer) {
-    const toolbox = typeof document !== 'undefined' ? document.getElementById?.('cm-print-side-toolbox') : null;
-    if (!toolbox) return;
-    const active = composer.canvasEngine?.placementType || null;
-    toolbox.querySelectorAll('[data-stb-insert]').forEach(btn => {
-      const match = active && btn.dataset.stbInsert === active;
-      btn.classList.toggle('is-placing', !!match);
-      btn.setAttribute('aria-pressed', String(!!match));
-    });
+    this.palette()?.ativar?.(this.currentValue(composer), false);
   }
 
   static updateActiveMode(composer) {
-    const toolbox = document.getElementById('cm-print-side-toolbox');
-    if (!toolbox) return;
+    this.palette()?.ativar?.(this.currentValue(composer), false);
+  }
 
-    const isPan = composer.interactionMode === 'content_pan';
-    const layoutBtn = toolbox.querySelector('[data-stb-mode="layout"]');
-    const panBtn = toolbox.querySelector('[data-stb-mode="content_pan"]');
+  /** Atlas ligado/desligado por fora da paleta (painel de propriedades, barra do atlas) */
+  static updateAtlas(enabled) {
+    this.palette()?.atualizarItem?.(ID_ATLAS, { ativo: Boolean(enabled) });
+  }
 
-    if (layoutBtn) {
-      layoutBtn.classList.toggle('is-active', !isPan);
-      layoutBtn.setAttribute('aria-pressed', String(!isPan));
-    }
-    if (panBtn) {
-      panBtn.classList.toggle('is-active', isPan);
-      panBtn.setAttribute('aria-pressed', String(isPan));
-    }
+  /** Bloqueia o que altera a prancha enquanto outro operador edita */
+  static setReadOnly(readOnly) {
+    const palette = this.palette();
+    if (!palette) return;
+    PRINT_INSERT_GROUPS.flatMap(g => g.items).forEach(it => palette.atualizarItem(`${ID_INSERT}${it.type}`, { disabled: readOnly }));
+    palette.atualizarItem(`${ID_MODE}content_pan`, { disabled: readOnly });
+    palette.atualizarItem(ID_ATLAS, { disabled: readOnly });
   }
 }

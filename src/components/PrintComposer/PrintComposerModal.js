@@ -460,9 +460,9 @@ export class PrintComposerModal {
     const panel = document.getElementById('cm-print-props-panel-mount');
     if (panel) panel.inert = this.readOnly;
     document.querySelectorAll(
-      '#cm-print-composer-modal [data-ptb-action^="insert"], #btn-ptb-insert, #btn-print-undo, #btn-print-redo, ' +
-      '#cm-print-side-toolbox [data-stb-insert], #cm-print-side-toolbox [data-stb-mode="content_pan"], #cm-print-side-toolbox [data-stb-action="toggle-atlas"]'
+      '#cm-print-composer-modal [data-ptb-action^="insert"], #btn-ptb-insert, #btn-print-undo, #btn-print-redo'
     ).forEach(el => { el.disabled = this.readOnly; });
+    PrintSideToolbox.setReadOnly(this.readOnly);
     if (this.readOnly) {
       this.selectItem(null);
       this.setInteractionMode('layout');
