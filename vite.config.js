@@ -38,6 +38,10 @@ export default defineConfig({
             return 'vendor-zip';
           }
           if (id.includes('ui-components-kit') || id.includes('vendor/ui-components-kit')) {
+            // Só o editor da prancha fica de fora do vendor-ui: o Rollup o separa sozinho (import() em PrintDrawingEditor)
+            // e ele só baixa ao editar um Desenho (receita de docs/empacotamento-prancha.md do kit)
+            const arquivo = id.split('\\').join('/').split('/dist/').pop() ?? '';
+            if (/^(ui-editor-prancha|prancha|prancha-nucleo|feature_desenho|feature_caixa|feature_historico|geometria-px)[-.]/.test(arquivo)) return undefined;
             return 'vendor-ui';
           }
         }

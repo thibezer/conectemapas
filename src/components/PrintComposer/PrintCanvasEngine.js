@@ -804,7 +804,8 @@ export class PrintCanvasEngine {
 
     this.keyDownHandler = (e) => {
       if (!this.composer.isOpen) return;
-      // Editor de desenho aberto: as teclas são dele (o kit trata Delete, Ctrl+Z, setas...), não da prancheta
+      // Editor de desenho aberto (camada modal sobre o layout): a prancheta não recebe teclas. O kit já isola as teclas com o foco
+      // no editor (`teclado="isolado"`); isto cobre o foco fora dele (barra do overlay, corpo da página), onde ele não alcança
       if (this.composer.drawingEditor?.isOpen?.()) return;
 
       // Salvaguarda: NUNCA intercepta teclas quando o foco estiver em campos de input ou texto (Regra GEMINI.md)
