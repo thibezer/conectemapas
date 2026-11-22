@@ -39,7 +39,7 @@ export class PrintVisibilityDialog {
   }
 
   isOpen() {
-    return Boolean(this.root && !this.root.hidden);
+    return Boolean(this.root?.aberto);
   }
 
   /** Abre para o mapa indicado, o selecionado ou o primeiro mapa da prancha */
@@ -50,28 +50,28 @@ export class PrintVisibilityDialog {
     this.state.itemId = (selected && selected.type === 'map' ? selected : maps[0]).id;
     this.state.editTemplateId = null;
     if (!this.root) this.mount();
-    this.root.hidden = false;
+    this.root.aberto = true;
     this.refresh();
-    this.root.querySelector('.cm-vv-dialog')?.focus();
     return true;
   }
 
   close() {
-    if (this.root) this.root.hidden = true;
+    if (this.root) this.root.aberto = false;
   }
 
   mount() {
     const host = document.getElementById('cm-print-composer-modal') || document.body;
-    this.root = document.createElement('div');
-    this.root.className = 'cm-vv-overlay';
-    this.root.hidden = true;
+    // Moldura do kit: foco, Esc, ✕, fundo, inert e pilha de modais vêm do <ui-modal>
+    this.root = document.createElement('ui-modal');
+    this.root.className = 'cm-vv-modal';
+    this.root.setAttribute('titulo', 'Visibilidade/Gráficos');
     host.appendChild(this.root);
     this.bind();
   }
 
   /** Reconstrói a janela (troca de aba ou de mapa, desfazer/refazer) */
   refresh() {
-    if (!this.root || this.root.hidden) return;
+    if (!this.isOpen()) return;
     const item = this.currentItem();
     if (!item) { this.close(); return; }
     const scroller = this.root.querySelector('.cm-vv-body');
@@ -107,17 +107,15 @@ export class PrintVisibilityDialog {
     const locked = baseLocked || tplLock;
     const body = this.renderTab(tab, composer, item, view, locked, state);
     return `
-      <div class="cm-vv-dialog" role="dialog" aria-modal="true" aria-label="Visibilidade e gráficos" tabindex="-1">
+      <div class="cm-vv-dialog">
         <div class="cm-vv-header">
           <div class="cm-vv-title">
-            <strong>Visibilidade/Gráficos</strong>
             ${tplMode ? `<span class="cm-vv-map-name">Modelo: ${esc(tpl.name)}</span>` : maps.length > 1 ? `
               <ui-select inline tamanho="sm" class="cm-native-select cm-vv-map-select" data-vv-map aria-label="Mapa">
                 ${maps.map(m => `<option value="${esc(m.id)}" ${m.id === item.id ? 'selected' : ''}>${esc(m.name || 'Mapa')}</option>`).join('')}
               </ui-select>
             ` : `<span class="cm-vv-map-name">${esc(item.name || 'Mapa')}</span>`}
           </div>
-          <button type="button" class="cm-vv-close" data-vv-close aria-label="Fechar" title="Fechar (Esc)">✕</button>
         </div>
         ${tplMode ? this.templateEditBar(composer, tpl, readOnly) : this.templateBar(composer, item, view, item.locked === true || readOnly)}
         <div class="cm-vv-tabs" role="tablist">
@@ -1134,11 +1132,11 @@ export class PrintVisibilityDialog {
 
   /** Fecha a janela, espera o clique numa feição do mapa e volta com ela escolhida */
   async pickOnMap(item) {
-    this.root.hidden = true;
+    this.root.aberto = false;
     const feat = await this.composer.pickFeature(item.id, { message: 'Clique numa feição do mapa para ajustá-la nesta vista (Esc cancela).' });
     this.state.tab = 'elements';
     this.state.pickedId = feat ? feat.id : null;
-    this.root.hidden = false;
+    this.root.aberto = true;
     this.refresh();
   }
 

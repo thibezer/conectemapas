@@ -21,29 +21,29 @@
   border-color: var(--cm-primary, #00E08A);
 }
 
-.cm-vv-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 3000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
+.cm-vv-modal {
+  --ui-z-modal: 3000;
 }
 
-.cm-vv-overlay[hidden] {
-  display: none;
+.cm-vv-modal::part(painel) {
+  width: min(1180px, calc(100vw - 32px));
+  max-width: none;
+  height: min(760px, calc(100vh - 48px));
+  max-height: none;
+}
+
+.cm-vv-modal::part(corpo) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .cm-vv-dialog {
-  width: min(1180px, calc(100vw - 32px));
-  height: min(760px, calc(100vh - 48px));
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #18181c;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
   color: #e1e1e6;
   font-size: 11px;
   outline: none;

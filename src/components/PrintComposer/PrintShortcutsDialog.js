@@ -21,7 +21,7 @@ export class PrintShortcutsDialog {
   }
 
   isOpen() {
-    return Boolean(this.root && this.root.isConnected && !this.root.hidden);
+    return Boolean(this.root && this.root.isConnected && this.root.aberto);
   }
 
   /** Atualiza título e tecla mostrada dos botões marcados com `data-sc` / `data-sc-kbd`. */
@@ -61,13 +61,7 @@ export class PrintShortcutsDialog {
     }).join('');
     return `
       <div class="cm-psc-card" tabindex="-1">
-        <header class="cm-psc-header">
-          <div>
-            <h2 id="cm-psc-title">Atalhos do layout</h2>
-            <p class="cm-psc-sub">Clique na tecla de uma ação e digite a nova combinação. Vale para você, neste navegador.</p>
-          </div>
-          <button type="button" class="cm-psc-mini" data-psc-close title="Fechar (Esc)" aria-label="Fechar">×</button>
-        </header>
+        <p class="cm-psc-sub">Clique na tecla de uma ação e digite a nova combinação. Vale para você, neste navegador.</p>
         <div class="cm-psc-toolbar">
           <input type="search" class="cm-psc-filter" data-psc-filter placeholder="Filtrar ações ou teclas…" value="${esc(filter)}" aria-label="Filtrar atalhos" />
           <button type="button" class="cm-psc-btn" data-psc-reset-all>Restaurar todos os padrões</button>
@@ -84,26 +78,23 @@ export class PrintShortcutsDialog {
     if (!this.root || !this.root.isConnected) this.mount();
     this.recordingId = null;
     this.status = '';
-    this.root.hidden = false;
+    this.root.aberto = true;
     this.paint();
-    this.root.querySelector('.cm-psc-card')?.focus();
     return true;
   }
 
   close() {
     this.recordingId = null;
-    if (this.root) this.root.hidden = true;
+    if (this.root) this.root.aberto = false;
   }
 
   mount() {
     const host = document.getElementById('cm-print-composer-modal') || document.body;
-    this.root = document.createElement('div');
-    this.root.className = 'cm-psc-overlay';
+    // Moldura do kit: foco, ✕, fundo, inert e pilha de modais vêm do <ui-modal>
+    this.root = document.createElement('ui-modal');
+    this.root.className = 'cm-psc-modal';
     this.root.id = 'cm-print-shortcuts-dialog';
-    this.root.setAttribute('role', 'dialog');
-    this.root.setAttribute('aria-modal', 'true');
-    this.root.setAttribute('aria-labelledby', 'cm-psc-title');
-    this.root.hidden = true;
+    this.root.setAttribute('titulo', 'Atalhos do layout');
     host.appendChild(this.root);
     this.root.addEventListener('click', (e) => this.handleClick(e));
     this.root.addEventListener('input', (e) => {
