@@ -36,7 +36,7 @@ export class PrintDrawingEditor {
     }
     if (item.locked) return null;
     const editor = new PrintDrawingEditor(composer, item);
-    // Já marcado como aberto: as teclas da prancheta ficam bloqueadas enquanto o componente do kit carrega
+    // Já marcado como aberto (evita abrir duas vezes enquanto o componente do kit carrega)
     composer.drawingEditor = editor;
     editor.mount(item);
     return editor;
@@ -78,6 +78,9 @@ export class PrintDrawingEditor {
     ed.setAttribute('margens', `${m.left} ${m.right} ${m.top} ${m.bottom}`);
     ed.setAttribute('grade', '10');
     ed.setAttribute('mostrar-grade', '');
+    // Camada modal sobre o layout: o kit captura as teclas da página inteira (mesmo com o foco no corpo ou na barra),
+    // então os atalhos do layout (Delete, Ctrl+Z, F...) não disparam por trás do editor
+    ed.setAttribute('teclado', 'modal');
     ed.setAttribute('ajustar-ao-abrir', item.elements?.length ? 'conteudo' : 'folha');
     root.querySelector('.cm-de-body').appendChild(ed);
     this.editor = ed;
