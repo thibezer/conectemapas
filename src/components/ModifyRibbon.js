@@ -221,7 +221,7 @@ export function computeModifyState({ features = [], layers = [], history = {}, a
       ? { disabled: u === 0, rotulo: 'Mostrar', icone: ICONES.mostrar }
       : { disabled: u === 0, rotulo: 'Ocultar', icone: ICONES.ocultar },
 
-    'mod-measure': { disabled: false, ativo: activeTool === 'measure' || activeTool === 'measure-line' },
+    'mod-measure': { disabled: false, ativo: activeTool === 'measure' || activeTool === 'measure-area' || activeTool === 'measure-line' },
 
     'mod-undo': { disabled: !(history.undo > 0) },
     'mod-redo': { disabled: !(history.redo > 0) },

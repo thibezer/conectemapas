@@ -36,12 +36,12 @@ const TOOL_TO_KIT = {
   'pen-select': 'selecao-laco',
   split: 'dividir',
   measure: 'medir-distancia',
+  'measure-area': 'medir-area',
   eyedropper: 'conta-gotas'
 };
 /** Ferramentas de desenho que ficam ativas após concluir uma figura. */
 const REARM_TOOLS = new Set(['point', 'line', 'polygon', 'rectangle', 'ellipse', 'regular-polygon', 'star', 'circle', 'pen']);
-const KIT_TO_TOOL =Object.fromEntries(Object.entries(TOOL_TO_KIT).map(([app, kit]) => [kit, app]));
-KIT_TO_TOOL['medir-area'] = 'measure';
+const KIT_TO_TOOL = Object.fromEntries(Object.entries(TOOL_TO_KIT).map(([app, kit]) => [kit, app]));
 
 /** Ação do popup do componente -> ação que o app já entende. */
 const POPUP_ACTION = {
@@ -90,6 +90,7 @@ export class CanvasMapEngine {
     this.onContextMenu = options.onContextMenu || (() => {});
     this.onTextPromptRequested = options.onTextPromptRequested || (() => {});
     this.onFeatureAction = options.onFeatureAction || (() => {});
+    this.onMeasurement = options.onMeasurement || (() => {});
 
     this.selectedFeatureId = null;
     this.selectedFeatureIds = new Set();
@@ -877,6 +878,10 @@ export class CanvasMapEngine {
 
   undoLastVertex() { return this.host.desfazerVerticeDesenho(); }
 
+  clearMeasurement() {
+    this.host?.limparMedicao();
+  }
+
   setSnappingEnabled(enabled) {
     this.host.definirSnap(Boolean(enabled));
     this.snappingEnabled = this.host.snapLigado;
@@ -966,34 +971,25 @@ export class CanvasMapEngine {
   }
 
   _handleKitMeasure(info) {
-    const coords = info.pontos.map(p => [p[0], p[1]]);
+    const coords = (info?.pontos || []).map(p => [p[0], p[1]]);
     if (coords.length < 2) return;
-    const total = this.calculatePolylineLength(coords);
-    const distText = total > 1000 ? `${(total / 1000).toFixed(2)} km` : `${total.toFixed(1)} m`;
-    const segs = this.calculateSegments(coords);
-    const segText = segs.map((s, i) => `T${i + 1}: ${s.distance > 1000 ? (s.distance / 1000).toFixed(2) + 'km' : s.distance.toFixed(1) + 'm'}`).join(', ');
 
-    let areaM2 = 0;
-    if (coords.length >= 3) areaM2 = this.calculatePolygonArea(coords);
+    const isArea = info.tipo === 'area';
+    // Fonte única geodésica (GRS80): FeatureGeometryUtils
+    const lengthM = FeatureGeometryUtils.calculatePolylineLength(coords);
+    const segments = FeatureGeometryUtils.calculateSegments(coords, isArea);
+    const areaM2 = (isArea || coords.length >= 3) ? FeatureGeometryUtils.calculatePolygonArea(coords) : 0;
+    const perimeterM = (isArea || coords.length >= 3) ? FeatureGeometryUtils.calculatePolygonPerimeter(coords) : lengthM;
 
-    this.host.limparMedicao();
-    this.host.definirFerramenta(null);
-    this._syncToolState('select');
-
-    this.onFeatureCreated({
-      type: 'LineString',
-      coordinates: coords,
-      name: `Medição (${distText})`,
-      category: 'Medição & Cotas',
-      layerId: this._drawingLayerId(),
-      color: '#f59e0b',
-      properties: {
-        'Extensão Total': distText,
-        'Vértices': coords.length,
-        'Trechos': segText,
-        ...(areaM2 > 0 ? { 'Área Delimitada': `${(areaM2 / 10000).toFixed(2)} ha`, 'Área (m²)': areaM2.toFixed(1) + ' m²' } : {})
-      },
-      style: { strokeColor: '#f59e0b', strokeWidth: 3, strokeDashArray: '6, 4', showLabel: true, labelField: 'extensao' }
+    // Medição GIS efêmera: não cria feição permanente no desenho e mantém o overlay temporário
+    // visível no mapa até nova medição, limpeza explícita ou saída da ferramenta.
+    this.onMeasurement({
+      mode: isArea ? 'area' : 'distance',
+      coords,
+      lengthM,
+      perimeterM,
+      areaM2,
+      segments
     });
   }
 

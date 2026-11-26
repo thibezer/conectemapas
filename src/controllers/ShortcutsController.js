@@ -306,10 +306,15 @@ export class ShortcutsController {
     );
   }
 
-  /** Esc: fecha o menu de contexto e desfaz a seleção (mapa, painel e HUD). */
+  /** Esc: fecha o menu de contexto, sai da régua (se sem desenho ativo) e desfaz a seleção. */
   static clearSelectionOnEscape(app) {
     if (app.contextMenu) {
       app.contextMenu.close();
+    }
+    const tool = app.mapEngine?.activeTool;
+    if ((tool === 'measure' || tool === 'measure-area') && !app.mapEngine?.isDrawing) {
+      app.mapEngine.clearMeasurement();
+      app.setDrawingTool?.('select');
     }
     if (app.mapEngine) {
       app.mapEngine.clearSelection();

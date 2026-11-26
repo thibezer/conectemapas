@@ -20,7 +20,8 @@ export class AppGeometryCoordinator {
       split: 'Divisão de Formas / Faca (K)',
       eyedropper: 'Conta-gotas de Estilos (I)',
       text: 'Texto / Rótulo no Mapa (T)',
-      measure: 'Régua de Medição (M)',
+      measure: 'Régua de Medição — Distância (M)',
+      'measure-area': 'Régua de Medição — Área (M)',
       'measure-line': 'Régua de Medição (M)'
     };
     return names[tool] || tool;

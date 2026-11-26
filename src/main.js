@@ -56,6 +56,7 @@ class ConecteMapasApp {
     this.collabHub = null;
     this.contextMenu = null;
     this.selectionHUD = null;
+    this.measureHUD = null;
     this.headerBar = null;
     this.drawingToolbar = null;
     this.layerPanel = null;

@@ -416,8 +416,9 @@ export class DrawingToolbar {
    */
   setActiveTool(tool) {
     this.activeTool = tool;
-    if (this.paleta && this.paleta.valor !== tool) {
-      this.paleta.ativar(tool, false);
+    const paletteTool = tool === 'measure-area' ? 'measure' : tool;
+    if (this.paleta && this.paleta.valor !== paletteTool) {
+      this.paleta.ativar(paletteTool, false);
     }
   }
 

@@ -19,6 +19,7 @@ import { LayerPanel } from '../components/LayerPanel.js';
 import { AttributeTable } from '../components/AttributeTable.js';
 import { ContextMenu } from '../components/ContextMenu.js';
 import { SelectionHUD } from '../components/SelectionHUD.js';
+import { MeasureHUD } from '../components/MeasureHUD.js';
 
 import { ProjectActionsController } from '../controllers/ProjectActionsController.js';
 import { ShortcutsController } from '../controllers/ShortcutsController.js';
@@ -146,7 +147,15 @@ export class AppComponentsBuilder {
         if (app.drawingToolbar) {
           app.drawingToolbar.setActiveTool(tool);
         }
+        if (tool === 'measure' || tool === 'measure-area') {
+          app.measureHUD?.show(tool === 'measure-area' ? 'area' : 'distance');
+        } else {
+          app.measureHUD?.hide();
+        }
         app.syncRibbon?.();
+      },
+      onMeasurement: (measurement) => {
+        app.measureHUD?.setMeasurement(measurement);
       },
       onFeatureCreated: (rawFeature) => {
         FeatureSyncController.handleDrawingCompleted(app, rawFeature);
@@ -825,6 +834,59 @@ export class AppComponentsBuilder {
           app.layerPanel.selectedFeature = null;
           app.layerPanel.updateContent();
         }
+      }
+    });
+
+    app.measureHUD = new MeasureHUD({
+      container: document.querySelector('.cm-workspace') || document.body,
+      onModeChange: (mode) => {
+        app.mapEngine?.clearMeasurement();
+        app.setDrawingTool?.(mode === 'area' ? 'measure-area' : 'measure');
+      },
+      onClear: () => {
+        app.mapEngine?.clearMeasurement();
+      },
+      onClose: () => {
+        app.mapEngine?.clearMeasurement();
+        app.setDrawingTool?.('select');
+      },
+      onSaveAsFeature: (m) => {
+        if (!m || !Array.isArray(m.coords) || m.coords.length < 2) return;
+        const isArea = m.mode === 'area' && m.coords.length >= 3;
+        const distText = m.lengthM >= 1000
+          ? `${(m.lengthM / 1000).toFixed(2)} km`
+          : `${m.lengthM.toFixed(1)} m`;
+        const areaText = m.areaM2 > 0 ? `${(m.areaM2 / 10000).toFixed(2)} ha` : '';
+        const segText = (m.segments || [])
+          .map((s, i) => `T${i + 1}: ${s.distance >= 1000 ? `${(s.distance / 1000).toFixed(2)} km` : `${s.distance.toFixed(1)} m`}`)
+          .join(', ');
+
+        app.mapEngine?.clearMeasurement();
+        app.setDrawingTool?.('select');
+
+        FeatureSyncController.handleDrawingCompleted(app, {
+          type: isArea ? 'Polygon' : 'LineString',
+          coordinates: isArea ? [m.coords] : m.coords,
+          name: isArea ? `Área Medida (${areaText || distText})` : `Medição (${distText})`,
+          category: 'Medição & Cotas',
+          layerId: app.activeLayerId || app.layers?.[0]?.id || 'layer-topografia',
+          color: '#f59e0b',
+          properties: {
+            'Extensão Total': distText,
+            'Vértices': m.coords.length,
+            ...(segText ? { 'Trechos': segText } : {}),
+            ...(m.areaM2 > 0 ? { 'Área Delimitada': areaText, 'Área (m²)': `${m.areaM2.toFixed(1)} m²` } : {})
+          },
+          style: {
+            strokeColor: '#f59e0b',
+            fillColor: isArea ? '#f59e0b' : 'none',
+            fillOpacity: isArea ? 0.2 : 0,
+            strokeWidth: 3,
+            strokeDashArray: '6, 4',
+            showLabel: true,
+            labelField: isArea ? 'area' : 'extensao'
+          }
+        });
       }
     });
 
