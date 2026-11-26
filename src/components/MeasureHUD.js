@@ -157,87 +157,65 @@ export class MeasureHUD {
     const hasResult = Boolean(m && Array.isArray(m.coords) && m.coords.length >= 2);
     const segments = hasResult && Array.isArray(m.segments) ? m.segments : [];
 
-    const bodyHtml = !hasResult
-      ? `<div class="cm-measure-hint">
-          Clique no mapa para marcar pontos (${isArea ? 'mín. 3 para área' : 'mín. 2 para distância'}).
-          Duplo clique ou <kbd>Enter</kbd> conclui · <kbd>Esc</kbd> sai.
-        </div>`
-      : `
-        <div class="cm-measure-metrics">
-          ${isArea ? `
-            <div class="cm-measure-metric">
-              <div class="cm-measure-metric-label">Área</div>
-              <div class="cm-measure-metric-val">${this._fmtArea(m.areaM2)}</div>
-              <div class="cm-measure-metric-sub">${this._fmtAreaSub(m.areaM2)}</div>
-            </div>
-            <div class="cm-measure-metric">
-              <div class="cm-measure-metric-label">Perímetro</div>
-              <div class="cm-measure-metric-val">${this._fmtDist(m.perimeterM)}</div>
-              <div class="cm-measure-metric-sub">${m.coords.length} vértices</div>
-            </div>
-          ` : `
-            <div class="cm-measure-metric">
-              <div class="cm-measure-metric-label">Distância Total</div>
-              <div class="cm-measure-metric-val">${this._fmtDist(m.lengthM)}</div>
-              <div class="cm-measure-metric-sub">${m.coords.length} vértices · ${segments.length} trecho(s)</div>
-            </div>
-            ${m.areaM2 > 0 ? `
-              <div class="cm-measure-metric">
-                <div class="cm-measure-metric-label">Área Delimitada</div>
-                <div class="cm-measure-metric-val">${this._fmtArea(m.areaM2)}</div>
-                <div class="cm-measure-metric-sub">${this._fmtAreaSub(m.areaM2)}</div>
-              </div>
-            ` : ''}
-          `}
-        </div>
-        ${segments.length > 0 ? `
-          <div class="cm-measure-segments-wrap">
-            <button type="button" class="cm-measure-segments-toggle" data-action="toggle-segments">
-              <span>Trechos e Azimutes (${segments.length})</span>
-              <span>${this.showSegments ? '▲ Ocultar' : '▼ Ver'}</span>
-            </button>
-            ${this.showSegments ? `
-              <div class="cm-measure-segments-list">
-                ${segments.map((s, idx) => `
-                  <div class="cm-measure-segment-row">
-                    <span class="cm-measure-segment-idx">T${idx + 1}</span>
-                    <span class="cm-measure-segment-dist">${this._fmtDist(s.distance)}</span>
-                    <span class="cm-measure-segment-az">Az ${Number(s.bearing).toFixed(1)}°</span>
-                  </div>
-                `).join('')}
-              </div>
-            ` : ''}
-          </div>
-        ` : ''}
-      `;
+    const summaryHtml = !hasResult
+      ? `<span class="cm-measure-hint">Clique no mapa para medir (${isArea ? 'mín. 3 pontos' : 'mín. 2 pontos'})</span>`
+      : isArea
+        ? `
+          <span class="cm-measure-stat">
+            <span class="cm-measure-stat-lbl">Área</span>
+            <span class="cm-measure-stat-val">${this._fmtArea(m.areaM2)}</span>
+          </span>
+          <span class="cm-measure-stat">
+            <span class="cm-measure-stat-lbl">Perím.</span>
+            <span class="cm-measure-stat-val">${this._fmtDist(m.perimeterM)}</span>
+          </span>
+        `
+        : `
+          <span class="cm-measure-stat">
+            <span class="cm-measure-stat-lbl">Dist.</span>
+            <span class="cm-measure-stat-val">${this._fmtDist(m.lengthM)}</span>
+          </span>
+          ${m.areaM2 > 0 ? `
+            <span class="cm-measure-stat">
+              <span class="cm-measure-stat-lbl">Área</span>
+              <span class="cm-measure-stat-val">${this._fmtArea(m.areaM2)}</span>
+            </span>
+          ` : ''}
+        `;
 
     this.el.innerHTML = `
-      <div class="cm-measure-header">
-        <div class="cm-measure-title">
-          <span class="cm-measure-title-dot"></span>
-          <span>Régua GIS</span>
+      <div class="cm-measure-bar">
+        <div class="cm-measure-segmented" role="group" aria-label="Modo de medição">
+          <button type="button" class="cm-measure-seg-btn ${!isArea ? 'is-active' : ''}" data-mode="distance">Distância</button>
+          <button type="button" class="cm-measure-seg-btn ${isArea ? 'is-active' : ''}" data-mode="area">Área</button>
         </div>
-        <div class="cm-measure-controls">
-          <div class="cm-measure-segmented" role="group" aria-label="Modo de medição">
-            <button type="button" class="cm-measure-seg-btn ${!isArea ? 'is-active' : ''}" data-mode="distance">Distância</button>
-            <button type="button" class="cm-measure-seg-btn ${isArea ? 'is-active' : ''}" data-mode="area">Área</button>
-          </div>
-          <select class="cm-measure-unit-select" aria-label="Unidade de medida" data-action="unit">
-            <option value="auto" ${this.unitMode === 'auto' ? 'selected' : ''}>Auto</option>
-            <option value="metric-m" ${this.unitMode === 'metric-m' ? 'selected' : ''}>m / m²</option>
-            <option value="metric-km" ${this.unitMode === 'metric-km' ? 'selected' : ''}>km / ha</option>
-          </select>
+        <span class="cm-measure-sep"></span>
+        <div class="cm-measure-summary">${summaryHtml}</div>
+        <span class="cm-measure-sep"></span>
+        <select class="cm-measure-unit-select" aria-label="Unidade de medida" data-action="unit">
+          <option value="auto" ${this.unitMode === 'auto' ? 'selected' : ''}>Auto</option>
+          <option value="metric-m" ${this.unitMode === 'metric-m' ? 'selected' : ''}>m / m²</option>
+          <option value="metric-km" ${this.unitMode === 'metric-km' ? 'selected' : ''}>km / ha</option>
+        </select>
+        <div class="cm-measure-actions">
+          ${segments.length > 0 ? `<button type="button" class="cm-measure-btn" data-action="toggle-segments" title="Ver trechos e azimutes">${segments.length}T ${this.showSegments ? '▲' : '▼'}</button>` : ''}
+          <button type="button" class="cm-measure-btn" data-action="clear" ${!hasResult ? 'disabled' : ''} title="Limpar medição">Limpar</button>
+          <button type="button" class="cm-measure-btn" data-action="copy" ${!hasResult ? 'disabled' : ''} title="Copiar resumo">Copiar</button>
+          <button type="button" class="cm-measure-btn cm-measure-btn--primary" data-action="save" ${!hasResult ? 'disabled' : ''} title="Converter em feição permanente">Salvar</button>
           <button type="button" class="cm-measure-close" data-action="close" title="Fechar régua (Esc)" aria-label="Fechar régua">&times;</button>
         </div>
       </div>
-      <div class="cm-measure-body">${bodyHtml}</div>
-      <div class="cm-measure-footer">
-        <div class="cm-measure-actions">
-          <button type="button" class="cm-measure-btn" data-action="clear" ${!hasResult ? 'disabled' : ''}>Limpar</button>
-          <button type="button" class="cm-measure-btn" data-action="copy" ${!hasResult ? 'disabled' : ''}>Copiar</button>
+      ${this.showSegments && segments.length > 0 ? `
+        <div class="cm-measure-popover">
+          ${segments.map((s, idx) => `
+            <div class="cm-measure-segment-row">
+              <span class="cm-measure-segment-idx">T${idx + 1}</span>
+              <span class="cm-measure-segment-dist">${this._fmtDist(s.distance)}</span>
+              <span class="cm-measure-segment-az">Az ${Number(s.bearing).toFixed(1)}°</span>
+            </div>
+          `).join('')}
         </div>
-        <button type="button" class="cm-measure-btn cm-measure-btn--primary" data-action="save" ${!hasResult ? 'disabled' : ''} title="Converter esta medição em feição no projeto">Salvar no desenho</button>
-      </div>
+      ` : ''}
     `;
 
     this._bindEvents();

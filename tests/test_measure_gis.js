@@ -124,7 +124,7 @@ console.log('🧪 Testando Régua GIS efêmera (CanvasMapEngine + MeasureHUD)...
   // Instrumenta o elemento raiz após criação para simular cliques sem DOM real
   hud.show('distance');
   assert.equal(hud.isVisible, true);
-  assert.ok(hud.el.innerHTML.includes('Clique no mapa para marcar pontos'));
+  assert.ok(hud.el.innerHTML.includes('Clique no mapa para medir'));
 
   const unitSel = makeEl();
   const clearBtn = makeEl();
