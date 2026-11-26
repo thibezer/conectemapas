@@ -536,6 +536,11 @@ body > .cm-selection-hud {
   top: 42px !important;
 }
 
+/* Na régua GIS, o MeasureHUD substitui o #cm-draw-hud nativo (sem sobreposição/redundância) */
+.cm-measuring-tool #cm-draw-hud {
+  display: none !important;
+}
+
 /* Salvaguarda de empilhamento: se por qualquer motivo SelectionHUD coexistir com Vertex/CAD HUD,
    o SelectionHUD se posiciona logo abaixo sem sobreposição */
 .cm-workspace:has(#cm-cad-hud:not([style*="none"])) #cm-selection-hud,

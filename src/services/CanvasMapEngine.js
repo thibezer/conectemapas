@@ -298,6 +298,8 @@ export class CanvasMapEngine {
   _syncToolState(tool) {
     if (tool === this._tool) return;
     this._tool = tool;
+    const isMeasure = tool === 'measure' || tool === 'measure-area';
+    this.map?.getContainer?.()?.classList?.toggle('cm-measuring-tool', isMeasure);
     this.onToolChange(tool);
   }
 
